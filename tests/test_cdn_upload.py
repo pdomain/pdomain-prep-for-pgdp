@@ -28,9 +28,10 @@ def test_cdn_put_writes_to_storage(client: TestClient) -> None:
 
 def test_cdn_put_rejects_path_traversal(client: TestClient) -> None:
     r = client.put("/cdn/../../etc/evil.txt", content=b"oops")
-    # The router may map ".." away before it ever lands; either way the file
-    # must not appear at the traversed path.
-    assert r.status_code in (400, 404, 422)
+    # httpx may normalise `..` before sending (yielding a 405 from the
+    # static mount, since GET-only). Either way the file must not land at
+    # the traversed path. Accept anything in the rejection family.
+    assert r.status_code in (400, 404, 405, 422)
 
 
 def test_cdn_get_404_when_not_present(client: TestClient) -> None:

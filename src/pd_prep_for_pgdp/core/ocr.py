@@ -28,8 +28,10 @@ from typing import Any, Literal
 
 from .hf_models import (
     resolve_layout_source,
-    resolve_ocr_models as resolve_ocr_models_fn,
     silence_transformers_load_chatter,
+)
+from .hf_models import (
+    resolve_ocr_models as resolve_ocr_models_fn,
 )
 from .models import BoundingBox, OcrWord, ResolvedPageConfig, SystemDefaults
 

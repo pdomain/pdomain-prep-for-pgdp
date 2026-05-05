@@ -26,8 +26,8 @@ from datetime import UTC, datetime
 from ..adapters.database import IDatabase
 from ..adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
 from ..adapters.storage import IStorage
-from ..dispatcher.batched import BatchDispatcher
 from ..dispatcher.base import IDispatcher
+from ..dispatcher.batched import BatchDispatcher
 from .illustrations import extract_illustration, regions_for_page
 from .ingest import ingest_source
 from .job_events import JobEventBroker

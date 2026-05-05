@@ -21,9 +21,6 @@ import anyio.to_thread
 from ...core.config_resolver import resolve_page_config
 from ...core.models import (
     PageRecord,
-    PageSplit,
-    PageType,
-    ProjectConfig,
     SystemDefaults,
 )
 from ...core.queue.single_executor import Priority, SingleExecutor

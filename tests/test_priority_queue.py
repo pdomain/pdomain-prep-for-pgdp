@@ -62,15 +62,11 @@ async def test_work_runs_serialised() -> None:
 
     inflight = 0
     max_concurrent = 0
-    lock = asyncio.Lock()
 
     def work(_label: str) -> str:
         nonlocal inflight, max_concurrent
-        # Use a regular threading lock since `work` runs on the executor thread.
-        # We approximate with a sleep + counter — concurrent execution would
-        # surface as max_concurrent > 1.
-        nonlocal_inflight = [0]
-        nonlocal_inflight[0] = inflight + 1
+        # Approximate concurrency detection: sleep + counter. Concurrent
+        # execution would push max_concurrent above 1.
         inflight = inflight + 1
         max_concurrent = max(max_concurrent, inflight)
         time.sleep(0.05)

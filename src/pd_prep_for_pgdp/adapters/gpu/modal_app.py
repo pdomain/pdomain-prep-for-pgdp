@@ -51,16 +51,11 @@ if _MODAL_AVAILABLE:
     @app.function(gpu=GPU_PROFILE, timeout=DEFAULT_TIMEOUT_S)
     def process_page(payload: dict) -> dict:
         """Run Step 4 for one page on a Modal GPU container."""
-        from pd_prep_for_pgdp.adapters.gpu.base import (
-            ProcessPageRequest,
-            ProcessPageResponse,
-        )
-        from pd_prep_for_pgdp.core.pipeline.process_page import process_page_cpu
-
-        req = ProcessPageRequest.model_validate(payload)
-        # Real impl: fetch source bytes from S3 (storage adapter), run the
-        # pipeline, write the proofing image back to S3, return the URL.
-        # This scaffold doesn't yet wire the storage adapter inside Modal.
+        # Real impl: validate `payload` as ProcessPageRequest, fetch source
+        # bytes from S3, run the pipeline, write the proofing image back to
+        # S3, return the URL. The scaffold doesn't yet wire the storage
+        # adapter inside Modal.
+        del payload
         raise NotImplementedError(
             "Modal process_page needs S3 storage wired — scaffold only"
         )
@@ -68,10 +63,7 @@ if _MODAL_AVAILABLE:
     @app.function(gpu=GPU_PROFILE, timeout=DEFAULT_TIMEOUT_S)
     def run_ocr(payload: dict) -> dict:
         """OCR one page or split on a Modal GPU container."""
-        from pd_prep_for_pgdp.adapters.gpu.base import OcrPageRequest, OcrPageResponse
-        from pd_prep_for_pgdp.core.ocr import ocr_page
-
-        req = OcrPageRequest.model_validate(payload)
+        del payload
         raise NotImplementedError(
             "Modal run_ocr needs S3 storage wired — scaffold only"
         )

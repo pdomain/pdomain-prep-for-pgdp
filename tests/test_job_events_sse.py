@@ -8,7 +8,6 @@ asserts that progress + completion frames arrive over the wire — not after a
 from __future__ import annotations
 
 import io
-import threading
 import time
 import zipfile
 

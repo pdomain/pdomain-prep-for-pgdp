@@ -17,7 +17,6 @@ from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.adapters.gpu.base import (
     BatchJobItem,
     BatchJobResult,
-    GPUBackend,
 )
 from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pd_prep_for_pgdp.core.models import (

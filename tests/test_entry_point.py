@@ -11,8 +11,6 @@ treats this as the user-facing surface of the wheel.
 
 from __future__ import annotations
 
-import sys
-
 import pytest
 
 

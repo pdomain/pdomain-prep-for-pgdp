@@ -74,11 +74,36 @@ packages = ["src/pd_prep_for_pgdp"]
 "src/pd_prep_for_pgdp/static" = "pd_prep_for_pgdp/static"
 
 [tool.ruff]
-line-length = 100
+line-length = 110
 target-version = "py313"
+extend-exclude = [
+    # Historical Jupyter notebook the app is replacing — kept in-tree as
+    # a reference artefact, not source code.
+    "process-book-belloc-the-four-men.ipynb",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    # FastAPI's canonical pattern for dependency injection puts Depends()
+    # in default arguments. Ignoring this rule across the whole repo.
+    "B008",
+    # `Foo(str, Enum)` — spec-08 + Pydantic patterns use this idiom widely;
+    # `StrEnum` is the newer alternative but doesn't change semantics.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Spec-aligned coordinate names (L/R/T/B) trigger E741 in tests.
+"tests/*" = ["E741"]
+# `core/illustrations.py` and `core/pipeline/*` use the same coord names.
+"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741"]
+"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741"]
+"src/pd_prep_for_pgdp/core/models.py" = ["E741"]
+"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741"]
+# Lazy imports inside functions (cycle-breaking + optional-dep patterns).
+"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402"]
+"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

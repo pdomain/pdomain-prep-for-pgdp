@@ -24,7 +24,6 @@ from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pd_prep_for_pgdp.core.models import (
     PageOutput,
     PageRecord,
-    PageType,
     PipelineState,
     Project,
     ProjectConfig,

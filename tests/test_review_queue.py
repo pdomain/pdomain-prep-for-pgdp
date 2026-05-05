@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
 from fastapi.testclient import TestClient
 
 from pd_prep_for_pgdp.bootstrap import build_app
@@ -115,7 +114,7 @@ def test_review_needed_filter_returns_only_incomplete_pages(tmp_path) -> None:
     app = build_app(settings)
 
     with TestClient(app) as client:
-        r = client.get(f"/api/data/projects/rq1/pages?review_needed=true&limit=100")
+        r = client.get("/api/data/projects/rq1/pages?review_needed=true&limit=100")
         assert r.status_code == 200, r.text
         body = r.json()
         idxs = sorted(p["idx0"] for p in body["pages"])
@@ -129,7 +128,7 @@ def test_review_needed_false_keeps_existing_behavior(tmp_path) -> None:
     app = build_app(settings)
 
     with TestClient(app) as client:
-        r = client.get(f"/api/data/projects/rq1/pages?limit=100")
+        r = client.get("/api/data/projects/rq1/pages?limit=100")
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["total"] == 4

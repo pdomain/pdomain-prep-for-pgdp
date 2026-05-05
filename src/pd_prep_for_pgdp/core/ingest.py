@@ -234,10 +234,12 @@ async def _build_page_records(
                 tmp_path = Path(tmp.name)
             try:
                 regions = await anyio.to_thread.run_sync(
-                    lambda: auto_detect_illustrations(
-                        tmp_path,
-                        layout_detector=layout_detector,
-                        confidence_threshold=layout_confidence,
+                    # Bind tmp_path explicitly so the closure captures the
+                    # current iteration's path, not the loop variable.
+                    lambda lp=tmp_path, det=layout_detector, conf=layout_confidence: (
+                        auto_detect_illustrations(
+                            lp, layout_detector=det, confidence_threshold=conf
+                        )
                     )
                 )
             except Exception as e:  # detector failures shouldn't abort ingest

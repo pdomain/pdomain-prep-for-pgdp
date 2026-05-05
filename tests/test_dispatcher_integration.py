@@ -13,7 +13,6 @@ Behavior under test (`dispatch_interval_seconds > 0`):
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 
 import pytest

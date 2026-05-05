@@ -64,7 +64,6 @@ class S3Storage(IStorage):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[ObjectInfo]:
         full_prefix = self._full_key(prefix)
-        paginator = self._client.get_paginator("list_objects_v2")
         token: str | None = None
         while True:
             kwargs = {"Bucket": self._bucket, "Prefix": full_prefix}

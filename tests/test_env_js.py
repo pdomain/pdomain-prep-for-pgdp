@@ -11,7 +11,6 @@ Locks in:
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from pd_prep_for_pgdp.bootstrap import build_app

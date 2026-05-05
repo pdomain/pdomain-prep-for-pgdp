@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Request, Response
 
 from ..settings import Settings
-from .dependencies import get_storage  # for app.state access
-from fastapi import Request
 
 router = APIRouter()
 

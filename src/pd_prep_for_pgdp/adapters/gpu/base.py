@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from ...core.models import OcrWord, PageConfigOverrides
 
-
 # ─── Wire shapes (also reused by /api/gpu route schemas) ─────────────────────
 
 

@@ -6,8 +6,6 @@ behavior before adding more region-handling logic in later iterations.
 
 from __future__ import annotations
 
-import io
-
 import numpy as np
 import pytest
 

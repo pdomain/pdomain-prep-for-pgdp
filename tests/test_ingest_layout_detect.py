@@ -124,8 +124,6 @@ async def test_layout_detector_writes_regions_to_pages(
     db: SqliteDatabase, storage: FilesystemStorage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.illustrations import auto_detect_illustrations
-    from pd_prep_for_pgdp.core import illustrations as illustrations_module
     from pd_prep_for_pgdp.core.ingest import ingest_source
 
     project = _project()

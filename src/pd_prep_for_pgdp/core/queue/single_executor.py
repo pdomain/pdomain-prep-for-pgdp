@@ -49,7 +49,7 @@ class SingleExecutor:
 
         atexit.register(self._thread.shutdown, wait=False)
 
-    async def __aenter__(self) -> "SingleExecutor":
+    async def __aenter__(self) -> SingleExecutor:
         self._drain_task = asyncio.create_task(self.run_drain_loop())
         return self
 
@@ -108,7 +108,7 @@ class SingleExecutor:
                     items.append(
                         await asyncio.wait_for(self.queue.get(), timeout=remaining)
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     break
 
             # Lexicographic sort already does (priority, seq) ordering.
