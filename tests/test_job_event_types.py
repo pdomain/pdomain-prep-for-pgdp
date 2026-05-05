@@ -58,7 +58,7 @@ def _project(project_id: str = "p1") -> Project:
 
 @pytest.mark.asyncio
 async def test_runner_emits_progress_then_complete(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    """Use an empty source — ingest succeeds with 0 pages — and assert the
+    """Use an empty source — unzip succeeds with 0 pages — and assert the
     sequence of event `type`s the broker received.
     """
     project = _project()
@@ -78,7 +78,7 @@ async def test_runner_emits_progress_then_complete(db: SqliteDatabase, storage: 
         id="je1",
         project_id=project.id,
         owner_id="default",
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.queued,
     )
     job.progress.message = src_key
@@ -116,15 +116,15 @@ async def test_runner_emits_error_event_on_failure(db: SqliteDatabase, storage: 
     async def boom(runner, job):
         raise RuntimeError("boom from handler")
 
-    original = jr._HANDLERS.get(JobType.ingest)
-    jr._HANDLERS[JobType.ingest] = boom
+    original = jr._HANDLERS.get(JobType.unzip)
+    jr._HANDLERS[JobType.unzip] = boom
     try:
         await db.put_job(
             Job(
                 id="je2",
                 project_id=project.id,
                 owner_id="default",
-                type=JobType.ingest,
+                type=JobType.unzip,
                 status=JobStatus.queued,
             )
         )
@@ -148,4 +148,4 @@ async def test_runner_emits_error_event_on_failure(db: SqliteDatabase, storage: 
         assert any("boom" in (ev.get("error") or "") for ev in received)
     finally:
         if original is not None:
-            jr._HANDLERS[JobType.ingest] = original
+            jr._HANDLERS[JobType.unzip] = original

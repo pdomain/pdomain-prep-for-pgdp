@@ -1,8 +1,10 @@
-"""Test that ingest streams per-page progress through the JobEventBroker.
+"""Test that the unzip stage streams per-page progress through the JobEventBroker.
 
-Locks in: a 3-page zip produces at least 3 progress events (one per page),
-each with `total=3` and a monotonically increasing `current`. The terminal
-event remains `complete`.
+Locks in: a 3-page zip produces at least 3 progress events (one per page)
+during unzip, each with `total=3` and a monotonically increasing `current`.
+The terminal event for the unzip job remains `complete`. (A follow-up
+thumbnails job is enqueued by the handler but is its own job_id with its
+own event stream — not under test here.)
 """
 
 from __future__ import annotations
@@ -59,7 +61,7 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_ingest_emits_per_page_progress_events(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_unzip_emits_per_page_progress_events(db: SqliteDatabase, storage: FilesystemStorage) -> None:
     pytest.importorskip("cv2")
     now = datetime.now(UTC)
     project = Project(
@@ -86,7 +88,7 @@ async def test_ingest_emits_per_page_progress_events(db: SqliteDatabase, storage
         id="ip-job",
         project_id=project.id,
         owner_id="default",
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.queued,
     )
     job.progress.message = src_key

@@ -26,11 +26,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from .hf_models import (
+from pd_book_tools.hf import (
     resolve_layout_source,
     silence_transformers_load_chatter,
 )
-from .hf_models import (
+from pd_book_tools.hf import (
     resolve_ocr_models as resolve_ocr_models_fn,
 )
 from .models import BoundingBox, OcrWord, ResolvedPageConfig, SystemDefaults
@@ -151,7 +151,7 @@ def get_layout_detector(
         # Pre-fetch HF files so transformers' from_pretrained() is a cache hit.
         repo, revision, descriptor = resolve_layout_source(layout_model, layout_checkpoint)
         if repo is not None:
-            from .hf_models import prefetch_layout_files
+            from pd_book_tools.hf import prefetch_layout_files
 
             prefetch_layout_files(repo, revision)
 

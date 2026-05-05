@@ -6,21 +6,20 @@ shared-container backends override the runner with their own dispatch path;
 local + self-hosted modes use this one.
 
 Job types -> handler:
-  - ingest                       -> core.ingest.ingest_source
+  - unzip                        -> core.ingest.unzip_source (chains a thumbnails job)
+  - thumbnails                   -> core.ingest.generate_thumbnails
   - batch_process_pages          -> dispatcher.submit (one BatchJobItem per page)
   - batch_ocr                    -> dispatcher.submit
   - batch_text_postprocess       -> CPU postprocess across pages
   - batch_extract_illustrations  -> CPU illustration extraction
   - build_package                -> core.packaging.build_package
-
-This iteration wires `ingest`. Other types fall through to a "not yet wired"
-error message; their tests slot in alongside.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from ..adapters.database import IDatabase
@@ -29,7 +28,7 @@ from ..adapters.storage import IStorage
 from ..dispatcher.base import IDispatcher
 from ..dispatcher.batched import BatchDispatcher
 from .illustrations import extract_illustration, regions_for_page
-from .ingest import ingest_source
+from .ingest import generate_thumbnails, unzip_source
 from .job_events import JobEventBroker
 from .models import Job, JobStatus, JobType, PageRecord
 from .packaging import build_package
@@ -61,6 +60,11 @@ class InProcessJobRunner:
         # NOT mark them complete on the way out — the dispatcher's completion
         # callback owns that transition.
         self._scheduled_jobs: set[str] = set()
+        # Cooperative stop: setting this causes `run_forever` to exit between
+        # poll iterations rather than mid-DB-call. The lifespan teardown sets
+        # it BEFORE awaiting the runner task to avoid a SQLite-level segfault
+        # where the worker thread holds a cursor while close() runs.
+        self._stop = asyncio.Event()
 
         # When a BatchDispatcher is provided, register a completion callback so
         # jobs whose items finish a flush are marked complete (or failed).
@@ -119,15 +123,28 @@ class InProcessJobRunner:
         await self._emit(updated)
 
     async def run_forever(self) -> None:
-        """Loop until cancelled. Yields between iterations."""
-        while True:
+        """Loop until `stop()` is called or the task is cancelled.
+
+        Polls the queue, sleeps `poll_interval`, repeats. Exits between
+        iterations so we never tear down with a worker thread mid-SQLite
+        call (that's a hard segfault when the connection is closed under it).
+        """
+        while not self._stop.is_set():
             try:
                 await self.run_pending(max_jobs=8)
             except asyncio.CancelledError:
                 raise
             except Exception:
                 log.exception("InProcessJobRunner.run_pending iteration failed")
-            await asyncio.sleep(self._poll)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=self._poll)
+                return
+            except TimeoutError:
+                continue
+
+    def stop(self) -> None:
+        """Signal `run_forever` to exit at the next safe point."""
+        self._stop.set()
 
     async def run_pending(self, *, max_jobs: int = 8) -> int:
         """Pick up at most `max_jobs` queued jobs and execute them.
@@ -202,6 +219,13 @@ class InProcessJobRunner:
         await self._mark_complete(latest)
 
     async def _mark_complete(self, job: Job) -> None:
+        # If the user cancelled this job mid-execution, don't overwrite the
+        # cancelled status with `complete`. Best-effort guard — the SQLite
+        # adapter doesn't have CAS, so a tight race could still slip through.
+        latest = await self._db.get_job(job.id)
+        if latest is not None and latest.status == JobStatus.cancelled:
+            await self._emit(latest)
+            return
         updated = job.model_copy(
             update={
                 "status": JobStatus.complete,
@@ -212,6 +236,10 @@ class InProcessJobRunner:
         await self._emit(updated)
 
     async def _mark_failed(self, job: Job, message: str) -> None:
+        latest = await self._db.get_job(job.id)
+        if latest is not None and latest.status == JobStatus.cancelled:
+            await self._emit(latest)
+            return
         updated = job.model_copy(
             update={
                 "status": JobStatus.error,
@@ -235,11 +263,12 @@ class InProcessJobRunner:
 # ─── Handlers ───────────────────────────────────────────────────────────────
 
 
-async def _handle_ingest(runner: InProcessJobRunner, job: Job) -> None:
-    """Run Step 0/1/2 for the job's project.
+async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
+    """Step 0: extract the zip / list the source folder, write PageRecords.
 
-    The source key + source type are encoded in `job.progress.message` for
-    now. A future iteration adds typed payload columns to the jobs table.
+    The source key is encoded in `job.progress.message`. On success this
+    handler enqueues a `thumbnails` job for the same project so the user
+    sees the second stage as a separate progress bar.
     """
     project = await runner._db.get_project(job.project_id)
     if project is None:
@@ -247,14 +276,14 @@ async def _handle_ingest(runner: InProcessJobRunner, job: Job) -> None:
 
     source_key = job.progress.message
     if not source_key:
-        raise ValueError("ingest job missing source_key in progress.message")
+        raise ValueError("unzip job missing source_key in progress.message")
 
     source_type = "zip" if source_key.endswith(".zip") else "local_folder"
 
     async def _report(current: int, total: int, stem: str) -> None:
-        await runner._update_progress(job, current=current, total=total, message=f"ingesting {stem}")
+        await runner._update_progress(job, current=current, total=total, message=f"unzipping {stem}")
 
-    result = await ingest_source(
+    result = await unzip_source(
         project=project,
         source_type=source_type,
         source_key=source_key,
@@ -266,7 +295,49 @@ async def _handle_ingest(runner: InProcessJobRunner, job: Job) -> None:
         job,
         current=result.page_count,
         total=result.page_count,
-        message=f"ingested {result.page_count} pages, {len(result.errors)} errors",
+        message=f"unzipped {result.page_count} pages, {len(result.errors)} errors",
+    )
+
+    # Chain Step 2 — thumbnails. Same project, fresh queued job. The user
+    # sees both jobs in the JobsPage and can watch them in sequence.
+    if result.page_count > 0:
+        thumb_job = Job(
+            id=uuid.uuid4().hex,
+            project_id=job.project_id,
+            owner_id=job.owner_id,
+            type=JobType.thumbnails,
+            status=JobStatus.queued,
+        )
+        await runner._db.put_job(thumb_job)
+
+
+async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
+    """Step 2: generate thumbnails for every page that doesn't have one.
+
+    Runs the entire batch in a single threadpool dispatch so cv2 stays warm
+    — addresses the slowness the user observed on CPU when each page paid
+    its own context-switch + library-init overhead.
+    """
+    project = await runner._db.get_project(job.project_id)
+    if project is None:
+        raise FileNotFoundError(f"project {job.project_id} not found")
+
+    async def _report(current: int, total: int, stem: str) -> None:
+        await runner._update_progress(
+            job, current=current, total=total, message=f"thumbnail {stem}"
+        )
+
+    result = await generate_thumbnails(
+        project=project,
+        storage=runner._storage,
+        database=runner._db,
+        progress_cb=_report,
+    )
+    await runner._update_progress(
+        job,
+        current=result.page_count,
+        total=result.page_count,
+        message=f"thumbnailed {result.page_count} pages, {len(result.errors)} errors",
     )
 
 
@@ -410,7 +481,10 @@ async def _run_batch_pages(runner: InProcessJobRunner, job: Job, *, job_type: st
     results = await runner._gpu.run_batch(items)
     ok_count = sum(1 for r in results if r.ok)
     err_count = len(results) - ok_count
-    await runner._update_progress(
+    # `_update_progress` returns the new pydantic copy. Use IT as the basis
+    # for the error-message write, otherwise we'd overwrite the just-written
+    # progress with the stale local `job` reference.
+    latest = await runner._update_progress(
         job,
         current=ok_count,
         total=len(items),
@@ -418,12 +492,13 @@ async def _run_batch_pages(runner: InProcessJobRunner, job: Job, *, job_type: st
     )
     if err_count:
         first_err = next((r.error for r in results if not r.ok and r.error), "batch had errors")
-        job.error_message = first_err
-        await runner._db.put_job(job)
+        latest = latest.model_copy(update={"error_message": first_err})
+        await runner._db.put_job(latest)
 
 
 _HANDLERS = {
-    JobType.ingest: _handle_ingest,
+    JobType.unzip: _handle_unzip,
+    JobType.thumbnails: _handle_thumbnails,
     JobType.build_package: _handle_build_package,
     JobType.batch_text_postprocess: _handle_text_postprocess,
     JobType.batch_extract_illustrations: _handle_extract_illustrations,

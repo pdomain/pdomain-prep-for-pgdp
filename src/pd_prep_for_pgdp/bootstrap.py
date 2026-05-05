@@ -176,10 +176,15 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            # Cancel + AWAIT each task before closing the database. If we
-            # close mid-flight while a worker thread is still running a
-            # SQLite query, the C-level access segfaults. The await gives
-            # cancelled tasks a chance to drain their threadpool work.
+            # Graceful stop FIRST: signal the job runner to exit between
+            # poll iterations. Cancelling mid-poll leaves a worker thread
+            # mid-SQLite-call, which segfaults at the C boundary when we
+            # close the connection below.
+            try:
+                job_runner.stop()
+            except Exception:  # pragma: no cover - defensive
+                pass
+
             tasks = []
             for attr in ("dispatcher_task", "job_runner_task", "executor_task"):
                 task = getattr(app.state, attr, None)
@@ -265,4 +270,20 @@ def _mount_static_frontend(app: FastAPI, settings: Settings) -> None:
     if not os.path.isdir(path):
         log.warning("Static dir %s missing — frontend not bundled. Run `make build-frontend`.", path)
         return
+
+    # SPA fallback: any non-API GET that isn't a real file in the bundle
+    # serves index.html, so client-side routes like /projects/X and /jobs
+    # work on a fresh page load. The static mount (registered after) still
+    # serves /assets/<hash>.<ext>, /favicon.ico, etc.
+    from fastapi.responses import FileResponse
+
+    index_file = os.path.join(path, "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        candidate = os.path.join(path, full_path)
+        if full_path and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(index_file)
+
     app.mount("/", StaticFiles(directory=path, html=True), name="ui")

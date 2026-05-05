@@ -76,7 +76,7 @@ def _seed(settings: Settings) -> tuple[str, str]:
                     id=f"j{i}",
                     project_id=pid,
                     owner_id="default",
-                    type=JobType.ingest,
+                    type=JobType.unzip,
                     status=JobStatus.complete,
                 )
             )

@@ -1,6 +1,6 @@
 """Tests-first for concurrent job execution.
 
-Today `InProcessJobRunner.run_pending` runs jobs sequentially; an ingest
+Today `InProcessJobRunner.run_pending` runs jobs sequentially; an unzip
 of a 400-page book blocks every other job behind it. The runner should
 support a concurrency knob so independent jobs (different projects, or
 different non-conflicting jobs on the same project) run in parallel.
@@ -82,8 +82,8 @@ async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: Fi
     await db.put_project(project)
 
     handler, starts = await _make_slow_handler(0.1)
-    original = jr._HANDLERS.get(JobType.ingest)
-    jr._HANDLERS[JobType.ingest] = handler
+    original = jr._HANDLERS.get(JobType.unzip)
+    jr._HANDLERS[JobType.unzip] = handler
     try:
         for i in range(3):
             await db.put_job(
@@ -91,7 +91,7 @@ async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: Fi
                     id=f"j{i}",
                     project_id=project.id,
                     owner_id="default",
-                    type=JobType.ingest,
+                    type=JobType.unzip,
                     status=JobStatus.queued,
                 )
             )
@@ -106,7 +106,7 @@ async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: Fi
         assert all(g > 0.05 for g in gaps), f"expected sequential, got {gaps}"
     finally:
         if original is not None:
-            jr._HANDLERS[JobType.ingest] = original
+            jr._HANDLERS[JobType.unzip] = original
 
 
 @pytest.mark.asyncio
@@ -118,8 +118,8 @@ async def test_max_concurrency_runs_jobs_in_parallel(db: SqliteDatabase, storage
     await db.put_project(project)
 
     handler, starts = await _make_slow_handler(0.1)
-    original = jr._HANDLERS.get(JobType.ingest)
-    jr._HANDLERS[JobType.ingest] = handler
+    original = jr._HANDLERS.get(JobType.unzip)
+    jr._HANDLERS[JobType.unzip] = handler
     try:
         for i in range(3):
             await db.put_job(
@@ -127,7 +127,7 @@ async def test_max_concurrency_runs_jobs_in_parallel(db: SqliteDatabase, storage
                     id=f"jc{i}",
                     project_id=project.id,
                     owner_id="default",
-                    type=JobType.ingest,
+                    type=JobType.unzip,
                     status=JobStatus.queued,
                 )
             )
@@ -145,7 +145,7 @@ async def test_max_concurrency_runs_jobs_in_parallel(db: SqliteDatabase, storage
         assert elapsed < 0.25, f"too slow: {elapsed}s"
     finally:
         if original is not None:
-            jr._HANDLERS[JobType.ingest] = original
+            jr._HANDLERS[JobType.unzip] = original
 
 
 @pytest.mark.asyncio
@@ -158,8 +158,8 @@ async def test_run_pending_waits_for_all_concurrent_jobs(
     project = _project()
     await db.put_project(project)
     handler, _starts = await _make_slow_handler(0.05)
-    original = jr._HANDLERS.get(JobType.ingest)
-    jr._HANDLERS[JobType.ingest] = handler
+    original = jr._HANDLERS.get(JobType.unzip)
+    jr._HANDLERS[JobType.unzip] = handler
     try:
         for i in range(2):
             await db.put_job(
@@ -167,7 +167,7 @@ async def test_run_pending_waits_for_all_concurrent_jobs(
                     id=f"jw{i}",
                     project_id=project.id,
                     owner_id="default",
-                    type=JobType.ingest,
+                    type=JobType.unzip,
                     status=JobStatus.queued,
                 )
             )
@@ -181,4 +181,4 @@ async def test_run_pending_waits_for_all_concurrent_jobs(
             assert j.status == JobStatus.complete
     finally:
         if original is not None:
-            jr._HANDLERS[JobType.ingest] = original
+            jr._HANDLERS[JobType.unzip] = original

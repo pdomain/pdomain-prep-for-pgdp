@@ -1,4 +1,9 @@
-"""POST /api/gpu/ingest — extract zip, generate thumbnails, write PageRecords."""
+"""POST /api/gpu/ingest — kick off the unzip stage of ingest.
+
+The route only enqueues the `unzip` job; the unzip handler chains a
+follow-up `thumbnails` job on success. The frontend gets one job_id back
+and watches the JobsPage for both stages.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +35,7 @@ async def ingest(
         id=uuid.uuid4().hex,
         project_id=body.project_id,
         owner_id=user.user_id,
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.queued,
         created_at=datetime.now(UTC),
         # core/job_runner reads source_key from progress.message until a

@@ -1,12 +1,16 @@
-"""Tests-first for `core.ingest`.
+"""Tests-first for `core.ingest` (split into unzip + thumbnails stages).
 
 Locks in:
-  - zip extraction populates `source/` keys in storage,
-  - one PageRecord per source image, sorted, idx0 starts at 0,
-  - thumbnails are generated under `thumbnails/`,
-  - project status becomes `configuring` after ingest completes,
-  - corrupt zip entries are skipped (errors recorded but ingest continues),
-  - `s3_folder`/`local_folder` source types use list_prefix instead of unzipping.
+  - `unzip_source` writes one PageRecord per source image, sorted, idx0
+    starts at 0,
+  - source files land under `source/`,
+  - `s3_folder`/`local_folder` source types use list_prefix instead of
+    unzipping,
+  - `generate_thumbnails` writes JPGs under `thumbnails/`, populates
+    `page.thumbnail_key`, and records corrupt entries as errors,
+  - project status only advances to `configuring` after thumbnails finish
+    (unzip leaves it at `ingesting` so the UI can render a "creating
+    thumbnails" banner).
 """
 
 from __future__ import annotations
@@ -21,7 +25,6 @@ import pytest
 from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pd_prep_for_pgdp.core.models import (
-    PageProcessingStatus,
     PipelineState,
     Project,
     ProjectConfig,
@@ -74,9 +77,12 @@ def storage(tmp_path) -> FilesystemStorage:
     return FilesystemStorage(root=tmp_path / "data")
 
 
+# ─── unzip_source ─────────────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_ingest_zip_creates_one_page_per_image(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import ingest_source
+async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+    from pd_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -91,7 +97,7 @@ async def test_ingest_zip_creates_one_page_per_image(db: SqliteDatabase, storage
     source_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(source_key, zip_bytes)
 
-    result = await ingest_source(
+    result = await unzip_source(
         project=project,
         source_type="zip",
         source_key=source_key,
@@ -104,26 +110,24 @@ async def test_ingest_zip_creates_one_page_per_image(db: SqliteDatabase, storage
 
     pages, _, total = await db.list_pages(project.id, None, 100)
     assert total == 3
-    # Sorted by source filename, idx0 contiguous.
     assert [p.idx0 for p in pages] == [0, 1, 2]
     assert [p.source_stem for p in pages] == ["page_001", "page_002", "page_003"]
-    # Each page references its source key.
+    # Source extracted; thumbnails NOT yet created (separate stage).
     for p in pages:
         assert p.source_key and await storage.exists(p.source_key)
-        assert p.thumbnail_key and await storage.exists(p.thumbnail_key)
-        assert p.processing_status == PageProcessingStatus.pending
+        assert p.thumbnail_key is None
 
 
 @pytest.mark.asyncio
-async def test_ingest_zip_advances_project_status(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import ingest_source
+async def test_unzip_leaves_project_in_ingesting(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+    from pd_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
     zip_bytes = _make_zip([("p.png", _png(50, 50))])
     await storage.put_bytes(f"projects/{project.id}/source.zip", zip_bytes)
 
-    await ingest_source(
+    await unzip_source(
         project=project,
         source_type="zip",
         source_key=f"projects/{project.id}/source.zip",
@@ -133,13 +137,15 @@ async def test_ingest_zip_advances_project_status(db: SqliteDatabase, storage: F
 
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
-    assert refreshed.status == ProjectStatus.configuring
+    # Stays in ingesting until thumbnails finish — gives the UI a single
+    # "creating thumbnails" state to render.
+    assert refreshed.status == ProjectStatus.ingesting
     assert refreshed.page_count == 1
 
 
 @pytest.mark.asyncio
-async def test_ingest_zip_skips_non_image_entries(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import ingest_source
+async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+    from pd_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -152,7 +158,7 @@ async def test_ingest_zip_skips_non_image_entries(db: SqliteDatabase, storage: F
     )
     await storage.put_bytes(f"projects/{project.id}/source.zip", zip_bytes)
 
-    result = await ingest_source(
+    result = await unzip_source(
         project=project,
         source_type="zip",
         source_key=f"projects/{project.id}/source.zip",
@@ -164,10 +170,86 @@ async def test_ingest_zip_skips_non_image_entries(db: SqliteDatabase, storage: F
 
 
 @pytest.mark.asyncio
-async def test_ingest_zip_records_corrupt_entries_as_errors(
+async def test_unzip_local_folder_lists_storage_prefix(
     db: SqliteDatabase, storage: FilesystemStorage
 ) -> None:
-    from pd_prep_for_pgdp.core.ingest import ingest_source
+    from pd_prep_for_pgdp.core.ingest import unzip_source
+
+    project = _project()
+    await db.put_project(project)
+    folder_prefix = f"projects/{project.id}/raw/"
+    await storage.put_bytes(f"{folder_prefix}page_a.png", _png(40, 40))
+    await storage.put_bytes(f"{folder_prefix}page_b.png", _png(40, 40))
+
+    result = await unzip_source(
+        project=project,
+        source_type="local_folder",
+        source_key=folder_prefix,
+        storage=storage,
+        database=db,
+    )
+
+    assert result.page_count == 2
+
+
+# ─── generate_thumbnails ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_thumbnails_generates_jpgs_for_every_page(
+    db: SqliteDatabase, storage: FilesystemStorage
+) -> None:
+    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+
+    project = _project()
+    await db.put_project(project)
+    zip_bytes = _make_zip([("p1.png", _png(80, 60)), ("p2.png", _png(80, 60))])
+    src_key = f"projects/{project.id}/source.zip"
+    await storage.put_bytes(src_key, zip_bytes)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db
+    )
+
+    refreshed = await db.get_project(project.id)
+    assert refreshed is not None
+    result = await generate_thumbnails(
+        project=refreshed, storage=storage, database=db
+    )
+    assert result.page_count == 2
+
+    pages, _, _ = await db.list_pages(project.id, None, 100)
+    for p in pages:
+        assert p.thumbnail_key and await storage.exists(p.thumbnail_key)
+
+
+@pytest.mark.asyncio
+async def test_thumbnails_advances_project_status(
+    db: SqliteDatabase, storage: FilesystemStorage
+) -> None:
+    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+
+    project = _project()
+    await db.put_project(project)
+    zip_bytes = _make_zip([("p.png", _png(50, 50))])
+    src_key = f"projects/{project.id}/source.zip"
+    await storage.put_bytes(src_key, zip_bytes)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db
+    )
+    refreshed = await db.get_project(project.id)
+    assert refreshed is not None
+    await generate_thumbnails(project=refreshed, storage=storage, database=db)
+
+    final = await db.get_project(project.id)
+    assert final is not None
+    assert final.status == ProjectStatus.configuring
+
+
+@pytest.mark.asyncio
+async def test_thumbnails_records_corrupt_entries_as_errors(
+    db: SqliteDatabase, storage: FilesystemStorage
+) -> None:
+    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -177,39 +259,16 @@ async def test_ingest_zip_records_corrupt_entries_as_errors(
             ("page_2.png", b"not actually a png"),  # cv2.imdecode -> None
         ]
     )
-    await storage.put_bytes(f"projects/{project.id}/source.zip", zip_bytes)
-
-    result = await ingest_source(
-        project=project,
-        source_type="zip",
-        source_key=f"projects/{project.id}/source.zip",
-        storage=storage,
-        database=db,
+    src_key = f"projects/{project.id}/source.zip"
+    await storage.put_bytes(src_key, zip_bytes)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db
     )
 
-    # Healthy page is ingested; corrupt one is recorded as an error.
+    refreshed = await db.get_project(project.id)
+    assert refreshed is not None
+    result = await generate_thumbnails(project=refreshed, storage=storage, database=db)
+
+    # Healthy page got a thumbnail; corrupt one is recorded.
     assert result.page_count == 1
     assert any("page_2" in e for e in result.errors)
-
-
-@pytest.mark.asyncio
-async def test_ingest_local_folder_lists_storage_prefix(
-    db: SqliteDatabase, storage: FilesystemStorage
-) -> None:
-    from pd_prep_for_pgdp.core.ingest import ingest_source
-
-    project = _project()
-    await db.put_project(project)
-    folder_prefix = f"projects/{project.id}/raw/"
-    await storage.put_bytes(f"{folder_prefix}page_a.png", _png(40, 40))
-    await storage.put_bytes(f"{folder_prefix}page_b.png", _png(40, 40))
-
-    result = await ingest_source(
-        project=project,
-        source_type="local_folder",
-        source_key=folder_prefix,
-        storage=storage,
-        database=db,
-    )
-
-    assert result.page_count == 2

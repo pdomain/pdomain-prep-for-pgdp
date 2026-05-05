@@ -1,8 +1,19 @@
-"""Step 0/1/2 — ingest, JP2->JPG (when needed), thumbnails.
+"""Step 0/1/2 — ingest split into two stages: unzip then thumbnails.
 
-Driven by `IStorage` so the same path works for filesystem and S3 backends.
-The function is async because storage is async; image work happens on a
-worker thread via anyio.
+`unzip_source(...)` (Step 0): pulls the zip / lists the storage prefix,
+writes raw source files into `projects/<id>/source/<stem>.<ext>`, and
+creates one PageRecord per source image with no thumbnail and no
+auto-detection. Pages start with `page_type=normal` so the user picks
+their own typing later.
+
+`generate_thumbnails(...)` (Step 2): walks every page that doesn't yet
+have a `thumbnail_key`, decodes + resizes + encodes each one, writes the
+JPGs to `projects/<id>/thumbnails/<stem>.jpg`, and updates the page rows.
+The whole batch runs inside ONE `anyio.to_thread.run_sync` dispatch so
+cv2 stays warm and the per-page overhead stays low.
+
+Both functions are async because storage is async; image work happens on
+a worker thread.
 """
 
 from __future__ import annotations
@@ -10,18 +21,15 @@ from __future__ import annotations
 import io
 import logging
 import re
-import tempfile
 import zipfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
 
 import anyio.to_thread
 
 from ..adapters.database import IDatabase
 from ..adapters.storage import IStorage
-from .auto_detect import detect_page_attributes, median_aspect_ratio
 from .models import (
     PageRecord,
     PipelineState,
@@ -45,74 +53,156 @@ class IngestResult:
     errors: list[str] = field(default_factory=list)
 
 
-async def ingest_source(
+ProgressCb = Callable[[int, int, str], Awaitable[None]]
+
+
+# ─── Step 0: unzip / enumerate ─────────────────────────────────────────────
+
+
+async def unzip_source(
     *,
     project: Project,
     source_type: str,
     source_key: str,
     storage: IStorage,
     database: IDatabase,
-    auto_detect: bool = True,
-    layout_detector: Any | None = None,
-    layout_confidence: float = 0.5,
-    progress_cb: Any | None = None,
+    progress_cb: ProgressCb | None = None,
 ) -> IngestResult:
-    """Run Step 0/1/2: extract / list source images, write per-page records and thumbnails.
+    """Extract source files (or list a folder), create one PageRecord per image.
 
-    `source_type`:
-      - `"zip"`: `source_key` points at an uploaded zip; extract entries to
-        `projects/<id>/source/`.
-      - `"local_folder"` / `"s3_folder"`: `source_key` is a storage prefix
-        already containing source images; just list it.
-
-    Page idx0 is assigned in lexicographic source-filename order.
-
-    `auto_detect=True` (default) applies spec-01 §"Auto-detection" suggestions
-    to each page (`page_type`, `alignment`) and seeds the project's median
-    aspect ratio into `default_overrides["page_h_w_ratio"]`.
-
-    When `layout_detector` is provided, it's run on each source image (per
-    spec 05); detected illustration / decoration / table regions above
-    `layout_confidence` land on `PageRecord.illustration_regions`.
+    Pages land with `page_type=normal`, no thumbnail, no auto-detection. A
+    follow-up `generate_thumbnails` job creates the JPGs. Page ranges
+    (`proof_start_idx0`, `proof_end_idx0`) on the project default to 0 and
+    will be updated after the user clicks through the Configure page.
     """
     if source_type == "zip":
         entries = await _enumerate_zip(storage, source_key, project.id)
     else:
         entries = await _enumerate_folder(storage, source_key)
 
-    pages, errors = await _build_page_records(
-        project,
-        entries,
-        storage,
-        auto_detect=auto_detect,
-        layout_detector=layout_detector,
-        layout_confidence=layout_confidence,
-        progress_cb=progress_cb,
-    )
+    total = len(entries)
+    pages: list[PageRecord] = []
+    for valid_idx0, entry in enumerate(entries):
+        pages.append(
+            PageRecord(
+                project_id=project.id,
+                idx0=valid_idx0,
+                prefix="",
+                source_stem=entry.stem,
+                ignore=(
+                    valid_idx0 < project.config.proof_start_idx0
+                    or valid_idx0 > project.config.proof_end_idx0
+                ),
+                source_key=entry.key,
+            )
+        )
+        if progress_cb is not None:
+            try:
+                await progress_cb(valid_idx0 + 1, total, entry.stem)
+            except Exception:
+                log.exception("unzip progress_cb raised; continuing")
 
     if pages:
         await database.put_pages(pages)
-
-    config_update = project.config.model_dump()
-    if auto_detect and entries:
-        median_ratio = await anyio.to_thread.run_sync(median_aspect_ratio, [e.bytes_ for e in entries])
-        new_overrides = dict(project.config.default_overrides)
-        new_overrides["page_h_w_ratio"] = float(median_ratio)
-        config_update["default_overrides"] = new_overrides
 
     project = project.model_copy(
         update={
             "page_count": len(pages),
             "proof_page_count": len(pages),
-            "status": ProjectStatus.configuring if pages else ProjectStatus.ingesting,
+            # Stay in `ingesting` until thumbnails finish — the project page
+            # decides what to render based on the active job, not status.
+            "status": ProjectStatus.ingesting,
             "updated_at": datetime.now(UTC),
-            "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=errors),
-            "config": project.config.model_validate(config_update),
+            "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=[]),
         }
     )
     await database.put_project(project)
+    return IngestResult(page_count=len(pages), errors=[])
 
-    return IngestResult(page_count=len(pages), errors=errors)
+
+# ─── Step 2: thumbnails (batched in one threadpool call) ───────────────────
+
+
+async def generate_thumbnails(
+    *,
+    project: Project,
+    storage: IStorage,
+    database: IDatabase,
+    progress_cb: ProgressCb | None = None,
+) -> IngestResult:
+    """Walk every page without a thumbnail, generate + persist JPGs in batch.
+
+    Reads source bytes once per page (skipping pages that already have a
+    thumbnail), then dispatches the whole batch to ONE worker thread so
+    cv2 stays warm — much faster than N round-trips for large books.
+    """
+    pages_in, _, _ = await database.list_pages(project.id, None, 1_000_000)
+
+    # Read source bytes for every page that still needs a thumbnail. We
+    # gather all bytes first so the threadpool task only does CPU work.
+    todo: list[tuple[int, str, bytes]] = []
+    for page in pages_in:
+        if page.thumbnail_key:
+            continue
+        if not page.source_key:
+            continue
+        try:
+            data = await storage.get_bytes(page.source_key)
+        except Exception as e:
+            log.warning("thumbnail: source missing for %s: %s", page.source_stem, e)
+            continue
+        todo.append((page.idx0, page.source_stem, data))
+
+    total = len(todo)
+    if total == 0:
+        await _mark_step_complete(project, database, step_id=2)
+        return IngestResult(page_count=0, errors=[])
+
+    # ── Batch the entire decode+encode pass on a single worker thread ──
+    # This is the hot path the user observed slowing down on CPU. By
+    # processing all pages inside one threadpool dispatch, we pay the
+    # context-switch + cv2-warmup cost once instead of `total` times.
+    def _make_all() -> tuple[list[tuple[int, str, bytes]], list[str]]:
+        results: list[tuple[int, str, bytes]] = []
+        errs: list[str] = []
+        for idx0, stem, data in todo:
+            try:
+                jpg = _make_thumbnail_bytes(data)
+                results.append((idx0, stem, jpg))
+            except _CorruptImageError as e:
+                errs.append(f"{stem}: {e}")
+        return results, errs
+
+    thumbnails, errors = await anyio.to_thread.run_sync(_make_all)
+
+    # Persist + update PageRecords. Storage writes are async (one per
+    # thumbnail) but they don't pin a worker thread.
+    pages_by_idx = {p.idx0: p for p in pages_in}
+    updated: list[PageRecord] = []
+    for done, (idx0, stem, jpg) in enumerate(thumbnails, start=1):
+        thumb_key = f"projects/{project.id}/thumbnails/{stem}.jpg"
+        await storage.put_bytes(thumb_key, jpg, "image/jpeg")
+        page = pages_by_idx[idx0]
+        updated.append(page.model_copy(update={"thumbnail_key": thumb_key}))
+        if progress_cb is not None:
+            try:
+                await progress_cb(done, total, stem)
+            except Exception:
+                log.exception("thumbnails progress_cb raised; continuing")
+
+    if updated:
+        await database.put_pages(updated)
+
+    # Once thumbnails finish the user can productively use the Configure page.
+    project = project.model_copy(
+        update={
+            "status": ProjectStatus.configuring,
+            "updated_at": datetime.now(UTC),
+            "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors),
+        }
+    )
+    await database.put_project(project)
+    return IngestResult(page_count=len(updated), errors=errors)
 
 
 # ─── enumerate sources ─────────────────────────────────────────────────────
@@ -175,92 +265,6 @@ def _stem_from_zipname(name: str) -> str:
     return segment
 
 
-# ─── page records + thumbnails ─────────────────────────────────────────────
-
-
-async def _build_page_records(
-    project: Project,
-    entries: list[_SourceEntry],
-    storage: IStorage,
-    *,
-    auto_detect: bool = True,
-    layout_detector: Any | None = None,
-    layout_confidence: float = 0.5,
-    progress_cb: Any | None = None,
-) -> tuple[list[PageRecord], list[str]]:
-    from .illustrations import auto_detect_illustrations
-
-    pages: list[PageRecord] = []
-    errors: list[str] = []
-    valid_idx0 = 0
-    total = len(entries)
-    processed = 0
-    for entry in entries:
-        try:
-            thumb_bytes = await anyio.to_thread.run_sync(_make_thumbnail_bytes, entry.bytes_)
-        except _CorruptImageError as e:
-            errors.append(f"{entry.stem}: {e}")
-            continue
-
-        thumb_key = f"projects/{project.id}/thumbnails/{entry.stem}.jpg"
-        await storage.put_bytes(thumb_key, thumb_bytes, "image/jpeg")
-
-        page_type = None
-        alignment = None
-        if auto_detect:
-            suggestion = await anyio.to_thread.run_sync(detect_page_attributes, entry.bytes_)
-            page_type = suggestion.suggested_type
-            alignment = suggestion.suggested_alignment
-
-        # Layout detector — operates on the raw source bytes via a temp file
-        # because pd_book_tools' detector takes a path. Cheap relative to the
-        # detector's inference cost.
-        regions: list[Any] = []
-        if layout_detector is not None:
-            with tempfile.NamedTemporaryFile(suffix=Path(entry.key).suffix or ".png", delete=False) as tmp:
-                tmp.write(entry.bytes_)
-                tmp_path = Path(tmp.name)
-            try:
-                regions = await anyio.to_thread.run_sync(
-                    # Bind tmp_path explicitly so the closure captures the
-                    # current iteration's path, not the loop variable.
-                    lambda lp=tmp_path, det=layout_detector, conf=layout_confidence: (
-                        auto_detect_illustrations(lp, layout_detector=det, confidence_threshold=conf)
-                    )
-                )
-            except Exception as e:  # detector failures shouldn't abort ingest
-                log.warning("layout detector failed on %s: %s", entry.stem, e)
-            finally:
-                tmp_path.unlink(missing_ok=True)
-
-        page_kwargs = {
-            "project_id": project.id,
-            "idx0": valid_idx0,
-            "prefix": "",
-            "source_stem": entry.stem,
-            "ignore": (
-                valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
-            ),
-            "source_key": entry.key,
-            "thumbnail_key": thumb_key,
-            "illustration_regions": regions,
-        }
-        if page_type is not None:
-            page_kwargs["page_type"] = page_type
-        if alignment is not None:
-            page_kwargs["alignment"] = alignment
-        pages.append(PageRecord(**page_kwargs))
-        valid_idx0 += 1
-        processed += 1
-        if progress_cb is not None:
-            try:
-                await progress_cb(processed, total, entry.stem)
-            except Exception:
-                # Progress reporting failures should never abort ingest.
-                log.exception("ingest progress_cb raised; continuing")
-    return pages, errors
-
-
 # ─── thumbnail (in-memory bytes -> bytes) ──────────────────────────────────
 
 
@@ -296,7 +300,7 @@ def _make_thumbnail_bytes(src: bytes) -> bytes:
     return bytes(buf.tobytes())
 
 
-# ─── pipeline state bookkeeping ────────────────────────────────────────────
+# ─── pipeline-state bookkeeping ────────────────────────────────────────────
 
 
 def _record_step(state: PipelineState, *, step_id: int, errors: list[str]) -> PipelineState:
@@ -306,3 +310,13 @@ def _record_step(state: PipelineState, *, step_id: int, errors: list[str]) -> Pi
         completed_at=datetime.now(UTC),
     )
     return PipelineState(steps=new_steps)
+
+
+async def _mark_step_complete(project: Project, database: IDatabase, *, step_id: int) -> None:
+    project = project.model_copy(
+        update={
+            "pipeline_state": _record_step(project.pipeline_state, step_id=step_id, errors=[]),
+            "updated_at": datetime.now(UTC),
+        }
+    )
+    await database.put_project(project)

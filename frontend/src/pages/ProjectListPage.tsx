@@ -56,7 +56,6 @@ export function ProjectListPage() {
 type Step =
   | { kind: "form" }
   | { kind: "uploading"; pct: number }
-  | { kind: "ingesting"; jobId: string; current: number; total: number }
   | { kind: "error"; message: string };
 
 function CreateProjectModal({ onClose }: { onClose: () => void }) {
@@ -83,33 +82,21 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
         setStep({ kind: "uploading", pct }),
       );
 
-      // Kick off the ingest job.
-      const ingest = await api.post<{ job_id: string; status: string }>(
-        "/api/gpu/ingest",
-        {
-          project_id: created.project.id,
-          source_key: created.upload_key,
-          source_type: "zip",
-        },
-      );
-
-      setStep({ kind: "ingesting", jobId: ingest.job_id, current: 0, total: 0 });
-      await pollJob(ingest.job_id, (status) => {
-        if (status.status === "running" || status.status === "queued") {
-          setStep({
-            kind: "ingesting",
-            jobId: ingest.job_id,
-            current: status.progress?.current ?? 0,
-            total: status.progress?.total ?? 0,
-          });
-        }
+      // Enqueue the unzip job. The handler will chain a thumbnails job
+      // on success — both show up in the JobsPage we navigate to next.
+      await api.post<{ job_id: string; status: string }>("/api/gpu/ingest", {
+        project_id: created.project.id,
+        source_key: created.upload_key,
+        source_type: "zip",
       });
 
       return created.project;
     },
     onSuccess: async (project) => {
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
-      navigate(`/projects/${project.id}`);
+      // Take the user to the JobsPage filtered to this project — they'll
+      // watch unzip then thumbnails progress side-by-side.
+      navigate(`/jobs?project_id=${encodeURIComponent(project.id)}`);
     },
     onError: (e) => {
       setStep({ kind: "error", message: (e as Error).message });
@@ -171,17 +158,6 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
           <ProgressLine label={`Uploading… ${step.pct}%`} pct={step.pct} />
         )}
 
-        {step.kind === "ingesting" && (
-          <ProgressLine
-            label={
-              step.total
-                ? `Ingesting… ${step.current}/${step.total} pages`
-                : "Ingesting…"
-            }
-            pct={step.total ? Math.round((step.current / step.total) * 100) : 0}
-          />
-        )}
-
         {step.kind === "error" && (
           <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
             {step.message}
@@ -229,36 +205,6 @@ async function uploadFile(
     xhr.onerror = () => reject(new Error("Upload network error"));
     xhr.send(file);
   });
-}
-
-async function pollJob(
-  jobId: string,
-  onUpdate: (status: {
-    status: string;
-    progress?: { current: number; total: number };
-  }) => void,
-  intervalMs = 500,
-): Promise<void> {
-  // SSE would be nicer; polling is good enough for ingest and works through
-  // every proxy. Switch to /api/gpu/jobs/{id}/events later.
-  while (true) {
-    const status = await api.get<{
-      status: string;
-      progress?: { current: number; total: number };
-    }>(`/api/data/jobs/${jobId}`);
-    onUpdate(status);
-    if (
-      status.status === "complete" ||
-      status.status === "error" ||
-      status.status === "cancelled"
-    ) {
-      if (status.status !== "complete") {
-        throw new Error(`Job ended with status: ${status.status}`);
-      }
-      return;
-    }
-    await new Promise((r) => setTimeout(r, intervalMs));
-  }
 }
 
 function ProjectListRow({ project }: { project: Project }) {

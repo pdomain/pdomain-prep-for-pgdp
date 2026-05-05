@@ -35,12 +35,39 @@ const ALIGNMENT_BADGE: Record<
   bottom: { label: "BOTTOM", cls: "bg-sky-100 text-sky-900" },
 };
 
+interface JobLite {
+  id: string;
+  type: string;
+  status: string;
+  progress: { current: number; total: number; message: string };
+}
+
+const INGEST_TYPES = new Set(["unzip", "thumbnails"]);
+const LIVE_STATUSES = new Set(["queued", "scheduled", "running"]);
+
 export function ProjectConfigurePage() {
   const { projectId = "" } = useParams();
   const project = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.get<Project>(`/api/data/projects/${projectId}`),
   });
+  // Watch the project's recent jobs so we can show a "creating thumbnails"
+  // banner while ingest is in flight. Cheap — one filtered query.
+  const projectJobs = useQuery({
+    queryKey: ["jobs", projectId],
+    queryFn: () =>
+      api.get<JobLite[]>(
+        `/api/data/jobs?limit=20&project_id=${encodeURIComponent(projectId)}`,
+      ),
+    refetchInterval: 3000,
+  });
+  const liveIngestJob = useMemo(
+    () =>
+      (projectJobs.data ?? []).find(
+        (j) => INGEST_TYPES.has(j.type) && LIVE_STATUSES.has(j.status),
+      ),
+    [projectJobs.data],
+  );
   // Infinite scroll for very large books — `next_cursor` walks 200 at a
   // time. Most books are small enough that the first page covers everything;
   // the "Load more" button only appears when the server reports more.
@@ -70,6 +97,39 @@ export function ProjectConfigurePage() {
   }
   if (!project.data) {
     return <p className="text-red-600">Project not found.</p>;
+  }
+
+  // While unzip or thumbnails are in flight, hide the page grid and point
+  // the user at the JobsPage. The grid would just be empty (unzip) or
+  // thumbnail-less (thumbnails) anyway.
+  if (liveIngestJob) {
+    const label =
+      liveIngestJob.type === "unzip"
+        ? "Unzipping source archive…"
+        : "Creating thumbnails…";
+    const { current, total: jobTotal, message } = liveIngestJob.progress;
+    return (
+      <section className="space-y-3">
+        <h1 className="text-xl font-semibold">{project.data.name}</h1>
+        <div className="rounded border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+          <p className="font-medium">{label}</p>
+          {jobTotal > 0 && (
+            <p className="mt-1 text-xs">
+              {current}/{jobTotal}
+              {message && ` · ${message}`}
+            </p>
+          )}
+          <p className="mt-2 text-xs">
+            <Link
+              to={`/jobs?project_id=${encodeURIComponent(projectId)}`}
+              className="underline"
+            >
+              Open jobs page →
+            </Link>
+          </p>
+        </div>
+      </section>
+    );
   }
 
   return (

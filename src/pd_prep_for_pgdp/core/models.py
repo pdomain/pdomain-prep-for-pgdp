@@ -289,7 +289,10 @@ class JobStatus(str, Enum):
 
 
 class JobType(str, Enum):
-    ingest = "ingest"
+    # Source ingestion is split into two stages so the user sees discrete
+    # progress + can keep working on the project page while thumbnails finish.
+    unzip = "unzip"
+    thumbnails = "thumbnails"
     batch_process_pages = "batch_process_pages"
     batch_ocr = "batch_ocr"
     batch_text_postprocess = "batch_text_postprocess"

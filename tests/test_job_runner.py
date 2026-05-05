@@ -3,8 +3,9 @@
 The runner picks up `queued` jobs from `IDatabase` and executes them. Locks in:
   - polls and transitions: queued -> running -> complete,
   - records errors as `error` status with a message,
-  - ingest jobs invoke `core.ingest.ingest_source` correctly,
-  - pages are written when ingest completes.
+  - unzip jobs invoke `core.ingest.unzip_source` correctly and chain a
+    follow-up `thumbnails` job when pages were created,
+  - pages are written when unzip completes.
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_runner_executes_queued_ingest_job(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: FilesystemStorage) -> None:
     from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
@@ -88,14 +89,15 @@ async def test_runner_executes_queued_ingest_job(db: SqliteDatabase, storage: Fi
         id="j1",
         project_id=project.id,
         owner_id="default",
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.queued,
     )
     job.progress.message = src_key  # encode source_key into the job for now
     await db.put_job(job)
 
     runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
-    await runner.run_pending(max_jobs=1)
+    # Unzip handler enqueues a thumbnails job; let the runner pick that up too.
+    await runner.run_pending(max_jobs=4)
 
     refreshed = await db.get_job("j1")
     assert refreshed is not None
@@ -106,6 +108,12 @@ async def test_runner_executes_queued_ingest_job(db: SqliteDatabase, storage: Fi
 
     _, _, total = await db.list_pages(project.id, None, 100)
     assert total == 2
+
+    # Unzip should have queued a follow-up thumbnails job for the project.
+    follow_ups = await db.list_recent_jobs("default", 10)
+    thumb_jobs = [j for j in follow_ups if j.type == JobType.thumbnails]
+    assert len(thumb_jobs) == 1
+    assert thumb_jobs[0].project_id == project.id
 
 
 @pytest.mark.asyncio
@@ -120,7 +128,7 @@ async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: File
         id="j2",
         project_id=project.id,
         owner_id="default",
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.queued,
     )
     job.progress.message = f"projects/{project.id}/missing.zip"
@@ -145,7 +153,7 @@ async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: Filesys
         id="j3",
         project_id=project.id,
         owner_id="default",
-        type=JobType.ingest,
+        type=JobType.unzip,
         status=JobStatus.complete,
     )
     await db.put_job(job)

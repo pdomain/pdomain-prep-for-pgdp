@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 
 interface Job {
@@ -26,11 +26,21 @@ const STATUS_CLS: Record<string, string> = {
 
 export function JobsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectFilter = searchParams.get("project_id") ?? "";
+  const jobsUrl = projectFilter
+    ? `/api/data/jobs?limit=50&project_id=${encodeURIComponent(projectFilter)}`
+    : "/api/data/jobs?limit=50";
   const jobs = useQuery({
-    queryKey: ["jobs"],
-    queryFn: () => api.get<Job[]>("/api/data/jobs?limit=50"),
+    queryKey: ["jobs", projectFilter],
+    queryFn: () => api.get<Job[]>(jobsUrl),
     refetchInterval: 5000,
   });
+  const clearFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("project_id");
+    setSearchParams(next);
+  };
   const cancel = useMutation({
     mutationFn: (id: string) => api.delete(`/api/gpu/jobs/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
@@ -52,6 +62,22 @@ export function JobsPage() {
           Auto-refreshes every 5 seconds.
         </p>
       </header>
+
+      {projectFilter && (
+        <div className="flex items-center justify-between rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          <span>
+            Filtered to project{" "}
+            <span className="font-mono">{projectFilter.slice(0, 8)}</span>
+          </span>
+          <button
+            type="button"
+            onClick={clearFilter}
+            className="rounded border border-sky-300 px-2 py-0.5 text-sky-800 hover:bg-sky-100"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
 
       {jobs.isLoading && <p className="text-slate-500">Loading…</p>}
       {jobs.error && (
