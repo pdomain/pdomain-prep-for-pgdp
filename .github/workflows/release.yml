@@ -21,6 +21,12 @@ jobs:
   test:
     name: pytest + ruff
     runs-on: ubuntu-latest
+    env:
+      # Pin Python 3.13 — uv would otherwise pick up the newest matching
+      # `requires-python` (3.14), which segfaults on TestClient teardown
+      # via anyio + sqlite3 worker threads. Drop this once anyio + SQLite
+      # are 3.14-clean.
+      UV_PYTHON: "3.13"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
