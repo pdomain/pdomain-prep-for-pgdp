@@ -176,10 +176,21 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            # Cancel + AWAIT each task before closing the database. If we
+            # close mid-flight while a worker thread is still running a
+            # SQLite query, the C-level access segfaults. The await gives
+            # cancelled tasks a chance to drain their threadpool work.
+            tasks = []
             for attr in ("dispatcher_task", "job_runner_task", "executor_task"):
                 task = getattr(app.state, attr, None)
                 if task is not None:
                     task.cancel()
+                    tasks.append(task)
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
             await database.close()
 
     app = FastAPI(
