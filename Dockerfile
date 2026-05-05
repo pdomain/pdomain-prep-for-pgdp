@@ -20,6 +20,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_NO_PROGRESS=1 \
     UV_LINK_MODE=copy
 
+# git is needed by uv to resolve the pd-book-tools git source (and any
+# future git-sourced deps). ca-certificates so the HTTPS clone works.
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # uv (fast resolver/installer). Pull the binary from astral's official
 # image — `python:3.13-slim` has no curl/wget, so the install.sh path
 # (used in the local installer) doesn't work here.
