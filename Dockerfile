@@ -20,10 +20,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_NO_PROGRESS=1 \
     UV_LINK_MODE=copy
 
-# uv (fast resolver/installer) — same pattern as the local install.
-ADD https://astral.sh/uv/install.sh /tmp/uv-install.sh
-RUN sh /tmp/uv-install.sh && rm /tmp/uv-install.sh
-ENV PATH="/root/.local/bin:${PATH}"
+# uv (fast resolver/installer). Pull the binary from astral's official
+# image — `python:3.13-slim` has no curl/wget, so the install.sh path
+# (used in the local installer) doesn't work here.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
