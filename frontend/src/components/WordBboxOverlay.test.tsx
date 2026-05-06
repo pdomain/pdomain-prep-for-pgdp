@@ -15,9 +15,9 @@
  * and the `onWordClick` dispatch. The active-word highlight styling
  * is intentionally out of scope (it's a colour string, not behaviour).
  */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { OcrWord } from "../lib/wordOffsets";
 import { WordBboxOverlay } from "./WordBboxOverlay";
@@ -27,25 +27,64 @@ import { WordBboxOverlay } from "./WordBboxOverlay";
 // it and Testing-Library can query it. `Rect` props are stringified
 // onto data attributes so the test can assert positioning + dispatch
 // click handlers without a canvas context.
+// Minimal Konva-event shape the overlay's marquee handlers expect.
+// Stage handlers receive `{evt, target}`; our mock synthesises this
+// from a plain DOM mousedown/move/up so the test can dispatch
+// pointer events without a real canvas.
+interface FakeKonvaEvent {
+  evt: MouseEvent;
+  target: {
+    getStage: () => { container: () => HTMLElement } | null;
+  };
+}
+
 vi.mock("react-konva", () => {
   return {
     Stage: ({
       children,
       width,
       height,
+      onMouseDown,
+      onMouseMove,
+      onMouseUp,
     }: {
       children?: ReactNode;
       width: number;
       height: number;
-    }) => (
-      <div
-        data-testid="konva-stage"
-        data-width={String(width)}
-        data-height={String(height)}
-      >
-        {children}
-      </div>
-    ),
+      onMouseDown?: (e: FakeKonvaEvent) => void;
+      onMouseMove?: (e: FakeKonvaEvent) => void;
+      onMouseUp?: (e: FakeKonvaEvent) => void;
+    }) => {
+      // Build the fake Konva event lazily on each callback so the
+      // ref captures the current container element. The container is
+      // the stage div itself; tests stub its `getBoundingClientRect`.
+      const wrap = (
+        cb: ((e: FakeKonvaEvent) => void) | undefined,
+      ) =>
+        cb
+          ? (e: ReactMouseEvent<HTMLDivElement>) => {
+              const container = e.currentTarget;
+              cb({
+                evt: e.nativeEvent,
+                target: {
+                  getStage: () => ({ container: () => container }),
+                },
+              });
+            }
+          : undefined;
+      return (
+        <div
+          data-testid="konva-stage"
+          data-width={String(width)}
+          data-height={String(height)}
+          onMouseDown={wrap(onMouseDown)}
+          onMouseMove={wrap(onMouseMove)}
+          onMouseUp={wrap(onMouseUp)}
+        >
+          {children}
+        </div>
+      );
+    },
     Layer: ({ children }: { children?: ReactNode }) => (
       <div data-testid="konva-layer">{children}</div>
     ),
@@ -213,5 +252,113 @@ describe("WordBboxOverlay", () => {
 
     expect(onWordClick).toHaveBeenCalledTimes(1);
     expect(onWordClick).toHaveBeenCalledWith(1);
+  });
+
+  // §9a marquee bulk-select. The full Konva event surface isn't
+  // available here (the mock substitutes plain divs), but the
+  // overlay reads only `evt.clientX` / `evt.clientY` and
+  // `target.getStage().container()` from the event payload — both of
+  // which the mock synthesises faithfully from React's synthetic
+  // mouse events. The runtime path (Konva on a real canvas) shares
+  // the same handler bodies, so this tests the actual production
+  // logic minus the canvas substrate.
+  it("invokes onMarqueeSelect with the ids of words intersecting the drag rect", () => {
+    const onMarqueeSelect = vi.fn();
+    const words: OcrWord[] = [
+      // Two words within the marquee, one outside.
+      makeWord({
+        id: "w0",
+        bounding_box: { left: 100, top: 100, width: 80, height: 30 },
+      }),
+      makeWord({
+        id: "w1",
+        bounding_box: { left: 200, top: 110, width: 60, height: 30 },
+      }),
+      makeWord({
+        id: "w2",
+        bounding_box: { left: 700, top: 700, width: 50, height: 30 },
+      }),
+    ];
+
+    render(
+      <WordBboxOverlay
+        naturalWidth={1000}
+        naturalHeight={1500}
+        words={words}
+        activeWordIndex={null}
+        onWordClick={() => {}}
+        onMarqueeSelect={onMarqueeSelect}
+        trackElement={makeTrackElement(500, 750)}
+      />,
+    );
+
+    const stage = screen.getByTestId("konva-stage");
+    // Stub the stage's getBoundingClientRect so client→natural math
+    // is deterministic. Stage container at origin, 500×750 (matches
+    // the rendered size that the natural→DOM scaling assumes).
+    stage.getBoundingClientRect = () =>
+      ({
+        width: 500,
+        height: 750,
+        top: 0,
+        left: 0,
+        right: 500,
+        bottom: 750,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    // sx=sy=0.5 → DOM (25, 25) → natural (50, 50); DOM (150, 80) →
+    // natural (300, 160). That marquee fully covers w0 (100,100→180,130)
+    // and w1 (200,110→260,140), but not w2.
+    fireEvent.mouseDown(stage, { clientX: 25, clientY: 25, shiftKey: false });
+    fireEvent.mouseMove(stage, { clientX: 150, clientY: 80 });
+    fireEvent.mouseUp(stage, { clientX: 150, clientY: 80 });
+
+    expect(onMarqueeSelect).toHaveBeenCalledTimes(1);
+    expect(onMarqueeSelect).toHaveBeenCalledWith(["w0", "w1"], false);
+  });
+
+  it("passes additive=true when shift is held during marquee mousedown", () => {
+    const onMarqueeSelect = vi.fn();
+    const words: OcrWord[] = [
+      makeWord({
+        id: "w0",
+        bounding_box: { left: 100, top: 100, width: 80, height: 30 },
+      }),
+    ];
+
+    render(
+      <WordBboxOverlay
+        naturalWidth={1000}
+        naturalHeight={1500}
+        words={words}
+        activeWordIndex={null}
+        onWordClick={() => {}}
+        onMarqueeSelect={onMarqueeSelect}
+        trackElement={makeTrackElement(500, 750)}
+      />,
+    );
+
+    const stage = screen.getByTestId("konva-stage");
+    stage.getBoundingClientRect = () =>
+      ({
+        width: 500,
+        height: 750,
+        top: 0,
+        left: 0,
+        right: 500,
+        bottom: 750,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    fireEvent.mouseDown(stage, { clientX: 25, clientY: 25, shiftKey: true });
+    fireEvent.mouseMove(stage, { clientX: 150, clientY: 80 });
+    fireEvent.mouseUp(stage, { clientX: 150, clientY: 80 });
+
+    expect(onMarqueeSelect).toHaveBeenCalledWith(["w0"], true);
   });
 });

@@ -19,6 +19,26 @@ interface OcrPageResponse {
   words: OcrWord[];
 }
 
+// ─── §9a delete-words wire shapes ──────────────────────────────────
+// Hand-mirrored from `api/data/pages.py::DeleteWordsRequest` /
+// `DeleteWordsResponse`. Lives here (not in `api/types.ts`) so it
+// won't be clobbered next time `make openapi-export` regenerates the
+// generated types — same convention `PageWorkbenchPage` uses for
+// `ProcessPageRequest`/`Response` (see tick 11). When the OpenAPI
+// export catches up, replace these with the generated names.
+interface DeleteWordsRequest {
+  word_ids: string[];
+  split_suffix?: string | null;
+}
+
+interface DeleteWordsResponse {
+  text_key: string;
+  words_key: string;
+  deleted_count: number;
+  remaining_words: OcrWord[];
+  text: string;
+}
+
 export function TextReviewPage() {
   const { projectId = "", idx0: idx0Str = "0" } = useParams();
   const idx0 = Number(idx0Str);
@@ -29,12 +49,24 @@ export function TextReviewPage() {
   const [dirty, setDirty] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
   const [words, setWords] = useState<OcrWord[]>([]);
+  // §9a: words tagged for deletion, keyed by `OcrWord.id` so the wire
+  // payload is trivial. Set semantics → toggling a clicked word is a
+  // single membership flip; clearing on success / page change is one
+  // assignment.
+  const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   // Re-OCR diff (P1 #7): snapshot of `text` taken via the reocr
   // mutation's `onMutate`, kept in state until the user dismisses /
   // accepts the diff, saves the page, navigates away, or the
   // mutation fails. `null` means "no pending diff to show".
   const [priorText, setPriorText] = useState<string | null>(null);
   const [showDiff, setShowDiff] = useState<boolean>(true);
+  // Tick 24: aria-live announcer for selection / delete state. Plain
+  // string surfaced in a `role="status"` `aria-live="polite"` div so
+  // screen readers narrate marquee selection size, manual clears, and
+  // delete completions. Empty string = nothing to announce.
+  const [liveMessage, setLiveMessage] = useState<string>("");
 
   // Image-load state drives the overlay sizing — Konva Stage waits
   // until the <img> has rendered so we know natural & rendered sizes.
@@ -67,12 +99,14 @@ export function TextReviewPage() {
       setWords(text$.data.words ?? []);
       setDirty(false);
       setActiveWordIndex(null);
+      setSelectedWordIds(new Set());
     } else if (text$.error) {
       // 404 = no text yet (probably needs OCR first)
       setText("");
       setWords([]);
       setDirty(false);
       setActiveWordIndex(null);
+      setSelectedWordIds(new Set());
     }
   }, [text$.data, text$.error]);
 
@@ -112,6 +146,81 @@ export function TextReviewPage() {
       });
     },
   });
+
+  // §9a: hard-delete the selected words server-side. The endpoint
+  // rewrites `<root>.words.json` and `<root>.txt`; we mirror the new
+  // canonical state into local `text` / `words` so the textarea and
+  // overlay refresh without a query round-trip. The destructive
+  // server semantics intentionally rule out client-side undo for v1
+  // (no restore endpoint exists) — see roadmap §9a "Status (tick 22)".
+  const deleteWords = useMutation({
+    mutationFn: (ids: string[]) =>
+      api.delete<DeleteWordsResponse>(
+        `/api/data/projects/${projectId}/pages/${idx0}/words`,
+        {
+          body: {
+            word_ids: ids,
+            split_suffix: splitSuffix || null,
+          } satisfies DeleteWordsRequest,
+        },
+      ),
+    onSuccess: (resp) => {
+      setText(resp.text);
+      setWords(resp.remaining_words ?? []);
+      // Server is now the source of truth — clear local edit / select
+      // state so the proofer can immediately stage another batch.
+      setDirty(false);
+      setActiveWordIndex(null);
+      setSelectedWordIds(new Set());
+      const n = resp.deleted_count ?? 0;
+      setLiveMessage(`Deleted ${n} word${n === 1 ? "" : "s"}`);
+      // The diff snapshot (re-OCR comparison) is a separate flow; do
+      // not clear `priorText` — the user may still want to see the
+      // pre-re-OCR diff after a delete.
+      queryClient.invalidateQueries({
+        queryKey: ["page-text", projectId, idx0, splitSuffix],
+      });
+    },
+  });
+
+  // §9a: window-level Delete / Backspace fires the bulk-delete
+  // mutation. Scope-aware — when focus is inside the textarea (or
+  // any editable element) we do nothing, so the keys retain their
+  // normal character-deletion semantics. Pressing Delete with an
+  // empty selection is a no-op so spurious round-trips don't hit the
+  // server. Escape clears the current selection (same scope rules so
+  // Esc doesn't fight any modal/dropdown that owns it). Declared
+  // after `deleteWords` because the effect closure captures the
+  // mutation; flipping the order would TDZ-throw on first render.
+  useEffect(() => {
+    const handler = (ev: KeyboardEvent) => {
+      if (ev.key !== "Delete" && ev.key !== "Backspace" && ev.key !== "Escape")
+        return;
+      const target = ev.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "TEXTAREA" ||
+          tag === "INPUT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if (ev.key === "Escape") {
+        if (selectedWordIds.size === 0) return;
+        ev.preventDefault();
+        setSelectedWordIds(new Set());
+        setLiveMessage("Cleared selection");
+        return;
+      }
+      if (selectedWordIds.size === 0) return;
+      ev.preventDefault();
+      deleteWords.mutate(Array.from(selectedWordIds));
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedWordIds, deleteWords]);
 
   const reocr = useMutation({
     mutationFn: () =>
@@ -273,6 +382,45 @@ export function TextReviewPage() {
                 words={words}
                 activeWordIndex={activeWordIndex}
                 onWordClick={handleWordClick}
+                selectedWordIds={selectedWordIds}
+                onWordToggleSelect={(id) => {
+                  setSelectedWordIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    setLiveMessage(
+                      next.size === 0
+                        ? "Cleared selection"
+                        : `${next.size} word${next.size === 1 ? "" : "s"} selected`,
+                    );
+                    return next;
+                  });
+                }}
+                onMarqueeSelect={(ids, additive) => {
+                  // §9a marquee: shift-drag adds to the existing
+                  // selection (typical multi-rect editor UX); a plain
+                  // drag replaces it entirely. Empty marquees are
+                  // suppressed inside the overlay so this fires only
+                  // for real drags — a click on empty canvas in
+                  // "replace" mode therefore cannot accidentally
+                  // wipe a careful per-word selection (see overlay's
+                  // zero-area suppression).
+                  setSelectedWordIds((prev) => {
+                    let next: Set<string>;
+                    if (additive) {
+                      next = new Set(prev);
+                      for (const id of ids) next.add(id);
+                    } else {
+                      next = new Set(ids);
+                    }
+                    setLiveMessage(
+                      next.size === 0
+                        ? "Cleared selection"
+                        : `${next.size} word${next.size === 1 ? "" : "s"} selected`,
+                    );
+                    return next;
+                  });
+                }}
                 trackElement={imgEl}
               />
             </div>
@@ -317,6 +465,32 @@ export function TextReviewPage() {
             >
               {reocr.isPending ? "Re-OCR…" : "Re-OCR this page"}
             </button>
+            <button
+              onClick={() =>
+                deleteWords.mutate(Array.from(selectedWordIds))
+              }
+              disabled={selectedWordIds.size === 0 || deleteWords.isPending}
+              className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent"
+              title="Delete the words highlighted in red on the source image"
+            >
+              {deleteWords.isPending
+                ? "Deleting…"
+                : selectedWordIds.size === 0
+                  ? "Delete words"
+                  : `Delete ${selectedWordIds.size} word${selectedWordIds.size === 1 ? "" : "s"}`}
+            </button>
+            {selectedWordIds.size > 0 && (
+              <button
+                onClick={() => {
+                  setSelectedWordIds(new Set());
+                  setLiveMessage("Cleared selection");
+                }}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                title="Clear the current word selection (Esc)"
+              >
+                Clear selection
+              </button>
+            )}
             {save.isError && (
               <span className="text-xs text-red-600">
                 save failed: {(save.error as Error).message}
@@ -325,6 +499,11 @@ export function TextReviewPage() {
             {reocr.isError && (
               <span className="text-xs text-red-600">
                 ocr failed: {(reocr.error as Error).message}
+              </span>
+            )}
+            {deleteWords.isError && (
+              <span className="text-xs text-red-600">
+                delete failed: {(deleteWords.error as Error).message}
               </span>
             )}
             {priorText !== null && (
@@ -344,6 +523,18 @@ export function TextReviewPage() {
                 </button>
               </>
             )}
+          </div>
+          {/* Tick 24 a11y: screen-reader narration for selection /
+              delete state. Visually hidden (sr-only). `role="status"`
+              + `aria-live="polite"` lets AT announce without
+              interrupting; empty content = silent. */}
+          <div
+            data-testid="text-review-live"
+            role="status"
+            aria-live="polite"
+            className="sr-only"
+          >
+            {liveMessage}
           </div>
           {priorText !== null && showDiff && (
             <div className="mt-2">
