@@ -1,13 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { PageRecord } from "../api/types";
+import { WordBboxOverlay } from "../components/WordBboxOverlay";
+import {
+  buildWordOffsetIndex,
+  offsetToWord,
+  wordToRange,
+  type OcrWord,
+} from "../lib/wordOffsets";
 
 interface OcrPageResponse {
   text: string;
   text_key: string;
-  words: unknown[];
+  words: OcrWord[];
 }
 
 export function TextReviewPage() {
@@ -18,6 +25,18 @@ export function TextReviewPage() {
   const [splitSuffix, setSplitSuffix] = useState<string>("");
   const [text, setText] = useState<string>("");
   const [dirty, setDirty] = useState(false);
+  const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
+  const [words, setWords] = useState<OcrWord[]>([]);
+
+  // Image-load state drives the overlay sizing — Konva Stage waits
+  // until the <img> has rendered so we know natural & rendered sizes.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
 
   const page = useQuery({
     queryKey: ["page", projectId, idx0],
@@ -29,7 +48,7 @@ export function TextReviewPage() {
     enabled: !!page.data,
     queryKey: ["page-text", projectId, idx0, splitSuffix],
     queryFn: () =>
-      api.get<{ text: string; text_key: string }>(
+      api.get<{ text: string; text_key: string; words: OcrWord[] }>(
         `/api/data/projects/${projectId}/pages/${idx0}/text/${splitSuffix || "_"}`,
       ),
   });
@@ -37,13 +56,30 @@ export function TextReviewPage() {
   useEffect(() => {
     if (text$.data) {
       setText(text$.data.text);
+      setWords(text$.data.words ?? []);
       setDirty(false);
+      setActiveWordIndex(null);
     } else if (text$.error) {
       // 404 = no text yet (probably needs OCR first)
       setText("");
+      setWords([]);
       setDirty(false);
+      setActiveWordIndex(null);
     }
   }, [text$.data, text$.error]);
+
+  useEffect(() => {
+    return () => {
+      if (selectDebounceRef.current) {
+        clearTimeout(selectDebounceRef.current);
+      }
+    };
+  }, []);
+
+  const wordIndex = useMemo(
+    () => buildWordOffsetIndex(text, words),
+    [text, words],
+  );
 
   const save = useMutation({
     mutationFn: () =>
@@ -68,7 +104,9 @@ export function TextReviewPage() {
       }),
     onSuccess: (resp) => {
       setText(resp.text);
+      setWords(resp.words ?? []);
       setDirty(false);
+      setActiveWordIndex(null);
       queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
@@ -79,6 +117,52 @@ export function TextReviewPage() {
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
   const splits = page.data.splits as Array<{ suffix: string; reading_order: number }>;
+  const imageKey = page.data.processed_image_key || page.data.thumbnail_key;
+
+  const handleTextareaSelect = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    // Debounce: drag-selecting fires onSelect repeatedly and would
+    // thrash Konva re-renders. Coalesce to ~75ms; the bbox→textarea
+    // path stays synchronous (a single click).
+    const off = ta.selectionStart;
+    if (selectDebounceRef.current) {
+      clearTimeout(selectDebounceRef.current);
+    }
+    selectDebounceRef.current = setTimeout(() => {
+      selectDebounceRef.current = null;
+      const hit = offsetToWord(wordIndex, off);
+      setActiveWordIndex(hit ? hit.wordIndex : null);
+    }, 75);
+  };
+
+  const handleWordClick = (i: number) => {
+    setActiveWordIndex(i);
+    const r = wordToRange(wordIndex, i);
+    if (r && textareaRef.current) {
+      const ta = textareaRef.current;
+      ta.focus();
+      ta.setSelectionRange(r.start, r.end);
+      // Best-effort scroll into view: textarea doesn't expose a
+      // built-in scrollToSelection. Use the textarea's actual
+      // computed line-height; some browsers report "normal" so fall
+      // back to font-size × 1.2.
+      try {
+        const before = text.slice(0, r.start);
+        const line = before.split("\n").length - 1;
+        const cs = window.getComputedStyle(ta);
+        const lhRaw = cs.lineHeight;
+        let lineHeight = parseFloat(lhRaw);
+        if (!Number.isFinite(lineHeight)) {
+          lineHeight = parseFloat(cs.fontSize) * 1.2;
+        }
+        const target = Math.max(0, line * lineHeight - ta.clientHeight / 3);
+        ta.scrollTop = target;
+      } catch {
+        /* non-fatal */
+      }
+    }
+  };
 
   return (
     <section className="space-y-3">
@@ -124,18 +208,30 @@ export function TextReviewPage() {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded border bg-white p-2">
-          {page.data.processed_image_key ? (
-            <img
-              src={`/cdn/${page.data.processed_image_key}`}
-              alt={page.data.prefix}
-              className="max-h-[80vh] w-full object-contain"
-            />
-          ) : page.data.thumbnail_key ? (
-            <img
-              src={`/cdn/${page.data.thumbnail_key}`}
-              alt={page.data.prefix}
-              className="max-h-[80vh] w-full object-contain"
-            />
+          {imageKey ? (
+            <div className="relative inline-block w-full">
+              <img
+                ref={setImgEl}
+                src={`/cdn/${imageKey}`}
+                alt={page.data.prefix}
+                className="max-h-[80vh] w-full object-contain"
+                onLoad={(e) => {
+                  const el = e.currentTarget;
+                  setNaturalSize({
+                    w: el.naturalWidth,
+                    h: el.naturalHeight,
+                  });
+                }}
+              />
+              <WordBboxOverlay
+                naturalWidth={naturalSize.w}
+                naturalHeight={naturalSize.h}
+                words={words}
+                activeWordIndex={activeWordIndex}
+                onWordClick={handleWordClick}
+                trackElement={imgEl}
+              />
+            </div>
           ) : (
             <div className="flex h-96 items-center justify-center text-slate-400">
               no image
@@ -145,11 +241,15 @@ export function TextReviewPage() {
 
         <div className="flex flex-col rounded border bg-white p-2">
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
               setDirty(true);
             }}
+            onSelect={handleTextareaSelect}
+            onClick={handleTextareaSelect}
+            onKeyUp={handleTextareaSelect}
             spellCheck
             className="min-h-[60vh] w-full resize-y rounded border-0 p-2 font-mono text-sm focus:outline-none"
             placeholder={
