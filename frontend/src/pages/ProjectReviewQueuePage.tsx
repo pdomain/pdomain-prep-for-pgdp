@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { ListPagesResponse, PageRecord } from "../api/types";
+import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 
 export function ProjectReviewQueuePage() {
   const { projectId = "" } = useParams();
+  const queryClient = useQueryClient();
   const queue = useQuery({
     queryKey: ["review-queue", projectId],
     queryFn: () =>
@@ -12,6 +15,13 @@ export function ProjectReviewQueuePage() {
         `/api/data/projects/${projectId}/pages?review_needed=true&limit=500`,
       ),
   });
+  // Surface a small "batch running" badge in the header so reviewers know
+  // the queue may still be growing/shrinking under them. Also refresh the
+  // queue when a batch starts/stops so they don't have to reload manually.
+  const activeBatch = useActiveBatchJob(projectId || null);
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["review-queue", projectId] });
+  }, [activeBatch.jobId, queryClient, projectId]);
 
   if (queue.isLoading) return <p className="text-slate-500">Loading…</p>;
   if (!queue.data) return <p className="text-red-600">Project not found.</p>;
@@ -20,7 +30,18 @@ export function ProjectReviewQueuePage() {
     <section className="space-y-4">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Review queue</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            Review queue
+            {activeBatch.jobId && (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800 animate-pulse"
+                title={`A ${activeBatch.status} batch_process_pages job is running on this project`}
+              >
+                <span className="h-2 w-2 rounded-full bg-sky-500" />
+                Batch running
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-slate-500">
             {queue.data.total} pages need review
           </p>

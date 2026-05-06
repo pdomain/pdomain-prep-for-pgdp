@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
+import { isLiveStatus } from "../lib/jobStatus";
 
 interface Job {
   id: string;
@@ -50,17 +51,31 @@ export function JobsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
   });
 
-  const isLive = (s: string) =>
-    s === "queued" || s === "scheduled" || s === "running";
   const isRetryable = (s: string) => s === "error" || s === "cancelled";
+  const liveCount = (jobs.data ?? []).filter((j) => isLiveStatus(j.status))
+    .length;
 
   return (
     <section className="space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold">Recent jobs</h1>
-        <p className="text-xs text-slate-500">
-          Auto-refreshes every 5 seconds.
-        </p>
+      <header className="flex items-baseline justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Recent jobs</h1>
+          <p className="text-xs text-slate-500">
+            Auto-refreshes every 5 seconds.
+          </p>
+        </div>
+        {liveCount > 0 && (
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800 ring-1 ring-inset ring-sky-200"
+            title={`${liveCount} job${liveCount === 1 ? "" : "s"} in flight`}
+          >
+            <span
+              aria-hidden
+              className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500"
+            />
+            live: {liveCount}
+          </span>
+        )}
       </header>
 
       {projectFilter && (
@@ -119,7 +134,7 @@ export function JobsPage() {
                     <span className="font-mono text-[11px] text-slate-400">
                       {new Date(j.created_at).toLocaleString()}
                     </span>
-                    {isLive(j.status) && (
+                    {isLiveStatus(j.status) && (
                       <button
                         onClick={() => cancel.mutate(j.id)}
                         disabled={cancel.isPending}

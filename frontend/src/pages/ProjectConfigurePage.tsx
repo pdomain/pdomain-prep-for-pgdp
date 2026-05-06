@@ -7,6 +7,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
+import { useJobProgress } from "../hooks/useJobProgress";
 import type {
   AlignmentOverride,
   ListPagesResponse,
@@ -35,15 +37,7 @@ const ALIGNMENT_BADGE: Record<
   bottom: { label: "BOTTOM", cls: "bg-sky-100 text-sky-900" },
 };
 
-interface JobLite {
-  id: string;
-  type: string;
-  status: string;
-  progress: { current: number; total: number; message: string };
-}
-
-const INGEST_TYPES = new Set(["unzip", "thumbnails"]);
-const LIVE_STATUSES = new Set(["queued", "scheduled", "running"]);
+const INGEST_KINDS = ["unzip", "thumbnails"];
 
 export function ProjectConfigurePage() {
   const { projectId = "" } = useParams();
@@ -51,22 +45,14 @@ export function ProjectConfigurePage() {
     queryKey: ["project", projectId],
     queryFn: () => api.get<Project>(`/api/data/projects/${projectId}`),
   });
-  // Watch the project's recent jobs so we can show a "creating thumbnails"
-  // banner while ingest is in flight. Cheap — one filtered query.
-  const projectJobs = useQuery({
-    queryKey: ["jobs", projectId],
-    queryFn: () =>
-      api.get<JobLite[]>(
-        `/api/data/jobs?limit=20&project_id=${encodeURIComponent(projectId)}`,
-      ),
-    refetchInterval: 3000,
-  });
+  // Watch the project's recent jobs (via the shared poll) so we can show a
+  // "creating thumbnails" banner while ingest is in flight. The same poll
+  // is reused by RunPipelinePanel below for its `batch_process_pages`
+  // catch-up — TanStack dedupes on the shared query key.
+  const ingestBatch = useActiveBatchJob(projectId || null, INGEST_KINDS);
   const liveIngestJob = useMemo(
-    () =>
-      (projectJobs.data ?? []).find(
-        (j) => INGEST_TYPES.has(j.type) && LIVE_STATUSES.has(j.status),
-      ),
-    [projectJobs.data],
+    () => ingestBatch.jobs.find((j) => j.id === ingestBatch.jobId) ?? null,
+    [ingestBatch.jobs, ingestBatch.jobId],
   );
   // Infinite scroll for very large books — `next_cursor` walks 200 at a
   // time. Most books are small enough that the first page covers everything;
@@ -91,6 +77,11 @@ export function ProjectConfigurePage() {
     pages.data?.pages?.[0]?.total ?? allPages.length;
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Lifted from JobProgressInline: while a batch_process_pages job is
+  // running, this holds the idx0 of the page the worker is currently on
+  // so PageGrid can pulse-highlight the matching tile. Null when no
+  // such job is active.
+  const [activePageIdx0, setActivePageIdx0] = useState<number | null>(null);
 
   if (project.isLoading || pages.isLoading) {
     return <p className="text-slate-500">Loading…</p>;
@@ -167,7 +158,10 @@ export function ProjectConfigurePage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <RunPipelinePanel projectId={projectId} />
+        <RunPipelinePanel
+          projectId={projectId}
+          onActivePageChange={setActivePageIdx0}
+        />
         <ProjectJobsFeed projectId={projectId} />
       </div>
 
@@ -181,6 +175,7 @@ export function ProjectConfigurePage() {
         pages={allPages}
         projectId={projectId}
         selected={selected}
+        activePageIdx0={activePageIdx0}
         onToggle={(idx0) => {
           setSelected((s) => {
             const next = new Set(s);
@@ -486,11 +481,13 @@ function PageGrid({
   pages,
   projectId,
   selected,
+  activePageIdx0,
   onToggle,
 }: {
   pages: PageRecord[];
   projectId: string;
   selected: Set<number>;
+  activePageIdx0: number | null;
   onToggle: (idx0: number) => void;
 }) {
   const sorted = useMemo(() => [...pages].sort((a, b) => a.idx0 - b.idx0), [pages]);
@@ -498,16 +495,21 @@ function PageGrid({
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
       {sorted.map((p) => {
         const sel = selected.has(p.idx0);
+        const isActive = activePageIdx0 === p.idx0;
         const ptBadge = PAGE_TYPE_BADGE[p.page_type];
         const alBadge = ALIGNMENT_BADGE[p.alignment];
+        // Selection ring wins over the active-job pulse when both apply
+        // (user explicitly clicked the tile). Otherwise the sky pulse
+        // marks "the worker is on this page right now".
+        const borderCls = sel
+          ? "border-slate-900 ring-2 ring-slate-900"
+          : isActive
+            ? "border-sky-500 ring-2 ring-sky-400 animate-pulse"
+            : "border-slate-200 hover:border-slate-400";
         return (
           <li
             key={p.idx0}
-            className={`group relative rounded border ${
-              sel
-                ? "border-slate-900 ring-2 ring-slate-900"
-                : "border-slate-200 hover:border-slate-400"
-            } bg-white`}
+            className={`group relative rounded border ${borderCls} bg-white`}
           >
             <button
               onClick={() => onToggle(p.idx0)}
@@ -635,7 +637,13 @@ const STEPS: { type: JobType; label: string; subtitle: string }[] = [
   },
 ];
 
-function RunPipelinePanel({ projectId }: { projectId: string }) {
+function RunPipelinePanel({
+  projectId,
+  onActivePageChange,
+}: {
+  projectId: string;
+  onActivePageChange: (idx0: number | null) => void;
+}) {
   const [open, setOpen] = useState(true);
   const [active, setActive] = useState<Record<JobType, string | null>>({
     batch_process_pages: null,
@@ -644,6 +652,18 @@ function RunPipelinePanel({ projectId }: { projectId: string }) {
     batch_extract_illustrations: null,
     build_package: null,
   });
+
+  // If a batch_process_pages job is already running on this project (e.g.
+  // user came back to this page mid-run, or it was kicked off elsewhere),
+  // pre-populate `active.batch_process_pages` so the inline progress and
+  // tile-pulse render without requiring the user to click Run again.
+  // Reuses the shared `["jobs", projectId]` poll so this is free.
+  const liveBatch = useActiveBatchJob(projectId, ["batch_process_pages"]);
+  useEffect(() => {
+    if (liveBatch.jobId && active.batch_process_pages !== liveBatch.jobId) {
+      setActive((s) => ({ ...s, batch_process_pages: liveBatch.jobId }));
+    }
+  }, [liveBatch.jobId, active.batch_process_pages]);
 
   const submit = useMutation({
     mutationFn: async (type: JobType) => {
@@ -678,7 +698,14 @@ function RunPipelinePanel({ projectId }: { projectId: string }) {
               </div>
               <div className="flex items-center gap-2">
                 {active[step.type] && (
-                  <JobProgressInline jobId={active[step.type]!} />
+                  <JobProgressInline
+                    jobId={active[step.type]!}
+                    onCurrentPageChange={
+                      step.type === "batch_process_pages"
+                        ? onActivePageChange
+                        : undefined
+                    }
+                  />
                 )}
                 <button
                   onClick={() => submit.mutate(step.type)}
@@ -696,61 +723,27 @@ function RunPipelinePanel({ projectId }: { projectId: string }) {
   );
 }
 
-interface JobEvent {
-  type: string;
-  status: string;
-  current: number;
-  total: number;
-  current_page: number | null;
-  message: string;
-  error: string | null;
-}
+function JobProgressInline({
+  jobId,
+  onCurrentPageChange,
+}: {
+  jobId: string;
+  onCurrentPageChange?: (idx0: number | null) => void;
+}) {
+  const { event, error, currentPage, isTerminal } = useJobProgress(jobId);
 
-function JobProgressInline({ jobId }: { jobId: string }) {
-  const [event, setEvent] = useState<JobEvent | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
+  // Lift current_page up so a parent (e.g. PageGrid) can highlight
+  // the tile the worker is on. Clear on terminal status, and on unmount
+  // so a stale highlight doesn't outlive this panel.
   useEffect(() => {
-    setEvent(null);
-    setError(null);
-    // Push-based: SSE delivers transitions instantly; falls back to a
-    // single GET if the EventSource connection fails (older proxies).
-    const es = new EventSource(`/api/gpu/jobs/${jobId}/events`);
-    es.onmessage = (m) => {
-      try {
-        const data = JSON.parse(m.data) as JobEvent;
-        setEvent(data);
-        if (
-          data.status === "complete" ||
-          data.status === "error" ||
-          data.status === "cancelled"
-        ) {
-          es.close();
-        }
-      } catch {
-        /* ignore */
-      }
+    if (!onCurrentPageChange) return;
+    onCurrentPageChange(isTerminal ? null : currentPage);
+  }, [onCurrentPageChange, currentPage, isTerminal]);
+  useEffect(() => {
+    return () => {
+      if (onCurrentPageChange) onCurrentPageChange(null);
     };
-    es.onerror = () => {
-      // Fallback: one-shot GET so the UI still reflects terminal state.
-      es.close();
-      api
-        .get<JobSnapshot>(`/api/data/jobs/${jobId}`)
-        .then((j) =>
-          setEvent({
-            type: "progress",
-            status: j.status,
-            current: j.progress.current,
-            total: j.progress.total,
-            current_page: null,
-            message: j.progress.message,
-            error: j.error_message,
-          }),
-        )
-        .catch((e) => setError((e as Error).message));
-    };
-    return () => es.close();
-  }, [jobId]);
+  }, [onCurrentPageChange]);
 
   if (error)
     return <span className="text-xs text-rose-600">channel: {error}</span>;
@@ -763,9 +756,16 @@ function JobProgressInline({ jobId }: { jobId: string }) {
         ? "text-rose-600"
         : "text-slate-500";
   const progress = event.total ? `${event.current}/${event.total}` : "";
+  // `current_page` is a 0-indexed idx0 from the backend. Show it 1-indexed
+  // so it matches the labels users see in the page grid / workbench.
+  const pageHint =
+    event.current_page !== null && event.current_page !== undefined
+      ? ` · page ${event.current_page + 1}`
+      : "";
   return (
     <span className={`text-xs ${colour}`}>
       {event.status} {progress}
+      {pageHint}
       {event.error && ` · ${event.error}`}
     </span>
   );

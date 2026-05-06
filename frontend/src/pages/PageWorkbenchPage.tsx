@@ -16,6 +16,8 @@ import type {
   PageRecord,
   PageType,
 } from "../api/types";
+import { useJobProgress } from "../hooks/useJobProgress";
+import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 
 interface ProcessPageResponse {
   processed_image_key: string;
@@ -66,6 +68,36 @@ export function PageWorkbenchPage() {
     queryFn: () =>
       api.get<PageRecord>(`/api/data/projects/${projectId}/pages/${idx0}`),
   });
+
+  // Look for a running batch_process_pages job on this project so we can
+  // show a "Processing…" badge if the worker is on this very page.
+  const activeBatch = useActiveBatchJob(projectId || null);
+  const liveBatchJobId = activeBatch.jobId;
+  const jobProgress = useJobProgress(liveBatchJobId);
+  const isProcessingThisPage =
+    jobProgress.currentPage !== null && jobProgress.currentPage === idx0;
+
+  // When a batch job finishes, the page record on disk is now stale —
+  // refresh so the user sees the new processed_image / status without a
+  // manual reload.
+  useEffect(() => {
+    if (jobProgress.isTerminal && liveBatchJobId) {
+      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
+      queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
+    }
+  }, [jobProgress.isTerminal, liveBatchJobId, queryClient, projectId, idx0]);
+
+  // Also refresh as the worker advances PAST this page (current_page moved
+  // beyond idx0) — at that point this page's record is freshly written.
+  useEffect(() => {
+    if (
+      jobProgress.currentPage !== null &&
+      jobProgress.currentPage > idx0 &&
+      liveBatchJobId
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
+    }
+  }, [jobProgress.currentPage, idx0, liveBatchJobId, queryClient, projectId]);
 
   const [overrides, setOverrides] = useState<PageConfigOverrides>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -180,8 +212,17 @@ export function PageWorkbenchPage() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold">
+            <h1 className="flex items-center gap-2 text-lg font-semibold">
               {page.data.prefix || `#${idx0}`}
+              {isProcessingThisPage && (
+                <span
+                  className="inline-flex items-center gap-1 rounded bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-800 animate-pulse"
+                  title="A batch_process_pages job is currently processing this page"
+                >
+                  <span className="h-2 w-2 rounded-full bg-sky-500" />
+                  Processing…
+                </span>
+              )}
             </h1>
             <p className="text-xs text-slate-500">{page.data.source_stem}</p>
           </div>
