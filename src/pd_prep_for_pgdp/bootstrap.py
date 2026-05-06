@@ -224,6 +224,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     install_data_routes(app)
     install_gpu_routes(app)
 
+    # /healthz is mode-agnostic — gpu_worker_only nodes still need a liveness
+    # probe — and unauthenticated by design (orchestrators don't carry tokens).
+    # Mount before the SPA fallback so the route wins over the catch-all.
+    from .api.healthz import install_healthz
+
+    install_healthz(app)
+
     if settings.mode != "gpu_worker_only":
         from .api.env_js import install_env_js
 
