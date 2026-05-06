@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,6 +60,23 @@ class GetPageTextResponse(BaseModel):
     # file was lost). The frontend treats `[]` and "no overlay" as the
     # same case, so empty-list is the more idiomatic shape than None.
     words: list[OcrWord] = []
+
+
+class DeleteWordsRequest(BaseModel):
+    # Whole-page edits use "" / omit; per-split edits pass the suffix
+    # (matches `UpdatePageTextRequest`).
+    split_suffix: str | None = None
+    # Idempotent: unknown ids are silently skipped — the response's
+    # `deleted_count` lets the client see how many actually applied.
+    word_ids: list[str]
+
+
+class DeleteWordsResponse(BaseModel):
+    text_key: str
+    words_key: str
+    deleted_count: int
+    remaining_words: list[OcrWord]
+    text: str
 
 
 @router.get(
@@ -246,3 +264,129 @@ async def get_page_text(
             words = []
 
     return GetPageTextResponse(text=text, text_key=text_key, words=words)
+
+
+def _rebuild_text_from_words(words: list[OcrWord]) -> str:
+    """Reconstruct page text from a `list[OcrWord]` after a delete.
+
+    v1 strategy (deliberately simple, see roadmap §9a "Open questions"):
+
+    - Group words into lines via y-midpoint clustering, where two words
+      share a line if their bbox y-midpoints differ by less than half
+      the smaller word's height.
+    - Sort each line left-to-right, join words with single spaces.
+    - Join lines with `\n`.
+
+    Paragraph breaks are NOT reconstructed — `OcrWord` doesn't carry
+    paragraph boundary metadata, and round-tripping through the
+    pd-book-tools layout pipeline would require re-running OCR. For
+    the §9a "delete obvious noise" use case this is acceptable; the
+    proofer's textarea is still the source of truth for the final
+    `<root>.txt` once they save.
+    """
+    if not words:
+        return ""
+
+    # Sort by y-midpoint, then x-left as a stable secondary key.
+    def y_mid(w: OcrWord) -> float:
+        return w.bounding_box.top + w.bounding_box.height / 2.0
+
+    ordered = sorted(words, key=lambda w: (y_mid(w), w.bounding_box.left))
+
+    lines: list[list[OcrWord]] = []
+    for w in ordered:
+        if not lines:
+            lines.append([w])
+            continue
+        current = lines[-1]
+        # Compare against the line's "anchor" (smallest height word's
+        # y-midpoint) so a tall capital doesn't drag the threshold up.
+        anchor = min(current, key=lambda x: x.bounding_box.height)
+        anchor_mid = y_mid(anchor)
+        threshold = max(1.0, min(anchor.bounding_box.height, w.bounding_box.height) / 2.0)
+        if abs(y_mid(w) - anchor_mid) <= threshold:
+            current.append(w)
+        else:
+            lines.append([w])
+
+    rebuilt_lines: list[str] = []
+    for line in lines:
+        line_sorted = sorted(line, key=lambda w: w.bounding_box.left)
+        rebuilt_lines.append(" ".join(w.text for w in line_sorted))
+    return "\n".join(rebuilt_lines)
+
+
+@router.delete(
+    "/projects/{project_id}/pages/{idx0}/words",
+    response_model=DeleteWordsResponse,
+)
+async def delete_page_words(
+    project_id: str,
+    idx0: int,
+    body: DeleteWordsRequest,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    storage: IStorage = Depends(get_storage),
+) -> DeleteWordsResponse:
+    """Hard-delete OCR words from a page's `<root>.words.json` and
+    rewrite `<root>.txt` from the survivors (roadmap §9a).
+
+    v1 is intentionally a hard rewrite — the soft-delete-flag
+    alternative is recorded in the roadmap as deferred. Unknown
+    `word_ids` are silently skipped so the call is idempotent across
+    retries; the response's `deleted_count` reports how many ids
+    actually applied.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    suffix = body.split_suffix or ""
+
+    # Mirror the same key-resolution logic as `update_page_text` /
+    # `get_page_text` so we operate on the canonical OCR output.
+    text_key: str | None = None
+    for output in page.outputs:
+        if (output.split_suffix or "") == suffix and output.ocr_text_key:
+            text_key = output.ocr_text_key
+            break
+    if text_key is None:
+        full_prefix = f"{page.prefix}{suffix}"
+        stem_prefix = f"{page.source_stem}_{full_prefix}" if page.source_stem else full_prefix
+        text_key = f"projects/{project_id}/ocr_text/{stem_prefix}.txt"
+
+    words_key = words_key_for(text_key)
+    if not await storage.exists(words_key):
+        # No words blob means there's nothing to delete from; surface
+        # this as 404 so the client doesn't silently no-op.
+        raise HTTPException(404, "words blob not found")
+
+    raw = await storage.get_bytes(words_key)
+    try:
+        words = load_words_from_storage(raw)
+    except Exception as exc:
+        log.exception("failed to decode words blob at %s", words_key)
+        raise HTTPException(500, "words blob is corrupt") from exc
+
+    drop = set(body.word_ids)
+    survivors = [w for w in words if w.id not in drop]
+    deleted_count = len(words) - len(survivors)
+
+    # Even when deleted_count == 0 we rewrite — keeps the response
+    # contract uniform and lets the client treat this as the canonical
+    # "current state of the page" round-trip.
+    new_text = _rebuild_text_from_words(survivors)
+    payload = json.dumps([w.model_dump(mode="json") for w in survivors]).encode("utf-8")
+    await storage.put_bytes(words_key, payload, "application/json")
+    await storage.put_bytes(text_key, new_text.encode("utf-8"), "text/plain")
+
+    return DeleteWordsResponse(
+        text_key=text_key,
+        words_key=words_key,
+        deleted_count=deleted_count,
+        remaining_words=survivors,
+        text=new_text,
+    )
