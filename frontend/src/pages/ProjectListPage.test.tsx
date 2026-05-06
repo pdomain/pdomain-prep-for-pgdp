@@ -1,0 +1,155 @@
+/**
+ * Component-mount test for the inline `CreateProjectModal` rendered by
+ * `ProjectListPage`. Roadmap §9 step 11 ("stretch") — the first
+ * Testing-Library test that mounts a real React subtree (QueryClientProvider
+ * + MemoryRouter) and exercises the create-project happy path through the
+ * msw wire layer.
+ *
+ * Scope is deliberately one test. Wire-level coverage of `POST
+ * /api/data/projects` already lives in `api/client.test.ts`; what this test
+ * adds is proof that the modal actually drives that POST when a user types a
+ * name, picks a file, and clicks "Create + Upload". The XHR `PUT` upload and
+ * the follow-up `POST /api/gpu/ingest` are stubbed minimally so the mutation
+ * resolves and we can assert the project-create POST body (the smallest
+ * thing that proves the modal is wired).
+ */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
+import { describe, expect, it } from "vitest";
+import type {
+  CreateProjectRequest,
+  CreateProjectResponse,
+  Project,
+} from "../api/types";
+import { server } from "../test/server";
+import { ProjectListPage } from "./ProjectListPage";
+
+function renderWithProviders(ui: ReactElement) {
+  // Fresh QueryClient per test so cache state can't leak across files.
+  // Retry off so error paths surface immediately without exponential
+  // backoff blowing the test timeout.
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: "prj_abc123",
+    owner_id: "user_local",
+    name: "Belloc — The Four Men",
+    created_at: "2026-05-06T00:00:00Z",
+    updated_at: "2026-05-06T00:00:00Z",
+    status: "ingesting",
+    page_count: 0,
+    proof_page_count: 0,
+    storage_prefix: "projects/prj_abc123",
+    config: {
+      book_name: "Belloc — The Four Men",
+      source_uri: "uploads/prj_abc123/source.zip",
+      proof_start_idx0: 0,
+      proof_end_idx0: 0,
+      cover_idx0: null,
+      title_idx0: null,
+      frontmatter_start_idx0: 0,
+      frontmatter_end_idx0: 0,
+      bodymatter_start_idx0: 0,
+      bodymatter_end_idx0: 0,
+      frontmatter_page_nbr_start: 1,
+      bodymatter_page_nbr_start: 1,
+      initial_crop_all: [0, 0, 0, 0],
+      ocr_crop_top: 0,
+      ocr_crop_bottom: 0,
+      ocr_crop_left: 0,
+      ocr_crop_right: 0,
+      custom_regex_passes: [],
+      custom_scannos: {},
+      layout_category_overrides: {},
+      default_overrides: {},
+    },
+    ...overrides,
+  };
+}
+
+describe("ProjectListPage create-project flow", () => {
+  it("submits the name + zip upload and POSTs CreateProjectRequest with source_type=zip", async () => {
+    const createCalls: CreateProjectRequest[] = [];
+    let ingestCalled = false;
+
+    server.use(
+      // Initial list query the page fires on mount.
+      http.get("/api/data/projects", () => HttpResponse.json([])),
+
+      // The create-project POST that the modal's mutation drives — this
+      // is the assertion target.
+      http.post("/api/data/projects", async ({ request }) => {
+        createCalls.push((await request.json()) as CreateProjectRequest);
+        const body: CreateProjectResponse = {
+          project: makeProject(),
+          upload_url: "/cdn/uploads/prj_abc123/source.zip",
+          upload_key: "uploads/prj_abc123/source.zip",
+        };
+        return HttpResponse.json(body, { status: 201 });
+      }),
+
+      // The XHR PUT upload — msw's XMLHttpRequestInterceptor catches
+      // this in jsdom. Empty 200 is enough for `xhr.onload` to resolve.
+      http.put("/cdn/uploads/prj_abc123/source.zip", () =>
+        HttpResponse.text("", { status: 200 }),
+      ),
+
+      // Final ingest enqueue. We don't assert its body here — the
+      // wire-level contract for /api/gpu/ingest belongs in a future
+      // dedicated test if it grows. We just need it to succeed so the
+      // mutation reaches onSuccess.
+      http.post("/api/gpu/ingest", () => {
+        ingestCalled = true;
+        return HttpResponse.json({ job_id: "job_1", status: "queued" });
+      }),
+    );
+
+    renderWithProviders(<ProjectListPage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /new project/i }));
+
+    await user.type(
+      screen.getByPlaceholderText(/Belloc/i),
+      "Belloc — The Four Men",
+    );
+
+    const file = new File(["dummy zip bytes"], "scans.zip", {
+      type: "application/zip",
+    });
+    // The file input has no label — find it by type via the modal subtree.
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    await user.upload(fileInput, file);
+
+    await user.click(screen.getByRole("button", { name: /create \+ upload/i }));
+
+    // Wait until the modal hits a post-form state. `findBy*` polls for
+    // up to 1s, which covers the XHR + ingest POST round-trips.
+    await screen.findByText(/Uploading|Error/i, undefined, { timeout: 2000 });
+
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]).toEqual({
+      name: "Belloc — The Four Men",
+      source_type: "zip",
+    } satisfies CreateProjectRequest);
+    expect(ingestCalled).toBe(true);
+  });
+});
