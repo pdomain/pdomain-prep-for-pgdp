@@ -388,3 +388,123 @@ async def test_run_stage_returns_page_stage_state(tmp_path: Path, db: SqliteData
     assert state.stage_id == "grayscale"
     assert state.project_id == project_id
     assert state.page_id == page_id
+
+
+# ─── ingest_source: root-stage with storage-sourced bytes ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_ingest_source_writes_canonical_artifact(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """`ingest_source` (root, depends_on=()) reads source bytes from
+    `IStorage` at `page_source_key` and writes them to the canonical
+    `pages/<page_id>/stages/ingest_source/output.png` path.
+
+    This is the chain root: with this in place the user can click the
+    rail's first chip and watch it turn green without manual SQLite
+    seeding. Carving it out is the load-bearing "no SQLite seeding"
+    change for M2.
+    """
+    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+
+    project_id, page_id = "p1", "0000"
+    storage = FilesystemStorage(tmp_path)
+
+    # Stash a real PNG at the upload-side source key.
+    payload = _checkerboard_bgr_png()
+    source_key = f"projects/{project_id}/source/page0.jpg"
+    await storage.put_bytes(source_key, payload, "image/jpeg")
+
+    # No parents to seed — `ingest_source` has empty depends_on.
+    await db.init_page_stages_for_page(project_id, page_id)
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="ingest_source",
+        storage=storage,
+        page_source_key=source_key,
+    )
+
+    assert state.status == PageStageStatus.clean
+    assert state.input_hash is not None
+
+    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "ingest_source")
+    assert artifact_path.exists()
+    assert artifact_path.read_bytes() == payload
+
+
+@pytest.mark.asyncio
+async def test_run_stage_ingest_source_missing_storage_fails_loud(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """Without `storage`/`page_source_key` the runner can't read source
+    bytes and must fail loudly (Q9), not silently produce an empty file."""
+    project_id, page_id = "p1", "0000"
+    await db.init_page_stages_for_page(project_id, page_id)
+
+    with pytest.raises(StageRunFailed):
+        await run_stage(
+            data_root=tmp_path,
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id="ingest_source",
+        )
+
+    row = await db.get_page_stage(project_id, page_id, "ingest_source")
+    assert row is not None
+    assert row.status == PageStageStatus.failed
+
+
+@pytest.mark.asyncio
+async def test_run_stage_full_chain_to_invert_no_manual_seeding(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """End-to-end click-flow: starting from a fresh page (no rows seeded),
+    running ingest_source → decode_source → initial_crop → manual_deskew_pre
+    → grayscale → threshold → invert in order produces a clean artifact at
+    every step.
+
+    This is the M2 smoke-test pass criterion (no manual SQLite seeding).
+    """
+    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+
+    project_id, page_id = "p1", "0000"
+    storage = FilesystemStorage(tmp_path)
+
+    payload = _checkerboard_bgr_png()
+    source_key = f"projects/{project_id}/source/page0.png"
+    await storage.put_bytes(source_key, payload, "image/png")
+    await db.init_page_stages_for_page(project_id, page_id)
+
+    chain = [
+        "ingest_source",
+        "decode_source",
+        "initial_crop",
+        "manual_deskew_pre",
+        "grayscale",
+        "threshold",
+        "invert",
+    ]
+    for stage_id in chain:
+        state = await run_stage(
+            data_root=tmp_path,
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+            storage=storage,
+            page_source_key=source_key,
+        )
+        assert state.status == PageStageStatus.clean, (
+            f"stage {stage_id!r} did not reach clean; got {state.status!r} (error={state.error_message!r})"
+        )
+        artifact_path = stage_artifact_path(tmp_path, project_id, page_id, stage_id)
+        assert artifact_path.exists(), f"stage {stage_id!r} produced no artifact on disk"

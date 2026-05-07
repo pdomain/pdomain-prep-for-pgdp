@@ -167,6 +167,31 @@ def test_invert_cpu_idempotent_after_two_applications() -> None:
     assert np.array_equal(out, binary)
 
 
+# ─── Real impl: ingest_source ──────────────────────────────────────────────
+#
+# `ingest_source` (chain root, depends_on=()) reads the per-page upload's
+# raw bytes via IStorage and persists them at the canonical
+# `pages/<page_id>/stages/ingest_source/output.png` path. The registry
+# impl itself is bytes->bytes identity — the runner does the storage
+# read; the impl runs in pure-bytes space. See `stage_runner.run_stage`
+# for the special root-path that calls this with source_bytes.
+
+
+def test_ingest_source_cpu_passes_through_bytes_unchanged() -> None:
+    """ingest_source returns its input bytes unchanged (identity)."""
+    fn = get_stage_impl("ingest_source", "cpu")
+    payload = b"\x89PNG\r\n\x1a\n" + b"X" * 100
+    out = fn(payload)
+    assert out == payload
+
+
+def test_ingest_source_cpu_returns_bytes_type() -> None:
+    """ingest_source's output must be bytes (output_type='image_bytes')."""
+    fn = get_stage_impl("ingest_source", "cpu")
+    out = fn(b"some-jpg-bytes")
+    assert isinstance(out, (bytes, bytearray))
+
+
 # ─── Real impl: decode_source ───────────────────────────────────────────────
 #
 # `decode_source` sits between `ingest_source` (raw source bytes on disk)

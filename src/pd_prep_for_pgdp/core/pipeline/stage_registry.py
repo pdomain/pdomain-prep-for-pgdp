@@ -143,6 +143,26 @@ def _invert_cpu(image: Any) -> Any:
     return invert_image(image)
 
 
+def _ingest_source_cpu(source_bytes: bytes) -> bytes:
+    """Pass through the per-page source bytes unchanged.
+
+    The runner reads the bytes from IStorage at the page's `source_key`
+    and passes them in here. Persisting them at the canonical
+    `pages/<page_id>/stages/ingest_source/output.png` path crystallises
+    the chain root as a real on-disk artifact (Q3 every-intermediate-
+    persistence) and gives `decode_source` a well-defined parent. The
+    bytes themselves are written verbatim — the runner does NOT
+    re-encode for output_type='image_bytes' stages.
+
+    Note that the canonical filename is `output.png` regardless of the
+    upload's actual format (jpg, jpeg, etc) — the writer's
+    `OUTPUT_EXT_BY_TYPE` maps `image_bytes` to a single canonical
+    extension. cv2.imdecode handles either format transparently when
+    downstream stages read it back.
+    """
+    return source_bytes
+
+
 def _decode_source_cpu(image: Any) -> Any:
     """Pass through the already-decoded source image unchanged.
 
@@ -185,6 +205,7 @@ def _manual_deskew_pre_cpu(image: Any) -> Any:
 
 # Real implementations registered for cpu. Keys must be in `PAGE_STAGE_IDS`.
 _REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
+    "ingest_source": _ingest_source_cpu,
     "decode_source": _decode_source_cpu,
     "initial_crop": _initial_crop_cpu,
     "manual_deskew_pre": _manual_deskew_pre_cpu,

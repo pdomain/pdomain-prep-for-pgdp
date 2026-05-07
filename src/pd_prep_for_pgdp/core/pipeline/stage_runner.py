@@ -63,6 +63,7 @@ import cv2  # type: ignore[import-not-found]
 import numpy as np
 
 from ...adapters.database.base import IDatabase
+from ...adapters.storage.base import IStorage
 from ..models import PageStageState, PageStageStatus
 from .page_stage_writer import (
     COMPOUND_OUTPUT_TYPES,
@@ -264,6 +265,8 @@ async def run_stage(
     page_id: str,
     stage_id: str,
     device: str = "cpu",
+    storage: IStorage | None = None,
+    page_source_key: str | None = None,
 ) -> PageStageState:
     """Run one stage on one page. Dual-writes its artifact, then cascades
     dirty downstream.
@@ -282,6 +285,13 @@ async def run_stage(
         ``"cpu"`` (default) or ``"cuda"``. Slice 3 has only cpu impls; cuda
         will fall through to `KeyError` from the registry — caller should
         either fall back to cpu or surface the gap.
+    storage
+        IStorage adapter; only consulted for root stages whose input is the
+        per-page upload (today: ``ingest_source`` reads bytes via
+        ``storage.get_bytes(page_source_key)``). Optional everywhere else.
+    page_source_key
+        IStorage key of the page's uploaded source file (``PageRecord.source_key``);
+        required iff ``stage_id == 'ingest_source'``. Other stages ignore it.
 
     Returns
     -------
@@ -339,40 +349,70 @@ async def run_stage(
         except KeyError as exc:
             raise StageRunFailed(f"stage {stage_id!r} has no impl registered for device {device!r}") from exc
 
-        # Load parents. Single-parent stages pass the bare ndarray; multi-parent
-        # stages pass a tuple in the `Stage.depends_on` order (Slice 3 only
-        # exercises grayscale/threshold/invert which are all single-parent —
-        # the multi-parent dispatch path lands when `crop_to_content` etc.
-        # get real impls).
-        parent_artifacts: list[np.ndarray] = []
-        for parent_id in stage.depends_on:
-            parent_artifacts.append(
-                await _load_parent_artifact(
-                    data_root=data_root,
-                    database=database,
-                    project_id=project_id,
-                    page_id=page_id,
-                    parent_stage_id=parent_id,
+        # Root-stage path: `ingest_source` has no parents and reads its bytes
+        # from IStorage at `page_source_key`. The artifact written to disk is
+        # the source bytes verbatim (output_type='image_bytes'); no cv2
+        # decode/encode round-trip. This is the chain root that lets the user
+        # click `ingest_source` first without any manual SQLite seeding.
+        if stage_id == "ingest_source":
+            if storage is None or page_source_key is None:
+                # ValueError flows through the catch-all `except Exception`
+                # branch below, which calls `_mark_failed` and wraps in
+                # StageRunFailed (Q9 fail-loud).
+                raise ValueError(
+                    f"stage {stage_id!r} requires `storage` + `page_source_key` to read "
+                    "the per-page upload; route handler must pass both"
                 )
+            source_bytes = await storage.get_bytes(page_source_key)
+            artifact_bytes = impl(source_bytes)
+            if not isinstance(artifact_bytes, (bytes, bytearray)):
+                raise TypeError(
+                    f"stage {stage_id!r} impl returned {type(artifact_bytes).__name__}, "
+                    "expected bytes for output_type='image_bytes'"
+                )
+            committed = await commit_stage_artifact(
+                data_root=data_root,
+                database=database,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                artifact_bytes=bytes(artifact_bytes),
             )
-
-        if len(parent_artifacts) == 1:
-            output = impl(parent_artifacts[0])
         else:
-            output = impl(*parent_artifacts)
+            # Load parents. Single-parent stages pass the bare ndarray; multi-parent
+            # stages pass a tuple in the `Stage.depends_on` order (Slice 3 only
+            # exercises grayscale/threshold/invert which are all single-parent —
+            # the multi-parent dispatch path lands when `crop_to_content` etc.
+            # get real impls).
+            parent_artifacts: list[np.ndarray] = []
+            for parent_id in stage.depends_on:
+                parent_artifacts.append(
+                    await _load_parent_artifact(
+                        data_root=data_root,
+                        database=database,
+                        project_id=project_id,
+                        page_id=page_id,
+                        parent_stage_id=parent_id,
+                    )
+                )
 
-        # Step 7: encode + dual-write. (Slice 3 only emits PNGs since the
-        # three real impls all return ndarrays; later slices generalise this
-        # by branching on `Stage.output_type`.)
-        artifact_bytes = _encode_image_to_png(output)
-        committed = await commit_stage_artifact(
-            data_root=data_root,
-            database=database,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id=stage_id,
-            artifact_bytes=artifact_bytes,
-        )
+            if len(parent_artifacts) == 1:
+                output = impl(parent_artifacts[0])
+            else:
+                output = impl(*parent_artifacts)
+
+            # Step 7: encode + dual-write. (Slice 3 only emits PNGs since the
+            # three real impls all return ndarrays; later slices generalise this
+            # by branching on `Stage.output_type`.)
+            artifact_bytes = _encode_image_to_png(output)
+            committed = await commit_stage_artifact(
+                data_root=data_root,
+                database=database,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                artifact_bytes=artifact_bytes,
+            )
     except StageNotImplemented as exc:
         await _mark_failed(
             database=database,

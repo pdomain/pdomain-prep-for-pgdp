@@ -482,6 +482,7 @@ async def run_page_stage(
     stage_id: str,
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),
+    storage: IStorage = Depends(get_storage),
     settings: Settings = Depends(get_settings),
 ) -> PageStageState:
     """Run one stage on one page synchronously and return the new row.
@@ -530,6 +531,11 @@ async def run_page_stage(
             project_id=project_id,
             page_id=page_id,
             stage_id=stage_id,
+            # Root stage `ingest_source` reads bytes from IStorage at the
+            # page's source_key; pass through unconditionally so the runner
+            # has them when it needs them (other stages ignore both).
+            storage=storage,
+            page_source_key=page.source_key,
         )
     except StageDependenciesNotMet as exc:
         raise HTTPException(409, str(exc)) from exc
