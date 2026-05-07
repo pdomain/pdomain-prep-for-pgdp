@@ -45,6 +45,7 @@ describe("api.post against /api/data/projects (msw)", () => {
             page_count: 0,
             proof_page_count: 0,
             storage_prefix: "projects/prj_abc123",
+            archived: false,
             config: {
               book_name: "Belloc — The Four Men",
               source_uri: "uploads/prj_abc123/source.zip",
