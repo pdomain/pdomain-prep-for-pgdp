@@ -3,7 +3,7 @@
         uninstall-local check-local-editable run-local frontend-install frontend-build \
         frontend-dev frontend-test openapi-export upgrade-pd-book-tools release-patch \
         release-minor release-major _do-release docker-build docker-run mise-download \
-        mise-setup mise-doctor
+        mise-setup mise-doctor upgrade-deps
 
 # ---------------------------------------------------------------------------
 # Peer-repo discovery for *-local targets
@@ -74,6 +74,13 @@ remove-venv: ## Remove the virtual environment
 
 reset: clean remove-venv setup ## Rebuild the virtual environment
 	@echo "✅ Environment Reset!"
+
+upgrade-deps: ## Upgrade dependencies and sync local environment
+	@echo "⬆️ Upgrading dependency lockfile..."
+	uv lock --upgrade
+	@echo "📦 Syncing upgraded dependencies..."
+	uv sync --group dev
+	@echo "✅ Dependencies upgraded and environment synced!"
 
 upgrade-pd-book-tools: ## Pin pd-book-tools to its latest GitHub tag
 	@echo "🔍 Fetching latest pd-book-tools tag..."
