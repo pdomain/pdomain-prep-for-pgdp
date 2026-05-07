@@ -250,6 +250,36 @@ async def _enumerate_folder(storage: IStorage, prefix: str) -> list[_SourceEntry
     return entries
 
 
+def peek_zip_image_names(raw: bytes, limit: int) -> tuple[list[str], int]:
+    """Inspect a zip's central directory and return image filenames.
+
+    Used by the source-preview endpoint (P2 #8) to render a thumbnail strip
+    before ingest runs, so a user with the wrong zip catches the mistake
+    early. Pure: no storage, no decoding, no thumbnail generation. Reads
+    only the central directory — no per-entry payload is decompressed.
+
+    Returns
+    -------
+    (names, total_image_count)
+        ``names`` is the first ``limit`` image filenames sorted by name (so
+        the preview order matches the eventual ingest enumeration).
+        ``total_image_count`` is the count of all image entries in the zip,
+        useful for showing "showing 5 of 12".
+    """
+    if limit < 0:
+        limit = 0
+    image_names: list[str] = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            if _ext_lower(info.filename) not in _IMAGE_EXTS:
+                continue
+            image_names.append(info.filename)
+    image_names.sort()
+    return image_names[:limit], len(image_names)
+
+
 def _ext_lower(name: str) -> str:
     if "." not in name:
         return ""

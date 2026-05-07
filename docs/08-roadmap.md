@@ -201,6 +201,15 @@ In the create-project flow, after the zip is uploaded but before ingest
 runs, show a thumbnail strip of the first ~10 page images. Helps the user
 catch wrong-zip mistakes early.
 
+**Progress (2026-05-07):** pure helper `peek_zip_image_names(raw, limit)`
+landed in `core/ingest.py` with `tests/test_peek_zip_image_names.py`. Reads
+only the zip central directory (no payload decompression) and returns
+`(names, total_image_count)` so the preview can show "5 of 12". Remaining
+slices: a `GET /projects/{id}/source-preview` route that streams the
+uploaded zip and calls the helper, plus a thumbnail endpoint (or inline
+JPEG render) for each previewed name, plus the create-project flow change
+to show the strip between upload completion and ingest dispatch.
+
 ### 9. Vitest + msw for the SPA — acceptance met, optional follow-ups remain
 
 **Status (2026-05-06):** previously blocked on npm in this devcontainer;
