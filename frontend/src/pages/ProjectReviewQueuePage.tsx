@@ -2,7 +2,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { ListPagesResponse, PageRecord } from "../api/types";
+import type { components } from "../api/types.gen";
+
+type PageRecord = components["schemas"]["PageRecord"];
+type ListPagesResponse = components["schemas"]["ListPagesResponse"];
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 
 export function ProjectReviewQueuePage() {
