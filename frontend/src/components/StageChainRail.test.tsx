@@ -260,3 +260,55 @@ describe("StageChainRail tooltip", () => {
     expect(chip.getAttribute("title") ?? "").toContain("v7");
   });
 });
+
+// ─── View-artifact affordance ──────────────────────────────────────────────
+
+describe("StageChainRail view affordance", () => {
+  it("renders a view link only for clean chips, pointing at the artifact route", async () => {
+    server.use(
+      http.get("/api/data/projects/p1/pages/0/stages", () =>
+        HttpResponse.json([
+          makeRow("grayscale", "clean", { input_hash: "abc123" }),
+          makeRow("threshold", "not-run"),
+          ...STAGE_IDS.filter(
+            (s) => s !== "grayscale" && s !== "threshold",
+          ).map((s) => makeRow(s)),
+        ]),
+      ),
+    );
+
+    renderRail();
+
+    // Clean chip has a view link.
+    const grayscaleView = await screen.findByTestId("stage-view-grayscale");
+    expect(grayscaleView).toHaveAttribute(
+      "href",
+      "/api/data/projects/p1/pages/0/stages/grayscale/artifact",
+    );
+    // Opens in a new tab so the workbench page is preserved.
+    expect(grayscaleView).toHaveAttribute("target", "_blank");
+
+    // Not-run chips do NOT get a view link (no artifact yet).
+    expect(
+      screen.queryByTestId("stage-view-threshold"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render a view link for failed chips", async () => {
+    server.use(
+      http.get("/api/data/projects/p1/pages/0/stages", () =>
+        HttpResponse.json([
+          makeRow("grayscale", "failed", { error_message: "oops" }),
+          ...STAGE_IDS.filter((s) => s !== "grayscale").map((s) => makeRow(s)),
+        ]),
+      ),
+    );
+
+    renderRail();
+
+    await screen.findByTestId("stage-chip-grayscale");
+    expect(
+      screen.queryByTestId("stage-view-grayscale"),
+    ).not.toBeInTheDocument();
+  });
+});

@@ -182,19 +182,39 @@ export function StageChainRail({ projectId, idx0 }: Props) {
             ? "running"
             : row.status;
           const cls = chipClassesFor(effectiveStatus);
+          // Clean chips get a small "view" link beside them so the user
+          // can see what bytes the stage produced. M3 ships a real
+          // artifact viewer pane; this is the minimal "make it reachable"
+          // affordance — opens the artifact route in a new tab so the
+          // workbench page state is preserved.
+          const showViewLink = row.status === "clean";
           return (
-            <button
-              key={row.stage_id}
-              type="button"
-              data-testid={`stage-chip-${row.stage_id}`}
-              data-status={effectiveStatus}
-              className={`rounded border px-2 py-1 text-[11px] font-mono ${cls}`}
-              title={tooltipFor(row)}
-              onClick={() => runStage.mutate(row.stage_id)}
-              disabled={showRunning}
-            >
-              {row.stage_id}
-            </button>
+            <span key={row.stage_id} className="inline-flex items-center">
+              <button
+                type="button"
+                data-testid={`stage-chip-${row.stage_id}`}
+                data-status={effectiveStatus}
+                className={`rounded border px-2 py-1 text-[11px] font-mono ${cls}`}
+                title={tooltipFor(row)}
+                onClick={() => runStage.mutate(row.stage_id)}
+                disabled={showRunning}
+              >
+                {row.stage_id}
+              </button>
+              {showViewLink ? (
+                <a
+                  data-testid={`stage-view-${row.stage_id}`}
+                  href={`/api/data/projects/${projectId}/pages/${idx0}/stages/${row.stage_id}/artifact`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-0.5 rounded border border-emerald-300 bg-white px-1 py-1 text-[10px] text-emerald-700 hover:bg-emerald-50"
+                  title={`view ${row.stage_id} artifact in a new tab`}
+                  aria-label={`view ${row.stage_id} artifact`}
+                >
+                  view
+                </a>
+              ) : null}
+            </span>
           );
         })}
       </div>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from ...adapters.auth import UserContext
@@ -24,7 +24,11 @@ from ...core.models import (
     PageStageState,
     PageType,
 )
-from ...core.pipeline.stage_dag import topological_order
+from ...core.pipeline.page_stage_writer import (
+    StageArtifactWriteError,
+    stage_artifact_path,
+)
+from ...core.pipeline.stage_dag import get_stage, topological_order
 from ...core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageOutputUnsupported,
@@ -545,3 +549,131 @@ async def run_page_stage(
         # Q9 fail-loud: the row is already marked `failed` with
         # error_message; raise 500 so the API contract is honest.
         raise HTTPException(500, str(exc)) from exc
+
+
+# ─── Per-page DAG: GET a stage's on-disk artifact ──────────────────────────
+
+
+# Maps `Stage.output_type` to a Content-Type for the GET /artifact route.
+# Mirrors `OUTPUT_EXT_BY_TYPE` in `page_stage_writer.py` — keep in sync.
+# Compound output types are intentionally absent: those stages can't be
+# served through the single-file artifact route (multi-artifact writer
+# queued for a later slice).
+_STAGE_OUTPUT_CONTENT_TYPES: dict[str, str] = {
+    "image_bytes": "image/png",
+    "image": "image/png",
+    "gray": "image/png",
+    "binary": "image/png",
+    "jpeg_bytes": "image/jpeg",
+    "text": "text/plain; charset=utf-8",
+    "page_attrs": "application/json",
+    "illustration_regions": "application/json",
+    "bbox": "application/json",
+}
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/artifact",
+    operation_id="get_page_stage_artifact",
+    # No response_model — this returns raw bytes via fastapi.Response with
+    # an output_type-derived Content-Type. OpenAPI sees a binary response.
+    responses={
+        200: {
+            "content": {
+                "image/png": {},
+                "image/jpeg": {},
+                "text/plain": {},
+                "application/json": {},
+            },
+            "description": "Stage artifact bytes; Content-Type per stage output_type.",
+        },
+        304: {"description": "ETag matched If-None-Match — body unchanged."},
+        404: {"description": "Project/page not found, cross-user, or no clean artifact."},
+        422: {"description": "Unknown stage_id."},
+    },
+)
+async def get_page_stage_artifact(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    if_none_match: str | None = Header(None, alias="If-None-Match"),
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Stream the bytes of a clean stage's on-disk artifact.
+
+    Spec: `docs/specs/pipeline-task-model.md` §"API surface" (§Per-page
+    stage routes). Lets the workbench (or a direct-link user) view what
+    a stage actually produced. M2 ships the minimal single-file shape;
+    compound-output stages stay 404 here until the multi-artifact writer
+    lands (their bytes don't fit a single file/Content-Type pair).
+
+    Caching: the response carries an ETag header echoing the row's
+    `input_hash` (sha256 of the artifact bytes). Browsers re-fetching
+    the same artifact pass the value back as `If-None-Match`; we return
+    304 in that case so the existing in-browser copy is reused.
+    Backend never caches anything itself.
+
+    Status code mapping:
+
+    - 200: row clean, file exists, body is the raw bytes.
+    - 304: `If-None-Match` matched the current ETag.
+    - 404: project not found (also covers cross-user) / page not found
+      / row's status is not `clean` / file missing on disk (drift; the
+      reconciler is the right tool to surface that systematically).
+    - 422: unknown stage_id (validated against PAGE_STAGE_IDS).
+    """
+    if stage_id not in PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, stage_id)
+    if row is None or row.status != "clean":
+        # No clean artifact — either the stage hasn't run, ran but failed,
+        # was dirtied by an upstream re-run, or hit not-applicable. The
+        # client should re-check stage state and re-run if needed.
+        raise HTTPException(404, "no clean artifact for this stage")
+
+    # Resolve canonical path; compound-output stages raise here so we
+    # surface a clean 404 instead of leaking the writer's exception.
+    try:
+        path = stage_artifact_path(settings.data_root, project_id, page_id, stage_id)
+    except StageArtifactWriteError as exc:
+        # Compound output_type — single-file artifact route can't serve it.
+        raise HTTPException(404, f"stage {stage_id!r} has no single-file artifact") from exc
+
+    if not path.exists():
+        # Drift: row says clean but file is gone. Treated as 404 so the
+        # client can re-run the stage; reconciler is the systematic fix.
+        log.warning(
+            "artifact GET drift: row clean but file missing at %s (project=%s page=%s stage=%s)",
+            path,
+            project_id,
+            page_id,
+            stage_id,
+        )
+        raise HTTPException(404, "stage artifact missing on disk")
+
+    # ETag uses the row's input_hash (sha256 of the bytes the writer
+    # committed). Quoted per RFC 7232 §2.3.
+    etag = f'"{row.input_hash}"' if row.input_hash else None
+
+    if etag is not None and if_none_match is not None and if_none_match.strip() == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+
+    output_type = get_stage(stage_id).output_type
+    content_type = _STAGE_OUTPUT_CONTENT_TYPES.get(output_type, "application/octet-stream")
+
+    body = path.read_bytes()
+    headers: dict[str, str] = {}
+    if etag is not None:
+        headers["ETag"] = etag
+    return Response(content=body, media_type=content_type, headers=headers)

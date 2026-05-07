@@ -1064,6 +1064,88 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/artifact": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Stage Artifact",
+        "description": "Stream the bytes of a clean stage's on-disk artifact.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"API surface\" (\u00a7Per-page\nstage routes). Lets the workbench (or a direct-link user) view what\na stage actually produced. M2 ships the minimal single-file shape;\ncompound-output stages stay 404 here until the multi-artifact writer\nlands (their bytes don't fit a single file/Content-Type pair).\n\nCaching: the response carries an ETag header echoing the row's\n`input_hash` (sha256 of the artifact bytes). Browsers re-fetching\nthe same artifact pass the value back as `If-None-Match`; we return\n304 in that case so the existing in-browser copy is reused.\nBackend never caches anything itself.\n\nStatus code mapping:\n\n- 200: row clean, file exists, body is the raw bytes.\n- 304: `If-None-Match` matched the current ETag.\n- 404: project not found (also covers cross-user) / page not found\n  / row's status is not `clean` / file missing on disk (drift; the\n  reconciler is the right tool to surface that systematically).\n- 422: unknown stage_id (validated against PAGE_STAGE_IDS).",
+        "operationId": "get_page_stage_artifact",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stage artifact bytes; Content-Type per stage output_type.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/png": {},
+              "image/jpeg": {},
+              "text/plain": {}
+            }
+          },
+          "304": {
+            "description": "ETag matched If-None-Match \u2014 body unchanged."
+          },
+          "404": {
+            "description": "Project/page not found, cross-user, or no clean artifact."
+          },
+          "422": {
+            "description": "Unknown stage_id."
+          }
+        }
+      }
+    },
     "/api/data/system/defaults": {
       "get": {
         "tags": [
