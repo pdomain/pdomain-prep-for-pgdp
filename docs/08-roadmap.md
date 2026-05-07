@@ -73,9 +73,10 @@ no `@radix-ui/*` deps in `frontend/package.json`, and the lone component is
 `WordBboxOverlay`. The "modal" in `ProjectListPage.tsx:106-168` is a raw
 `<div>` overlay with no focus trap, no Escape binding, no scroll lock,
 and Cancel/Create buttons that aren't a real `<dialog>`. There is no
-toast layer at all — `TextReviewPage.tsx:494-507` inlines three separate
-`<span class="text-xs text-red-600">` paragraphs for save / re-OCR /
-delete failures, which is the only feedback path the user gets.
+toast layer at all — `TextReviewPage.tsx` surfaces save / re-OCR /
+delete failures via a small `<FormErrorBanner>` component
+(`role="alert"`, three call sites), which is the only feedback path
+the user gets.
 
 Future improvement, no prescribed milestone:
 
@@ -84,9 +85,13 @@ Future improvement, no prescribed milestone:
    spec/code divergence and gets focus management, Escape, scroll lock,
    and ARIA roles for free.
 2. **`sonner`** as the toast surface (one provider at the app root,
-   replace inline error spans in `TextReviewPage.tsx:494-507` and the
+   replace inline error spans in `TextReviewPage.tsx` and the
    ad-hoc `step.kind === "error"` block in `ProjectListPage.tsx:161-165`
-   with `toast.error(...)`).
+   with `toast.error(...)`). Stepping stone landed: the three duplicated
+   `<span class="text-xs text-red-600">` sites in `TextReviewPage.tsx`
+   were folded into a single `<FormErrorBanner>` component with
+   `role="alert"`, so the sonner swap is now one component edit, not
+   three call-site rewrites.
 3. **`react-hotkeys-hook`** for keyboard shortcuts. Today the
    Delete/Backspace/Escape handler in `TextReviewPage.tsx` is a raw
    `window.addEventListener("keydown", ...)` with hand-written

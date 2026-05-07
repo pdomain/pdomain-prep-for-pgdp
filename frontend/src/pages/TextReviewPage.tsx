@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 
 type PageRecord = components["schemas"]["PageRecord"];
+import { FormErrorBanner } from "../components/FormErrorBanner";
 import { WordBboxOverlay } from "../components/WordBboxOverlay";
 import { diffLines } from "../lib/lineDiff";
 import { LineDiffView } from "../lib/LineDiffView";
@@ -477,21 +478,18 @@ export function TextReviewPage() {
                 Clear selection
               </button>
             )}
-            {save.isError && (
-              <span className="text-xs text-red-600">
-                save failed: {(save.error as Error).message}
-              </span>
-            )}
-            {reocr.isError && (
-              <span className="text-xs text-red-600">
-                ocr failed: {(reocr.error as Error).message}
-              </span>
-            )}
-            {deleteWords.isError && (
-              <span className="text-xs text-red-600">
-                delete failed: {(deleteWords.error as Error).message}
-              </span>
-            )}
+            <FormErrorBanner
+              prefix="save failed"
+              error={save.isError ? (save.error as Error) : null}
+            />
+            <FormErrorBanner
+              prefix="ocr failed"
+              error={reocr.isError ? (reocr.error as Error) : null}
+            />
+            <FormErrorBanner
+              prefix="delete failed"
+              error={deleteWords.isError ? (deleteWords.error as Error) : null}
+            />
             {priorText !== null && (
               <>
                 <button
