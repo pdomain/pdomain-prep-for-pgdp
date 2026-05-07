@@ -669,9 +669,16 @@ falls outside the auto-deskew range; expose rotate handles for the rare case.
 
 ### 11. JWT login state in nav with profile dropdown
 
-`AuthBadge` shows the JWT `sub` claim + Sign-out today. Add a tiny dropdown
-with email (from the JWT `email` claim if present), API token expiry, and
-a "Refresh token" item.
+**Status:** shipped. `frontend/src/components/ProfileDropdown.tsx` replaces
+the inline JWT branch of `AuthBadge` in `App.tsx`. The button label prefers
+the `email` claim and falls back to `sub`; the open menu surfaces the
+identity (email + sub when both present), token expiry as
+`YYYY-MM-DD HH:MM UTC` (or "no expiry"), and a Sign out menu item that
+calls back into the parent to clear `localStorage` + react-query cache and
+navigate to `/login`. Vitest coverage in
+`frontend/src/components/ProfileDropdown.test.tsx`. A "Refresh token"
+action is intentionally deferred — the `/api/auth/refresh` endpoint does
+not exist yet; revisit when the auth adapter grows refresh support.
 
 ### 12. Project archive (soft-delete)
 

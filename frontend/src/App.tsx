@@ -8,7 +8,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import { api, getAuthToken, setAuthToken } from "./api/client";
-import { decodeJwtSub } from "./lib/jwtClaims";
+import { ProfileDropdown } from "./components/ProfileDropdown";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
@@ -142,22 +142,16 @@ function AuthBadge() {
         </Link>
       );
     }
-    const sub = decodeJwtSub(token) ?? "user";
     return (
-      <span className="ml-auto flex items-center gap-2 text-xs text-slate-600">
-        <span className="rounded bg-slate-100 px-2 py-0.5 font-mono">{sub}</span>
-        <button
-          onClick={() => {
-            setAuthToken(null);
-            setToken(null);
-            queryClient.clear();
-            navigate("/login");
-          }}
-          className="text-slate-500 hover:underline"
-        >
-          Sign out
-        </button>
-      </span>
+      <ProfileDropdown
+        token={token}
+        onSignOut={() => {
+          setAuthToken(null);
+          setToken(null);
+          queryClient.clear();
+          navigate("/login");
+        }}
+      />
     );
   }
   return null;
