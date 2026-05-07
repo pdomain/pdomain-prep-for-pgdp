@@ -15,6 +15,7 @@ from ..adapters.database import IDatabase
 from ..adapters.gpu import GPUBackend
 from ..adapters.storage import IStorage
 from ..dispatcher import IDispatcher
+from ..settings import Settings
 
 _security = HTTPBearer(auto_error=False)
 
@@ -41,6 +42,12 @@ def get_dispatcher(request: Request) -> IDispatcher:
 
 def get_job_events(request: Request):  # type: ignore[no-untyped-def]
     return request.app.state.job_events
+
+
+def get_settings(request: Request) -> Settings:
+    """Read-only access to the Settings instance for routes that need
+    `data_root` (the on-disk artifact root) — e.g. the per-page stage runner."""
+    return request.app.state.settings  # type: ignore[no-any-return]
 
 
 async def get_user(

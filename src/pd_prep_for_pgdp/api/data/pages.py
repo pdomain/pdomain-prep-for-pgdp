@@ -13,6 +13,7 @@ from ...adapters.database import IDatabase
 from ...adapters.gpu.cpu import load_words_from_storage, words_key_for
 from ...adapters.storage import IStorage
 from ...core.models import (
+    PAGE_STAGE_IDS,
     AlignmentOverride,
     IllustrationRegion,
     OcrWord,
@@ -24,7 +25,14 @@ from ...core.models import (
     PageType,
 )
 from ...core.pipeline.stage_dag import topological_order
-from ..dependencies import get_database, get_storage, get_user
+from ...core.pipeline.stage_runner import (
+    StageDependenciesNotMet,
+    StageOutputUnsupported,
+    StageRunFailed,
+    run_stage,
+)
+from ...settings import Settings
+from ..dependencies import get_database, get_settings, get_storage, get_user
 
 log = logging.getLogger(__name__)
 
@@ -458,3 +466,76 @@ async def list_page_stages(
         if row is not None:
             ordered.append(row)
     return ordered
+
+
+# ─── Per-page DAG: run a stage (M2 Slice 4) ────────────────────────────────
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/run",
+    response_model=PageStageState,
+    operation_id="run_page_stage",
+)
+async def run_page_stage(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> PageStageState:
+    """Run one stage on one page synchronously and return the new row.
+
+    Spec: `docs/specs/pipeline-task-model.md` §"Per-page stage runner"
+    + §"API surface". Slice 4 ships the synchronous path for the simple
+    image-processing stages (grayscale/threshold/invert today; more land
+    stage-by-stage). When slow stages (`ocr`, `extract_illustrations`)
+    get wired, this route gains an optional `?async=true` that returns a
+    Job id instead — the chip rail will poll the job's status.
+
+    Status codes:
+
+    - 200: stage ran cleanly; body is the freshly-committed PageStageState.
+    - 404: project not found, page not found, or cross-user access (the
+      404-not-403 pattern matches the list endpoint and avoids leaking
+      project existence).
+    - 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).
+    - 409 Conflict: the stage's `depends_on` rows aren't all `clean`.
+      Body names the missing parents so the UI can prompt the user to
+      run them first.
+    - 501 Not Implemented: the stage emits a compound output (`ocr`,
+      `extract_illustrations`, `text_review`) and the multi-artifact
+      writer hasn't shipped yet. Body has a clear "queued for a future
+      slice" message.
+    - 500: the registered stage impl raised, OR the dual-write commit
+      failed. The page_stages row is already marked `failed` with the
+      error_message — the chip rail's next refresh will show the
+      failure inline.
+    """
+    if stage_id not in PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    try:
+        return await run_stage(
+            data_root=settings.data_root,
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+        )
+    except StageDependenciesNotMet as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except StageOutputUnsupported as exc:
+        raise HTTPException(501, str(exc)) from exc
+    except StageRunFailed as exc:
+        # Q9 fail-loud: the row is already marked `failed` with
+        # error_message; raise 500 so the API contract is honest.
+        raise HTTPException(500, str(exc)) from exc

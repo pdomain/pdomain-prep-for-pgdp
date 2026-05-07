@@ -296,6 +296,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Page Stage
+         * @description Run one stage on one page synchronously and return the new row.
+         *
+         *     Spec: `docs/specs/pipeline-task-model.md` §"Per-page stage runner"
+         *     + §"API surface". Slice 4 ships the synchronous path for the simple
+         *     image-processing stages (grayscale/threshold/invert today; more land
+         *     stage-by-stage). When slow stages (`ocr`, `extract_illustrations`)
+         *     get wired, this route gains an optional `?async=true` that returns a
+         *     Job id instead — the chip rail will poll the job's status.
+         *
+         *     Status codes:
+         *
+         *     - 200: stage ran cleanly; body is the freshly-committed PageStageState.
+         *     - 404: project not found, page not found, or cross-user access (the
+         *       404-not-403 pattern matches the list endpoint and avoids leaking
+         *       project existence).
+         *     - 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).
+         *     - 409 Conflict: the stage's `depends_on` rows aren't all `clean`.
+         *       Body names the missing parents so the UI can prompt the user to
+         *       run them first.
+         *     - 501 Not Implemented: the stage emits a compound output (`ocr`,
+         *       `extract_illustrations`, `text_review`) and the multi-artifact
+         *       writer hasn't shipped yet. Body has a clear "queued for a future
+         *       slice" message.
+         *     - 500: the registered stage impl raised, OR the dual-write commit
+         *       failed. The page_stages row is already marked `failed` with the
+         *       error_message — the chip rail's next refresh will show the
+         *       failure inline.
+         */
+        post: operations["run_page_stage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/system/defaults": {
         parameters: {
             query?: never;
@@ -2333,6 +2379,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageStageState"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_page_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageStageState"];
                 };
             };
             /** @description Validation Error */

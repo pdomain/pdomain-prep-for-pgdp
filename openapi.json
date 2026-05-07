@@ -998,6 +998,72 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/run": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Run Page Stage",
+        "description": "Run one stage on one page synchronously and return the new row.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"Per-page stage runner\"\n+ \u00a7\"API surface\". Slice 4 ships the synchronous path for the simple\nimage-processing stages (grayscale/threshold/invert today; more land\nstage-by-stage). When slow stages (`ocr`, `extract_illustrations`)\nget wired, this route gains an optional `?async=true` that returns a\nJob id instead \u2014 the chip rail will poll the job's status.\n\nStatus codes:\n\n- 200: stage ran cleanly; body is the freshly-committed PageStageState.\n- 404: project not found, page not found, or cross-user access (the\n  404-not-403 pattern matches the list endpoint and avoids leaking\n  project existence).\n- 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).\n- 409 Conflict: the stage's `depends_on` rows aren't all `clean`.\n  Body names the missing parents so the UI can prompt the user to\n  run them first.\n- 501 Not Implemented: the stage emits a compound output (`ocr`,\n  `extract_illustrations`, `text_review`) and the multi-artifact\n  writer hasn't shipped yet. Body has a clear \"queued for a future\n  slice\" message.\n- 500: the registered stage impl raised, OR the dual-write commit\n  failed. The page_stages row is already marked `failed` with the\n  error_message \u2014 the chip rail's next refresh will show the\n  failure inline.",
+        "operationId": "run_page_stage",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageStageState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/system/defaults": {
       "get": {
         "tags": [
