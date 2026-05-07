@@ -58,9 +58,7 @@ vi.mock("react-konva", () => {
       // Build the fake Konva event lazily on each callback so the
       // ref captures the current container element. The container is
       // the stage div itself; tests stub its `getBoundingClientRect`.
-      const wrap = (
-        cb: ((e: FakeKonvaEvent) => void) | undefined,
-      ) =>
+      const wrap = (cb: ((e: FakeKonvaEvent) => void) | undefined) =>
         cb
           ? (e: ReactMouseEvent<HTMLDivElement>) => {
               const container = e.currentTarget;
@@ -167,7 +165,10 @@ describe("WordBboxOverlay", () => {
 
   it("renders nothing when natural image dimensions are zero", () => {
     const words: OcrWord[] = [
-      makeWord({ id: "w0", bounding_box: { left: 0, top: 0, width: 5, height: 5 } }),
+      makeWord({
+        id: "w0",
+        bounding_box: { left: 0, top: 0, width: 5, height: 5 },
+      }),
     ];
     const { container } = render(
       <WordBboxOverlay

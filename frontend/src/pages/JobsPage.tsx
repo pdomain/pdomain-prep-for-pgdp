@@ -52,8 +52,9 @@ export function JobsPage() {
   });
 
   const isRetryable = (s: string) => s === "error" || s === "cancelled";
-  const liveCount = (jobs.data ?? []).filter((j) => isLiveStatus(j.status))
-    .length;
+  const liveCount = (jobs.data ?? []).filter((j) =>
+    isLiveStatus(j.status),
+  ).length;
 
   return (
     <section className="space-y-4">
@@ -96,9 +97,7 @@ export function JobsPage() {
 
       {jobs.isLoading && <p className="text-slate-500">Loading…</p>}
       {jobs.error && (
-        <p className="text-red-600">
-          Error: {(jobs.error as Error).message}
-        </p>
+        <p className="text-red-600">Error: {(jobs.error as Error).message}</p>
       )}
 
       {jobs.data && jobs.data.length === 0 && (

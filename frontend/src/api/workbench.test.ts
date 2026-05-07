@@ -104,7 +104,11 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
 
 describe("api.post against /api/gpu/process-page (msw)", () => {
   it("sends ProcessPageRequest body and returns parsed ProcessPageResponse", async () => {
-    const seenRequests: { body: unknown; method: string; contentType: string | null }[] = [];
+    const seenRequests: {
+      body: unknown;
+      method: string;
+      contentType: string | null;
+    }[] = [];
 
     server.use(
       http.post("/api/gpu/process-page", async ({ request }) => {
@@ -304,21 +308,19 @@ describe("workbench drag-create PATCH /api/data/projects/{id}/pages/{idx0} (msw)
 
   it("surfaces 422 when the workbench commits an invalid split (e.g. R<=L)", async () => {
     server.use(
-      http.patch(
-        "/api/data/projects/prj_abc123/pages/4",
-        () =>
-          HttpResponse.json(
-            {
-              detail: [
-                {
-                  loc: ["body", "splits", 0, "R"],
-                  msg: "R must be greater than L",
-                  type: "value_error",
-                },
-              ],
-            },
-            { status: 422 },
-          ),
+      http.patch("/api/data/projects/prj_abc123/pages/4", () =>
+        HttpResponse.json(
+          {
+            detail: [
+              {
+                loc: ["body", "splits", 0, "R"],
+                msg: "R must be greater than L",
+                type: "value_error",
+              },
+            ],
+          },
+          { status: 422 },
+        ),
       ),
     );
 

@@ -110,8 +110,12 @@ export function buildWordOffsetIndex(
   }
 
   const sorted = ranges
-    .map((r, wordIndex) => (r ? { start: r.start, end: r.end, wordIndex } : null))
-    .filter((x): x is { start: number; end: number; wordIndex: number } => x !== null)
+    .map((r, wordIndex) =>
+      r ? { start: r.start, end: r.end, wordIndex } : null,
+    )
+    .filter(
+      (x): x is { start: number; end: number; wordIndex: number } => x !== null,
+    )
     .sort((a, b) => a.start - b.start || a.end - b.end);
 
   return { text, words, ranges, sorted };
@@ -154,7 +158,8 @@ export function offsetToWord(
     const r = arr[mid];
     if (offset < r.start) hi = mid - 1;
     else if (offset >= r.end) lo = mid + 1;
-    else return { wordIndex: r.wordIndex, range: { start: r.start, end: r.end } };
+    else
+      return { wordIndex: r.wordIndex, range: { start: r.start, end: r.end } };
   }
   return null;
 }

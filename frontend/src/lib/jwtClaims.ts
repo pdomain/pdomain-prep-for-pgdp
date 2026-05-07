@@ -25,7 +25,11 @@ export function decodeJwtClaims(token: string): Record<string, unknown> | null {
     const standard = payload.replace(/-/g, "+").replace(/_/g, "/");
     const decoded = atob(standard);
     const claims = JSON.parse(decoded);
-    if (claims === null || typeof claims !== "object" || Array.isArray(claims)) {
+    if (
+      claims === null ||
+      typeof claims !== "object" ||
+      Array.isArray(claims)
+    ) {
       return null;
     }
     return claims as Record<string, unknown>;

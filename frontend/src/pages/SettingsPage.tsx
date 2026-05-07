@@ -91,7 +91,8 @@ export function SettingsPage() {
       <header>
         <h1 className="text-xl font-semibold">Settings</h1>
         <p className="text-sm text-slate-500">
-          Defaults applied to every project unless overridden per book or per page.
+          Defaults applied to every project unless overridden per book or per
+          page.
         </p>
       </header>
 
@@ -178,7 +179,8 @@ export function SettingsPage() {
       <FieldSet title="Text post-processing">
         <label className="block text-sm">
           <span className="text-slate-700">
-            Standard scannos (one per line, <code>word</code> TAB <code>replacement</code>)
+            Standard scannos (one per line, <code>word</code> TAB{" "}
+            <code>replacement</code>)
           </span>
           <textarea
             value={scannosText}
@@ -217,16 +219,18 @@ export function SettingsPage() {
         >
           Export
         </a>
-        <ImportButton onImported={(d) => {
-          setDraft(d);
-          setScannosText(
-            Object.entries(d.standard_scannos)
-              .map(([k, v]) => `${k}\t${v}`)
-              .join("\n"),
-          );
-          setHyphenText(d.hyphenation_join_list.join("\n"));
-          queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
-        }} />
+        <ImportButton
+          onImported={(d) => {
+            setDraft(d);
+            setScannosText(
+              Object.entries(d.standard_scannos)
+                .map(([k, v]) => `${k}\t${v}`)
+                .join("\n"),
+            );
+            setHyphenText(d.hyphenation_join_list.join("\n"));
+            queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
+          }}
+        />
         <button
           onClick={() => {
             if (confirm("Reset all system defaults to the spec defaults?"))

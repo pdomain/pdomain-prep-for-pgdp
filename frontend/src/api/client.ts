@@ -32,7 +32,11 @@ type FetchOpts = Omit<RequestInit, "body"> & {
   query?: Record<string, string | number | boolean | undefined | null>;
 };
 
-async function request<T>(method: string, path: string, opts: FetchOpts = {}): Promise<T> {
+async function request<T>(
+  method: string,
+  path: string,
+  opts: FetchOpts = {},
+): Promise<T> {
   let url = `${API_BASE}${path}`;
   if (opts.query) {
     const search = new URLSearchParams();
@@ -61,7 +65,10 @@ async function request<T>(method: string, path: string, opts: FetchOpts = {}): P
     } catch {
       /* leave as text */
     }
-    throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, detail });
+    throw Object.assign(new Error(`HTTP ${res.status}`), {
+      status: res.status,
+      detail,
+    });
   }
   if (res.status === 204) return undefined as unknown as T;
   return (await res.json()) as T;
@@ -75,5 +82,6 @@ export const api = {
     request<T>("PUT", path, { ...opts, body }),
   patch: <T>(path: string, body?: unknown, opts?: FetchOpts) =>
     request<T>("PATCH", path, { ...opts, body }),
-  delete: <T>(path: string, opts?: FetchOpts) => request<T>("DELETE", path, opts),
+  delete: <T>(path: string, opts?: FetchOpts) =>
+    request<T>("DELETE", path, opts),
 };

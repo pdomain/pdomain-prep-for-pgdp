@@ -125,7 +125,9 @@ describe("ProjectListPage create-project flow", () => {
     renderWithProviders(<ProjectListPage />);
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /new project/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
 
     await user.type(
       screen.getByPlaceholderText(/Belloc/i),

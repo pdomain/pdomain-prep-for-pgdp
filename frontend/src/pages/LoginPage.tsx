@@ -77,7 +77,9 @@ export function LoginPage() {
       {error ? (
         <p className="text-sm text-rose-600">{error}</p>
       ) : (
-        <p className="text-sm text-slate-500">Redirecting to your identity provider…</p>
+        <p className="text-sm text-slate-500">
+          Redirecting to your identity provider…
+        </p>
       )}
     </section>
   );
@@ -124,7 +126,8 @@ async function exchangeCode(
   });
   if (!r.ok) throw new Error(`token exchange failed: HTTP ${r.status}`);
   const data = await r.json();
-  if (!data.access_token) throw new Error("token response missing access_token");
+  if (!data.access_token)
+    throw new Error("token response missing access_token");
   return data.access_token as string;
 }
 

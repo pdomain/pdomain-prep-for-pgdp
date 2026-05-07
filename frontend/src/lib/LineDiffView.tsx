@@ -109,7 +109,9 @@ function Column({
                 <span className="w-8 select-none text-right text-slate-300">
                   &nbsp;
                 </span>
-                <span className="ml-2 whitespace-pre text-slate-300">&nbsp;</span>
+                <span className="ml-2 whitespace-pre text-slate-300">
+                  &nbsp;
+                </span>
               </div>
             );
           }

@@ -20,13 +20,14 @@ type Project = components["schemas"]["Project"];
 type ProjectConfig = components["schemas"]["ProjectConfig"];
 type UpdatePageRequest = components["schemas"]["UpdatePageRequest"];
 
-const PAGE_TYPE_BADGE: Record<PageType, { label: string; cls: string } | null> = {
-  normal: null,
-  blank: { label: "BLANK", cls: "bg-amber-100 text-amber-900" },
-  plate_b: { label: "PLATE-B", cls: "bg-purple-100 text-purple-900" },
-  plate_p: { label: "PLATE-P", cls: "bg-pink-100 text-pink-900" },
-  plate_r: { label: "PLATE-R", cls: "bg-rose-100 text-rose-900" },
-};
+const PAGE_TYPE_BADGE: Record<PageType, { label: string; cls: string } | null> =
+  {
+    normal: null,
+    blank: { label: "BLANK", cls: "bg-amber-100 text-amber-900" },
+    plate_b: { label: "PLATE-B", cls: "bg-purple-100 text-purple-900" },
+    plate_p: { label: "PLATE-P", cls: "bg-pink-100 text-pink-900" },
+    plate_r: { label: "PLATE-R", cls: "bg-rose-100 text-rose-900" },
+  };
 
 const ALIGNMENT_BADGE: Record<
   AlignmentOverride,
@@ -74,8 +75,7 @@ export function ProjectConfigurePage() {
     () => (pages.data?.pages ?? []).flatMap((p) => p.pages),
     [pages.data],
   );
-  const total =
-    pages.data?.pages?.[0]?.total ?? allPages.length;
+  const total = pages.data?.pages?.[0]?.total ?? allPages.length;
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // Lifted from JobProgressInline: while a batch_process_pages job is
@@ -414,10 +414,7 @@ function BulkActions({
       const idxs = Array.from(selected);
       await Promise.all(
         idxs.map((idx0) =>
-          api.patch(
-            `/api/data/projects/${projectId}/pages/${idx0}`,
-            patch,
-          ),
+          api.patch(`/api/data/projects/${projectId}/pages/${idx0}`, patch),
         ),
       );
     },
@@ -435,7 +432,9 @@ function BulkActions({
         page_idxs: Array.from(selected),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["jobs", "project", projectId] });
+      queryClient.invalidateQueries({
+        queryKey: ["jobs", "project", projectId],
+      });
       onClear();
     },
   });
@@ -497,7 +496,10 @@ function PageGrid({
   activePageIdx0: number | null;
   onToggle: (idx0: number) => void;
 }) {
-  const sorted = useMemo(() => [...pages].sort((a, b) => a.idx0 - b.idx0), [pages]);
+  const sorted = useMemo(
+    () => [...pages].sort((a, b) => a.idx0 - b.idx0),
+    [pages],
+  );
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
       {sorted.map((p) => {
@@ -548,16 +550,12 @@ function PageGrid({
               </div>
               <div className="flex flex-wrap gap-1">
                 {ptBadge && (
-                  <span
-                    className={`rounded px-1 text-[10px] ${ptBadge.cls}`}
-                  >
+                  <span className={`rounded px-1 text-[10px] ${ptBadge.cls}`}>
                     {ptBadge.label}
                   </span>
                 )}
                 {alBadge && (
-                  <span
-                    className={`rounded px-1 text-[10px] ${alBadge.cls}`}
-                  >
+                  <span className={`rounded px-1 text-[10px] ${alBadge.cls}`}>
                     {alBadge.label}
                   </span>
                 )}
@@ -620,7 +618,8 @@ const STEPS: { type: JobType; label: string; subtitle: string }[] = [
   {
     type: "batch_process_pages",
     label: "Step 4 — Process pages",
-    subtitle: "Auto-deskew, threshold, edge-find, rescale all proof-range pages.",
+    subtitle:
+      "Auto-deskew, threshold, edge-find, rescale all proof-range pages.",
   },
   {
     type: "batch_extract_illustrations",

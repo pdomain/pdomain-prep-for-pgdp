@@ -123,10 +123,9 @@ describe("api.get against /api/data/projects/{id}/pages (msw)", () => {
       }),
     );
 
-    await api.get<ListPagesResponse>(
-      "/api/data/projects/prj_abc123/pages",
-      { query: { limit: 50, page_type: undefined, cursor: null } },
-    );
+    await api.get<ListPagesResponse>("/api/data/projects/prj_abc123/pages", {
+      query: { limit: 50, page_type: undefined, cursor: null },
+    });
 
     expect(seenUrl).not.toBeNull();
     expect(seenUrl as unknown as string).toContain("limit=50");
@@ -170,38 +169,31 @@ describe("api.patch against /api/data/projects/{id}/pages/{idx0} (msw)", () => {
   it("attaches the bearer token from localStorage when present", async () => {
     let seenAuth: string | null = null;
     server.use(
-      http.patch(
-        "/api/data/projects/prj_abc123/pages/0",
-        ({ request }) => {
-          seenAuth = request.headers.get("Authorization");
-          return HttpResponse.json(makePage());
-        },
-      ),
+      http.patch("/api/data/projects/prj_abc123/pages/0", ({ request }) => {
+        seenAuth = request.headers.get("Authorization");
+        return HttpResponse.json(makePage());
+      }),
     );
 
     setAuthToken("page-tag-token");
-    await api.patch<PageRecord>(
-      "/api/data/projects/prj_abc123/pages/0",
-      { page_type: "normal" } satisfies UpdatePageRequest,
-    );
+    await api.patch<PageRecord>("/api/data/projects/prj_abc123/pages/0", {
+      page_type: "normal",
+    } satisfies UpdatePageRequest);
 
     expect(seenAuth).toBe("Bearer page-tag-token");
   });
 
   it("throws an Error with status + detail when the page is missing", async () => {
     server.use(
-      http.patch(
-        "/api/data/projects/prj_abc123/pages/9999",
-        () =>
-          HttpResponse.json({ detail: "page not found" }, { status: 404 }),
+      http.patch("/api/data/projects/prj_abc123/pages/9999", () =>
+        HttpResponse.json({ detail: "page not found" }, { status: 404 }),
       ),
     );
 
     await expect(
-      api.patch<PageRecord>(
-        "/api/data/projects/prj_abc123/pages/9999",
-        { page_type: "blank" } satisfies UpdatePageRequest,
-      ),
+      api.patch<PageRecord>("/api/data/projects/prj_abc123/pages/9999", {
+        page_type: "blank",
+      } satisfies UpdatePageRequest),
     ).rejects.toMatchObject({
       message: "HTTP 404",
       status: 404,
@@ -211,21 +203,19 @@ describe("api.patch against /api/data/projects/{id}/pages/{idx0} (msw)", () => {
 
   it("surfaces 422 validation errors with the FastAPI detail array", async () => {
     server.use(
-      http.patch(
-        "/api/data/projects/prj_abc123/pages/0",
-        () =>
-          HttpResponse.json(
-            {
-              detail: [
-                {
-                  loc: ["body", "page_type"],
-                  msg: "value is not a valid enumeration member",
-                  type: "type_error.enum",
-                },
-              ],
-            },
-            { status: 422 },
-          ),
+      http.patch("/api/data/projects/prj_abc123/pages/0", () =>
+        HttpResponse.json(
+          {
+            detail: [
+              {
+                loc: ["body", "page_type"],
+                msg: "value is not a valid enumeration member",
+                type: "type_error.enum",
+              },
+            ],
+          },
+          { status: 422 },
+        ),
       ),
     );
 

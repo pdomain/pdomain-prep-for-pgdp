@@ -31,17 +31,14 @@ function renderWithProviders(ui: ReactElement) {
 describe("SourcePreview", () => {
   it("renders filenames and an <img> per entry once the preview loads", async () => {
     server.use(
-      http.get(
-        "/api/data/projects/prj_abc/source-preview",
-        ({ request }) => {
-          const url = new URL(request.url);
-          expect(url.searchParams.get("limit")).toBe("10");
-          return HttpResponse.json({
-            filenames: ["0001.jpg", "0002.jpg", "0003.jpg"],
-            total_image_count: 42,
-          });
-        },
-      ),
+      http.get("/api/data/projects/prj_abc/source-preview", ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get("limit")).toBe("10");
+        return HttpResponse.json({
+          filenames: ["0001.jpg", "0002.jpg", "0003.jpg"],
+          total_image_count: 42,
+        });
+      }),
     );
 
     renderWithProviders(<SourcePreview projectId="prj_abc" />);
@@ -73,13 +70,11 @@ describe("SourcePreview", () => {
 
   it("URL-encodes filenames with special characters in the thumbnail src", async () => {
     server.use(
-      http.get(
-        "/api/data/projects/prj_xyz/source-preview",
-        () =>
-          HttpResponse.json({
-            filenames: ["sub dir/page 01.jpg"],
-            total_image_count: 1,
-          }),
+      http.get("/api/data/projects/prj_xyz/source-preview", () =>
+        HttpResponse.json({
+          filenames: ["sub dir/page 01.jpg"],
+          total_image_count: 1,
+        }),
       ),
     );
 
@@ -99,10 +94,13 @@ describe("SourcePreview", () => {
       http.get(
         "/api/data/projects/prj_404/source-preview",
         () =>
-          new HttpResponse(JSON.stringify({ detail: "source zip not uploaded" }), {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          }),
+          new HttpResponse(
+            JSON.stringify({ detail: "source zip not uploaded" }),
+            {
+              status: 404,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
       ),
     );
 
@@ -119,13 +117,10 @@ describe("SourcePreview", () => {
     // No handler registered for this projectId, so the fetch hangs in msw.
     // The component should render its placeholder shimmer.
     server.use(
-      http.get(
-        "/api/data/projects/prj_loading/source-preview",
-        async () => {
-          await new Promise((resolve) => setTimeout(resolve, 5_000));
-          return HttpResponse.json({ filenames: [], total_image_count: 0 });
-        },
-      ),
+      http.get("/api/data/projects/prj_loading/source-preview", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        return HttpResponse.json({ filenames: [], total_image_count: 0 });
+      }),
     );
 
     renderWithProviders(<SourcePreview projectId="prj_loading" />);

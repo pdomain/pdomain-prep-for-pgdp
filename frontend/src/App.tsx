@@ -45,7 +45,10 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<ProjectListPage />} />
           <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/projects/:projectId" element={<ProjectConfigurePage />} />
+          <Route
+            path="/projects/:projectId"
+            element={<ProjectConfigurePage />}
+          />
           <Route
             path="/projects/:projectId/pages/:idx0"
             element={<PageWorkbenchPage />}
@@ -124,7 +127,9 @@ function AuthBadge() {
   if (env.AUTH_MODE === "none") return null;
   if (env.AUTH_MODE === "apikey") {
     if (!me.data) {
-      return <span className="ml-auto text-xs text-slate-400">apikey mode</span>;
+      return (
+        <span className="ml-auto text-xs text-slate-400">apikey mode</span>
+      );
     }
     return (
       <span className="ml-auto flex items-center gap-2 text-xs text-slate-600">
@@ -137,7 +142,10 @@ function AuthBadge() {
   if (env.AUTH_MODE === "jwt") {
     if (!token) {
       return (
-        <Link to="/login" className="ml-auto text-xs text-slate-600 hover:underline">
+        <Link
+          to="/login"
+          className="ml-auto text-xs text-slate-600 hover:underline"
+        >
           Sign in
         </Link>
       );

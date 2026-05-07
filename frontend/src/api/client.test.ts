@@ -158,10 +158,7 @@ describe("api.post against /api/data/projects (msw)", () => {
   it("throws an Error with status + detail when the server returns a JSON error", async () => {
     server.use(
       http.post("/api/data/projects", () =>
-        HttpResponse.json(
-          { detail: "name already taken" },
-          { status: 409 },
-        ),
+        HttpResponse.json({ detail: "name already taken" }, { status: 409 }),
       ),
     );
 

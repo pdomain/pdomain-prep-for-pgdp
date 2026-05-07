@@ -74,10 +74,7 @@ function renderAtRoute(ui: ReactElement, initialPath: string) {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
-          <Route
-            path="/projects/:projectId/pages/:idx0/review"
-            element={ui}
-          />
+          <Route path="/projects/:projectId/pages/:idx0/review" element={ui} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -132,26 +129,22 @@ describe("TextReviewPage save lifecycle", () => {
 
     server.use(
       // Page metadata.
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
       ),
       // Page text — empty splitSuffix maps to the literal "_" sentinel
       // in the route (see TextReviewPage.tsx:60).
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "first line\nsecond line\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [],
-          }),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "first line\nsecond line\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [],
+        }),
       ),
       // Save endpoint — assertion target.
       http.patch(
@@ -171,9 +164,11 @@ describe("TextReviewPage save lifecycle", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     // Wait for text$ to populate the textarea.
-    const textarea = (await screen.findByPlaceholderText(/Loading/i, {
-      // Placeholder briefly visible until text$ resolves.
-    }).catch(() => null)) as HTMLTextAreaElement | null;
+    const textarea = (await screen
+      .findByPlaceholderText(/Loading/i, {
+        // Placeholder briefly visible until text$ resolves.
+      })
+      .catch(() => null)) as HTMLTextAreaElement | null;
     void textarea; // placeholder may already be replaced; just need the next assertion
 
     // The textarea is the single <textarea> on the page. Wait until
@@ -225,43 +220,36 @@ describe("TextReviewPage save lifecycle", () => {
     const ocrCalls: { url: string; body: unknown }[] = [];
 
     server.use(
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
-      ),
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "alpha\nbeta\ngamma\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [],
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
           }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha\nbeta\ngamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [],
+        }),
       ),
       // Re-OCR endpoint — returns a payload with a deliberate single-
       // line edit ("beta" -> "BETA") so the resulting diff is
       // guaranteed to have at least one delete row and one insert row
       // (the LCS keeps "alpha" / "gamma" as `equal`).
-      http.post(
-        "/api/gpu/run-ocr-page",
-        async ({ request }) => {
-          ocrCalls.push({
-            url: request.url,
-            body: await request.json(),
-          });
-          return HttpResponse.json({
-            text: "alpha\nBETA\ngamma\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [],
-          });
-        },
-      ),
+      http.post("/api/gpu/run-ocr-page", async ({ request }) => {
+        ocrCalls.push({
+          url: request.url,
+          body: await request.json(),
+        });
+        return HttpResponse.json({
+          text: "alpha\nBETA\ngamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [],
+        });
+      }),
     );
 
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
@@ -378,28 +366,24 @@ describe("TextReviewPage §9a delete-words flow", () => {
     const deleteCalls: { url: string; body: unknown }[] = [];
 
     server.use(
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
-      ),
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "alpha beta gamma\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [
-              makeWordRow("w_alpha", 0),
-              makeWordRow("w_beta", 60),
-              makeWordRow("w_gamma", 120),
-            ],
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
           }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta gamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [
+            makeWordRow("w_alpha", 0),
+            makeWordRow("w_beta", 60),
+            makeWordRow("w_gamma", 120),
+          ],
+        }),
       ),
       http.delete(
         "/api/data/projects/:projectId/pages/:idx0/words",
@@ -472,28 +456,24 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
   it("clears selection when Escape is pressed", async () => {
     server.use(
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
-      ),
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "alpha beta gamma\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [
-              makeWordRow("w_alpha", 0),
-              makeWordRow("w_beta", 60),
-              makeWordRow("w_gamma", 120),
-            ],
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
           }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta gamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [
+            makeWordRow("w_alpha", 0),
+            makeWordRow("w_beta", 60),
+            makeWordRow("w_gamma", 120),
+          ],
+        }),
       ),
     );
 
@@ -537,28 +517,24 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
   it("clears selection when the Clear selection button is clicked", async () => {
     server.use(
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
-      ),
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "alpha beta gamma\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [
-              makeWordRow("w_alpha", 0),
-              makeWordRow("w_beta", 60),
-              makeWordRow("w_gamma", 120),
-            ],
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
           }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta gamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [
+            makeWordRow("w_alpha", 0),
+            makeWordRow("w_beta", 60),
+            makeWordRow("w_gamma", 120),
+          ],
+        }),
       ),
     );
 
@@ -598,24 +574,20 @@ describe("TextReviewPage §9a delete-words flow", () => {
     const deleteCalls: { body: unknown }[] = [];
 
     server.use(
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0",
-        ({ params }) =>
-          HttpResponse.json(
-            makePage({
-              project_id: String(params.projectId),
-              idx0: Number(params.idx0),
-            }),
-          ),
-      ),
-      http.get(
-        "/api/data/projects/:projectId/pages/:idx0/text/_",
-        () =>
-          HttpResponse.json({
-            text: "alpha beta\n",
-            text_key: "projects/prj_abc/text/0001.txt",
-            words: [makeWordRow("w_alpha", 0), makeWordRow("w_beta", 60)],
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
           }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [makeWordRow("w_alpha", 0), makeWordRow("w_beta", 60)],
+        }),
       ),
       http.delete(
         "/api/data/projects/:projectId/pages/:idx0/words",

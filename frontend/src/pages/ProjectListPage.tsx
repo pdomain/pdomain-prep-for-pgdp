@@ -48,7 +48,9 @@ export function ProjectListPage() {
         </ul>
       )}
 
-      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
+      {showCreate && (
+        <CreateProjectModal onClose={() => setShowCreate(false)} />
+      )}
     </section>
   );
 }

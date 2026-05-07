@@ -38,9 +38,7 @@ describe("ProfileDropdown", () => {
   it("falls back to sub when the JWT has no email claim", () => {
     const token = makeJwt({ sub: "u-456" });
     render(<ProfileDropdown token={token} onSignOut={() => {}} />);
-    expect(
-      screen.getByRole("button", { name: /u-456/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /u-456/ })).toBeInTheDocument();
   });
 
   it("opens a menu showing email, sub, expiry, and sign-out", async () => {

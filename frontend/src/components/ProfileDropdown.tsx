@@ -11,11 +11,7 @@
  * roadmap §13a; this component should swap to `<DropdownMenu>` then.
  */
 import { useEffect, useRef, useState } from "react";
-import {
-  decodeJwtEmail,
-  decodeJwtExp,
-  decodeJwtSub,
-} from "../lib/jwtClaims";
+import { decodeJwtEmail, decodeJwtExp, decodeJwtSub } from "../lib/jwtClaims";
 
 interface Props {
   token: string;
@@ -80,9 +76,7 @@ export function ProfileDropdown({ token, onSignOut }: Props) {
             {email && sub && (
               <div className="text-slate-500 font-mono">{sub}</div>
             )}
-            <div className="mt-1 text-slate-500">
-              Expires: {formatExp(exp)}
-            </div>
+            <div className="mt-1 text-slate-500">Expires: {formatExp(exp)}</div>
           </div>
           <button
             type="button"

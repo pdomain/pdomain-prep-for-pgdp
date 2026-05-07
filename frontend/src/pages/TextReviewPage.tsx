@@ -201,11 +201,7 @@ export function TextReviewPage() {
       const target = ev.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
-        if (
-          tag === "TEXTAREA" ||
-          tag === "INPUT" ||
-          target.isContentEditable
-        ) {
+        if (tag === "TEXTAREA" || tag === "INPUT" || target.isContentEditable) {
           return;
         }
       }
@@ -271,7 +267,10 @@ export function TextReviewPage() {
   if (page.isLoading) return <p className="text-slate-500">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
-  const splits = page.data.splits as Array<{ suffix: string; reading_order: number }>;
+  const splits = page.data.splits as Array<{
+    suffix: string;
+    reading_order: number;
+  }>;
   const imageKey = page.data.processed_image_key || page.data.thumbnail_key;
 
   const handleTextareaSelect = () => {
@@ -468,9 +467,7 @@ export function TextReviewPage() {
               {reocr.isPending ? "Re-OCR…" : "Re-OCR this page"}
             </button>
             <button
-              onClick={() =>
-                deleteWords.mutate(Array.from(selectedWordIds))
-              }
+              onClick={() => deleteWords.mutate(Array.from(selectedWordIds))}
               disabled={selectedWordIds.size === 0 || deleteWords.isPending}
               className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent"
               title="Delete the words highlighted in red on the source image"

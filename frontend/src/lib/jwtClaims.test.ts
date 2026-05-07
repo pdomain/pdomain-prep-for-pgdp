@@ -41,7 +41,11 @@ function makeToken(claims: Record<string, unknown>): string {
 
 describe("decodeJwtClaims", () => {
   it("returns the parsed claims for a well-formed token", () => {
-    const t = makeToken({ sub: "alice", email: "a@example.com", exp: 1717_000_000 });
+    const t = makeToken({
+      sub: "alice",
+      email: "a@example.com",
+      exp: 1717_000_000,
+    });
     expect(decodeJwtClaims(t)).toEqual({
       sub: "alice",
       email: "a@example.com",
@@ -55,7 +59,9 @@ describe("decodeJwtClaims", () => {
     const t = makeToken({ sub: "subject?with?punctuation>>>" });
     const claims = decodeJwtClaims(t);
     expect(claims).not.toBeNull();
-    expect((claims as Record<string, unknown>).sub).toBe("subject?with?punctuation>>>");
+    expect((claims as Record<string, unknown>).sub).toBe(
+      "subject?with?punctuation>>>",
+    );
   });
 
   it.each([

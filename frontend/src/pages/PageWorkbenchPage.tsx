@@ -65,7 +65,13 @@ interface IllustrationRegion {
 
 type EditMode = "view" | "split" | "illustration";
 
-const PAGE_TYPES: PageType[] = ["normal", "blank", "plate_b", "plate_p", "plate_r"];
+const PAGE_TYPES: PageType[] = [
+  "normal",
+  "blank",
+  "plate_b",
+  "plate_p",
+  "plate_r",
+];
 const ALIGNMENTS: AlignmentOverride[] = ["default", "top", "center", "bottom"];
 
 export function PageWorkbenchPage() {
@@ -143,7 +149,12 @@ export function PageWorkbenchPage() {
   if (page.isLoading) return <p className="text-slate-500">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
-  const handleAddSplit = (rect: { L: number; R: number; T: number; B: number }) => {
+  const handleAddSplit = (rect: {
+    L: number;
+    R: number;
+    T: number;
+    B: number;
+  }) => {
     const splits = (page.data!.splits as PageSplit[]) ?? [];
     const next: PageSplit = {
       suffix: nextSplitSuffix(splits),
@@ -159,7 +170,12 @@ export function PageWorkbenchPage() {
     commitOverrides.mutate({ splits: [...splits, next] as any });
   };
 
-  const handleAddRegion = (rect: { L: number; R: number; T: number; B: number }) => {
+  const handleAddRegion = (rect: {
+    L: number;
+    R: number;
+    T: number;
+    B: number;
+  }) => {
     const regions =
       (page.data!.illustration_regions as IllustrationRegion[]) ?? [];
     const next: IllustrationRegion = {
@@ -343,9 +359,12 @@ function CanvasViewer({
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(
     null,
   );
-  const [dragRect, setDragRect] = useState<
-    { x: number; y: number; w: number; h: number } | null
-  >(null);
+  const [dragRect, setDragRect] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
 
   useEffect(() => {
@@ -391,9 +410,7 @@ function CanvasViewer({
 
   // Click-on-empty-stage clears the selection. The Transformer + the rects
   // themselves stop the click via stopPropagation.
-  const handleStageClick = (
-    e: Konva.KonvaEventObject<MouseEvent>,
-  ) => {
+  const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
     if (drawingEnabled) return;
     if (e.target === e.target.getStage()) setSelection(null);
   };
@@ -486,7 +503,10 @@ function CanvasViewer({
                         setSelection({ kind: "region", index: region.index });
                     }}
                     onDragEnd={(e) =>
-                      onUpdateRegion(region.index, rectFromNode(e.target, scale))
+                      onUpdateRegion(
+                        region.index,
+                        rectFromNode(e.target, scale),
+                      )
                     }
                     onTransformEnd={(e) => {
                       onUpdateRegion(
@@ -540,10 +560,7 @@ function CanvasViewer({
                     onUpdateSplit(split.suffix, rectFromNode(e.target, scale))
                   }
                   onTransformEnd={(e) => {
-                    onUpdateSplit(
-                      split.suffix,
-                      rectFromNode(e.target, scale),
-                    );
+                    onUpdateSplit(split.suffix, rectFromNode(e.target, scale));
                     const node = e.target;
                     const newW = node.width() * node.scaleX();
                     const newH = node.height() * node.scaleY();
@@ -690,7 +707,9 @@ function SplitsPanel({
               className="flex items-center justify-between py-1"
             >
               <span className="font-mono text-xs">
-                <span className="text-slate-500">order {s.reading_order}: </span>
+                <span className="text-slate-500">
+                  order {s.reading_order}:{" "}
+                </span>
                 {s.suffix}
                 <span className="ml-2 text-slate-400">
                   L{s.L ?? "·"} R{s.R ?? "·"} T{s.T ?? "·"} B{s.B ?? "·"}
@@ -881,7 +900,8 @@ function Toggle({
   value: boolean | null | undefined;
   onChange: (v: boolean | null) => void;
 }) {
-  const next = value === null || value === undefined ? true : value ? false : null;
+  const next =
+    value === null || value === undefined ? true : value ? false : null;
   return (
     <button
       type="button"
