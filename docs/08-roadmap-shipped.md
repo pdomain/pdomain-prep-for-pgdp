@@ -11,6 +11,47 @@ not re-paste roadmap prose here.
 
 ---
 
+## §13a step 1 — Radix Dialog adoption (ProjectListPage modal)
+
+First shadcn/ui adoption slice. Adds `@radix-ui/react-dialog` and a thin
+`frontend/src/components/ui/Dialog.tsx` wrapper exporting
+`Dialog` / `DialogContent` / `DialogTitle`. The `ProjectListPage`
+create-project modal — previously a hand-rolled `<div>` overlay with
+manual `useEffect` for scroll-lock, a manual `keydown` listener for
+Escape, a manual focusable-query-selector for initial focus, and an
+`onClick` stopPropagation pattern for click-outside — collapses to
+`<Dialog open onOpenChange><DialogContent><DialogTitle>…</DialogTitle>…`.
+Radix owns focus-trap, Escape-to-close, body scroll-lock (via
+`react-remove-scroll-bar`'s `data-scroll-locked` attribute + injected
+stylesheet), and overlay-click dismissal.
+
+The cba526e a11y test contract is preserved in spirit: the dialog is
+discoverable by `role="dialog"` with the DialogTitle wired as
+accessible name (Radix auto-`aria-labelledby` from internal context),
+modality enforced by focus-trap (Radix v1.1+ deliberately omits
+`aria-modal="true"` because the focus trap satisfies the WAI-ARIA
+modal pattern), Escape closes, initial focus lands on the first
+focusable, scroll is locked while open. Test assertions updated for
+the new mechanism (`data-scroll-locked` attribute instead of inline
+`body.style.overflow`).
+
+Wrapper API note: `DialogContent` does NOT forward `aria-labelledby` /
+`aria-describedby` from caller props — Radix's internal `...contentProps`
+spread would override the auto-wired values with `undefined` if the
+caller didn't pass one, breaking accessible-name lookup. The wrapper
+sets `aria-describedby={undefined}` once internally to silence Radix's
+dev-mode "missing description" warning; future callers that want a
+description add a `<DialogDescription>` child and Radix wires it
+automatically through the same context.
+
+Remaining §13a items (sonner toast layer, react-hotkeys-hook,
+vite-tsconfig-paths, AlertDialog/Tabs/Select/Popover/Tooltip primitives)
+are still open in the active roadmap.
+
+- `0b6d30e` feat(frontend): swap ProjectListPage modal to Radix Dialog (§13a step 1)
+
+---
+
 ## §26 — Frontend ESLint + Prettier pre-commit hooks
 
 ESLint flat config (`frontend/eslint.config.js`) + Prettier

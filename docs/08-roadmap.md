@@ -67,31 +67,25 @@ for local; Postgres has built-in TS.
 ### 13a. Adopt shadcn/ui + Radix and close the spec/code divergence
 
 `specs/00-overview.md:57,126` and `specs/03-ui-layout.md:5,404` name
-shadcn/ui (Radix-backed) as the intended component library, but the SPA
-ships hand-rolled Tailwind on raw HTML — there's no `frontend/src/components/ui/`,
-no `@radix-ui/*` deps in `frontend/package.json`, and the lone component is
-`WordBboxOverlay`. The "modal" in `ProjectListPage.tsx:106-168` is a raw
-`<div>` overlay with no focus trap, no Escape binding, no scroll lock,
-and Cancel/Create buttons that aren't a real `<dialog>`. There is no
-toast layer at all — `TextReviewPage.tsx` surfaces save / re-OCR /
-delete failures via a small `<FormErrorBanner>` component
-(`role="alert"`, three call sites), which is the only feedback path
-the user gets.
+shadcn/ui (Radix-backed) as the intended component library. **Step 1
+shipped** (`0b6d30e`, see `08-roadmap-shipped.md` §13a step 1):
+`@radix-ui/react-dialog` + `frontend/src/components/ui/Dialog.tsx`
+wrapper, `ProjectListPage` create-project modal swapped over. Focus
+trap, Escape, scroll-lock, click-outside now come from Radix — the
+hand-rolled overlay was retired.
 
-Future improvement, no prescribed milestone:
+Remaining open work (no prescribed milestone, pick whichever pairs
+with the next slice that touches its surface):
 
-1. **shadcn/ui + Radix primitives** for `Dialog`, `AlertDialog`, `Toast`,
-   `Tabs`, `Select`, `Popover`, `Tooltip`. Closes the
-   spec/code divergence and gets focus management, Escape, scroll lock,
-   and ARIA roles for free.
-2. **`sonner`** as the toast surface (one provider at the app root,
-   replace inline error spans in `TextReviewPage.tsx` and the
-   ad-hoc `step.kind === "error"` block in `ProjectListPage.tsx:161-165`
-   with `toast.error(...)`). Stepping stone landed: the three duplicated
-   `<span class="text-xs text-red-600">` sites in `TextReviewPage.tsx`
-   were folded into a single `<FormErrorBanner>` component with
-   `role="alert"`, so the sonner swap is now one component edit, not
-   three call-site rewrites.
+1. **More Radix primitives** for `AlertDialog`, `Toast` (sonner),
+   `Tabs`, `Select`, `Popover`, `Tooltip`. The `Dialog` primitive in
+   `components/ui/` is the template — install the relevant
+   `@radix-ui/react-*`, write a thin wrapper, swap in callers.
+2. **`sonner`** as the toast surface (one `<Toaster>` provider at the
+   app root, replace `<FormErrorBanner>` body with `toast.error(...)`,
+   replace the `step.kind === "error"` block in the ProjectListPage
+   modal too). The `<FormErrorBanner>` stepping stone (`66e6f73`)
+   means the swap is one component edit, not three call-site rewrites.
 3. **`react-hotkeys-hook`** for keyboard shortcuts. Today the
    Delete/Backspace/Escape handler in `TextReviewPage.tsx` is a raw
    `window.addEventListener("keydown", ...)` with hand-written
@@ -102,10 +96,6 @@ Future improvement, no prescribed milestone:
    become `@/components/...`, `@/api/client`, `@/lib/marquee` instead
    of `../../api/client` chains. Cosmetic, but pays off as the
    component tree deepens.
-
-Cost is mostly mechanical (install + replace), spread across many
-files. Worth pairing with whichever P2 item next touches the modal
-or the toolbar.
 
 ---
 
