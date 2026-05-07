@@ -61,6 +61,22 @@ Single FastAPI process serving:
 See [`specs/00-overview.md`](specs/00-overview.md) for the high-level picture
 and the rest of `specs/` for the details.
 
+## How to run (from a checkout)
+
+```sh
+make run        # auto-detects GPU; CUDA host -> cuda:0, else CPU
+make run-cpu    # forces PGDP_GPU_BACKEND=cpu (debugging / weak GPU / CUDA OOM)
+```
+
+Both targets build the SPA bundle into `src/pd_prep_for_pgdp/static/`
+first, then launch `pgdp-prep` as a single FastAPI process at
+<http://127.0.0.1:8765> (next free port if 8765 is taken). Watch the
+startup log for `local backend on cuda:0` vs `local backend on cpu`
+to confirm which device the OCR pipeline picked up.
+
+End users installing via the wheel just run `pgdp-prep` — the wheel
+already includes the SPA bundle, so no `make run` step is needed.
+
 ## Development
 
 Contributor workflows (Node, mise, local-dev with `pd-book-tools`, CI,

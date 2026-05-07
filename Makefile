@@ -1,9 +1,9 @@
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
         pre-commit-check test e2e build clean ci local-setup dev-local install-local \
-        uninstall-local check-local-editable run-local frontend-install frontend-build \
-        frontend-dev frontend-test openapi-export upgrade-pd-book-tools release-patch \
-        release-minor release-major _do-release docker-build docker-run mise-download \
-        mise-setup mise-doctor upgrade-deps
+        uninstall-local check-local-editable run run-cpu run-local frontend-install \
+        frontend-build frontend-dev frontend-test openapi-export upgrade-pd-book-tools \
+        release-patch release-minor release-major _do-release docker-build docker-run \
+        mise-download mise-setup mise-doctor upgrade-deps
 
 # ---------------------------------------------------------------------------
 # Peer-repo discovery for *-local targets
@@ -309,6 +309,35 @@ print('module_file=', module_file); \
 print('expected_peer=', peer); \
 sys.exit(0 if module_file.startswith(peer + os.sep) or module_file == peer else 1)" \
 	|| (echo "❌ pd-book-tools is not local/editable. Run: make dev-local" >&2; exit 1)
+
+# ---------------------------------------------------------------------------
+# `make run` — canonical local-mode entry point.
+#
+# Builds the SPA bundle into src/pd_prep_for_pgdp/static/ first (so the
+# single FastAPI process serves the React app at `/`), then launches
+# `pgdp-prep`. App comes up at http://127.0.0.1:8765 (or the next free
+# port if 8765 is taken — see L1 fallback in `__main__.py`).
+#
+# GPU is auto-detected: with a working CUDA runtime the autodetect picks
+# `LocalBackend` (which subclasses CpuBackend), and DocTR/PyTorch use
+# `cuda:0` automatically. Watch the startup log for "local backend on
+# cuda:0" vs "local backend on cpu" to confirm.
+#
+# Pass extra args via ARGS, e.g. `make run ARGS="--port 9000"`.
+# ---------------------------------------------------------------------------
+run: frontend-build ## Build the SPA + launch pgdp-prep on :8765 (auto GPU)
+	@echo "🚀 Launching pgdp-prep at http://127.0.0.1:8765 (auto-detect GPU)..."
+	uv run pgdp-prep $(ARGS)
+
+# ---------------------------------------------------------------------------
+# `make run-cpu` — same as `make run` but force the CPU backend.
+#
+# Use when a GPU is present but you want to skip CUDA paths: debugging,
+# weak GPU, or working around CUDA OOM on a smaller card.
+# ---------------------------------------------------------------------------
+run-cpu: frontend-build ## Build SPA + launch pgdp-prep with PGDP_GPU_BACKEND=cpu
+	@echo "🚀 Launching pgdp-prep at http://127.0.0.1:8765 (CPU backend forced)..."
+	PGDP_GPU_BACKEND=cpu uv run pgdp-prep $(ARGS)
 
 run-local: check-local-editable ## [local-dev] Run pgdp-prep against the local editable workspace
 	env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run pgdp-prep $(ARGS)

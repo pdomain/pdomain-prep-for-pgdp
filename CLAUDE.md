@@ -42,12 +42,13 @@ Targeted runs: `uv run pytest -k <pattern>`. Prefer Make targets.
 ## Run the app
 
 ```sh
-# Local dev with hot-reload
+# Canonical single-process run (builds SPA bundle, then launches pgdp-prep)
+make run        # auto-detect GPU; comes up at http://127.0.0.1:8765
+make run-cpu    # same, but forces PGDP_GPU_BACKEND=cpu
+
+# Local dev with hot-reload (two-process)
 make frontend-dev    # one terminal — Vite on :5173
 uv run pgdp-prep --reload --frontend-dev http://localhost:5173   # other terminal — :8765
-
-# Production / single-process
-make frontend-build && uv run pgdp-prep
 ```
 
 ## Test conventions
