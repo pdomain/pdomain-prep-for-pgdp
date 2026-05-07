@@ -19,7 +19,13 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import type { SourcePreviewResponse } from "../api/types";
+import type { components } from "../api/types.gen";
+
+// First consumer migrated to the generated openapi spec (P4 #20). The
+// hand-written `types.ts` keeps an identical alias for the remaining
+// consumers; both shapes are byte-equal so a future big-bang swap is
+// purely mechanical. Aliasing locally keeps the component body unchanged.
+type SourcePreviewResponse = components["schemas"]["SourcePreviewResponse"];
 
 interface SourcePreviewProps {
   projectId: string;
