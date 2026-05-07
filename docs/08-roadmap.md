@@ -640,12 +640,6 @@ in `frontend/`, and Prettier isn't wired at all (no `.prettierrc`, no
 **Rationale:** workspace alignment with pd-ocr-labeler-spa, which
 deferred the same hooks pending its M0 frontend-lint scaffold (D-037).
 
-### 27. (markdownlint-cli2 hook — already in place)
-
-`v0.22.1` of `DavidAnson/markdownlint-cli2` is wired in
-`.pre-commit-config.yaml` (lines 25–32) against `.markdownlint-cli2.jsonc`.
-No action needed; pd-ocr-labeler-spa mirrored from here.
-
 ### 28. Guard `upgrade-deps` against silent dev-local revert
 
 `make upgrade-deps` ends with `uv sync --group dev`, which silently

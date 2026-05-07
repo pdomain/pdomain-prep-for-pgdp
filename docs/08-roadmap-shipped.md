@@ -184,3 +184,15 @@ wheels.
 - Build hook + CI wiring landed across multiple commits in the
   iter-15 / iter-17 run; `git log -- build_hooks/
   .github/workflows/release.yml` is the audit trail.
+
+## §27 — markdownlint-cli2 pre-commit hook
+
+Already wired before the roadmap was split: `.pre-commit-config.yaml`
+runs `DavidAnson/markdownlint-cli2` `v0.22.1` against
+`.markdownlint-cli2.jsonc`, with a `--fix` variant gated to the
+`manual` stage. pd-ocr-labeler-spa mirrored this configuration. No
+code work was outstanding — the entry was a doc-only note kept in
+the active roadmap by oversight; moved here for accuracy.
+
+- Hook lives at `.pre-commit-config.yaml:25-32`; predates the
+  `08-roadmap.md` / `08-roadmap-shipped.md` split (commit `92fa185`).
