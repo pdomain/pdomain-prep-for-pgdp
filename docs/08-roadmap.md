@@ -944,6 +944,28 @@ deferred the same hooks pending its M0 frontend-lint scaffold (D-037).
 `.pre-commit-config.yaml` (lines 25–32) against `.markdownlint-cli2.jsonc`.
 No action needed; pd-ocr-labeler-spa mirrored from here.
 
+### 28. Guard `upgrade-deps` against silent dev-local revert
+
+`make upgrade-deps` ends with `uv sync --group dev`, which silently
+overwrites an editable `pd-book-tools` install (from
+`make dev-local` / `make install-local`) with the canonical git-tag
+pin in `pyproject.toml`. Contributors lose their sibling-repo edits
+without warning.
+
+Spec: `docs/dev-local-upgrade-flow.md`. Workspace-wide contract;
+detection anchors on `uv pip show pd-book-tools` reporting an
+`Editable project location:` line, with a `.venv/.dev-local` marker
+file fallback and `PD_DEV_LOCAL=1` env-var override. Default
+`upgrade-deps` refuses with a message in dev-local mode and points
+at a new `make upgrade-deps-local` recipe that re-installs the
+editable sibling after the lock+sync. Canonical-mode behavior
+unchanged. Cross-platform.
+
+**Why P4:** operations / dev-experience safety net. The bug today is
+"contributor's pd-book-tools edits stop taking effect after a routine
+dep refresh"; the fix is a small detection step plus a sibling
+recipe.
+
 ---
 
 ## P5 — Stretch
