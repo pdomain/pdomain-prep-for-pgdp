@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import type { PageRecord } from "../api/types";
+import type { components } from "../api/types.gen";
+
+type PageRecord = components["schemas"]["PageRecord"];
 import { WordBboxOverlay } from "../components/WordBboxOverlay";
 import { diffLines } from "../lib/lineDiff";
 import { LineDiffView } from "../lib/LineDiffView";
