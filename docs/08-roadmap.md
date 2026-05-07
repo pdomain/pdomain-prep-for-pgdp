@@ -872,31 +872,41 @@ path, batched dispatcher, unauthenticated access in apikey mode,
 db-unreachable degraded path (via patched `list_recent_jobs`), and
 schema-exclusion. `make test` 359 passed / 4 pre-existing skips.
 
-### 20. OpenAPI codegen
+### 20. OpenAPI codegen — done
 
-**Status:** spec-drift guard landed (iter 5). Codegen scaffold landed
-(iter 12). Consumer migration `types.ts` → `types.gen.ts` still pending.
+**Status:** fully shipped. Spec-drift guard (iter 5), codegen scaffold
+(iter 12), types.gen drift guard (iter 14), `ApiModel` strict-Output
+fix (iter 16), and full consumer sweep + `types.ts` deletion (iter 17,
+2026-05-07).
 
-Spec-drift guard (done): `openapi.json` is committed at the repo root,
-and `tests/test_openapi_spec_committed.py` asserts it matches what
+Spec-drift guard: `openapi.json` is committed at the repo root, and
+`tests/test_openapi_spec_committed.py` asserts it matches what
 `build_app().openapi()` emits now. Drift fails CI; fix-it is
 `make openapi-export` + commit the updated `openapi.json`.
 
-Codegen scaffold (done, iter 12, 2026-05-07): `make openapi-export`
-now writes `frontend/src/api/types.gen.ts` (generated) alongside the
-hand-written `types.ts` (canonical for consumers). The `npm run
-openapi:gen` script targets `types.gen.ts` too. A vitest+tsc test
-(`frontend/src/api/types.gen.test.ts`) round-trips
-`SourcePreviewResponse` and a `Project` subset through the generated
-shape so future codegen runs can't silently drop fields the SPA
-relies on. The generated output uses `components["schemas"]["X"]`
-indexed types — a different shape from the hand-written flat
-interfaces, which is why the migration is per-surface, not a flip.
+Codegen pipeline: `make openapi-export` writes
+`frontend/src/api/types.gen.ts` (the *only* shape file). Drift guard
+in `frontend/src/api/types.gen.drift.test.ts` re-runs
+`openapi-typescript` and asserts byte-equality with the committed
+output, so the generated file can't fall behind the spec without CI
+catching it.
 
-Still TODO: (a) parallel guard that committed `types.gen.ts` matches
-`openapi-typescript` output (analogous to the spec drift guard); (b)
-migrate SPA consumers off `types.ts` onto `types.gen.ts`, surface by
-surface, and delete `types.ts` once empty.
+`ApiModel` (iter 16) is the Pydantic base every response model
+inherits from. It marks fields with `default_factory` as required in
+the *serialization* schema so `-Output` variants are strict (every
+field present on the wire). Input variants stay all-optional.
+Frontend code reaches into `components["schemas"]["Foo-Output"]` for
+read shapes and `Foo-Input` for write shapes; consumers without a
+split (CRUD requests, plain enums, etc.) use the bare schema name.
+
+Iter 17 swept all six SPA consumers (`ProjectListPage`,
+`ProjectReviewQueuePage`, `TextReviewPage`, `PageWorkbenchPage`,
+`ProjectConfigurePage`, plus the three `api/*.test.ts` wire tests
+and the `pages/*.test.tsx` mount tests) onto generated shapes,
+filling fixture gaps the hand-written types had silently allowed
+(e.g. `Project.pipeline_state`, `PageRecord.{last_processed_at, outputs}`,
+all 14 explicit-null fields on `PageConfigOverrides-Output`). The
+hand-written `frontend/src/api/types.ts` is deleted.
 
 ### 21. Memory pruning revisit
 
