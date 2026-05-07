@@ -71,6 +71,12 @@ make frontend-build && uv run pgdp-prep
 
 ## Decisions
 
+- **Local-first priority (2026-05-07):** active work targets the local
+  solo / self-hosted-team flow (SQLite + filesystem + CPU). Cloud /
+  remote-mode prerequisites (Postgres adapter live tests, Modal-side
+  S3 wiring, install.sh end-to-end, CI container push) are parked in
+  `docs/08-roadmap.md` "Deferred — remote / cloud mode". Don't pull
+  from that section without an explicit user nudge.
 - `pd-book-tools` is pinned to `v0.9.0` in `pyproject.toml`. Upgrade with
   `make upgrade-pd-book-tools`.
 - `gpu_backend="cpu"` is the test default. `LocalBackend`/`ModalBackend` etc.

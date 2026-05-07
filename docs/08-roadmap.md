@@ -7,68 +7,21 @@ This roadmap is the **forward** view, organised by priority. Shipped
 work is in `08-roadmap-shipped.md`; per-iteration history lives in
 `git log`.
 
+**Local-first priority (2026-05-07):** the user-facing punch list below
+focuses on the local solo / self-hosted-team experience using the
+SQLite + filesystem + CPU shape. Everything that requires cloud
+infrastructure (Postgres, Modal/S3, registry pushes, install-pipe
+verification on a clean network) is parked under "Deferred — remote /
+cloud mode" at the bottom of this file. Revisit those once the local
+flow is fully shipped.
+
 ---
 
-## P0 — needed for a real first deploy
+## P0 — local-mode user flow gaps
 
-### 1. Modal app S3 wiring
-
-**File:** `src/pd_prep_for_pgdp/adapters/gpu/modal_app.py`
-
-`process_page` / `run_ocr` / `run_batch` currently raise NotImplementedError.
-They need to:
-
-1. Receive an S3-storage config (bucket + region) — either through
-   environment in the Modal container or a wrapped storage adapter.
-2. Read the source bytes from S3 inside the function.
-3. Call `core.pipeline.process_page_cpu` (or a CUDA variant once
-   `cupy_processing` is wired) for the actual processing.
-4. Write outputs back to S3.
-5. Return the spec-04 `ProcessPageResponse` shape.
-
-`ModalBackend` (the dispatcher side) is fully tested via the fake module
-trick. The blocker is the **Modal-side** function bodies + access to a real
-account for an end-to-end test.
-
-**Acceptance:** `modal deploy adapters/gpu/modal_app.py` then a real
-`process-page` request through `ModalBackend` writes a PNG to S3.
-
-### 2. Postgres adapter — live-DB integration tests
-
-**File:** `src/pd_prep_for_pgdp/adapters/database/postgres.py` — scaffold
-shipped (mirrors `SqliteDatabase` exactly: JSON/JSONB-per-record, `pages`
-keyed on `(project_id, idx0)`, `jobs` indexed on
-`(owner_id, created_at DESC)`). Uses raw async psycopg, not SQLAlchemy —
-the document-store shape doesn't need an ORM.
-
-`tests/test_postgres_adapter.py` covers URL validation, the
-`put_pages([])` no-op contract, and the bootstrap-friendly error when
-the `[postgres]` extra is absent. All class-direct tests `importorskip`
-psycopg cleanly.
-
-**Still open (next slice):**
-
-1. Wire a Postgres service into the dev container (or a CI service) so
-   the existing direct-class tests stop skipping.
-2. Add a parametrised `db` fixture factory yielding `SqliteDatabase`
-   **or** `PostgresDatabase` (skip-postgres when the service is
-   unavailable), then run the existing `test_assign_prefixes.py`,
-   `test_job_runner.py`, `test_project_archive.py`, etc. over both.
-3. Decide bootstrap default: empty `database_url` currently falls back
-   to SQLite. Managed-mode container should require an explicit
-   `postgres://` URL — surface a clearer error when neither is set.
-
-### 3. install.sh end-to-end exercise
-
-We've authored `install.sh`/`install.ps1`/`Makefile.install` but never run the
-curl-pipe-sh path in a clean shell with internet access. Worth a 10-minute
-session to confirm `uv tool install git+...@<tag>[cuda] --extra-index-url ...`
-actually resolves and the resulting `pgdp-prep` command works.
-
-### 4. CI container push
-
-`.github/workflows/release.yml` builds the managed-mode container on tag
-push but doesn't push to a registry. User to wire ECR (or GHCR) credentials.
+(Currently empty — the previous P0 entries were all cloud/remote
+prerequisites and have been moved to the Deferred section. Local-mode
+gaps surfaced by usage testing land here when found.)
 
 ---
 
@@ -205,12 +158,84 @@ the SPA strings would need an i18n layer (react-intl or similar).
 
 ---
 
+## Deferred — remote / cloud mode (revisit after local is fully shipped)
+
+The following items were originally tracked as P0 but are all
+prerequisites for the cloud / multi-tenant deployment shape, not the
+local solo / self-hosted-team flow. They are parked here intentionally
+until the local-mode user experience is end-to-end coherent — picking
+them up early forces design tradeoffs around adapters that the local
+shape doesn't actually exercise.
+
+### D1. Modal app S3 wiring (was P0 #1)
+
+**File:** `src/pd_prep_for_pgdp/adapters/gpu/modal_app.py`
+
+`process_page` / `run_ocr` / `run_batch` raise NotImplementedError.
+Needs S3 storage config wiring, source-bytes read inside the Modal
+function, a call into `core.pipeline.process_page_cpu` (or the future
+CUDA variant), output write-back, and a spec-04 `ProcessPageResponse`
+return shape. `ModalBackend` (dispatcher side) is fully tested via the
+fake-module trick; the blocker is **Modal-side** function bodies + a
+real account for end-to-end tests.
+
+**Acceptance:** `modal deploy adapters/gpu/modal_app.py`, then a real
+`process-page` request through `ModalBackend` writes a PNG to S3.
+
+### D2. Postgres adapter — live-DB integration tests (was P0 #2)
+
+**File:** `src/pd_prep_for_pgdp/adapters/database/postgres.py` —
+scaffold shipped (commit `77072c6`, mirrors `SqliteDatabase` exactly:
+JSON/JSONB-per-record, `pages` keyed on `(project_id, idx0)`, `jobs`
+indexed on `(owner_id, created_at DESC)`; raw async psycopg, no ORM).
+`tests/test_postgres_adapter.py` covers URL validation, the
+`put_pages([])` no-op contract, and the bootstrap-friendly error when
+the `[postgres]` extra is absent — all class-direct tests
+`importorskip` psycopg cleanly.
+
+**Still open (when revived):**
+
+1. Wire a Postgres service into the dev container (or a CI service) so
+   the existing direct-class tests stop skipping.
+2. Add a parametrised `db` fixture factory yielding `SqliteDatabase`
+   **or** `PostgresDatabase` (skip-postgres when the service is
+   unavailable), then run existing `test_assign_prefixes.py`,
+   `test_job_runner.py`, `test_project_archive.py`, etc. over both.
+3. Decide bootstrap default: empty `database_url` currently falls back
+   to SQLite. Managed-mode container should require an explicit
+   `postgres://` URL — surface a clearer error when neither is set.
+
+The scaffold is preserved on `main`; nothing to revert when this is
+revived.
+
+### D3. install.sh end-to-end exercise (was P0 #3)
+
+`install.sh` / `install.ps1` / `Makefile.install` are authored but the
+curl-pipe-sh path has never been exercised in a clean shell with
+internet. Needs ~10 min to confirm
+`uv tool install git+...@<tag>[cuda] --extra-index-url ...` resolves
+and the resulting `pgdp-prep` command works. Note: the long-term
+release strategy is a self-hosted PEP 503 index
+(`ConcaveTrillion/pd-index`); install.sh has the same latent
+wheel-METADATA bug pre-fixed in pd-ocr-cli — see agent memory
+`release_strategy_self_hosted_index.md` before touching this.
+
+### D4. CI container push (was P0 #4)
+
+`.github/workflows/release.yml` builds the managed-mode container on
+tag push but doesn't push to a registry. User must wire ECR (or GHCR)
+credentials.
+
+---
+
 ## How to pick up
 
 1. Read `docs/01-overview.md` (this directory) for the high-level shape.
 2. Read the relevant spec for whatever layer you're touching.
 3. Pick the lowest-numbered open item in this file (P0 first); shipped
-   items live in `08-roadmap-shipped.md` for context.
+   items live in `08-roadmap-shipped.md` for context. **Skip the
+   "Deferred — remote / cloud mode" section** unless the user
+   explicitly revives it — local mode is the priority.
 4. TDD-first when possible; the test recipe is in `docs/07-testing.md`.
 5. When you finish an item, **move it out** of this file into
    `08-roadmap-shipped.md` with a condensed summary + commit SHAs.

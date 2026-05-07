@@ -80,15 +80,17 @@ What's working:
 
 What still needs work:
 
+All cloud/remote-mode follow-ups are parked under roadmap "Deferred —
+remote / cloud mode" while local-first lands:
+
 - **`modal_app.py` function bodies** — `process_page` / `run_ocr` /
-  `run_batch` raise `NotImplementedError`. The Modal-side container needs
-  its own S3 IStorage so it can read source bytes + write outputs back.
-  Roadmap item #1.
-- **Postgres adapter** — schema exists in spec 08; the `IDatabase` impl
-  has not been written yet (no `adapters/database/postgres.py`). Roadmap
-  item P0 #2.
-- **`.github/workflows/release.yml`** builds the container on tag push but
-  doesn't push to ECR (the user's registry isn't configured).
+  `run_batch` raise `NotImplementedError` (roadmap §D1).
+- **Postgres adapter** — scaffold shipped (commit `77072c6`); live-DB
+  integration tests deferred (roadmap §D2).
+- **`.github/workflows/release.yml`** builds the container on tag push
+  but doesn't push to a registry (roadmap §D4).
+- **install.sh end-to-end** has never been exercised against a clean
+  shell with internet (roadmap §D3).
 
 Cost estimate (per spec 09): with 100 books/month, ~$70/month total. Modal
 GPU charges are ~$2/book; rest is Fargate (~$10) + Aurora (~$45) + S3 (~$5).

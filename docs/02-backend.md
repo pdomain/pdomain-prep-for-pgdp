@@ -66,10 +66,11 @@ Every method is `async def`. Implementations:
   WAL mode, and a `threading.Lock` around the cursor so the concurrent job
   runner doesn't race on commit. Each table stores the Pydantic model as a
   JSON-text column (so model evolution doesn't need migrations).
-- **`PostgresDatabase`** — not yet written. Tracked as roadmap P0 #2.
-  Planned shape: schema mirror of SQLite via JSON columns, psycopg +
-  SQLAlchemy, exercised by parametrising the existing async DB tests
-  over both SQLite and Postgres fixtures.
+- **`PostgresDatabase`** — scaffold landed (commit `77072c6`); raw
+  async psycopg, mirrors SQLite JSON-per-record. Live-DB integration
+  tests are parked under roadmap §D2 (Deferred — remote / cloud mode)
+  while the local-first push lands. `tests/test_postgres_adapter.py`
+  `importorskip`s psycopg cleanly.
 
 ### `IAuth` (`adapters/auth/base.py`)
 
