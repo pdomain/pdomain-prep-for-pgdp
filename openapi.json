@@ -3536,6 +3536,82 @@
             },
             "type": "array",
             "title": "Outputs"
+          },
+          "parent_page_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Page Id"
+          },
+          "source_crop_bbox": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Crop Bbox"
+          },
+          "split_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Index"
+          },
+          "split_at_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split At Stage"
+          },
+          "split_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split Suffix"
+          },
+          "reading_order": {
+            "type": "integer",
+            "title": "Reading Order",
+            "default": 0
           }
         },
         "type": "object",
@@ -3558,7 +3634,13 @@
           "processing_job_id",
           "processing_error",
           "last_processed_at",
-          "outputs"
+          "outputs",
+          "parent_page_id",
+          "source_crop_bbox",
+          "split_index",
+          "split_at_stage",
+          "split_suffix",
+          "reading_order"
         ],
         "title": "PageRecord"
       },

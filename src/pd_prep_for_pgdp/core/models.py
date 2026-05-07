@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ─── Shared base ─────────────────────────────────────────────────────────────
 
@@ -208,6 +208,78 @@ class PageRecord(ApiModel):
     last_processed_at: datetime | None = None
 
     outputs: list[PageOutput] = Field(default_factory=list)
+
+    # ── Split-child fields (M2 §E) ──────────────────────────────────────────
+    # Spec: docs/specs/pipeline-task-model.md §"Splits as sibling pages
+    # (Q6 lock)" → "Data model on Page". A split turns one parent page into
+    # N sibling child pages; each child is a first-class PageRecord that
+    # carries these five linking fields. All-or-none: a row either has
+    # `parent_page_id` set with the four other split fields populated
+    # (split-child), OR all five fields are None (root page). The validator
+    # below enforces that contract. `reading_order` is the only non-null
+    # field — root rows default to 0; siblings inherit the user's split
+    # definition's order.
+
+    parent_page_id: str | None = None
+    """FK to the parent PageRecord's `page_id`. NULL for root pages.
+
+    The parent page lives in the same project and is identified by its
+    `page_id` string (today the zero-padded 4-digit `idx0`, e.g. `"0042"`).
+    """
+
+    source_crop_bbox: tuple[int, int, int, int] | None = None
+    """`(x, y, w, h)` on the parent's source image, in original-source
+    coordinate space. Required when `parent_page_id IS NOT NULL`.
+    """
+
+    split_index: int | None = None
+    """1-based index among siblings (1, 2, 3, ...). NULL for root pages."""
+
+    split_at_stage: str | None = None
+    """The stage on the parent at which the split was created (a stage_id
+    string from `PAGE_STAGE_IDS`). Typically `auto_detect_attrs`; the spec
+    permits any stage whose output is an image."""
+
+    split_suffix: str | None = None
+    """The user-chosen suffix that gets appended in the page prefix
+    (`a`, `b`, `cl`, ...)."""
+
+    reading_order: int = 0
+    """Determines output sort order across siblings. Inherited from the
+    user's split definition. Defaults to 0 for root pages."""
+
+    @model_validator(mode="after")
+    def _validate_split_fields_all_or_none(self) -> PageRecord:
+        """Enforce that split fields are all-or-none, keyed off `parent_page_id`.
+
+        - If `parent_page_id` is set: `source_crop_bbox`, `split_index`,
+          `split_at_stage`, `split_suffix` must ALL be set (non-None).
+        - If `parent_page_id` is None: NONE of the four peers may be set.
+
+        `reading_order` is exempt — it has a real default (0) and applies
+        to every page.
+        """
+        peers = {
+            "source_crop_bbox": self.source_crop_bbox,
+            "split_index": self.split_index,
+            "split_at_stage": self.split_at_stage,
+            "split_suffix": self.split_suffix,
+        }
+        missing = [name for name, value in peers.items() if value is None]
+        present = [name for name, value in peers.items() if value is not None]
+
+        if self.parent_page_id is not None:
+            if missing:
+                raise ValueError(
+                    f"split-child PageRecord (parent_page_id={self.parent_page_id!r}) "
+                    f"requires all split fields; missing: {missing}"
+                )
+        else:
+            if present:
+                raise ValueError(
+                    f"root PageRecord (parent_page_id=None) must not set split fields; got: {present}"
+                )
+        return self
 
 
 # ─── Pipeline state ──────────────────────────────────────────────────────────

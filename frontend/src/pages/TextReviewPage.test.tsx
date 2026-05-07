@@ -119,6 +119,13 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
     processing_error: null,
     last_processed_at: null,
     outputs: [],
+    // Split-child fields (M2 §E). All null on a root page; reading_order=0.
+    parent_page_id: null,
+    source_crop_bbox: null,
+    split_index: null,
+    split_at_stage: null,
+    split_suffix: null,
+    reading_order: 0,
     ...overrides,
   };
 }

@@ -1177,6 +1177,26 @@ export interface components {
             last_processed_at: string | null;
             /** Outputs */
             outputs: components["schemas"]["PageOutput"][];
+            /** Parent Page Id */
+            parent_page_id: string | null;
+            /** Source Crop Bbox */
+            source_crop_bbox: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Split Index */
+            split_index: number | null;
+            /** Split At Stage */
+            split_at_stage: string | null;
+            /** Split Suffix */
+            split_suffix: string | null;
+            /**
+             * Reading Order
+             * @default 0
+             */
+            reading_order: number;
         };
         /**
          * PageSplit
