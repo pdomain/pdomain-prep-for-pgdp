@@ -153,7 +153,6 @@ def process_page_cpu(
     # 4m — re-invert + rescale ─────────────────────────────────────────────
     img_rescaled = rescale_image(
         invert_image(img_deskewed),
-        aspect_ratio=cfg.page_h_w_ratio,
         target_short_side=1000,
     )
 

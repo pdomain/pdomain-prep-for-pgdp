@@ -354,9 +354,10 @@ from pd_book_tools.image_processing.cupy_processing import rescale_image_gpu
 
 img_rescaled_cp = rescale_image_gpu(
     invert_image(img_deskewed_cp),                  # back to text=0, bg=255
-    aspect_ratio=cfg.page_h_w_ratio,
     target_short_side=1000,
 )
+# Aspect-shape is applied downstream in step 4n via
+# map_content_onto_scaled_canvas(..., height_width_ratio=cfg.page_h_w_ratio).
 ```
 
 ### 4n. Map onto standard canvas (GPU)

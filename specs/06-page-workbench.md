@@ -499,7 +499,7 @@ for split in sorted(page.splits, key=lambda s: s.reading_order):
         maxY=split.B if split.B is not None else img_h,
     )
     if split.scale_to_standard_page:
-        split_img = rescale_image(split_img, aspect_ratio=cfg.page_h_w_ratio)
+        split_img = rescale_image(split_img)
         split_img = map_content_onto_scaled_canvas(
             split_img,
             force_align=split.alignment or cfg.alignment,
