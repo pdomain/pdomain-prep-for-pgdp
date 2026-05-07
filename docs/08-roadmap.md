@@ -84,94 +84,166 @@ dual-write `commit_stage_artifact` + `reconcile_page` detector, the
 `GET /api/data/projects/{id}/pages/{idx0}/stages` route with
 concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
 
-**Carried forward into a later slice:**
-
-- §E split-related columns on `pages` (`parent_page_id`,
-  `source_crop_bbox`, `split_index`, `split_at_stage`, `split_suffix`,
-  `reading_order`) — not load-bearing for §C/§D since no splits exist
-  yet. Pick up before M2 starts running stages that produce splits.
-
 ---
 
-#### M2 — Per-page stage runner + dirty propagation + bounded write pool
+#### M2 — Per-page stage runner + dirty propagation + chip rail (in progress)
 
-**Scope:**
+**Scope landed 2026-05-07 (Slices 1–5):**
 
-- Each stage gets a `STAGE_IMPL[stage_id][device]` callable
-  (canonical spec Q5). M2 ships `"cpu"` entries for every stage; CUDA
-  entries land in M5+ as a separate slice.
-- New endpoint `POST /api/pages/{page_id}/stages/{stage_id}/run`
-  with `mode ∈ {single, from}` — runs the stage(s) synchronously,
-  marks downstream `dirty`.
-- New endpoint `GET /api/pages/{page_id}/stages/{stage_id}/artifact`
-  — streams the on-disk artifact.
+- §E split columns on `PageRecord` (`parent_page_id`,
+  `source_crop_bbox`, `split_index`, `split_at_stage`, `split_suffix`,
+  `reading_order`) with all-or-none model validator (Slice 1).
+- `STAGE_IMPL[stage_id][device]` registry in
+  `core/pipeline/stage_registry.py` — every canonical stage_id has a
+  `"cpu"` entry; three real implementations
+  (`grayscale`/`threshold`/`invert`) extracted as wrappers over
+  `pd_book_tools.image_processing.cv2_processing`. The other 19 stages
+  are closure-bound placeholders raising `StageNotImplemented` (a
+  typed RuntimeError sentinel deliberately distinct from
+  `NotImplementedError`) so the runner can record a clear
+  "not yet implemented in registry" message rather than claiming an
+  engine bug (Slice 2).
+- `core/pipeline/stage_runner.run_stage` — the engine that ties
+  STAGE_IMPL + STAGE_DAG + commit_stage_artifact together. Validates
+  dependencies, marks running, loads parents off disk, dispatches to
+  the registry, dual-writes, then eager-cascades dirty to descendants
+  currently `clean`/`failed`. Failures translate to `status=failed` +
+  `error_message`; descendants are NOT cascaded (the previous output
+  is still consistent). Compound-output stages raise the typed
+  `StageOutputUnsupported` sentinel — clear breadcrumb for the
+  multi-artifact-writer slice (Slice 3).
+- `POST /api/data/projects/{id}/pages/{idx0}/stages/{stage_id}/run`
+  route — synchronous execution path. Status code mapping: 200 clean
+  PageStageState row; 404 unknown project/page/cross-user; 422
+  unknown stage_id; 409 dependencies not met (body names the missing
+  parents); 501 compound output (multi-artifact writer queued); 500
+  on impl failure (row already marked `failed` so chip rail's next
+  refetch shows it inline). No Job wrapping yet — the simple stages
+  finish well within the request window (Slice 4).
+- `<StageChainRail>` in the workbench between the processing-error
+  banner and the ModeToolbar. 22 chips per page, color-coded by
+  status (`not-run` slate, `running` sky-blue+pulse, `clean`
+  emerald, `dirty` amber, `failed` rose, `not-applicable` slate-50
+  italic). Click → POST /run; success toast + cache invalidate;
+  error toast names the HTTP code. Polls every 2 s while any row is
+  `running`. Tooltip surfaces last_run_at (ISO), stage_version,
+  truncated input_hash, and error_message when present (Slice 5).
+
+**Queued for M2 follow-up slices (or rolled into M3):**
+
+- Multi-artifact writer: `ocr` (words.json + raw.txt),
+  `extract_illustrations` (N crops),
+  `text_review` (output.txt + attestation.json). Today
+  `commit_stage_artifact` raises `StageArtifactWriteError` for these
+  output_types and the runner translates that to
+  `StageOutputUnsupported` → 501 in the route. Chip rail shows them as
+  not-run; clicking yields a 501 toast.
+- Real implementations for the remaining 16 placeholder stages
+  (`ingest_source`, `thumbnail`, `decode_source`, `initial_crop`,
+  `manual_deskew_pre`, `find_content_edges`, `crop_to_content`,
+  `auto_deskew`, `morph_fill`, `rescale`, `canvas_map`,
+  `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
+  `auto_detect_illustrations`, `text_postprocess`). Each is a
+  carve-out of the existing `process_page.py` monolith / sibling
+  modules (`ingest.py`, `auto_detect.py`, `illustrations.py`,
+  `crop_for_ocr.py`, `text_postprocess.py`) — landing them gradually
+  while the monolithic path stays in service.
 - Bounded deferred-write executor with `PGDP_STAGE_WRITE_POOL_SIZE` +
   `PGDP_STAGE_WRITE_QUEUE_CAP` knobs (canonical spec Q8). Dual-write
-  reconciler runs every write through the transactional dance.
-- Stage-version registry (canonical spec Q4) — `STAGE_VERSIONS = {...}`
-  in `core/pipeline/dag.py`.
-- Eager dirty cascade on rerun (canonical spec §Dirty propagation).
-- `LocalBackend` collapses to a `pick_device()` helper that the
-  registry consults; old `process_page` / `run_ocr` methods on
-  GPU adapters become thin shims onto the registry.
-- Old endpoints (`/api/gpu/process-page`, `/api/gpu/run-ocr-page`)
-  become shims onto the new endpoint.
-- A read-only **Database state debug panel** in the workbench
-  (M2-only; M3 replaces with prettier UI) shows the raw
-  `page_stages` rows for the current page, so the user can confirm
-  status transitions visually.
+  reconciler is in place but writes go through synchronously today —
+  the bounded queue lets a "Run all dirty stages" fan-out limit how
+  many writes pile up at once.
+- `GET /api/pages/{page_id}/stages/{stage_id}/artifact` — streams the
+  on-disk artifact for the workbench artifact viewer (M3).
+- LocalBackend / CpuBackend collapse to `pick_device()` shims onto
+  the registry; old `/api/gpu/*` endpoints become route shims onto
+  the new endpoint. Deferred to M5/M6 cleanup so today's pages keep
+  working through the existing GPU backend until the registry is
+  exhaustive.
+- Optional ?async=true flag on the run route returning a Job id for
+  slow stages (`ocr`, `extract_illustrations`). Not needed until those
+  stages have real impls.
 
 **Required test fixtures:** the test zip from M1.
 
-**How to verify by running the app (UI smoke-test):**
+**How to verify by running the app (UI smoke-test for what's
+shipped today):**
 
 1. `make run`. Open <http://127.0.0.1:8765>.
 2. Create a project named "M2-smoke", upload the test zip.
-3. Wait for ingest+thumbnails to finish (Step 0/1/2 row turns green
-   in the existing JobsPage).
-4. Open page f001 in the workbench. The workbench should now show a
-   stage chain rail with 22 stage chips (per spec STAGE_VERSIONS). The
-   post-ingest chips (`ingest_source`, `thumbnail`, `auto_detect_attrs`,
-   `auto_detect_illustrations`) should be `clean` (green); the rest
-   should be `not-run` (gray).
-5. Click "Run stage: deskew" (or `auto_deskew` chip's run button).
-   Observe the chip transitions `not-run → running → clean`. The
-   artifact viewer pane should now show the `auto_deskew` output
-   image side-by-side with its input (`crop_to_content`).
-6. Click "Run stage: deskew" again. All downstream stage chips
-   (`morph_fill`, `rescale`, `canvas_map`, `ocr_crop`, `ocr`,
-   `text_postprocess`, `text_review`) should immediately transition
-   to `dirty` (yellow). DB-side: `page_stages` rows for downstream
-   stages should show `status='dirty'` — verifiable via the M2-only
-   Database state debug panel in the workbench, or via
-   `sqlite3 ~/pgdp-projects/state.db "SELECT stage_id, status FROM
-   page_stages WHERE page_id='0000'"`.
-7. Click "Run all dirty stages on this page". All chips return to
-   `clean`.
-8. Verify on-disk: `ls ~/pgdp-projects/<project>/pages/0000/stages/`
-   should list 22 stage directories (one for every stage in
-   `core.models.PAGE_STAGE_IDS`), each with an `output.<ext>` (or just
-   the directory if the stage is `not-applicable` for this page type).
-9. Test back-pressure: set `PGDP_STAGE_WRITE_POOL_SIZE=1` and
-   `PGDP_STAGE_WRITE_QUEUE_CAP=1`, restart, run "Run from
-   `decode_source`". The DAG should still complete (just slower).
+3. Wait for ingest+thumbnails to finish.
+4. Open any page in the workbench. The page now renders a "Stage
+   chain (22)" rail above the canvas — 22 chips, one per
+   `PAGE_STAGE_IDS`. On a fresh page every chip shows `not-run` (slate).
+5. Click the `manual_deskew_pre` chip — fails with a 409 toast naming
+   `initial_crop` as the missing dependency. (`manual_deskew_pre`
+   itself is still a registry placeholder; the dependency check fires
+   first because parents aren't `clean`.) The chip's status stays
+   `not-run`.
+6. Three real stages with implementations today: `grayscale`,
+   `threshold`, `invert`. To exercise the rail end-to-end without the
+   monolithic process_page detour, seed a `manual_deskew_pre` clean
+   row by hand:
 
-**Pass criterion:** every chip can transition not-run → running →
-clean → dirty → clean visibly, and re-running a stage cascades the
-dirty state to downstream chips within ≤500 ms.
+       sqlite3 ~/pgdp-projects/state.db
+       INSERT OR REPLACE INTO page_stages (project_id, page_id,
+         stage_id, status, stage_version, last_run_at)
+         VALUES ('<id>', '0000', 'manual_deskew_pre', 'clean', 1,
+                 strftime('%s', 'now'));
 
-**UI artifacts that prove M2 shipped:** stage-chain rail, artifact
-viewer pane, Database state debug panel (M2 only — M3 replaces with
-prettier UI), per-stage run buttons.
+   Then drop a fake PNG at
+   `~/pgdp-projects/projects/<id>/pages/0000/stages/manual_deskew_pre/output.png`
+   (any decodable image works) and update the row's
+   `input_hash` to `sha256(file)` so reconciler stays happy. (This
+   manual seeding goes away once the upstream stages get real impls
+   in a future slice.)
+7. Click the `grayscale` chip. Observe `not-run → running → clean`
+   with a green toast "stage grayscale → clean". The on-disk artifact
+   appears at
+   `~/pgdp-projects/projects/<id>/pages/0000/stages/grayscale/output.png`.
+8. Click `threshold`. Same transition; the new file lands.
+9. Click `grayscale` again. The chip flickers running → clean; every
+   descendant currently `clean`/`failed` flips to `dirty` (amber).
+   You should see at least `threshold` go amber.
+10. Click any of the 19 placeholder chips (e.g. `decode_source`,
+    `ocr`, `text_postprocess`). Two outcomes:
+    - If the stage's parents aren't clean: 409 with "dependencies not
+      clean" toast.
+    - If parents are clean and the stage is single-output: 500 toast
+      "no implementation registered for cpu yet"; chip turns rose
+      (`failed`) with the placeholder text in its tooltip.
+    - If the stage emits compound output (`ocr`,
+      `extract_illustrations`, `text_review`): 501 toast with
+      "compound output_type" message; chip stays `not-run`.
+
+**Pass criterion (Slices 1–5):** clicking `grayscale` after seeding
+its parent transitions chip not-run → clean visibly, the file lands
+on disk, AND clicking it a second time flips every clean descendant
+chip to amber within ≤500 ms.
+
+**UI artifacts that prove these slices shipped:** the chip rail
+itself (visible immediately when opening any page); per-status color
+coding (slate/sky/emerald/amber/rose/slate-50); the success/error
+toast surface; `data-status` attr on each chip for tests + future
+deep-linking.
 
 **Likely failure modes:**
 
 - A chip transitions to `clean` but the on-disk file under
   `<project>/pages/<page_id>/stages/<stage_id>/output.<ext>` doesn't
   appear → dual-write reconciliation isn't actually happening (the
-  DB row was committed without the file write). Catch by step 8.
-- Running `auto_deskew` does not mark `morph_fill` dirty → the eager
+  DB row was committed without the file write). Catch by step 7.
+- Running `grayscale` does not mark `threshold` dirty → the eager
   cascade is querying the wrong descendants set.
+
+**Carry-forwards into M3 / next M2 slice:**
+
+- The artifact viewer pane (side-by-side input/output for a selected
+  chip) lands in M3.
+- Real implementations for the 19 placeholder stages land
+  incrementally; once `ingest_source` / `decode_source` /
+  `initial_crop` / `manual_deskew_pre` are real, step 6's manual
+  SQLite seeding goes away.
 
 ---
 
