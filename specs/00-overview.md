@@ -177,12 +177,13 @@ without blocking any feature.
 ## Pipeline as a per-page DAG of stages
 
 The canonical pipeline shape is a **DAG of named per-page stages**, defined
-in `docs/specs/pipeline-task-model.md`. Each page runs through 16 stages
+in `docs/specs/pipeline-task-model.md`. Each page runs through 22 stages
 (`ingest_source` → `thumbnail` → `auto_detect_attrs` →
 `auto_detect_illustrations` → `decode_source` → `initial_crop` → … →
-`canvas_map` → `ocr_crop` → `ocr` → `text_postprocess` → `text_review`),
-each producing a typed in-memory artifact and a persisted on-disk
-artifact. Stages have explicit dependency edges; re-running one marks
+`canvas_map` → `ocr_crop` → `ocr` → `text_postprocess` → `text_review`,
+plus the `blank_proof_synth` alt for blank pages and
+`extract_illustrations` parallel chain), each producing a typed
+in-memory artifact and a persisted on-disk artifact. Stages have explicit dependency edges; re-running one marks
 all downstream stages on the same page `dirty` and they re-execute on
 the next "run dirty" sweep.
 
@@ -269,11 +270,12 @@ See `docs/specs/pipeline-task-model.md` for:
 
 ## Scope
 
-**In scope:** the full per-page stage DAG (16 stages from `ingest_source`
-through `text_review`), PageWorkbench with stage-chain rail and per-stage
-artifact viewer, visual page tagger with per-page config, split-as-sibling-
-pages editor, illustration extraction, PGDP package assembly with the
-text-review gate.
+**In scope:** the full per-page stage DAG (22 stages from `ingest_source`
+through `text_review` + the `blank_proof_synth` and
+`extract_illustrations` branches), PageWorkbench with stage-chain rail
+and per-stage artifact viewer, visual page tagger with per-page config,
+split-as-sibling-pages editor, illustration extraction, PGDP package
+assembly with the text-review gate.
 
 **Out of scope:** PGDP project submission (still a manual step on
 distributedproofreaders.org), DocTR model training (lives in `pd-ocr-trainer`).

@@ -74,7 +74,7 @@ all milestones below, "the test zip" refers to that fixture.
 
 ---
 
-#### M1 — Schema + DAG enumeration + reindex CLI
+#### M1 — Schema + DAG enumeration + reindex CLI (in progress)
 
 **Scope:**
 
@@ -83,44 +83,66 @@ all milestones below, "the test zip" refers to that fixture.
 - Add split-related columns to `pages` (`parent_page_id`,
   `source_crop_bbox`, `split_index`, `split_at_stage`, `split_suffix`,
   `reading_order`).
-- Land `core/pipeline/dag.py` with the 16-stage registry, dependency
-  map, and `descendants()` helper.
-- Land the `pgdp-prep reindex <project_id>` CLI (canonical spec
+- Land `core/pipeline/stage_dag.py` with the **22-stage registry**
+  (matches spec STAGE_VERSIONS — pre-existing 4 ingest-fed stages, 12
+  decomposed from `process_page_cpu`'s 4c-4o, the `blank_proof_synth`
+  alt for blank pages, and 5 post-Step-4 stages including `text_review`),
+  dependency map, and `compute_dirty_descendants()` helper.
+- `GET /api/pages/{page_id}/stages` route + auto-initialisation of
+  `not-run` rows (lazy side of dual-write reconciliation).
+- `PageStageWriter.commit_stage_artifact` (write-tmp → fsync → atomic
+  rename → DB upsert in one transaction; fail-loudly per Q9) +
+  `PageStageWriter.reconcile_page` (drift report; no healing in this slice).
+- The `pgdp-prep reindex <project_id>` CLI (canonical spec
   §Dual-write reconciliation) — read-only by default, `--heal` flag
   for orphan deletion / failed-row marking.
-- No runner, no UI changes, no stage execution. Stage rows are
-  written by a stub helper that creates them in `not-run` state when
-  a project is first opened.
+- No runner, no UI changes, no stage execution.
 
-**Required test fixtures:** any test zip; `tests/fixtures/three-page-book.zip`
-or equivalent.
+**Status (2026-05-07):**
+
+- §A schema + CRUD shipped (commit `128ead9`).
+- §B 22-stage DAG + dirty-descendants helper shipped (commit `2341fa1`).
+- §C route + dual-write skeleton — pending.
+- §D reindex CLI — pending.
+- §E split-related columns on `pages` — pending (deferred to a later
+  slice; not load-bearing for §C/§D since no splits exist yet).
+- §F doc realign — this section.
+
+**Required test fixtures:** `tests/fixtures/three_page_book.py` (helper
+`build_three_page_book_zip` + `three_page_book_zip` conftest fixture) —
+shipped (commit `48b8ce9`).
 
 **How to verify by running the app (UI smoke-test):**
 
 1. `make run`. Open <http://127.0.0.1:8765>.
-2. Create a project named "M1-smoke", upload the test zip.
+2. Create a project named "M1-smoke", upload the test zip
+   (`uv run python -c "from tests.fixtures.three_page_book import
+   build_three_page_book_zip; from pathlib import Path;
+   build_three_page_book_zip(Path('/tmp/m1.zip'))"`).
 3. Wait for the existing ingest / thumbnails rows to turn green.
-4. Open a terminal: `curl -s http://127.0.0.1:8765/api/pages/0000/stages | jq .`
-   (or whatever the new route ends up named). The response should be
-   a JSON array with **16 entries**, each an object with `stage_id`,
-   `status: "not-run"`, `stage_version: 1`, `artifact_key: null`. The
-   stage IDs must match the canonical spec list verbatim.
+4. Open a terminal:
+   `curl -s http://127.0.0.1:8765/api/pages/0000/stages | jq .` (route
+   pending §C). The response should be a JSON array with **22 entries**,
+   each an object with `stage_id`, `status: "not-run"`, `stage_version: 1`,
+   `artifact_key: null`. The stage IDs must match
+   `core.models.PAGE_STAGE_IDS` verbatim.
 5. `sqlite3 ~/pgdp-projects/state.db ".schema page_stages"` — should
-   show the composite-PK schema with the two indexes.
-6. `pgdp-prep reindex <project_id>` — should report "0 orphan files,
-   0 missing artifacts, 0 hash mismatches" cleanly.
-7. Manually `rm` one of the synthesised page directories
-   (`rm -rf ~/pgdp-projects/<project>/pages/0000/`) and re-run
+   show the composite-PK schema with the two indexes
+   (`page_stages_proj_status`, `page_stages_proj_page`) and CHECK
+   constraints on `status` + `stage_id`.
+6. `pgdp-prep reindex <project_id>` (pending §D) — should report
+   "0 orphan files, 0 missing artifacts, 0 hash mismatches" cleanly.
+7. Manually `rm -rf ~/pgdp-projects/<project>/pages/0000/` and re-run
    `pgdp-prep reindex --heal <project_id>` — should mark every row for
    that page `failed` and report the heal action.
 
-**Pass criterion:** the API exposes 16 not-run stages per page; the
+**Pass criterion:** the API exposes 22 not-run stages per page; the
 reindex CLI correctly reports drift; `page_stages` rows survive a
 restart.
 
 **Likely failure modes:**
 
-- "API returns 17 stages because someone added a duplicate ID without
+- "API returns 23 stages because someone added a duplicate ID without
   deduping the registry" — surface during step 4.
 - "`reindex` reports the bare DB path for `pages/<page_id>` because the
   page-id encoding for split children isn't implemented yet" — fine
@@ -168,8 +190,8 @@ signals.
 3. Wait for ingest+thumbnails to finish (Step 0/1/2 row turns green
    in the existing JobsPage).
 4. Open page f001 in the workbench. The workbench should now show a
-   stage chain rail with 16 stage chips. The post-ingest chips
-   (`ingest_source`, `thumbnail`, `auto_detect_attrs`,
+   stage chain rail with 22 stage chips (per spec STAGE_VERSIONS). The
+   post-ingest chips (`ingest_source`, `thumbnail`, `auto_detect_attrs`,
    `auto_detect_illustrations`) should be `clean` (green); the rest
    should be `not-run` (gray).
 5. Click "Run stage: deskew" (or `auto_deskew` chip's run button).
@@ -187,7 +209,9 @@ signals.
 7. Click "Run all dirty stages on this page". All chips return to
    `clean`.
 8. Verify on-disk: `ls ~/pgdp-projects/<project>/pages/0000/stages/`
-   should list 16 stage directories, each with an `output.<ext>`.
+   should list 22 stage directories (one for every stage in
+   `core.models.PAGE_STAGE_IDS`), each with an `output.<ext>` (or just
+   the directory if the stage is `not-applicable` for this page type).
 9. Test back-pressure: set `PGDP_STAGE_WRITE_POOL_SIZE=1` and
    `PGDP_STAGE_WRITE_QUEUE_CAP=1`, restart, run "Run from
    `decode_source`". The DAG should still complete (just slower).
@@ -233,7 +257,7 @@ prettier UI), per-stage run buttons.
 1. `make run`. Open the M2-smoke project (or create a new "M3-smoke"
    project from the test zip).
 2. Open page f001 in the workbench. The stage rail should now look
-   visually polished — 16 chips with consistent status colours, each
+   visually polished — 22 chips with consistent status colours, each
    showing a small inline thumbnail of its output (when one exists).
 3. Click on the `threshold` chip. The artifact viewer pane should
    load the threshold output image. The "Compare with" selector

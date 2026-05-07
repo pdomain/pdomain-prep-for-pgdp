@@ -230,7 +230,7 @@ The React implementation maps as follows.
 <PageWorkbench>
   <WorkbenchHeader />              ← nav arrows, "Mark reviewed", "Reverse split", back link
   <div class="workbench-layout">
-    <StageChainRail />             ← 16 stage chips with status pills + per-row run buttons
+    <StageChainRail />             ← 22 stage chips with status pills + per-row run buttons
     <ArtifactViewerPane />         ← side-by-side compare of selected stage + chosen upstream
     <StageControlsPanel />         ← config fields filtered to the selected stage
     <CanvasPanel>                  ← used for split-creation and illustration-region drawing
