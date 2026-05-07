@@ -116,6 +116,15 @@ export interface UpdatePageRequest {
   illustration_regions?: unknown[] | null;
 }
 
+/**
+ * Response from `GET /api/data/projects/{id}/source-preview` (P2 #8).
+ * Cheap thumbnail-strip backing — reads only the zip's central directory.
+ */
+export interface SourcePreviewResponse {
+  filenames: string[];
+  total_image_count: number;
+}
+
 export interface SystemDefaults {
   text_threshold: number;
   page_h_w_ratio: number;

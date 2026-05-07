@@ -204,11 +204,19 @@ catch wrong-zip mistakes early.
 **Progress (2026-05-07):** pure helper `peek_zip_image_names(raw, limit)`
 landed in `core/ingest.py` with `tests/test_peek_zip_image_names.py`. Reads
 only the zip central directory (no payload decompression) and returns
-`(names, total_image_count)` so the preview can show "5 of 12". Remaining
-slices: a `GET /projects/{id}/source-preview` route that streams the
-uploaded zip and calls the helper, plus a thumbnail endpoint (or inline
-JPEG render) for each previewed name, plus the create-project flow change
-to show the strip between upload completion and ingest dispatch.
+`(names, total_image_count)` so the preview can show "5 of 12".
+
+**Progress (2026-05-07, slice 2):** `GET /api/data/projects/{id}/source-preview`
+now exposes the helper over HTTP. Auth/ownership mirrors `assets.py`
+(collapse 403 → 404 to avoid leaking existence). Returns
+`SourcePreviewResponse {filenames, total_image_count}`; `?limit=` is honoured
+end-to-end. Coverage in `tests/test_source_preview_route.py`. OpenAPI
+spec re-exported (`tests/test_openapi_spec_committed.py` green); the new
+shape is also hand-added to `frontend/src/api/types.ts` since the
+generated-types swap is still deferred. Remaining slices: a thumbnail
+endpoint (or inline JPEG render) for each previewed name, plus the
+create-project flow change to show the strip between upload completion
+and ingest dispatch.
 
 ### 9. Vitest + msw for the SPA — acceptance met, optional follow-ups remain
 

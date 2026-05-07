@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ...adapters.auth import UserContext
 from ...adapters.database import IDatabase
 from ...adapters.storage import IStorage
+from ...core.ingest import peek_zip_image_names
 from ...core.models import (
     PipelineState,
     Project,
@@ -44,6 +45,18 @@ class UpdateConfigRequest(BaseModel):
 class UpdateConfigResponse(BaseModel):
     project_config: ProjectConfig
     updated_at: datetime
+
+
+class SourcePreviewResponse(BaseModel):
+    """Cheap-to-compute preview of an uploaded source zip (P2 #8).
+
+    Lets the SPA render a thumbnail strip / sanity-check the upload before
+    triggering ingest. Backed by `peek_zip_image_names`, which only reads
+    the zip's central directory — no per-entry decompression.
+    """
+
+    filenames: list[str]
+    total_image_count: int
 
 
 @router.post("/projects", response_model=CreateProjectResponse)
@@ -189,6 +202,34 @@ async def archive_project(
     Idempotent — archiving an already-archived project is a no-op (still 200).
     """
     return await _set_archived(project_id, archived=True, user=user, db=db)
+
+
+@router.get(
+    "/projects/{project_id}/source-preview",
+    response_model=SourcePreviewResponse,
+)
+async def source_preview(
+    project_id: str,
+    limit: int = 20,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    storage: IStorage = Depends(get_storage),
+) -> SourcePreviewResponse:
+    """Return image filenames + total count from the project's `source.zip`.
+
+    404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse
+    of 403 → 404 to avoid leaking existence) and for the case where the
+    presigned upload URL was issued but the PUT never landed.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    source_key = f"{project.storage_prefix}source.zip"
+    if not await storage.exists(source_key):
+        raise HTTPException(404, "source zip not uploaded")
+    raw = await storage.get_bytes(source_key)
+    filenames, total = peek_zip_image_names(raw, limit=limit)
+    return SourcePreviewResponse(filenames=filenames, total_image_count=total)
 
 
 @router.post("/projects/{project_id}/unarchive", response_model=Project)
