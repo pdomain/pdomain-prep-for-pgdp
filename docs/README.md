@@ -13,6 +13,7 @@ in [`../specs/`](../specs/) (which capture the *target* design).
 | [`06-deployment.md`](06-deployment.md) | Local / self-hosted / managed shapes |
 | [`07-testing.md`](07-testing.md) | TDD conventions, test layout, what's covered |
 | [`08-roadmap.md`](08-roadmap.md) | What's done + what's next, by priority |
+| [`futures/`](futures/) | Future-state design notes (not current milestones) |
 
 ## Status snapshot
 
