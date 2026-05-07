@@ -783,13 +783,22 @@ existing key, override adds a new key while preserving others, empty
 override is a no-op, explicit `None` falls back to the original.
 `make test` 381 passed / 4 pre-existing skips.
 
-### 17. Spec-01 off-by-one in `compute_prefix`
+### 17. Spec question: `compute_prefix` first-frontmatter-page numbering
 
 Logged in iteration 1. The spec's loop `range(start, min(idx0, end+1))` is
-empty when `idx0 == start`, so the first frontmatter page is `f000` instead
-of `f001` despite `frontmatter_page_nbr_start=1`. Implementation matches
-spec verbatim; needs a user decision on whether the spec or the field name
-is wrong, then a one-line fix + a test update.
+empty when `idx0 == start`, so the first frontmatter page resolves to
+`f000` instead of `f001` despite `frontmatter_page_nbr_start=1`.
+Implementation matches the spec verbatim — `test_compute_prefix_basic_numbering`
+asserts the current `f000` behavior, so this is **not a latent bug**: any
+change to `f001` would be an *intentional* rewrite of the spec, and the
+asserting test would need to be updated in the same change.
+
+This entry tracks an open spec question, not a fix-on-sight bug. The
+decision is whether (a) the field name `frontmatter_page_nbr_start=1`
+should imply `f001` and the spec loop is wrong, or (b) the `f000`-from-1
+behavior is intentional zero-based numbering and the field name / docs
+should be clarified. A user decision unblocks the change; either path is
+a one-line code (or spec) edit plus a deliberate test update.
 
 ---
 
