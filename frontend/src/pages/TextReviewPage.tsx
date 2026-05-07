@@ -21,25 +21,12 @@ interface OcrPageResponse {
   words: OcrWord[];
 }
 
-// ─── §9a delete-words wire shapes ──────────────────────────────────
-// Hand-mirrored from `api/data/pages.py::DeleteWordsRequest` /
-// `DeleteWordsResponse`. Lives here (not pulled from types.gen.ts) so it
-// won't be clobbered next time `make openapi-export` regenerates the
-// generated types — same convention `PageWorkbenchPage` uses for
-// `ProcessPageRequest`/`Response` (see tick 11). When the OpenAPI
-// export catches up, replace these with the generated names.
-interface DeleteWordsRequest {
-  word_ids: string[];
-  split_suffix?: string | null;
-}
-
-interface DeleteWordsResponse {
-  text_key: string;
-  words_key: string;
-  deleted_count: number;
-  remaining_words: OcrWord[];
-  text: string;
-}
+// §9a delete-words wire shapes — sourced from the generated OpenAPI
+// types. The endpoint is the canonical contract, so any future change
+// in `api/data/pages.py::DeleteWordsRequest`/`Response` flows here via
+// `make openapi-export` without manual sync.
+type DeleteWordsRequest = components["schemas"]["DeleteWordsRequest"];
+type DeleteWordsResponse = components["schemas"]["DeleteWordsResponse"];
 
 export function TextReviewPage() {
   const { projectId = "", idx0: idx0Str = "0" } = useParams();

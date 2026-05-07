@@ -502,7 +502,15 @@ green. Total frontend tests now **61** (was 59, +2).
 `make frontend-test` runs in ~1.7s; `npx tsc -b` exits clean. No
 backend changes; no wire-contract changes.
 
-Tick 25 candidates (pick the smallest with the highest leverage):
+**Status (tick 25):** generated-types round-trip landed.
+`DeleteWordsRequest` / `DeleteWordsResponse` in `TextReviewPage.tsx`
+are now `type X = components["schemas"]["X"]` aliases pulled from
+`api/types.gen.ts` (already populated when `openapi.json` was
+regenerated in a previous tick). Hand-mirrored interfaces deleted —
+the OpenAPI export is the single source of truth for the wire shape.
+No behavioural change; 90 frontend tests green; `tsc -b` clean.
+
+Open follow-ups:
 
 - **Soft-delete server flag** so undo becomes feasible: add
   `deleted: bool` to `OcrWord`, change the DELETE endpoint to flip
@@ -510,12 +518,6 @@ Tick 25 candidates (pick the smallest with the highest leverage):
   filtered to non-deleted. Frontend gains an "undo last batch"
   button that POSTs the un-flag. **Schema decision — needs user
   input before any code changes.**
-- **`make openapi-export` round-trip**: when a tick has the
-  backend up, regenerate `types.ts` and replace the hand-mirrored
-  `DeleteWordsRequest` / `DeleteWordsResponse` interfaces with the
-  generated names. Mechanical; one commit.
-- ~~**Marquee polish**: "Clear selection" button + Esc-key handler.~~
-  *Landed in tick 24, plus a bonus aria-live announcer.*
 - **Marquee runtime smoke-test in `make frontend-dev`**: the
   Vitest path covers the math + the handler bodies, but the
   preview rect rendering and Konva pointer-capture haven't been
