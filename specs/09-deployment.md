@@ -23,6 +23,21 @@ Installed as a `uv tool` via a one-line curl-piped script. Same pattern as
 `nvidia-smi`, picks the matching PyTorch wheel index, and runs
 `uv tool install` against the latest GitHub tag.
 
+### Disk-cost callout (every-intermediate stage persistence)
+
+Per `docs/specs/pipeline-task-model.md` Q3 (locked), every stage of every
+page persists its output to disk on every run. This is roughly **16×
+source-page footprint per page** at typical proof sizes. A 500-page book
+at 2 MB/source-page expands to ~16 GB of stage artifacts. Configure
+`PGDP_DATA_ROOT` accordingly.
+
+The `pgdp-prep reindex <project_id>` CLI walks the page tree and the
+`page_stages` DB rows, reporting drift; `--heal` deletes orphan files
+and marks DB rows whose file is missing as `failed`. M5+ may add a
+`pgdp-prep --prune-stage-artifacts` opt-in for users who are done
+proofing and want to recover disk (at the cost of disabling fast
+workbench reruns until the DAG is re-run).
+
 ```
 # Linux / macOS
 $ curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
@@ -332,14 +347,14 @@ interactive edits are fast.
 
 | Operation | Routing | Why |
 |---|---|---|
-| Workbench `process-page` | Direct to GPU backend | User is waiting; latency matters |
-| Workbench `run-ocr-page` (single split) | Direct | User-facing |
-| Page-correction re-run from text review | Direct | User-facing |
-| `batch_process_pages` (whole-book Step 4) | Dispatcher | Amortise cold start across 400 pages |
-| `batch_ocr` | Dispatcher | OCR also batches ~8 pages per forward pass; 5-min flush captures bigger batches |
-| `batch_text_postprocess` | CPU; runs in Fargate, no dispatcher | No GPU needed |
-| `batch_extract_illustrations` | CPU; Fargate | No GPU needed |
-| `build_package` | CPU; Fargate | No GPU needed |
+| Workbench `POST /api/pages/{id}/stages/{id}/run` (single, from) | Direct to GPU backend | User is waiting; latency matters |
+| Page-correction stage re-run from text review | Direct | User-facing |
+| `project.run_stage_all_pages(stage_id="canvas_map")` (whole-book proofing) | Dispatcher | Amortise cold start across 400 pages |
+| `project.run_stage_all_pages(stage_id="ocr")` | Dispatcher | OCR also batches ~8 pages per forward pass |
+| `project.run_dirty(...)` | Dispatcher when stage requires GPU; in-process otherwise | Mixed |
+| `text_postprocess` stage runs (project-wide or per-page) | CPU; runs in Fargate, no dispatcher | No GPU needed |
+| `extract_illustrations` stage runs | CPU; Fargate | No GPU needed |
+| `project.build_package` | CPU; Fargate | No GPU needed; may park in `awaiting_review` per Q7 gate |
 
 ---
 

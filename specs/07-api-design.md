@@ -184,84 +184,100 @@ class JobResponse(BaseModel):
     status: Literal["queued", "running"] = "queued"
 ```
 
-### Single-page operations (synchronous, for workbench)
+### Per-page stage operations (synchronous, for workbench)
 
 These bypass the batch dispatcher and fire immediately. Cold start is paid by
 the user when it happens.
 
 ```
-POST   /api/gpu/process-page              Run Step 4 for one page; return result URL
-POST   /api/gpu/run-ocr-page              Run OCR for one page or split
-POST   /api/gpu/suggest-splits            Detect column splits on processed image
-POST   /api/gpu/suggest-illustrations     Detect illustration regions on source image
-POST   /api/gpu/extract-illustration      Extract one illustration region
+GET    /api/pages/{page_id}/stages                            List stage state for one page
+POST   /api/pages/{page_id}/stages/{stage_id}/run             Run one stage (mode: single | from)
+GET    /api/pages/{page_id}/stages/{stage_id}/artifact        Stream the on-disk artifact
+POST   /api/pages/{page_id}/split                             Create N child pages
+POST   /api/pages/{page_id}/unsplit                           Reverse a split
+POST   /api/pages/{page_id}/text_review/clean                 Mark page reviewed (Q7 gate)
+POST   /api/gpu/suggest-illustrations                         Detect illustration regions on source image
+POST   /api/gpu/extract-illustration                          Extract one illustration region (workbench preview)
 ```
 
-```python
-class ProcessPageRequest(BaseModel):
-    project_id: str
-    idx0: int
-    config_overrides: PageConfigOverrides     # current workbench values
-    output_context: Literal["workbench", "commit"] = "workbench"
-    # workbench → projects/{id}/workbench_temp/{idx0}/
-    # commit    → canonical pipeline output dirs
+`page_id` accepts either the zero-padded `idx0` (root pages) or a
+structured split-child id (`0042/splits/a`).
 
-class ProcessPageResponse(BaseModel):
-    processed_image_key: str
-    processed_image_url: str
-    dimensions: tuple[int, int]               # (height, width)
-    processing_time_ms: int
+```python
+class RunStageRequest(BaseModel):
+    page_id: str
+    stage_id: str
+    mode: Literal["single", "from"] = "single"
+    config_overrides: PageConfigOverrides | None = None  # PATCH page first, then run
+
+class RunStageResponse(BaseModel):
+    page_id: str
+    stage_id: str
+    status: PageStageStatus           # 'clean' | 'failed' | 'dirty' (downstream)
+    artifact_url: str | None          # for image-producing stages
+    duration_ms: int
     backend: Literal["local", "cpu", "modal", "shared_container"]
-    cold_start_ms: int = 0                    # > 0 if Modal warmed up this call
+    cold_start_ms: int = 0            # > 0 if Modal warmed up this call
+
+class PageStageState(BaseModel):
+    stage_id: str
+    status: PageStageStatus
+    stage_version: int
+    last_run_at: datetime | None
+    duration_ms: int | None
+    error_message: str | None
+    artifact_url: str | None          # presigned GET when status='clean' and stage produces an artifact
+```
+
+### Project-level stage operations
+
+```
+GET    /api/projects/{id}/stages                                 Project-wide stage state (filterable)
+POST   /api/projects/{id}/stages/{stage_id}/run-all              Fan out one stage across all pages
+POST   /api/projects/{id}/run-dirty                              Fan out everything dirty
+POST   /api/projects/{id}/build-package                          Build PGDP zip; gated by text_review.clean
 ```
 
 ```python
-class OcrPageRequest(BaseModel):
-    project_id: str
-    idx0: int
-    split_suffix: str | None = None           # None = whole page
-    engine: Literal["doctr", "tesseract"] | None = None  # None = use ResolvedPageConfig
-    model_key: str | None = None
-    batch_mode: bool = False                  # True = caller is a batch worker
+class RunAllStageRequest(BaseModel):
+    only_dirty: bool = True
+    page_id_filter: list[str] | None = None      # None = all proof-range pages
 
-class OcrPageResponse(BaseModel):
-    text: str
-    words: list[OcrWord]
-    text_key: str
-```
-
-### Batch jobs
-
-```
-POST   /api/gpu/jobs                  Submit a batch job
-GET    /api/gpu/jobs/{id}             Poll status + progress
-GET    /api/gpu/jobs/{id}/events      SSE stream of progress events
-DELETE /api/gpu/jobs/{id}             Cancel
-```
-
-```python
-class BatchJobRequest(BaseModel):
-    project_id: str
-    job_type: Literal[
-        "batch_process_pages",
-        "batch_ocr",
-        "batch_text_postprocess",
-        "batch_extract_illustrations",
-        "build_package",
-    ]
-    page_idxs: list[int] | None = None        # None = all proof-range pages
-
-class BatchJobResponse(BaseModel):
+class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
     estimated_pages: int
     dispatch_mode: Literal["immediate", "scheduled"]
-    next_dispatch_at: datetime | None = None  # set when dispatch_mode == "scheduled"
+    next_dispatch_at: datetime | None = None     # set when dispatch_mode == "scheduled"
 ```
 
 In local/self-hosted modes `dispatch_mode == "immediate"`. In managed mode
-batch jobs are `"scheduled"` with `next_dispatch_at` showing when the next
-flush will fire (≤5 minutes).
+project-level jobs are `"scheduled"` with `next_dispatch_at` showing when
+the next flush will fire (≤5 minutes).
+
+### `awaiting_review` status
+
+`build_package` lands in `JobStatus.awaiting_review` when any
+proof-range page is unreviewed. The job stays parked (heartbeat SSE
+events emit a count of remaining unreviewed pages) until either every
+page is `text_review.clean` (auto-resume) or the user explicitly
+cancels. See canonical pipeline-task-model spec for the full
+workflow.
+
+### Legacy endpoints (deprecated)
+
+The following endpoints remain through M5 as thin shims onto the
+per-stage runner; they are removed in M6:
+
+| Legacy endpoint | Replacement |
+|---|---|
+| `POST /api/gpu/process-page` | `POST /api/pages/{page_id}/stages/canvas_map/run?mode=from` |
+| `POST /api/gpu/run-ocr-page` | `POST /api/pages/{page_id}/stages/ocr/run?mode=single` |
+| `POST /api/gpu/jobs` with `job_type=batch_process_pages` | `POST /api/projects/{id}/stages/canvas_map/run-all` |
+| `POST /api/gpu/jobs` with `job_type=batch_ocr` | `POST /api/projects/{id}/stages/ocr/run-all` |
+| `POST /api/gpu/jobs` with `job_type=batch_text_postprocess` | `POST /api/projects/{id}/stages/text_postprocess/run-all` |
+| `POST /api/gpu/jobs` with `job_type=batch_extract_illustrations` | `POST /api/projects/{id}/stages/extract_illustrations/run-all` |
+| `POST /api/gpu/jobs` with `job_type=build_package` | `POST /api/projects/{id}/build-package` |
 
 ### SSE progress events
 

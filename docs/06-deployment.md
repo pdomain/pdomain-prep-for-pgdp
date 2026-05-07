@@ -41,8 +41,24 @@ Defaults at startup (no env vars set):
 | `auth_mode` | `none` |
 | `gpu_backend` | auto-detect (`local` if cupy importable, else `mps` on macOS arm64, else `cpu`) |
 | `dispatch_interval_seconds` | `0` (immediate) |
+| `stage_write_pool_size` | `min(cpu_count(), 4)` (canonical spec Q8) |
+| `stage_write_queue_cap` | `4 × stage_write_pool_size` (canonical spec Q8) |
+| `reconcile_interval_seconds` | `1800` (30 min) — periodic dual-write reconciler |
 
 `__main__.py` opens a browser tab on start unless `--no-browser` is passed.
+
+### Disk-cost implication of every-intermediate stage persistence
+
+Per `docs/specs/pipeline-task-model.md` Q3 (locked), every stage of every
+page persists its output to disk on every run — roughly **16× source-page
+footprint per page**. A 500-page book at 2 MB/source-page is ~16 GB of
+stage artifacts under `~/pgdp-projects/<id>/pages/`. Configure
+`PGDP_DATA_ROOT` accordingly.
+
+The `pgdp-prep reindex <project_id>` CLI walks the page tree and the
+`page_stages` DB rows, reporting drift; `--heal` deletes orphan files
+and marks DB rows whose file is missing as `failed`. Run it after a
+process crash or manual file moves.
 
 ## Self-hosted
 

@@ -1,12 +1,13 @@
 # 02 — Backend
 
-> **Pipeline task-model refactor (2026-05-07):** the per-page pipeline
-> shape described below (Step 4 monolith via `process_page_cpu`,
-> `JobType.batch_*` orchestration) is being replaced by the granular
-> stage DAG specified in
+> **Pipeline task-model (locked 2026-05-07):** the canonical pipeline
+> shape is the per-page stage DAG specified in
 > [`docs/specs/pipeline-task-model.md`](specs/pipeline-task-model.md).
-> The text below still describes today's code; the spec is the target.
-> A full rewrite of this doc is scheduled after M2 ships.
+> The text below describes the bootstrap, adapter contracts, route
+> structure, and concurrency primitives that are stable across the
+> refactor. The Step-4-monolith / `JobType.batch_*` orchestration
+> still exists in the codebase but is being progressively replaced by
+> the per-stage runner across M1–M6 (see `docs/08-roadmap.md` §P0.5).
 
 ## `Settings` and bootstrap
 
@@ -95,18 +96,28 @@ async def verify(credentials: str | None) -> UserContext
 
 ### `GPUBackend` (`adapters/gpu/base.py`)
 
+Today the protocol is:
+
 ```python
 async def process_page(req: ProcessPageRequest) -> ProcessPageResponse
 async def run_ocr(req: OcrPageRequest) -> OcrPageResponse
 async def run_batch(items: list[BatchJobItem]) -> list[BatchJobResult]
 ```
 
+This shape ships through M5 as compatibility-shimming for existing job
+rows. M2 lands `STAGE_IMPL[stage_id][device]` (canonical spec Q5)
+alongside this protocol; M5 routes every existing call through the
+registry; M6 deletes the class hierarchy in favor of a small
+`pick_device()` helper plus the registry.
+
 - **`CpuBackend`** — fully wired. `process_page` reads source bytes via
   `IStorage`, runs `core.pipeline.process_page_cpu` through the
   `SingleExecutor`, writes the proofing image, returns the presigned URL.
   `run_ocr` reads the OCR-cropped image, calls `core.ocr.ocr_page` on the
   executor, writes text. `run_batch` dispatches each item sequentially.
-- **`LocalBackend`** — placeholder; CUDA path raises `NotImplementedError`.
+- **`LocalBackend`** — thin subclass of `CpuBackend`; DocTR / PyTorch
+  auto-pick `cuda:0` when available. M2 collapses this to a
+  `pick_device()` helper that the registry consults.
 - **`ModalBackend`** — wire shape verified by 3 TDD tests using a fake
   `modal` module. `Function.lookup("pgdp-prep", "...").remote.aio(payload)`
   carries Pydantic models as plain dicts. The Modal-side function bodies
@@ -145,19 +156,42 @@ Project + page CRUD, system defaults, presigned URLs, job index.
 | `GET /jobs` | Recent jobs by owner. Filter: `project_id`. |
 | `GET /jobs/{id}` | One Job. |
 
-### `/api/gpu/*`
+### `/api/gpu/*` and per-page stage routes
+
+The canonical per-page stage routes are documented in
+`docs/specs/pipeline-task-model.md` §API surface and `specs/07-api-design.md`.
+M1–M5 introduces them; legacy GPU routes remain as compatibility shims
+through M5.
+
+Today's routes:
 
 | Route | Notes |
 |---|---|
-| `POST /ingest` | Creates an `ingest` job (runs Step 0/1/2 + auto-detect). |
-| `POST /process-page` | Sync per-page Step 4. Used by the workbench live preview. |
-| `POST /run-ocr-page` | Sync per-page (or per-split) OCR. |
-| `POST /suggest-splits` / `/suggest-illustrations` / `/extract-illustration` | Spec-05 helpers (mostly stubs that return [] for now). |
-| `POST /jobs` | Submit a batch job (`batch_process_pages`, `batch_ocr`, `batch_text_postprocess`, `batch_extract_illustrations`, `build_package`). |
-| `GET /jobs/{id}` | Job status. |
-| `DELETE /jobs/{id}` | Cancel. |
-| `POST /jobs/{id}/retry` | Create a fresh `queued` copy of an `error`/`cancelled` job. |
-| `GET /jobs/{id}/events` | SSE — first frame is a snapshot, subsequent come from the broker (no polling). |
+| `POST /api/gpu/ingest` | Creates an `ingest` job (runs `project.ingest` + per-page `thumbnail` / `auto_detect_attrs` / `auto_detect_illustrations` stages). |
+| `POST /api/gpu/process-page` | **Deprecated, kept through M5.** Sync per-page proofing-chain run; becomes a thin shim onto `POST /api/pages/{id}/stages/canvas_map/run?mode=from`. |
+| `POST /api/gpu/run-ocr-page` | **Deprecated, kept through M5.** Becomes a shim onto `POST /api/pages/{id}/stages/ocr/run?mode=single`. |
+| `POST /api/gpu/suggest-illustrations` / `/extract-illustration` | Workbench helpers. |
+| `POST /api/gpu/jobs` | Submit a project-level job. New types: `project.run_stage_all_pages`, `project.run_dirty`, `build_package`. Deprecated types (kept through M5): `batch_process_pages`, `batch_ocr`, `batch_text_postprocess`, `batch_extract_illustrations`. |
+| `GET /api/gpu/jobs/{id}` | Job status. `JobStatus.awaiting_review` is a possible state for `build_package` jobs (canonical spec Q7). |
+| `DELETE /api/gpu/jobs/{id}` | Cancel. |
+| `POST /api/gpu/jobs/{id}/retry` | Create a fresh `queued` copy of an `error`/`cancelled` job. |
+| `GET /api/gpu/jobs/{id}/events` | SSE — first frame is a snapshot, subsequent come from the broker (no polling). Includes `stage_id` / `page_id` for per-stage events. |
+
+New per-page-stage routes added in M2 (see canonical spec §API surface
+for the full shape):
+
+```
+GET    /api/pages/{page_id}/stages
+POST   /api/pages/{page_id}/stages/{stage_id}/run
+GET    /api/pages/{page_id}/stages/{stage_id}/artifact
+POST   /api/pages/{page_id}/split
+POST   /api/pages/{page_id}/unsplit
+POST   /api/pages/{page_id}/text_review/clean
+GET    /api/projects/{id}/stages
+POST   /api/projects/{id}/stages/{stage_id}/run-all
+POST   /api/projects/{id}/run-dirty
+POST   /api/projects/{id}/build-package
+```
 
 ### `/cdn/*` (filesystem mode only)
 

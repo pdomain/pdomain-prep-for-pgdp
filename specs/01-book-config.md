@@ -130,7 +130,7 @@ fields have moved off the project entirely:
 | `edge_finding_adjust` (dict) | `PageRecord.config_overrides.fuzzy_pct/pixel_count_*` |
 | `threshold_level_adjust` (dict) | `PageRecord.config_overrides.threshold_level` |
 | `deskew_before_crop`, `deskew_after_crop` (dicts) | `PageRecord.config_overrides` |
-| `split_page_sections` | `PageRecord.splits` (see spec 06) |
+| `split_page_sections` | **Sibling child pages** keyed on `parent_page_id` (canonical spec Q6 lock; see spec 06 §Data Model — splits as sibling pages) |
 | `illustration_regions` | `PageRecord.illustration_regions` (see spec 05) |
 | `text_threshold`, `page_h_w_ratio`, `default_fuzzy_pct`, `default_pixel_count_*` | `SystemDefaults` (overridable per-project via `default_overrides`) |
 
@@ -146,8 +146,9 @@ section covers only the configuration-resolution surface.
 
 ```python
 class PageRecord(BaseModel):
-    idx0: int
-    prefix: str                    # "p045", "f003", "p007p"
+    id: str                        # opaque; encodes parent chain for split children
+    idx0: int                      # 0-based source-file index (root); inherited from parent for children
+    prefix: str                    # "p045", "f003", "p007p", "p045a" (with split suffix)
     source_stem: str
 
     # Identity-level page properties (replace the BookConfig page lists)
@@ -157,8 +158,16 @@ class PageRecord(BaseModel):
     # Per-page processing overrides (None on every field = inherit)
     config_overrides: PageConfigOverrides
 
-    # Page-level structural data (see specs 05, 06)
-    splits: list[PageSplit] = []
+    # Splits as sibling pages — see spec 08 and the canonical pipeline
+    # task-model spec §Splits as sibling pages (Q6 lock).
+    parent_page_id: str | None = None
+    source_crop_bbox: tuple[int, int, int, int] | None = None
+    split_index: int | None = None
+    split_at_stage: str | None = None
+    split_suffix: str | None = None
+    reading_order: int | None = None
+
+    # Page-level structural data (see spec 05)
     illustration_regions: list[IllustrationRegion] = []
 
     # ... S3 keys, processing status, outputs (spec 08)

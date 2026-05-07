@@ -1,25 +1,33 @@
 # 03 — Pipeline
 
-Spec 02 enumerates 10 pipeline steps. This doc describes the actual
-implementation, where each step lives, and how the OCR mirrors `pd-ocr-cli`.
+> **Authoritative spec:** the pipeline is a per-page DAG of named
+> stages, defined in
+> [`docs/specs/pipeline-task-model.md`](specs/pipeline-task-model.md)
+> and described stage-by-stage in `specs/02-pipeline-steps.md`. This
+> doc is a code-level guide to where each stage's implementation lives
+> today and how OCR mirrors `pd-ocr-cli`. Step IDs from the legacy
+> step-numbered model are kept for transition; see spec 02 §Step-numbered
+> legacy mapping for the stage-to-step crosswalk.
 
-## Step map
+## Stage-to-code map
 
-| Step | Code | Status |
+The canonical spec describes 16 per-page stages plus project-level
+orchestration tasks. Today's code lives at:
+
+| Stage / task | Code | Status |
 |---|---|---|
-| 0 — Ingest | `core/ingest.py` `ingest_source()` | ✅ |
-| 1 — JP2→JPG | (skipped today; cv2.imdecode handles JP2 directly) | ⏭ |
-| 2 — Thumbnails | `core/ingest.py` `_make_thumbnail_bytes()` (in-memory) | ✅ |
-| 3 — Configure | UI-only; `assign_prefixes` re-derives prefixes after PATCH | ✅ |
-| 4 — Process page (CPU path) | `core/pipeline/process_page.py` | ✅ |
-| 4b — Blank proof | `core/pipeline/blank_proof.py` | ✅ |
-| 4.5 — Illustrations | `core/illustrations.py` (extract + auto-detect) | ✅ |
-| 5 — Inspect | UI-only — handled by review queue + per-page status | ✅ |
-| 6 — Crop for OCR | `core/pipeline/crop_for_ocr.py` | ✅ |
-| 7 — OCR | `core/ocr.py` (mirrors pd-ocr-cli) | ✅ |
-| 8 — Text post-process | `core/text_postprocess.py` | ✅ |
-| 9 — Text review | UI-only; `PATCH /pages/{idx0}/text` | ✅ |
-| 10 — Package | `core/packaging.py` | ✅ |
+| `project.ingest` | `core/ingest.py` `ingest_source()` | ✅ shipped (still under legacy "Step 0") |
+| `ingest_source` (per-page) | `core/ingest.py` (root pages); split-child path lands in M1 | ✅ root / 🟡 child |
+| `thumbnail` | `core/ingest.py` `_make_thumbnail_bytes()` (in-memory) | ✅ |
+| `auto_detect_attrs` / `auto_detect_illustrations` | `core/auto_detect.py` / `core/illustrations.auto_detect_illustrations` | ✅ |
+| `decode_source` … `canvas_map` (the proofing chain) | bundled in `core/pipeline/process_page.py` `process_page_cpu()` today; M2 unbundles into `STAGE_IMPL[...]['cpu']` entries | 🟡 bundled |
+| `blank_proof_synth` | `core/pipeline/blank_proof.py` | ✅ |
+| `ocr_crop` | `core/pipeline/crop_for_ocr.py` | ✅ |
+| `extract_illustrations` | `core/illustrations.py` (extract + auto-detect) | ✅ |
+| `ocr` | `core/ocr.py` (mirrors pd-ocr-cli) | ✅ |
+| `text_postprocess` | `core/text_postprocess.py` | ✅ |
+| `text_review` (gate) | `PATCH /pages/{idx0}/text` (edit) + `POST /api/pages/{id}/text_review/clean` (attest); the explicit gate route lands in M2 | 🟡 partial |
+| `project.build_package` | `core/packaging.py`; the `awaiting_review` parking state lands in M5 | 🟡 partial |
 
 ## Step 0 — `ingest_source`
 
@@ -50,41 +58,41 @@ Corrupt entries land in `IngestResult.errors` without aborting the batch.
 After the loop, if any pages were ingested and `auto_detect=True`, the median
 `height/width` ratio is recorded into `Project.config.default_overrides["page_h_w_ratio"]`.
 
-## Step 4 — Process page (CPU)
+## Stage 4 sub-chain — proofing chain (CPU implementation)
 
-`process_page_cpu(source_image_bytes, cfg: ResolvedPageConfig)` orchestrates
-4c–4o using `pd_book_tools.image_processing.cv2_processing` primitives:
+The proofing-chain stages (`decode_source` → `initial_crop` →
+`manual_deskew_pre` → `grayscale` → `threshold` → `invert` →
+`find_content_edges` → `crop_to_content` → `auto_deskew` → `morph_fill` →
+`rescale` → `canvas_map`) are currently bundled in
+`process_page_cpu(source_image_bytes, cfg: ResolvedPageConfig)` —
+a single function that runs the whole chain in sequence using
+`pd_book_tools.image_processing.cv2_processing` primitives. The
+function returns `ProcessPageOutput(proofing_png, pre_ocr_png, height,
+width)`.
 
-```
-4c read source ─┐
-4d initial crop  │
-4e optional manual deskew before crop
-4f grayscale
-4g threshold (Otsu auto unless override)
-4h invert (text=255, bg=0)
-4i find_edges (pixel-based)
-4j crop_to_rectangle + optional whitespace pad
-4k auto_deskew (skipped for non-default alignment / rotated-standard)
-4l optional morph_fill
-4m re-invert + rescale_image to canonical aspect
-4n map_content_onto_scaled_canvas with alignment
-4o cv2.imencode(".png")
-```
-
-Returns `ProcessPageOutput(proofing_png, pre_ocr_png, height, width)`.
+M2 introduces the `STAGE_IMPL[stage_id][device]` registry (canonical
+spec Q5) — each sub-step gets a registered callable and the runner
+walks the DAG calling them individually with in-memory artifacts. M5
+routes every existing call through the registry; M6 deletes
+`process_page_cpu` outright (the project-level "run all CPU stages
+in a row" path becomes an imperative composition of registry calls).
 
 For `page_type ∈ {blank, plate_b, plate_r}` the function short-circuits to a
-canonical-aspect blank PNG (`blank_proof.create_blank_proof`).
+canonical-aspect blank PNG (`blank_proof.create_blank_proof`) — this is
+the `blank_proof_synth` stage in the canonical DAG.
 
-The GPU path (`adapters/gpu/local.py`) is a placeholder — the orchestration
-shape is the same, but `pd_book_tools.image_processing.cupy_processing`
-primitives haven't been wired yet.
+The GPU path (`adapters/gpu/local.py`) is a thin subclass of `CpuBackend`
+(DocTR / PyTorch auto-pick `cuda:0`). `pd_book_tools.image_processing.cupy_processing`
+primitives are still owed for the Step-4 image-processing fast path — see
+roadmap M2/M5 for when they wire up via the registry's `"cuda"` entries.
 
-## Step 6 — `crop_for_ocr`
+## Stage `ocr_crop` — crop for OCR
 
-Uniform OCR border crop (project-wide top/bottom/left/right) applied to the
-proofing image. If `page.splits` is non-empty, yields one crop per split in
-reading order; otherwise one whole-page crop.
+Uniform OCR border crop (project-wide top/bottom/left/right) applied to
+the proofing image. With splits as sibling pages (canonical spec Q6),
+each child page runs its own `ocr_crop` independently — the legacy
+"yield one crop per split" inner loop is gone. Each page (root or
+split-child) produces exactly one `ocr_image` artifact.
 
 ## Step 7 — OCR (mirrors pd-ocr-cli)
 

@@ -2,32 +2,51 @@
 
 ## Concept
 
-The **PageWorkbench** is the primary per-page editing surface. It replaces the
-notebook's pattern of "edit variables, re-run step, inspect output" with an
-interactive loop: change a parameter → GPU re-processes the page within ~1s →
-updated image appears immediately.
+The **PageWorkbench** is the primary per-page editing surface for the
+per-page stage DAG (canonical spec
+[`docs/specs/pipeline-task-model.md`](../docs/specs/pipeline-task-model.md)).
+It replaces the notebook's pattern of "edit variables, re-run step,
+inspect output" with an interactive loop: select a stage, change its
+parameters, click "Run from here" → the chosen stage and its DAG-
+downstream stages re-execute → the artifact viewer updates.
 
-The batch pipeline (spec 02) still exists, but it becomes a convenience
-operation — "run the workbench headlessly for all pages" — rather than the
-primary workflow. Any page that needs non-default treatment gets opened in the
-workbench directly.
+Project-level fan-out (`POST /api/projects/{id}/run-dirty`,
+`POST /api/projects/{id}/stages/{stage_id}/run-all`) still exists but
+becomes a convenience operation — "run the workbench headlessly for
+all pages" — rather than the primary workflow. Any page that needs
+non-default treatment gets opened in the workbench directly.
 
 ---
 
 ## What the Workbench Does
 
-1. **Live GPU preview** — any config change re-processes this page on the GPU
-   and updates the displayed image, with a 400 ms debounce
-2. **Split editor** — draw rectangular regions on the processed image; define
-   reading order; each region becomes its own PGDP output file
-3. **OCR preview** — trigger OCR for this page (or any individual split) and see
-   word-level results as overlays on the image
-4. **Illustration regions** — draw extraction bboxes directly on the source image
-   (integrates spec 05; the same `ui.interactive_image` surface with a mode toggle)
-5. **Text review** — OCR text side-by-side with the image, editable
+1. **Stage chain rail** — every per-page stage shows its current
+   status (`clean`, `dirty`, `failed`, `not-run`, `not-applicable`)
+   with per-row run buttons (`▶ Run this`, `▶ Run from here`).
+2. **Per-stage artifact viewer** — selecting a stage in the rail
+   loads its on-disk artifact in a side-by-side compare with the
+   chosen upstream stage's artifact.
+3. **Per-stage controls** — the controls panel filters
+   `ResolvedPageConfig` fields to only those the selected stage reads,
+   then "Apply + Run this stage" / "Apply + Run from here" PATCHes
+   the page config and fires the appropriate run.
+4. **Split-as-sibling-pages editor** — "Create split" enters
+   bbox-drawing mode against the current selected stage's artifact;
+   on commit, `POST /api/pages/{page_id}/split` creates N child pages
+   (each with its own DAG state). Children appear in the page list with
+   auto-suffixed indices (`f042-1`, `f042-2`); the parent is hidden by
+   default. "Reverse split" lives on each child's header.
+5. **Illustration regions** — draw extraction bboxes directly on the
+   source image (integrates spec 05). `extract_illustrations` is the
+   stage; the existing illustration panel is its viewer.
+6. **Text review (gate stage)** — OCR text side-by-side with the
+   image, editable. The "Mark page reviewed" button transitions
+   `text_review` from `dirty` to `clean`. Re-running upstream stages
+   flips it back to `dirty`.
 
-Opening the workbench for a page is always safe: it never writes to the batch
-output directories unless the user explicitly clicks "Commit to project".
+Opening the workbench for a page is always safe: it reads on-disk
+artifacts but does not run the pipeline. Stage runs only happen when
+the user explicitly clicks a run button.
 
 ---
 
@@ -47,45 +66,64 @@ return to the batch pipeline or other views without losing context.
 
 ---
 
-## Data Model — PageSplit
+## Data Model — splits as sibling pages
 
-Splits live on `PageRecord.splits` (a list of `PageSplit`) — see spec 08.
-There is no project-level dict of splits; per-page state lives on the page.
+Splits are **first-class sibling pages**, not config on the parent
+(canonical spec Q6 lock). When the user splits a page, the framework
+creates N new `Page` rows whose `parent_page_id` references the
+parent. Each child runs the full per-page DAG independently with its
+own `page_stages` row set.
+
+Per spec 08, the `Page` model carries the split fields:
 
 ```python
-class PageSplit(BaseModel):
-    suffix: str              # appended to page prefix: "p045a", "p045b"
-    reading_order: int       # 0-based; determines file sort order in output
+class Page(BaseModel):
+    id: str                        # opaque; encodes parent chain for split children
+    project_id: str
+    idx0: int                      # 0-based source-file index (root pages); inherited from parent for children
+    prefix: str                    # f001 / p045 / p045a (with split suffix appended for children)
+    source_stem: str
 
-    # Bbox in PROCESSED image coordinates.
-    # "Processed" = after initial_crop + colorToGray + threshold + invert +
-    #               find_edges + crop_to_content + deskew (steps 4d–4k).
-    # This is the image the user sees in the workbench canvas.
-    # None = extends to the image edge in that direction.
-    L: int | None = None
-    R: int | None = None
-    T: int | None = None
-    B: int | None = None
+    # Split-related (NULL on root pages)
+    parent_page_id: str | None = None
+    source_crop_bbox: tuple[int, int, int, int] | None = None  # (x, y, w, h) on the parent's source image
+    split_index: int | None = None                              # 1-based, sibling order
+    split_at_stage: str | None = None                           # the parent stage at which the split was created
+    reading_order: int | None = None
+    split_suffix: str | None = None
 
-    # How to render this split as a PGDP page
-    scale_to_standard_page: bool = True
-    # True:  crop to this region, then rescale to standard page H/W (step 4m)
-    # False: crop to this region, preserve its natural aspect ratio (useful for
-    #        column headers, short sections, ornamental breaks)
-
-    # Per-split overrides (None = inherit from page/project config)
-    alignment: AlignmentOverride | None = None
-    ocr_engine: Literal["doctr", "tesseract"] | None = None
+    # ... other PageRecord fields (page_type, alignment, config_overrides, ...)
 ```
 
-**Reading order and suffixes** — the user assigns `reading_order` by dragging
-splits in the reading-order list. The `suffix` can be:
+**Reading order and suffixes.** The user assigns `reading_order` and
+`split_suffix` at split-creation time. The suffix is appended to the
+parent's prefix (`p045` parent + suffix `a` ⇒ child prefix `p045a`).
+Recursive splits compose suffixes left-to-right (`p045ab` for a
+grandchild whose parent's suffix was `a` and whose own suffix is `b`).
 
-- Auto-generated: `"a"`, `"b"`, `"c"`, … based on reading_order index
-- Manually overridden for legacy notebook compatibility: `"cl"`, `"cr"`, `"ch"`
+**No splits = whole page.** A root page with no children outputs as a
+single file — the existing single-page behavior.
 
-**No splits = whole page.** A page with no entry in `page_splits` outputs as
-a single file, as before.
+**Split workflow in the UI:**
+
+1. User opens a parent page in the workbench, navigates to a stage
+   whose artifact is an image (typically `auto_detect_attrs` /
+   `auto_deskew`).
+2. Clicks "Create split"; enters bbox-drawing mode.
+3. Draws N rectangles on the artifact, assigns suffix + reading order.
+4. Clicks "Commit splits"; the workbench POSTs to
+   `/api/pages/{page_id}/split` with `{children: [...], split_at_stage}`.
+5. The backend creates the children, hides the parent in the page
+   list (default), and the workbench navigates to the first child.
+
+**Reverse split:** on any child page header, "Reverse split" deletes
+all sibling children of this page and restores the parent to visible.
+The parent's stage state is unaffected.
+
+The user can run different parameters on each child — for example, a
+two-column page where the left column needs `auto_deskew` to run and
+the right column doesn't. The previous "splits = config on `ocr_crop`"
+model could not express this.
 
 ---
 
@@ -260,48 +298,35 @@ a rect selects it; click outside deselects).
 
 ---
 
-## Live GPU Processing
+## Stage-driven re-execution
 
-Every change to a processing parameter (threshold, crop, deskew, etc.) triggers
-a re-process of the current page via the GPU pipeline (Step 4 sub-steps 4c–4o
-for this one page).
+The workbench does not run a "live preview" pipeline on every parameter
+change. The user explicitly chooses a stage to re-run. Two affordances:
 
-```python
-@debounce(0.4)
-async def reprocess_current_page():
-    page_state.processing = True
-    ii.source = SPINNER_IMAGE   # show spinner immediately
-    result_path = await run.io_bound(
-        run_page_pipeline,
-        idx0=page_state.idx0,
-        config=current_config_overrides(),  # read from the control panel
-        output_dir=workbench_temp_dir,      # separate from batch output
-    )
-    page_state.processed_image_path = result_path
-    ii.source = result_path
-    page_state.processing = False
-```
+- **Apply + Run this stage** — fires
+  `POST /api/pages/{page_id}/stages/{stage_id}/run?mode=single`. Runs
+  only this stage; downstream stages are marked `dirty`.
+- **Apply + Run from here** — fires
+  `POST /api/pages/{page_id}/stages/{stage_id}/run?mode=from`. Runs
+  this stage and all downstream stages serially.
 
-`run_page_pipeline()` runs steps 4c–4o synchronously (in a thread pool) for
-a single page, writes to a temp directory, and returns the path. It uses the
-GPU functions from pd-book-tools where available.
+Both endpoints PATCH `page.config_overrides` first (with debounced
+mutations), then dispatch the stage run. The stage rail listens on
+the page's job SSE stream and updates row status live.
 
-**Image coord consistency:** when `source` changes to a newly processed image,
-the `content` SVG stays the same. If the reprocessing changed the image
-dimensions (e.g. deskew expanded the canvas), the split coordinates need
-to be scaled to the new dimensions. The pipeline returns the new image dimensions,
-and any stored splits are scaled proportionally:
+Because every stage's output is persisted on disk (Q3 locked), the
+artifact viewer always reads from disk; it does not require a live
+in-memory run. Opening a page in the workbench costs only object-
+storage reads.
 
-```python
-def rescale_splits(splits, old_hw, new_hw):
-    sy = new_hw[0] / old_hw[0]
-    sx = new_hw[1] / old_hw[1]
-    for s in splits:
-        if s.L: s.L = int(s.L * sx)
-        if s.R: s.R = int(s.R * sx)
-        if s.T: s.T = int(s.T * sy)
-        if s.B: s.B = int(s.B * sy)
-```
+When a stage that produces an image (e.g. `canvas_map`) re-runs and
+the output dimensions change, child split-pages whose
+`source_crop_bbox` was defined against an upstream stage's coordinate
+space are unaffected — the child's bbox is in the parent's
+`split_at_stage` output coordinates, which only changes when the
+parent re-runs *that specific stage*. When it does, the framework
+marks every child's `decode_source` dirty (eager cascade) and the
+user must re-run the children — no implicit bbox rescaling.
 
 ---
 
@@ -405,21 +430,23 @@ illustration bboxes (spec 05); the illustration overlay only appears in Source m
 
 ---
 
-## "Commit to Project" Button
+## No "Commit to Project" — every run is a real run
 
-Until the user clicks "Commit to Project", workbench changes are local to the
-temp directory (`processing/workbench_temp/p045/`). Committing does two things:
+The pre-2026-05-07 workbench had a separate "workbench_temp/" directory
+and a "Commit to Project" button. With the per-page DAG model, every
+stage run writes to the canonical per-page artifact path
+(`projects/<id>/pages/<page_id>/stages/<stage_id>/output.<ext>`) and
+the DB row reflects it immediately. There is no temp staging.
 
-1. **Saves config changes** to `BookConfig` (writes `book_config.json`)
-2. **Copies processed images** to the canonical batch output directories
-   (`proofing_images_png/`, `pre_ocr_images_png/`, `ocr_images_png/`)
-   — one file per split, with correctly named prefixes
+Why this is safer than it sounds:
 
-This avoids accidentally overwriting batch-processed output that the user hasn't
-reviewed.
-
-Navigating away without committing shows a "Unsaved changes — commit or discard?"
-dialog.
+- The user can always re-run any stage to recover; nothing is destructive.
+- Re-runs cascade dirty propagation; any downstream stage that consumed
+  an old artifact is correctly marked stale.
+- The `text_review` gate prevents accidentally building a package from
+  half-cooked output (the gate stage requires explicit human attestation).
+- The `pgdp-prep reindex` CLI (canonical spec §Dual-write
+  reconciliation) heals any DB↔disk drift if a process crashed mid-run.
 
 ---
 
@@ -484,33 +511,28 @@ parallel "live copy" structure — workbench edits are direct mutations of
 
 ---
 
-## Integration with Batch Pipeline
+## Integration with the per-page DAG
 
-When the batch pipeline (spec 02 step 4p) processes a page that has entries in
-`page.splits`, it applies each split as follows:
+When the user creates a split, the backend:
 
-```python
-for split in sorted(page.splits, key=lambda s: s.reading_order):
-    split_img = crop_to_rectangle(
-        img_processed,                  # intermediate after deskew (step 4k output)
-        minX=split.L or 0,
-        maxX=split.R if split.R is not None else img_w,
-        minY=split.T or 0,
-        maxY=split.B if split.B is not None else img_h,
-    )
-    if split.scale_to_standard_page:
-        split_img = rescale_image(split_img)
-        split_img = map_content_onto_scaled_canvas(
-            split_img,
-            force_align=split.alignment or cfg.alignment,
-            height_width_ratio=cfg.page_h_w_ratio,
-        )
+1. Persists N new child `Page` rows with `parent_page_id` set to the
+   parent, and `source_crop_bbox` set from the user's drawing on the
+   parent's chosen-stage artifact.
+2. For each child, inserts `page_stages` rows for every stage with
+   status `not-run`, except `ingest_source` which runs immediately
+   (and re-runs if the parent's `split_at_stage` output changes).
+3. Triggers `page.run_dirty(child_id)` (or leaves it for the user to
+   click "Run dirty") so each child's full DAG executes independently.
 
-    full_prefix = f"{page.prefix}{split.suffix}"
-    write_png(split_img, proofing_images_png / f"{stem}_{full_prefix}.png")
-```
+When the parent's `split_at_stage` output changes (because the user
+re-ran a stage on the parent that's upstream of where the split was
+made), every child's `decode_source` is marked dirty automatically by
+the framework's eager dirty cascade.
 
-`PageRecord.splits` supersedes the notebook's `split_page_sections` entirely.
+There is **no** flattening step — the whole pipeline produces one
+`page_id`-keyed artifact tree per page (root or child), and
+`project.build_package` walks pages in `(parent_idx0, split_index)`
+order to put split siblings adjacent in the zip.
 
 ---
 
@@ -519,20 +541,25 @@ for split in sorted(page.splits, key=lambda s: s.reading_order):
 The overall flow becomes:
 
 ```
-[Ingest + Thumbnails]
+[Ingest + Thumbnails + auto_detect_*]
          │
          ▼
-[Configure / Tag pages]  →  [PageWorkbench for any page, anytime]
-         │                           ↑
-         ▼                    (click any thumbnail)
-[Batch pipeline: run all pages]
+[PageWorkbench for any page, anytime — run / inspect any stage]
          │
-         ▼
-[Inspect + Package]
+         ├── [Create split → N child pages, each runs DAG independently]
+         │
+         └── [Project-level run-dirty / run-stage-all-pages]
+                        │
+                        ▼
+              [text_review on every page (gate stage)]
+                        │
+                        ▼
+              [project.build_package — gated by awaiting_review]
 ```
 
-The PageWorkbench is available from any point. The batch pipeline is a
-"run everything at full quality" convenience, not the only path.
+The PageWorkbench is available from any point. The project-level
+fan-out is a "run everything at full quality" convenience, not the
+only path.
 
 ---
 

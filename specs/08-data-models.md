@@ -109,9 +109,51 @@ adapter.
 
 ---
 
+## PageStageState
+
+> See [`docs/specs/pipeline-task-model.md`](../docs/specs/pipeline-task-model.md)
+> §Persistence model > SQLite schema for the canonical schema and the
+> dual-write reconciliation contract (Q1 + Q1-followup).
+
+```python
+class PageStageStatus(str, Enum):
+    not_run        = "not-run"
+    clean          = "clean"
+    dirty          = "dirty"
+    running        = "running"
+    failed         = "failed"
+    not_applicable = "not-applicable"
+
+class PageStageState(BaseModel):
+    project_id: str
+    page_id: str             # zero-padded idx0 for root, "<idx0>/splits/<suffix>" chain for children
+    stage_id: str            # one of the canonical stage IDs in pipeline-task-model.md
+    status: PageStageStatus
+    stage_version: int       # bumped manually when the stage's algorithm changes (Q4)
+    config_hash: str | None  # hash of resolved-config fields this stage reads
+    input_hash: str | None   # hash of upstream artifact fingerprints
+    artifact_key: str | None # IStorage key; NULL when never-run
+    last_run_at: datetime | None
+    duration_ms: int | None
+    error_message: str | None
+    job_id: str | None
+```
+
+Stored in a normalised `page_stages` SQLite table with composite PK
+`(project_id, page_id, stage_id)`. Indexes:
+`(project_id, status)` and `(project_id, page_id)`. Each stage write
+is a dual-write transaction across the on-disk artifact and this row
+(canonical spec §Dual-write reconciliation).
+
+The legacy `PipelineState` (`dict[StepId, StepState]` rolled up onto
+`Project`) is recomputed at read time from `page_stages` rows; new
+code should consume `page_stages` directly.
+
+---
+
 ## PageRecord
 
-One file/row per source page.
+One file/row per source page (root) or per split-child page.
 
 ```python
 class PageType(str, Enum):
@@ -171,8 +213,9 @@ class PageOutput(BaseModel):
 
 
 class PageRecord(BaseModel):
+    id: str                            # opaque; encodes parent chain for split children
     project_id: str
-    idx0: int
+    idx0: int                          # 0-based source-file index (root); inherited from parent for children
     prefix: str
     source_stem: str
     ignore: bool = False               # outside proof range
@@ -182,16 +225,24 @@ class PageRecord(BaseModel):
 
     config_overrides: PageConfigOverrides = Field(default_factory=PageConfigOverrides)
 
-    splits: list["PageSplit"] = Field(default_factory=list)
+    # Splits as sibling pages (canonical spec Q6 lock).
+    # NULL on root pages; populated on split-child pages.
+    parent_page_id: str | None = None
+    source_crop_bbox: tuple[int, int, int, int] | None = None  # (x, y, w, h) on parent's source image
+    split_index: int | None = None                              # 1-based, sibling order
+    split_at_stage: str | None = None                           # parent stage at which the split was created
+    split_suffix: str | None = None                             # suffix appended in prefix ('a', 'b', 'cl', ...)
+    reading_order: int | None = None                            # determines output sort order across siblings
+
     illustration_regions: list["IllustrationRegion"] = Field(default_factory=list)
 
     # Storage keys (None = not yet generated)
     source_key: str | None = None
     thumbnail_key: str | None = None
-    processed_image_key: str | None = None
-    ocr_image_key: str | None = None
+    processed_image_key: str | None = None      # alias for stages/canvas_map/output.png
+    ocr_image_key: str | None = None            # alias for stages/ocr_crop/output.png
 
-    # Processing status
+    # Rolled-up status (computed from page_stages; see PageStageState above)
     processing_status: PageProcessingStatus = PageProcessingStatus.pending
     processing_job_id: str | None = None
     processing_error: str | None = None
@@ -206,11 +257,22 @@ mode), or as a row in `pages` table (Postgres mode).
 `page_type` and `alignment` were previously list-on-`BookConfig` fields; they
 now live on the page itself. See spec 01 for the full justification.
 
+> **The `splits: list[PageSplit]` field on `PageRecord` is gone.** Splits
+> are sibling pages now; each sibling carries `parent_page_id` /
+> `source_crop_bbox` / `split_index` / `split_suffix` /
+> `split_at_stage` / `reading_order`. M4 migration converts any
+> existing `splits` list into N child pages. The `PageSplit` model
+> below is preserved for migration code only and is not used by any
+> route after M4 ships.
+
 ---
 
-## PageSplit
+## PageSplit (legacy, migration-only)
 
-Replaces the notebook's `PageSectionSplit`.
+> **Deprecated** as of 2026-05-07. Splits are now sibling pages
+> (canonical spec Q6 lock). This model exists only for M4 migration
+> code that converts old `PageRecord.splits` lists into child page
+> rows.
 
 ```python
 class PageSplit(BaseModel):
@@ -227,9 +289,6 @@ class PageSplit(BaseModel):
     alignment: AlignmentOverride | None = None
     ocr_engine: Literal["doctr", "tesseract"] | None = None
 ```
-
-Splits live on `PageRecord.splits` (not `ProjectConfig`). Workbench drag-edits
-write here directly.
 
 ---
 
@@ -260,7 +319,12 @@ it.
 
 ---
 
-## PipelineState
+## PipelineState (derived view)
+
+> `PipelineState` is now a **derived view** computed from `page_stages`
+> rows at read time. It is no longer the source of truth for stage
+> progress — `page_stages` is. The model is preserved here for API
+> compatibility through M5; M6 may remove it.
 
 ```python
 class StepStatus(str, Enum):
@@ -277,14 +341,15 @@ class StepState(BaseModel):
     completed_at: datetime | None = None
     job_id: str | None = None
 
-# Step IDs match spec 02
+# Step IDs match the legacy step-numbered mapping in spec 02
 StepId = Literal[1, 2, 4, 5, 6, 7, 8, 9, 10]
 
 class PipelineState(BaseModel):
     steps: dict[StepId, StepState] = Field(default_factory=dict)
 ```
 
-Stored as part of `Project`. Updated by job runners.
+Mapping from the new stage IDs to the legacy `StepId` is documented in
+`specs/02-pipeline-steps.md` §Step-numbered legacy mapping.
 
 ---
 
@@ -329,25 +394,34 @@ class ResolvedPageConfig(BaseModel):
 
 ```python
 class JobStatus(str, Enum):
-    queued       = "queued"
-    scheduled    = "scheduled"        # waiting for dispatcher flush (managed mode)
-    running      = "running"
-    complete     = "complete"
-    error        = "error"
-    cancelled    = "cancelled"
+    queued          = "queued"
+    scheduled       = "scheduled"        # waiting for dispatcher flush (managed mode)
+    running         = "running"
+    awaiting_review = "awaiting_review"  # build_package parked on text_review gate (Q7)
+    complete        = "complete"
+    error           = "error"
+    cancelled       = "cancelled"
 
 class JobType(str, Enum):
-    ingest                       = "ingest"
+    # Project-level orchestration (canonical spec)
+    ingest                = "ingest"
+    thumbnails            = "thumbnails"
+    project_run_stage_all = "project.run_stage_all_pages"
+    project_run_dirty     = "project.run_dirty"
+    page_run_stage        = "page.run_stage"             # used by run_dirty fan-out
+    build_package         = "build_package"
+    # Deprecated — kept through M5 as compatibility shims; removed in M6
     batch_process_pages          = "batch_process_pages"
     batch_ocr                    = "batch_ocr"
     batch_text_postprocess       = "batch_text_postprocess"
     batch_extract_illustrations  = "batch_extract_illustrations"
-    build_package                = "build_package"
 
 class JobProgress(BaseModel):
     current: int = 0
     total: int = 0
-    current_page: int | None = None
+    current_page_id: str | None = None       # opaque page id (handles split-child ids)
+    current_stage_id: str | None = None      # the stage currently running
+    awaiting_review_count: int = 0           # populated when status == awaiting_review
     message: str = ""
 
 class Job(BaseModel):
@@ -356,6 +430,7 @@ class Job(BaseModel):
     owner_id: str = "default"
     type: JobType
     status: JobStatus = JobStatus.queued
+    payload: dict = Field(default_factory=dict)    # {stage_id, page_ids?, only_dirty}
     progress: JobProgress = Field(default_factory=JobProgress)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     started_at: datetime | None = None
@@ -366,6 +441,11 @@ class Job(BaseModel):
 ```
 
 Stored at `jobs/<id>.json` (filesystem/S3) or as a row in `jobs` table.
+
+When a `build_package` job is in `awaiting_review`, the runner emits
+SSE heartbeats every ~30 s with the count of remaining unreviewed
+pages so the UI can update the Open Tasks bell and project banner
+without polling.
 
 ---
 
@@ -401,31 +481,52 @@ Same logical layout for filesystem and S3 backends:
 │   └── <project-id>/
 │       ├── project.json         ← Project + ProjectConfig + PipelineState
 │       ├── pages/
-│       │   ├── 0.json           ← PageRecord per idx0
-│       │   ├── 1.json
+│       │   ├── 0042/                                  ← root page directory
+│       │   │   ├── source.<ext>                       ← original scan
+│       │   │   ├── manifest.json                      ← page-level rolled-up status
+│       │   │   ├── stages/
+│       │   │   │   ├── decode_source/output.png
+│       │   │   │   ├── initial_crop/output.png
+│       │   │   │   ├── threshold/output.png
+│       │   │   │   ├── canvas_map/output.png          ← legacy processed_image_key
+│       │   │   │   ├── ocr_crop/output.png
+│       │   │   │   ├── ocr/words.json
+│       │   │   │   ├── ocr/raw.txt
+│       │   │   │   ├── text_postprocess/output.txt
+│       │   │   │   └── … (one dir per stage)
+│       │   │   └── splits/
+│       │   │       └── a/                              ← split-child page directory
+│       │   │           ├── source.<ext>                ← parent's source cropped to source_crop_bbox
+│       │   │           ├── manifest.json
+│       │   │           └── stages/                     ← child has its own full DAG
+│       │   ├── 0043/
 │       │   └── …
-│       ├── source/              ← original scans
-│       ├── thumbnails/          ← 400 px JPGs
-│       ├── processed/           ← Step 4 PNGs
-│       ├── workbench_temp/
-│       │   └── <idx0>/          ← per-page workbench preview
-│       ├── ocr_images/          ← Step 6 OCR-cropped PNGs
-│       ├── ocr_text/            ← .txt OCR output
-│       ├── hi_res/              ← illustration extractions
-│       └── for_zip/             ← PGDP package staging
+│       ├── thumbnails/                                  ← 400 px JPGs (per spec 02 thumbnail stage)
+│       ├── hi_res/                                      ← illustration extractions
+│       └── for_zip/                                     ← PGDP package output
 └── jobs/
     └── <job-id>.json
 ```
 
-In Postgres mode (`IDatabase.postgres`), `project.json`, `pages/*.json`, and
-`jobs/*.json` are replaced by tables of the same shape. Image files stay on
-the storage backend.
+> `workbench_temp/` is gone — every stage run writes to its canonical
+> per-page artifact path (canonical spec §Persistence model). The
+> dual-write reconciler (`pgdp-prep reindex`) walks this tree and the
+> `page_stages` DB rows and reports / heals drift.
+>
+> Disk-cost callout: every-intermediate persistence (Q3 locked)
+> roughly 16× source-page footprint per page. A 500-page book at
+> 2 MB/source-page expands to ~16 GB. M5+ may add a future
+> `--prune-stage-artifacts` opt-in.
+
+In Postgres mode (`IDatabase.postgres`), `project.json`, `pages/*.json`,
+`jobs/*.json`, and `page_stages` rows are tables of the same shape.
+Image files stay on the storage backend.
 
 CloudFront caching rules (managed mode):
 
 | Prefix | TTL | Notes |
 |---|---|---|
-| `thumbnails/`, `processed/`, `hi_res/` | 24 h | Immutable once written |
-| `ocr_text/` | 0 | Editable |
-| `project.json`, `pages/*.json` | 0 | Frequently updated |
+| `thumbnails/`, `pages/<page_id>/stages/*/` (image outputs), `hi_res/` | 24 h | Immutable until the stage re-runs (the artifact key includes the stage's input_hash so any rerun produces a new key) |
+| `pages/<page_id>/stages/text_postprocess/output.txt` | 0 | Editable via review |
+| `project.json`, `pages/*.json`, `manifest.json` | 0 | Frequently updated |
 | `for_zip/` | 1 h | Updated only during packaging |
