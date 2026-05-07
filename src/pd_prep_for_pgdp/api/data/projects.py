@@ -63,7 +63,7 @@ class SourcePreviewResponse(BaseModel):
     total_image_count: int
 
 
-@router.post("/projects", response_model=CreateProjectResponse)
+@router.post("/projects", response_model=CreateProjectResponse, operation_id="create_project")
 async def create_project(
     body: CreateProjectRequest,
     user: UserContext = Depends(get_user),
@@ -101,7 +101,7 @@ async def create_project(
     return CreateProjectResponse(project=project, upload_url=upload_url, upload_key=upload_key)
 
 
-@router.get("/projects", response_model=list[Project])
+@router.get("/projects", response_model=list[Project], operation_id="list_projects")
 async def list_projects(
     include_archived: bool = False,
     user: UserContext = Depends(get_user),
@@ -110,7 +110,7 @@ async def list_projects(
     return await db.list_projects(user.user_id, include_archived=include_archived)
 
 
-@router.get("/projects/{project_id}", response_model=Project)
+@router.get("/projects/{project_id}", response_model=Project, operation_id="get_project")
 async def get_project(
     project_id: str,
     user: UserContext = Depends(get_user),
@@ -127,6 +127,7 @@ async def get_project(
 @router.patch(
     "/projects/{project_id}/config",
     response_model=UpdateConfigResponse,
+    operation_id="update_project_config",
 )
 async def update_project_config(
     project_id: str,
@@ -162,7 +163,7 @@ async def update_project_config(
     )
 
 
-@router.delete("/projects/{project_id}", status_code=204)
+@router.delete("/projects/{project_id}", status_code=204, operation_id="delete_project")
 async def delete_project(
     project_id: str,
     user: UserContext = Depends(get_user),
@@ -195,7 +196,7 @@ async def _set_archived(
     return project
 
 
-@router.post("/projects/{project_id}/archive", response_model=Project)
+@router.post("/projects/{project_id}/archive", response_model=Project, operation_id="archive_project")
 async def archive_project(
     project_id: str,
     user: UserContext = Depends(get_user),
@@ -211,6 +212,7 @@ async def archive_project(
 @router.get(
     "/projects/{project_id}/source-preview",
     response_model=SourcePreviewResponse,
+    operation_id="get_source_preview",
 )
 async def source_preview(
     project_id: str,
@@ -243,6 +245,7 @@ async def source_preview(
         404: {"description": "Project, source.zip, or named entry not found"},
     },
     response_class=Response,
+    operation_id="get_source_preview_thumbnail",
 )
 async def source_preview_thumbnail(
     project_id: str,
@@ -279,7 +282,7 @@ async def source_preview_thumbnail(
     return Response(content=jpeg, media_type="image/jpeg")
 
 
-@router.post("/projects/{project_id}/unarchive", response_model=Project)
+@router.post("/projects/{project_id}/unarchive", response_model=Project, operation_id="unarchive_project")
 async def unarchive_project(
     project_id: str,
     user: UserContext = Depends(get_user),

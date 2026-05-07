@@ -21,7 +21,7 @@ from .schemas import IngestRequest, JobResponse
 router = APIRouter(tags=["gpu"])
 
 
-@router.post("/ingest", response_model=JobResponse, status_code=202)
+@router.post("/ingest", response_model=JobResponse, status_code=202, operation_id="start_ingest")
 async def ingest(
     body: IngestRequest,
     user: UserContext = Depends(get_user),

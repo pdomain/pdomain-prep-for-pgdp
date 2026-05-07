@@ -19,7 +19,7 @@ from .schemas import BatchJobRequest, BatchJobResponse, RetryJobRequest
 router = APIRouter(tags=["gpu"])
 
 
-@router.post("/jobs", response_model=BatchJobResponse, status_code=202)
+@router.post("/jobs", response_model=BatchJobResponse, status_code=202, operation_id="submit_batch_job")
 async def submit_batch_job(
     body: BatchJobRequest,
     user: UserContext = Depends(get_user),
@@ -59,7 +59,7 @@ async def submit_batch_job(
     )
 
 
-@router.get("/jobs/{job_id}", response_model=Job)
+@router.get("/jobs/{job_id}", response_model=Job, operation_id="get_gpu_job")
 async def get_job(
     job_id: str,
     user: UserContext = Depends(get_user),
@@ -71,7 +71,7 @@ async def get_job(
     return job
 
 
-@router.delete("/jobs/{job_id}", status_code=204)
+@router.delete("/jobs/{job_id}", status_code=204, operation_id="cancel_gpu_job")
 async def cancel_job(
     job_id: str,
     user: UserContext = Depends(get_user),
@@ -85,7 +85,9 @@ async def cancel_job(
         await db.put_job(job)
 
 
-@router.post("/jobs/{job_id}/retry", response_model=BatchJobResponse, status_code=202)
+@router.post(
+    "/jobs/{job_id}/retry", response_model=BatchJobResponse, status_code=202, operation_id="retry_gpu_job"
+)
 async def retry_job(
     job_id: str,
     body: RetryJobRequest | None = None,
@@ -140,7 +142,7 @@ async def retry_job(
     )
 
 
-@router.get("/jobs/{job_id}/events")
+@router.get("/jobs/{job_id}/events", operation_id="stream_gpu_job_events")
 async def job_events(
     job_id: str,
     user: UserContext = Depends(get_user),

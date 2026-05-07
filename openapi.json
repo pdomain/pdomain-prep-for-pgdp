@@ -12,7 +12,7 @@
           "auth"
         ],
         "summary": "Me",
-        "operationId": "me_api_auth_me_get",
+        "operationId": "get_current_user",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -38,7 +38,7 @@
           "projects"
         ],
         "summary": "Create Project",
-        "operationId": "create_project_api_data_projects_post",
+        "operationId": "create_project",
         "security": [
           {
             "HTTPBearer": []
@@ -82,7 +82,7 @@
           "projects"
         ],
         "summary": "List Projects",
-        "operationId": "list_projects_api_data_projects_get",
+        "operationId": "list_projects",
         "security": [
           {
             "HTTPBearer": []
@@ -110,7 +110,7 @@
                   "items": {
                     "$ref": "#/components/schemas/Project"
                   },
-                  "title": "Response List Projects Api Data Projects Get"
+                  "title": "Response List Projects"
                 }
               }
             }
@@ -134,7 +134,7 @@
           "projects"
         ],
         "summary": "Get Project",
-        "operationId": "get_project_api_data_projects__project_id__get",
+        "operationId": "get_project",
         "security": [
           {
             "HTTPBearer": []
@@ -179,7 +179,7 @@
           "projects"
         ],
         "summary": "Delete Project",
-        "operationId": "delete_project_api_data_projects__project_id__delete",
+        "operationId": "delete_project",
         "security": [
           {
             "HTTPBearer": []
@@ -219,7 +219,7 @@
           "projects"
         ],
         "summary": "Update Project Config",
-        "operationId": "update_project_config_api_data_projects__project_id__config_patch",
+        "operationId": "update_project_config",
         "security": [
           {
             "HTTPBearer": []
@@ -277,7 +277,7 @@
         ],
         "summary": "Archive Project",
         "description": "Soft-delete: hide the project from default listings without removing data.\n\nIdempotent \u2014 archiving an already-archived project is a no-op (still 200).",
-        "operationId": "archive_project_api_data_projects__project_id__archive_post",
+        "operationId": "archive_project",
         "security": [
           {
             "HTTPBearer": []
@@ -325,7 +325,7 @@
         ],
         "summary": "Source Preview",
         "description": "Return image filenames + total count from the project's `source.zip`.\n\n404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse\nof 403 \u2192 404 to avoid leaking existence) and for the case where the\npresigned upload URL was issued but the PUT never landed.",
-        "operationId": "source_preview_api_data_projects__project_id__source_preview_get",
+        "operationId": "get_source_preview",
         "security": [
           {
             "HTTPBearer": []
@@ -383,7 +383,7 @@
         ],
         "summary": "Source Preview Thumbnail",
         "description": "Return a JPEG thumbnail for one image entry inside the project's source.zip.\n\nPairs with ``GET /source-preview`` (slice 2): that route returns the\nimage filenames; the SPA then issues one of these per filename to fill\nthe preview strip. Auth/ownership match slice 2 verbatim \u2014 collapsing\n403 \u2192 404 so existence isn't leaked.\n\nUnknown filename and non-image filename both 404 (see\n``extract_zip_image_thumbnail``); a corrupt image inside the zip\nbecomes a 500 today, since that indicates a broken upload rather than\na routine missing entry \u2014 let the SPA surface it.",
-        "operationId": "source_preview_thumbnail_api_data_projects__project_id__source_preview__filename__thumbnail_get",
+        "operationId": "get_source_preview_thumbnail",
         "security": [
           {
             "HTTPBearer": []
@@ -439,7 +439,7 @@
         ],
         "summary": "Unarchive Project",
         "description": "Restore a soft-deleted project. Idempotent.",
-        "operationId": "unarchive_project_api_data_projects__project_id__unarchive_post",
+        "operationId": "unarchive_project",
         "security": [
           {
             "HTTPBearer": []
@@ -486,7 +486,7 @@
           "pages"
         ],
         "summary": "List Pages",
-        "operationId": "list_pages_api_data_projects__project_id__pages_get",
+        "operationId": "list_pages",
         "security": [
           {
             "HTTPBearer": []
@@ -625,7 +625,7 @@
           "pages"
         ],
         "summary": "Get Page",
-        "operationId": "get_page_api_data_projects__project_id__pages__idx0__get",
+        "operationId": "get_page",
         "security": [
           {
             "HTTPBearer": []
@@ -679,7 +679,7 @@
           "pages"
         ],
         "summary": "Update Page",
-        "operationId": "update_page_api_data_projects__project_id__pages__idx0__patch",
+        "operationId": "update_page",
         "security": [
           {
             "HTTPBearer": []
@@ -745,7 +745,7 @@
           "pages"
         ],
         "summary": "Update Page Text",
-        "operationId": "update_page_text_api_data_projects__project_id__pages__idx0__text_patch",
+        "operationId": "update_page_text",
         "security": [
           {
             "HTTPBearer": []
@@ -811,7 +811,7 @@
           "pages"
         ],
         "summary": "Get Page Text",
-        "operationId": "get_page_text_api_data_projects__project_id__pages__idx0__text__suffix__get",
+        "operationId": "get_page_text",
         "security": [
           {
             "HTTPBearer": []
@@ -877,7 +877,7 @@
         ],
         "summary": "Delete Page Words",
         "description": "Hard-delete OCR words from a page's `<root>.words.json` and\nrewrite `<root>.txt` from the survivors (roadmap \u00a79a).\n\nv1 is intentionally a hard rewrite \u2014 the soft-delete-flag\nalternative is recorded in the roadmap as deferred. Unknown\n`word_ids` are silently skipped so the call is idempotent across\nretries; the response's `deleted_count` reports how many ids\nactually applied.",
-        "operationId": "delete_page_words_api_data_projects__project_id__pages__idx0__words_delete",
+        "operationId": "delete_page_words",
         "security": [
           {
             "HTTPBearer": []
@@ -943,7 +943,7 @@
           "system"
         ],
         "summary": "Get System Defaults",
-        "operationId": "get_system_defaults_api_data_system_defaults_get",
+        "operationId": "get_system_defaults",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -967,7 +967,7 @@
           "system"
         ],
         "summary": "Put System Defaults",
-        "operationId": "put_system_defaults_api_data_system_defaults_put",
+        "operationId": "put_system_defaults",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1012,7 +1012,7 @@
         ],
         "summary": "Reset System Defaults",
         "description": "Reset the stored SystemDefaults to spec-08 defaults. Idempotent.",
-        "operationId": "reset_system_defaults_api_data_system_defaults_delete",
+        "operationId": "reset_system_defaults",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1039,7 +1039,7 @@
         ],
         "summary": "Export System Defaults",
         "description": "Return the SystemDefaults as a downloadable JSON file.",
-        "operationId": "export_system_defaults_api_data_system_defaults_export_get",
+        "operationId": "export_system_defaults",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1064,7 +1064,7 @@
         ],
         "summary": "Import System Defaults",
         "description": "Replace the stored SystemDefaults with an imported JSON document.\n\nBehaves like PUT \u2014 sharing the response shape so the frontend can\n`setDraft(response)` and the next GET will agree.",
-        "operationId": "import_system_defaults_api_data_system_defaults_import_post",
+        "operationId": "import_system_defaults",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1110,7 +1110,7 @@
           "assets"
         ],
         "summary": "Get Upload Url",
-        "operationId": "get_upload_url_api_data_projects__project_id__assets_upload_url_post",
+        "operationId": "get_asset_upload_url",
         "security": [
           {
             "HTTPBearer": []
@@ -1167,7 +1167,7 @@
           "assets"
         ],
         "summary": "Get Download Url",
-        "operationId": "get_download_url_api_data_projects__project_id__assets_download_url_get",
+        "operationId": "get_asset_download_url",
         "security": [
           {
             "HTTPBearer": []
@@ -1223,7 +1223,7 @@
           "jobs"
         ],
         "summary": "List Recent Jobs",
-        "operationId": "list_recent_jobs_api_data_jobs_get",
+        "operationId": "list_recent_jobs",
         "security": [
           {
             "HTTPBearer": []
@@ -1269,7 +1269,7 @@
                   "items": {
                     "$ref": "#/components/schemas/Job"
                   },
-                  "title": "Response List Recent Jobs Api Data Jobs Get"
+                  "title": "Response List Recent Jobs"
                 }
               }
             }
@@ -1293,7 +1293,7 @@
           "jobs"
         ],
         "summary": "Get Job",
-        "operationId": "get_job_api_data_jobs__job_id__get",
+        "operationId": "get_job",
         "security": [
           {
             "HTTPBearer": []
@@ -1340,7 +1340,7 @@
           "gpu"
         ],
         "summary": "Ingest",
-        "operationId": "ingest_api_gpu_ingest_post",
+        "operationId": "start_ingest",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1386,7 +1386,7 @@
           "gpu"
         ],
         "summary": "Process Page",
-        "operationId": "process_page_api_gpu_process_page_post",
+        "operationId": "process_page",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1427,7 +1427,7 @@
           "gpu"
         ],
         "summary": "Run Ocr Page",
-        "operationId": "run_ocr_page_api_gpu_run_ocr_page_post",
+        "operationId": "run_ocr_page",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1468,7 +1468,7 @@
           "gpu"
         ],
         "summary": "Suggest Splits",
-        "operationId": "suggest_splits_api_gpu_suggest_splits_post",
+        "operationId": "suggest_splits",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1509,7 +1509,7 @@
           "gpu"
         ],
         "summary": "Suggest Illustrations",
-        "operationId": "suggest_illustrations_api_gpu_suggest_illustrations_post",
+        "operationId": "suggest_illustrations",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1550,7 +1550,7 @@
           "gpu"
         ],
         "summary": "Extract Illustration",
-        "operationId": "extract_illustration_api_gpu_extract_illustration_post",
+        "operationId": "extract_illustration",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1591,7 +1591,7 @@
           "gpu"
         ],
         "summary": "Submit Batch Job",
-        "operationId": "submit_batch_job_api_gpu_jobs_post",
+        "operationId": "submit_batch_job",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1637,7 +1637,7 @@
           "gpu"
         ],
         "summary": "Get Job",
-        "operationId": "get_job_api_gpu_jobs__job_id__get",
+        "operationId": "get_gpu_job",
         "security": [
           {
             "HTTPBearer": []
@@ -1682,7 +1682,7 @@
           "gpu"
         ],
         "summary": "Cancel Job",
-        "operationId": "cancel_job_api_gpu_jobs__job_id__delete",
+        "operationId": "cancel_gpu_job",
         "security": [
           {
             "HTTPBearer": []
@@ -1723,7 +1723,7 @@
         ],
         "summary": "Retry Job",
         "description": "Create a fresh copy of a failed/cancelled job in `queued` status.\n\nSame project_id and type \u2014 fresh id and timestamps. The original job\nstays in the database so the user can compare. The new job's payload\nstarts as a copy of the original's; if `body.payload_override` is\nprovided (P3 #16), its keys are shallow-merged over the original\npayload (override keys replace, others are preserved). Pass `None` /\nomit the body to retry verbatim.",
-        "operationId": "retry_job_api_gpu_jobs__job_id__retry_post",
+        "operationId": "retry_gpu_job",
         "security": [
           {
             "HTTPBearer": []
@@ -1788,7 +1788,7 @@
         ],
         "summary": "Job Events",
         "description": "SSE \u2014 push status transitions until the job is terminal.\n\nSubscribes to the in-process `JobEventBroker` and forwards events as\n`text/event-stream` frames. First frame is the current snapshot from\nthe database so a late subscriber sees state immediately; subsequent\nframes come from the broker (zero-poll).",
-        "operationId": "job_events_api_gpu_jobs__job_id__events_get",
+        "operationId": "stream_gpu_job_events",
         "security": [
           {
             "HTTPBearer": []
@@ -1831,7 +1831,7 @@
       "put": {
         "summary": "Cdn Put",
         "description": "Write `key` (under the data root) using bytes from the request body.\n\nPath traversal (`..`, absolute paths) is rejected by the storage adapter.",
-        "operationId": "cdn_put_cdn__key__put",
+        "operationId": "upload_cdn_asset",
         "parameters": [
           {
             "name": "key",

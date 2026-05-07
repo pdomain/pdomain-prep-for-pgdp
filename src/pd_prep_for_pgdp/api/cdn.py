@@ -15,7 +15,7 @@ from .dependencies import get_storage
 router = APIRouter()
 
 
-@router.put("/cdn/{key:path}", status_code=204)
+@router.put("/cdn/{key:path}", status_code=204, operation_id="upload_cdn_asset")
 async def cdn_put(
     key: str,
     request: Request,

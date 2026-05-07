@@ -12,7 +12,7 @@ from ..dependencies import get_database, get_user
 router = APIRouter(tags=["jobs"])
 
 
-@router.get("/jobs", response_model=list[Job])
+@router.get("/jobs", response_model=list[Job], operation_id="list_recent_jobs")
 async def list_recent_jobs(
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),
@@ -25,7 +25,7 @@ async def list_recent_jobs(
     return jobs
 
 
-@router.get("/jobs/{job_id}", response_model=Job)
+@router.get("/jobs/{job_id}", response_model=Job, operation_id="get_job")
 async def get_job(
     job_id: str,
     user: UserContext = Depends(get_user),

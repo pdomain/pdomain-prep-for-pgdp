@@ -13,7 +13,7 @@ from ..dependencies import get_database, get_user
 router = APIRouter(tags=["system"])
 
 
-@router.get("/system/defaults", response_model=SystemDefaults)
+@router.get("/system/defaults", response_model=SystemDefaults, operation_id="get_system_defaults")
 async def get_system_defaults(
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),
@@ -21,7 +21,7 @@ async def get_system_defaults(
     return await db.get_system_defaults(user.user_id)
 
 
-@router.put("/system/defaults", response_model=SystemDefaults)
+@router.put("/system/defaults", response_model=SystemDefaults, operation_id="put_system_defaults")
 async def put_system_defaults(
     body: SystemDefaults,
     user: UserContext = Depends(get_user),
@@ -31,7 +31,7 @@ async def put_system_defaults(
     return body
 
 
-@router.get("/system/defaults/export")
+@router.get("/system/defaults/export", operation_id="export_system_defaults")
 async def export_system_defaults(
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),
@@ -46,7 +46,7 @@ async def export_system_defaults(
     )
 
 
-@router.post("/system/defaults/import", response_model=SystemDefaults)
+@router.post("/system/defaults/import", response_model=SystemDefaults, operation_id="import_system_defaults")
 async def import_system_defaults(
     body: SystemDefaults,
     user: UserContext = Depends(get_user),
@@ -61,7 +61,7 @@ async def import_system_defaults(
     return body
 
 
-@router.delete("/system/defaults", response_model=SystemDefaults)
+@router.delete("/system/defaults", response_model=SystemDefaults, operation_id="reset_system_defaults")
 async def reset_system_defaults(
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),

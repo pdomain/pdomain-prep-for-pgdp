@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /** Me */
-        get: operations["me_api_auth_me_get"];
+        get: operations["get_current_user"];
         put?: never;
         post?: never;
         delete?: never;
@@ -29,10 +29,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Projects */
-        get: operations["list_projects_api_data_projects_get"];
+        get: operations["list_projects"];
         put?: never;
         /** Create Project */
-        post: operations["create_project_api_data_projects_post"];
+        post: operations["create_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -47,11 +47,11 @@ export interface paths {
             cookie?: never;
         };
         /** Get Project */
-        get: operations["get_project_api_data_projects__project_id__get"];
+        get: operations["get_project"];
         put?: never;
         post?: never;
         /** Delete Project */
-        delete: operations["delete_project_api_data_projects__project_id__delete"];
+        delete: operations["delete_project"];
         options?: never;
         head?: never;
         patch?: never;
@@ -71,7 +71,7 @@ export interface paths {
         options?: never;
         head?: never;
         /** Update Project Config */
-        patch: operations["update_project_config_api_data_projects__project_id__config_patch"];
+        patch: operations["update_project_config"];
         trace?: never;
     };
     "/api/data/projects/{project_id}/archive": {
@@ -89,7 +89,7 @@ export interface paths {
          *
          *     Idempotent — archiving an already-archived project is a no-op (still 200).
          */
-        post: operations["archive_project_api_data_projects__project_id__archive_post"];
+        post: operations["archive_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -111,7 +111,7 @@ export interface paths {
          *     of 403 → 404 to avoid leaking existence) and for the case where the
          *     presigned upload URL was issued but the PUT never landed.
          */
-        get: operations["source_preview_api_data_projects__project_id__source_preview_get"];
+        get: operations["get_source_preview"];
         put?: never;
         post?: never;
         delete?: never;
@@ -141,7 +141,7 @@ export interface paths {
          *     becomes a 500 today, since that indicates a broken upload rather than
          *     a routine missing entry — let the SPA surface it.
          */
-        get: operations["source_preview_thumbnail_api_data_projects__project_id__source_preview__filename__thumbnail_get"];
+        get: operations["get_source_preview_thumbnail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -163,7 +163,7 @@ export interface paths {
          * Unarchive Project
          * @description Restore a soft-deleted project. Idempotent.
          */
-        post: operations["unarchive_project_api_data_projects__project_id__unarchive_post"];
+        post: operations["unarchive_project"];
         delete?: never;
         options?: never;
         head?: never;
@@ -178,7 +178,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Pages */
-        get: operations["list_pages_api_data_projects__project_id__pages_get"];
+        get: operations["list_pages"];
         put?: never;
         post?: never;
         delete?: never;
@@ -195,14 +195,14 @@ export interface paths {
             cookie?: never;
         };
         /** Get Page */
-        get: operations["get_page_api_data_projects__project_id__pages__idx0__get"];
+        get: operations["get_page"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Update Page */
-        patch: operations["update_page_api_data_projects__project_id__pages__idx0__patch"];
+        patch: operations["update_page"];
         trace?: never;
     };
     "/api/data/projects/{project_id}/pages/{idx0}/text": {
@@ -219,7 +219,7 @@ export interface paths {
         options?: never;
         head?: never;
         /** Update Page Text */
-        patch: operations["update_page_text_api_data_projects__project_id__pages__idx0__text_patch"];
+        patch: operations["update_page_text"];
         trace?: never;
     };
     "/api/data/projects/{project_id}/pages/{idx0}/text/{suffix}": {
@@ -230,7 +230,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Page Text */
-        get: operations["get_page_text_api_data_projects__project_id__pages__idx0__text__suffix__get"];
+        get: operations["get_page_text"];
         put?: never;
         post?: never;
         delete?: never;
@@ -260,7 +260,7 @@ export interface paths {
          *     retries; the response's `deleted_count` reports how many ids
          *     actually applied.
          */
-        delete: operations["delete_page_words_api_data_projects__project_id__pages__idx0__words_delete"];
+        delete: operations["delete_page_words"];
         options?: never;
         head?: never;
         patch?: never;
@@ -274,15 +274,15 @@ export interface paths {
             cookie?: never;
         };
         /** Get System Defaults */
-        get: operations["get_system_defaults_api_data_system_defaults_get"];
+        get: operations["get_system_defaults"];
         /** Put System Defaults */
-        put: operations["put_system_defaults_api_data_system_defaults_put"];
+        put: operations["put_system_defaults"];
         post?: never;
         /**
          * Reset System Defaults
          * @description Reset the stored SystemDefaults to spec-08 defaults. Idempotent.
          */
-        delete: operations["reset_system_defaults_api_data_system_defaults_delete"];
+        delete: operations["reset_system_defaults"];
         options?: never;
         head?: never;
         patch?: never;
@@ -299,7 +299,7 @@ export interface paths {
          * Export System Defaults
          * @description Return the SystemDefaults as a downloadable JSON file.
          */
-        get: operations["export_system_defaults_api_data_system_defaults_export_get"];
+        get: operations["export_system_defaults"];
         put?: never;
         post?: never;
         delete?: never;
@@ -324,7 +324,7 @@ export interface paths {
          *     Behaves like PUT — sharing the response shape so the frontend can
          *     `setDraft(response)` and the next GET will agree.
          */
-        post: operations["import_system_defaults_api_data_system_defaults_import_post"];
+        post: operations["import_system_defaults"];
         delete?: never;
         options?: never;
         head?: never;
@@ -341,7 +341,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Get Upload Url */
-        post: operations["get_upload_url_api_data_projects__project_id__assets_upload_url_post"];
+        post: operations["get_asset_upload_url"];
         delete?: never;
         options?: never;
         head?: never;
@@ -356,7 +356,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Download Url */
-        get: operations["get_download_url_api_data_projects__project_id__assets_download_url_get"];
+        get: operations["get_asset_download_url"];
         put?: never;
         post?: never;
         delete?: never;
@@ -373,7 +373,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Recent Jobs */
-        get: operations["list_recent_jobs_api_data_jobs_get"];
+        get: operations["list_recent_jobs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -390,7 +390,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Job */
-        get: operations["get_job_api_data_jobs__job_id__get"];
+        get: operations["get_job"];
         put?: never;
         post?: never;
         delete?: never;
@@ -409,7 +409,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Ingest */
-        post: operations["ingest_api_gpu_ingest_post"];
+        post: operations["start_ingest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -426,7 +426,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Process Page */
-        post: operations["process_page_api_gpu_process_page_post"];
+        post: operations["process_page"];
         delete?: never;
         options?: never;
         head?: never;
@@ -443,7 +443,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Run Ocr Page */
-        post: operations["run_ocr_page_api_gpu_run_ocr_page_post"];
+        post: operations["run_ocr_page"];
         delete?: never;
         options?: never;
         head?: never;
@@ -460,7 +460,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Suggest Splits */
-        post: operations["suggest_splits_api_gpu_suggest_splits_post"];
+        post: operations["suggest_splits"];
         delete?: never;
         options?: never;
         head?: never;
@@ -477,7 +477,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Suggest Illustrations */
-        post: operations["suggest_illustrations_api_gpu_suggest_illustrations_post"];
+        post: operations["suggest_illustrations"];
         delete?: never;
         options?: never;
         head?: never;
@@ -494,7 +494,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Extract Illustration */
-        post: operations["extract_illustration_api_gpu_extract_illustration_post"];
+        post: operations["extract_illustration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -511,7 +511,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Submit Batch Job */
-        post: operations["submit_batch_job_api_gpu_jobs_post"];
+        post: operations["submit_batch_job"];
         delete?: never;
         options?: never;
         head?: never;
@@ -526,11 +526,11 @@ export interface paths {
             cookie?: never;
         };
         /** Get Job */
-        get: operations["get_job_api_gpu_jobs__job_id__get"];
+        get: operations["get_gpu_job"];
         put?: never;
         post?: never;
         /** Cancel Job */
-        delete: operations["cancel_job_api_gpu_jobs__job_id__delete"];
+        delete: operations["cancel_gpu_job"];
         options?: never;
         head?: never;
         patch?: never;
@@ -556,7 +556,7 @@ export interface paths {
          *     payload (override keys replace, others are preserved). Pass `None` /
          *     omit the body to retry verbatim.
          */
-        post: operations["retry_job_api_gpu_jobs__job_id__retry_post"];
+        post: operations["retry_gpu_job"];
         delete?: never;
         options?: never;
         head?: never;
@@ -579,7 +579,7 @@ export interface paths {
          *     the database so a late subscriber sees state immediately; subsequent
          *     frames come from the broker (zero-poll).
          */
-        get: operations["job_events_api_gpu_jobs__job_id__events_get"];
+        get: operations["stream_gpu_job_events"];
         put?: never;
         post?: never;
         delete?: never;
@@ -602,7 +602,7 @@ export interface paths {
          *
          *     Path traversal (`..`, absolute paths) is rejected by the storage adapter.
          */
-        put: operations["cdn_put_cdn__key__put"];
+        put: operations["upload_cdn_asset"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1511,7 +1511,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    me_api_auth_me_get: {
+    get_current_user: {
         parameters: {
             query?: never;
             header?: never;
@@ -1531,7 +1531,7 @@ export interface operations {
             };
         };
     };
-    list_projects_api_data_projects_get: {
+    list_projects: {
         parameters: {
             query?: {
                 include_archived?: boolean;
@@ -1562,7 +1562,7 @@ export interface operations {
             };
         };
     };
-    create_project_api_data_projects_post: {
+    create_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1595,7 +1595,7 @@ export interface operations {
             };
         };
     };
-    get_project_api_data_projects__project_id__get: {
+    get_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1626,7 +1626,7 @@ export interface operations {
             };
         };
     };
-    delete_project_api_data_projects__project_id__delete: {
+    delete_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1655,7 +1655,7 @@ export interface operations {
             };
         };
     };
-    update_project_config_api_data_projects__project_id__config_patch: {
+    update_project_config: {
         parameters: {
             query?: never;
             header?: never;
@@ -1690,7 +1690,7 @@ export interface operations {
             };
         };
     };
-    archive_project_api_data_projects__project_id__archive_post: {
+    archive_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1721,7 +1721,7 @@ export interface operations {
             };
         };
     };
-    source_preview_api_data_projects__project_id__source_preview_get: {
+    get_source_preview: {
         parameters: {
             query?: {
                 limit?: number;
@@ -1754,7 +1754,7 @@ export interface operations {
             };
         };
     };
-    source_preview_thumbnail_api_data_projects__project_id__source_preview__filename__thumbnail_get: {
+    get_source_preview_thumbnail: {
         parameters: {
             query?: never;
             header?: never;
@@ -1793,7 +1793,7 @@ export interface operations {
             };
         };
     };
-    unarchive_project_api_data_projects__project_id__unarchive_post: {
+    unarchive_project: {
         parameters: {
             query?: never;
             header?: never;
@@ -1824,7 +1824,7 @@ export interface operations {
             };
         };
     };
-    list_pages_api_data_projects__project_id__pages_get: {
+    list_pages: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -1862,7 +1862,7 @@ export interface operations {
             };
         };
     };
-    get_page_api_data_projects__project_id__pages__idx0__get: {
+    get_page: {
         parameters: {
             query?: never;
             header?: never;
@@ -1894,7 +1894,7 @@ export interface operations {
             };
         };
     };
-    update_page_api_data_projects__project_id__pages__idx0__patch: {
+    update_page: {
         parameters: {
             query?: never;
             header?: never;
@@ -1930,7 +1930,7 @@ export interface operations {
             };
         };
     };
-    update_page_text_api_data_projects__project_id__pages__idx0__text_patch: {
+    update_page_text: {
         parameters: {
             query?: never;
             header?: never;
@@ -1966,7 +1966,7 @@ export interface operations {
             };
         };
     };
-    get_page_text_api_data_projects__project_id__pages__idx0__text__suffix__get: {
+    get_page_text: {
         parameters: {
             query?: never;
             header?: never;
@@ -1999,7 +1999,7 @@ export interface operations {
             };
         };
     };
-    delete_page_words_api_data_projects__project_id__pages__idx0__words_delete: {
+    delete_page_words: {
         parameters: {
             query?: never;
             header?: never;
@@ -2035,7 +2035,7 @@ export interface operations {
             };
         };
     };
-    get_system_defaults_api_data_system_defaults_get: {
+    get_system_defaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -2055,7 +2055,7 @@ export interface operations {
             };
         };
     };
-    put_system_defaults_api_data_system_defaults_put: {
+    put_system_defaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -2088,7 +2088,7 @@ export interface operations {
             };
         };
     };
-    reset_system_defaults_api_data_system_defaults_delete: {
+    reset_system_defaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -2108,7 +2108,7 @@ export interface operations {
             };
         };
     };
-    export_system_defaults_api_data_system_defaults_export_get: {
+    export_system_defaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -2128,7 +2128,7 @@ export interface operations {
             };
         };
     };
-    import_system_defaults_api_data_system_defaults_import_post: {
+    import_system_defaults: {
         parameters: {
             query?: never;
             header?: never;
@@ -2161,7 +2161,7 @@ export interface operations {
             };
         };
     };
-    get_upload_url_api_data_projects__project_id__assets_upload_url_post: {
+    get_asset_upload_url: {
         parameters: {
             query?: never;
             header?: never;
@@ -2196,7 +2196,7 @@ export interface operations {
             };
         };
     };
-    get_download_url_api_data_projects__project_id__assets_download_url_get: {
+    get_asset_download_url: {
         parameters: {
             query: {
                 key: string;
@@ -2229,7 +2229,7 @@ export interface operations {
             };
         };
     };
-    list_recent_jobs_api_data_jobs_get: {
+    list_recent_jobs: {
         parameters: {
             query?: {
                 limit?: number;
@@ -2261,7 +2261,7 @@ export interface operations {
             };
         };
     };
-    get_job_api_data_jobs__job_id__get: {
+    get_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -2292,7 +2292,7 @@ export interface operations {
             };
         };
     };
-    ingest_api_gpu_ingest_post: {
+    start_ingest: {
         parameters: {
             query?: never;
             header?: never;
@@ -2325,7 +2325,7 @@ export interface operations {
             };
         };
     };
-    process_page_api_gpu_process_page_post: {
+    process_page: {
         parameters: {
             query?: never;
             header?: never;
@@ -2358,7 +2358,7 @@ export interface operations {
             };
         };
     };
-    run_ocr_page_api_gpu_run_ocr_page_post: {
+    run_ocr_page: {
         parameters: {
             query?: never;
             header?: never;
@@ -2391,7 +2391,7 @@ export interface operations {
             };
         };
     };
-    suggest_splits_api_gpu_suggest_splits_post: {
+    suggest_splits: {
         parameters: {
             query?: never;
             header?: never;
@@ -2424,7 +2424,7 @@ export interface operations {
             };
         };
     };
-    suggest_illustrations_api_gpu_suggest_illustrations_post: {
+    suggest_illustrations: {
         parameters: {
             query?: never;
             header?: never;
@@ -2457,7 +2457,7 @@ export interface operations {
             };
         };
     };
-    extract_illustration_api_gpu_extract_illustration_post: {
+    extract_illustration: {
         parameters: {
             query?: never;
             header?: never;
@@ -2490,7 +2490,7 @@ export interface operations {
             };
         };
     };
-    submit_batch_job_api_gpu_jobs_post: {
+    submit_batch_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -2523,7 +2523,7 @@ export interface operations {
             };
         };
     };
-    get_job_api_gpu_jobs__job_id__get: {
+    get_gpu_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -2554,7 +2554,7 @@ export interface operations {
             };
         };
     };
-    cancel_job_api_gpu_jobs__job_id__delete: {
+    cancel_gpu_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -2583,7 +2583,7 @@ export interface operations {
             };
         };
     };
-    retry_job_api_gpu_jobs__job_id__retry_post: {
+    retry_gpu_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -2618,7 +2618,7 @@ export interface operations {
             };
         };
     };
-    job_events_api_gpu_jobs__job_id__events_get: {
+    stream_gpu_job_events: {
         parameters: {
             query?: never;
             header?: never;
@@ -2649,7 +2649,7 @@ export interface operations {
             };
         };
     };
-    cdn_put_cdn__key__put: {
+    upload_cdn_asset: {
         parameters: {
             query?: never;
             header?: never;

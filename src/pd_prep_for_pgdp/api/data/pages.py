@@ -82,6 +82,7 @@ class DeleteWordsResponse(BaseModel):
 @router.get(
     "/projects/{project_id}/pages",
     response_model=ListPagesResponse,
+    operation_id="list_pages",
 )
 async def list_pages(
     project_id: str,
@@ -135,6 +136,7 @@ def _needs_review(page: PageRecord) -> bool:
 @router.get(
     "/projects/{project_id}/pages/{idx0}",
     response_model=PageRecord,
+    operation_id="get_page",
 )
 async def get_page(
     project_id: str,
@@ -154,6 +156,7 @@ async def get_page(
 @router.patch(
     "/projects/{project_id}/pages/{idx0}",
     response_model=PageRecord,
+    operation_id="update_page",
 )
 async def update_page(
     project_id: str,
@@ -186,6 +189,7 @@ async def update_page(
 @router.patch(
     "/projects/{project_id}/pages/{idx0}/text",
     response_model=UpdatePageTextResponse,
+    operation_id="update_page_text",
 )
 async def update_page_text(
     project_id: str,
@@ -222,6 +226,7 @@ async def update_page_text(
 @router.get(
     "/projects/{project_id}/pages/{idx0}/text/{suffix}",
     response_model=GetPageTextResponse,
+    operation_id="get_page_text",
 )
 async def get_page_text(
     project_id: str,
@@ -319,6 +324,7 @@ def _rebuild_text_from_words(words: list[OcrWord]) -> str:
 @router.delete(
     "/projects/{project_id}/pages/{idx0}/words",
     response_model=DeleteWordsResponse,
+    operation_id="delete_page_words",
 )
 async def delete_page_words(
     project_id: str,

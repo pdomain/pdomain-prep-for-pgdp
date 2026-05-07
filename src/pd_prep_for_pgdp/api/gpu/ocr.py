@@ -10,7 +10,7 @@ from ..dependencies import get_gpu_backend
 router = APIRouter(tags=["gpu"])
 
 
-@router.post("/run-ocr-page", response_model=OcrPageResponse)
+@router.post("/run-ocr-page", response_model=OcrPageResponse, operation_id="run_ocr_page")
 async def run_ocr_page(
     body: OcrPageRequest,
     gpu: GPUBackend = Depends(get_gpu_backend),

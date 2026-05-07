@@ -10,7 +10,7 @@ from ..dependencies import get_gpu_backend
 router = APIRouter(tags=["gpu"])
 
 
-@router.post("/process-page", response_model=ProcessPageResponse)
+@router.post("/process-page", response_model=ProcessPageResponse, operation_id="process_page")
 async def process_page(
     body: ProcessPageRequest,
     gpu: GPUBackend = Depends(get_gpu_backend),

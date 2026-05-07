@@ -44,7 +44,7 @@ class ExtractIllustrationResponse(BaseModel):
     image_url: str
 
 
-@router.post("/suggest-splits", response_model=SuggestSplitsResponse)
+@router.post("/suggest-splits", response_model=SuggestSplitsResponse, operation_id="suggest_splits")
 async def suggest_splits(
     body: SuggestSplitsRequest,
     gpu: GPUBackend = Depends(get_gpu_backend),
@@ -53,7 +53,11 @@ async def suggest_splits(
     return SuggestSplitsResponse()
 
 
-@router.post("/suggest-illustrations", response_model=SuggestIllustrationsResponse)
+@router.post(
+    "/suggest-illustrations",
+    response_model=SuggestIllustrationsResponse,
+    operation_id="suggest_illustrations",
+)
 async def suggest_illustrations(
     body: SuggestIllustrationsRequest,
     gpu: GPUBackend = Depends(get_gpu_backend),
@@ -61,7 +65,9 @@ async def suggest_illustrations(
     return SuggestIllustrationsResponse()
 
 
-@router.post("/extract-illustration", response_model=ExtractIllustrationResponse)
+@router.post(
+    "/extract-illustration", response_model=ExtractIllustrationResponse, operation_id="extract_illustration"
+)
 async def extract_illustration(
     body: ExtractIllustrationRequest,
     gpu: GPUBackend = Depends(get_gpu_backend),

@@ -31,6 +31,7 @@ class DownloadUrlResponse(BaseModel):
 @router.post(
     "/projects/{project_id}/assets/upload-url",
     response_model=UploadUrlResponse,
+    operation_id="get_asset_upload_url",
 )
 async def get_upload_url(
     project_id: str,
@@ -51,6 +52,7 @@ async def get_upload_url(
 @router.get(
     "/projects/{project_id}/assets/download-url",
     response_model=DownloadUrlResponse,
+    operation_id="get_asset_download_url",
 )
 async def get_download_url(
     project_id: str,
