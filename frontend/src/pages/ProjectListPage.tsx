@@ -2,11 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import type {
-  CreateProjectRequest,
-  CreateProjectResponse,
-  Project,
-} from "../api/types";
+import type { components } from "../api/types.gen";
+
+type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
+type CreateProjectResponse = components["schemas"]["CreateProjectResponse"];
+type Project = components["schemas"]["Project"];
 
 export function ProjectListPage() {
   const [showCreate, setShowCreate] = useState(false);
