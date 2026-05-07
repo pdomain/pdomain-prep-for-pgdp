@@ -7,12 +7,16 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ...adapters.auth import UserContext
 from ...adapters.database import IDatabase
 from ...adapters.storage import IStorage
-from ...core.ingest import peek_zip_image_names
+from ...core.ingest import (
+    extract_zip_image_thumbnail,
+    peek_zip_image_names,
+)
 from ...core.models import (
     PipelineState,
     Project,
@@ -230,6 +234,49 @@ async def source_preview(
     raw = await storage.get_bytes(source_key)
     filenames, total = peek_zip_image_names(raw, limit=limit)
     return SourcePreviewResponse(filenames=filenames, total_image_count=total)
+
+
+@router.get(
+    "/projects/{project_id}/source-preview/{filename}/thumbnail",
+    responses={
+        200: {"content": {"image/jpeg": {}}, "description": "JPEG thumbnail bytes"},
+        404: {"description": "Project, source.zip, or named entry not found"},
+    },
+    response_class=Response,
+)
+async def source_preview_thumbnail(
+    project_id: str,
+    filename: str,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    storage: IStorage = Depends(get_storage),
+) -> Response:
+    """Return a JPEG thumbnail for one image entry inside the project's source.zip.
+
+    Pairs with ``GET /source-preview`` (slice 2): that route returns the
+    image filenames; the SPA then issues one of these per filename to fill
+    the preview strip. Auth/ownership match slice 2 verbatim — collapsing
+    403 → 404 so existence isn't leaked.
+
+    Unknown filename and non-image filename both 404 (see
+    ``extract_zip_image_thumbnail``); a corrupt image inside the zip
+    becomes a 500 today, since that indicates a broken upload rather than
+    a routine missing entry — let the SPA surface it.
+    """
+    from ...core.ingest import ZipImageEntryNotFound
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    source_key = f"{project.storage_prefix}source.zip"
+    if not await storage.exists(source_key):
+        raise HTTPException(404, "source zip not uploaded")
+    raw = await storage.get_bytes(source_key)
+    try:
+        jpeg = extract_zip_image_thumbnail(raw, filename)
+    except ZipImageEntryNotFound:
+        raise HTTPException(404, "image entry not found in source zip") from None
+    return Response(content=jpeg, media_type="image/jpeg")
 
 
 @router.post("/projects/{project_id}/unarchive", response_model=Project)

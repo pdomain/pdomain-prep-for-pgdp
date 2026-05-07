@@ -376,6 +376,62 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/source-preview/{filename}/thumbnail": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Source Preview Thumbnail",
+        "description": "Return a JPEG thumbnail for one image entry inside the project's source.zip.\n\nPairs with ``GET /source-preview`` (slice 2): that route returns the\nimage filenames; the SPA then issues one of these per filename to fill\nthe preview strip. Auth/ownership match slice 2 verbatim \u2014 collapsing\n403 \u2192 404 so existence isn't leaked.\n\nUnknown filename and non-image filename both 404 (see\n``extract_zip_image_thumbnail``); a corrupt image inside the zip\nbecomes a 500 today, since that indicates a broken upload rather than\na routine missing entry \u2014 let the SPA surface it.",
+        "operationId": "source_preview_thumbnail_api_data_projects__project_id__source_preview__filename__thumbnail_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG thumbnail bytes",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "Project, source.zip, or named entry not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/unarchive": {
       "post": {
         "tags": [

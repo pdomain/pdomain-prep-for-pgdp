@@ -280,6 +280,43 @@ def peek_zip_image_names(raw: bytes, limit: int) -> tuple[list[str], int]:
     return image_names[:limit], len(image_names)
 
 
+class ZipImageEntryNotFound(LookupError):
+    """Raised when the requested filename is not an image entry in the zip.
+
+    Distinct from a generic ``KeyError`` so callers can map to HTTP 404
+    without confusing it with database lookup failures. The route layer
+    converts this into a 404 response.
+    """
+
+
+def extract_zip_image_thumbnail(raw: bytes, filename: str) -> bytes:
+    """Return JPEG thumbnail bytes for a single image entry inside ``raw``.
+
+    Used by the source-preview thumbnail endpoint (P2 #8 slice 3) to render
+    one tile of the SPA preview strip. Pure: takes the zip bytes + entry
+    name, returns JPEG bytes.
+
+    Refuses to thumbnail non-image entries even if they exist in the zip
+    — the caller should never request one (the slice-2 list route filters
+    them out), but a hand-rolled request for ``notes.txt`` should look like
+    "not found" rather than 500. Both branches raise ``ZipImageEntryNotFound``
+    so the route layer maps them to a single 404.
+
+    Decode errors on a corrupt-but-named entry surface as ``_CorruptImageError``
+    from ``_make_thumbnail_bytes`` — the route layer treats those as 404 too,
+    on the principle that we don't owe the caller a distinction between
+    "no such image" and "image bytes are unreadable".
+    """
+    if _ext_lower(filename) not in _IMAGE_EXTS:
+        raise ZipImageEntryNotFound(filename)
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        try:
+            data = zf.read(filename)
+        except KeyError as e:
+            raise ZipImageEntryNotFound(filename) from e
+    return _make_thumbnail_bytes(data)
+
+
 def _ext_lower(name: str) -> str:
     if "." not in name:
         return ""
