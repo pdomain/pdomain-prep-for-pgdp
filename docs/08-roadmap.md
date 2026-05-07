@@ -3,13 +3,9 @@
 > Shipped items live in `08-roadmap-shipped.md` — kept out of this file
 > so the active roadmap stays focused on open work.
 
-The build has moved through 22+ iterations. Each iteration was small,
-TDD-led where possible, and ended with a green test suite. (A
-`project_state.md` under `~/.claude/projects/.../memory/` was previously
-the per-iteration log; that file is no longer maintained — this document
-is now the single source of truth for forward planning.)
-
-This roadmap is the **forward** view, organised by priority.
+This roadmap is the **forward** view, organised by priority. Shipped
+work is in `08-roadmap-shipped.md`; per-iteration history lives in
+`git log`.
 
 ---
 
@@ -174,16 +170,6 @@ should imply `f001` and the spec loop is wrong, or (b) the `f000`-from-1
 behavior is intentional zero-based numbering and the field name / docs
 should be clarified. A user decision unblocks the change; either path is
 a one-line code (or spec) edit plus a deliberate test update.
-
----
-
-## P4 — Operations / observability
-
-### 21. Memory pruning revisit
-
-`memory/project_state.md` was pruned at iteration 11 (collapsed iterations
-1-7 into a table). It's grown again. Fold older "Done" sections into the
-table once they're stable.
 
 ---
 
