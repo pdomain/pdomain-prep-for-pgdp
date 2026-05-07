@@ -188,11 +188,15 @@ frontend-test: ## Run the SPA's vitest suite (jsdom + msw)
 
 openapi-export: ## Regenerate frontend/src/api/types.ts from /openapi.json
 	@echo "📤 Exporting OpenAPI schema and regenerating TS types..."
-	uv run python scripts/export_openapi.py frontend/openapi.json
+	# Write to repo-root openapi.json — the committed source-of-truth that
+	# tests/test_openapi_spec_committed.py drift-guards against. The frontend
+	# `openapi:gen` script reads `../openapi.json` (see frontend/package.json),
+	# so a single repo-root spec serves both the drift guard and TS codegen.
+	uv run python scripts/export_openapi.py openapi.json
 	@if $(HAVE_MISE); then \
-		cd frontend && $(MISE) exec -- npx --yes openapi-typescript openapi.json -o src/api/types.ts; \
+		cd frontend && $(MISE) exec -- npx --yes openapi-typescript ../openapi.json -o src/api/types.ts; \
 	else \
-		cd frontend && npx --yes openapi-typescript openapi.json -o src/api/types.ts; \
+		cd frontend && npx --yes openapi-typescript ../openapi.json -o src/api/types.ts; \
 	fi
 	@echo "✅ frontend/src/api/types.ts regenerated."
 
