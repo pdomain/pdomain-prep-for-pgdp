@@ -9,21 +9,21 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from ...core.models import OcrWord, PageConfigOverrides
+from ...core.models import ApiModel, OcrWord, PageConfigOverrides
 
 # ─── Wire shapes (also reused by /api/gpu route schemas) ─────────────────────
 
 
-class ProcessPageRequest(BaseModel):
+class ProcessPageRequest(ApiModel):
     project_id: str
     idx0: int
     config_overrides: PageConfigOverrides
     output_context: Literal["workbench", "commit"] = "workbench"
 
 
-class ProcessPageResponse(BaseModel):
+class ProcessPageResponse(ApiModel):
     processed_image_key: str
     processed_image_url: str
     dimensions: tuple[int, int]
@@ -32,7 +32,7 @@ class ProcessPageResponse(BaseModel):
     cold_start_ms: int = 0
 
 
-class OcrPageRequest(BaseModel):
+class OcrPageRequest(ApiModel):
     project_id: str
     idx0: int
     split_suffix: str | None = None
@@ -41,20 +41,20 @@ class OcrPageRequest(BaseModel):
     batch_mode: bool = False
 
 
-class OcrPageResponse(BaseModel):
+class OcrPageResponse(ApiModel):
     text: str
     words: list[OcrWord] = Field(default_factory=list)
     text_key: str
 
 
-class BatchJobItem(BaseModel):
+class BatchJobItem(ApiModel):
     job_type: str
     project_id: str
     idx0: int
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class BatchJobResult(BaseModel):
+class BatchJobResult(ApiModel):
     job_type: str
     project_id: str
     idx0: int

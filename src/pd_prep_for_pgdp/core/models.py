@@ -10,12 +10,33 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+# ─── Shared base ─────────────────────────────────────────────────────────────
+
+
+class ApiModel(BaseModel):
+    """Base for wire-shape models.
+
+    Sets `json_schema_serialization_defaults_required=True` so fields with
+    `default_factory=...` (or simple defaults) are emitted as **required** in
+    the serialization JSON Schema. The server always populates them on the
+    way out, so the OpenAPI spec — and the `openapi-typescript` codegen
+    derived from it — should treat them as guaranteed-present, not optional.
+
+    Behavior on **input** is unchanged: defaults still apply when omitted,
+    because Pydantic uses the *validation* schema (where these remain
+    optional) for request bodies. FastAPI hands `model_json_schema(mode=...)`
+    explicitly per direction.
+    """
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
 
 # ─── SystemDefaults ──────────────────────────────────────────────────────────
 
 
-class SystemDefaults(BaseModel):
+class SystemDefaults(ApiModel):
     text_threshold: int = 140
     page_h_w_ratio: float = 1.65
     default_fuzzy_pct: float = 0.02
@@ -35,7 +56,7 @@ class SystemDefaults(BaseModel):
 # ─── ProjectConfig ───────────────────────────────────────────────────────────
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(ApiModel):
     book_name: str
     source_uri: str
 
@@ -90,7 +111,7 @@ class PageProcessingStatus(str, Enum):
     error = "error"
 
 
-class PageConfigOverrides(BaseModel):
+class PageConfigOverrides(ApiModel):
     """Per-page processing overrides. Every field None = inherit."""
 
     initial_crop: tuple[int, int, int, int] | None = None
@@ -109,7 +130,7 @@ class PageConfigOverrides(BaseModel):
     single_dimension_rescale: bool | None = None
 
 
-class PageSplit(BaseModel):
+class PageSplit(ApiModel):
     """Replaces the notebook's `PageSectionSplit`. Coords in PROCESSED image space."""
 
     suffix: str
@@ -125,7 +146,7 @@ class PageSplit(BaseModel):
     ocr_engine: Literal["doctr", "tesseract"] | None = None
 
 
-class IllustrationRegion(BaseModel):
+class IllustrationRegion(ApiModel):
     """Coords in SOURCE image space (original scan, pre-processing)."""
 
     index: int = 1
@@ -142,7 +163,7 @@ class IllustrationRegion(BaseModel):
     convert_to_grayscale: bool = False
 
 
-class PageOutput(BaseModel):
+class PageOutput(ApiModel):
     """One per split, or one for whole page."""
 
     full_prefix: str
@@ -161,7 +182,7 @@ class PageOutput(BaseModel):
     ocr_error: str | None = None
 
 
-class PageRecord(BaseModel):
+class PageRecord(ApiModel):
     project_id: str
     idx0: int
     prefix: str
@@ -199,7 +220,7 @@ class StepStatus(str, Enum):
     error = "error"
 
 
-class StepState(BaseModel):
+class StepState(ApiModel):
     status: StepStatus = StepStatus.pending
     pages_complete: list[int] = Field(default_factory=list)
     pages_error: dict[int, str] = Field(default_factory=dict)
@@ -212,7 +233,7 @@ class StepState(BaseModel):
 StepId = Literal[1, 2, 4, 5, 6, 7, 8, 9, 10]
 
 
-class PipelineState(BaseModel):
+class PipelineState(ApiModel):
     steps: dict[int, StepState] = Field(default_factory=dict)
 
 
@@ -228,7 +249,7 @@ class ProjectStatus(str, Enum):
     complete = "complete"
 
 
-class Project(BaseModel):
+class Project(ApiModel):
     id: str
     owner_id: str = "default"
     name: str
@@ -246,7 +267,7 @@ class Project(BaseModel):
 # ─── ResolvedPageConfig (output of resolver; not persisted) ──────────────────
 
 
-class ResolvedPageConfig(BaseModel):
+class ResolvedPageConfig(ApiModel):
     """Flat, fully-resolved per-page config consumed by the pipeline."""
 
     text_threshold: int
@@ -301,14 +322,14 @@ class JobType(str, Enum):
     build_package = "build_package"
 
 
-class JobProgress(BaseModel):
+class JobProgress(ApiModel):
     current: int = 0
     total: int = 0
     current_page: int | None = None
     message: str = ""
 
 
-class Job(BaseModel):
+class Job(ApiModel):
     id: str
     project_id: str
     owner_id: str = "default"
@@ -329,14 +350,14 @@ class Job(BaseModel):
 # ─── OCR ─────────────────────────────────────────────────────────────────────
 
 
-class BoundingBox(BaseModel):
+class BoundingBox(ApiModel):
     left: int
     top: int
     width: int
     height: int
 
 
-class OcrWord(BaseModel):
+class OcrWord(ApiModel):
     id: str
     text: str
     confidence: float
