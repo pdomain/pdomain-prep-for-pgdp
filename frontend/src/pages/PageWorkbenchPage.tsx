@@ -28,6 +28,7 @@ type PageConfigOverrides = components["schemas"]["PageConfigOverrides-Input"];
 type UpdatePageRequest = components["schemas"]["UpdatePageRequest"];
 import { useJobProgress } from "../hooks/useJobProgress";
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
+import { StageChainRail } from "../components/StageChainRail";
 
 interface ProcessPageResponse {
   processed_image_key: string;
@@ -274,6 +275,10 @@ export function PageWorkbenchPage() {
             {page.data.processing_error}
           </div>
         )}
+
+        {/* M2 Slice 5 — per-page stage DAG chip rail. Click a chip to
+            invoke POST /stages/{id}/run; statuses re-poll while running. */}
+        <StageChainRail projectId={projectId} idx0={idx0} />
 
         <ModeToolbar mode={editMode} onChange={setEditMode} />
 
