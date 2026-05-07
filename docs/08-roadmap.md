@@ -827,10 +827,19 @@ schema-exclusion. `make test` 359 passed / 4 pre-existing skips.
 
 ### 20. OpenAPI codegen
 
-Once npm is available, run `make openapi-export` to replace the
-hand-written `frontend/src/api/types.ts` with a generated file. Add a CI
-check that fails the build if the committed file diverges from
-`/openapi.json`.
+**Status:** spec-drift guard landed (iter 5). Generated-types swap still
+pending npm.
+
+Spec-drift guard (done): `openapi.json` is committed at the repo root,
+and `tests/test_openapi_spec_committed.py` asserts it matches what
+`build_app().openapi()` emits now. Drift fails CI; fix-it is
+`make openapi-export` + commit the updated `openapi.json`.
+
+Still TODO once npm is available: run `make openapi-export` (it also
+runs `openapi-typescript` against `frontend/openapi.json`) to replace
+the hand-written `frontend/src/api/types.ts` with a generated file, and
+add a parallel guard that the committed `types.ts` matches the
+generator output.
 
 ### 21. Memory pruning revisit
 
