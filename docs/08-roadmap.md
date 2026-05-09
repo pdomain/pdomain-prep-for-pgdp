@@ -151,6 +151,24 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   full artifact-viewer pane is M3 territory; this is the minimal
   "make it reachable" affordance (Slice 7).
 
+**Scope landed 2026-05-09 (Slices 9–11):**
+
+- Real implementations for the post-`invert` proofing chain through
+  `canvas_map`: `find_content_edges` (wraps `find_edges`, returns a
+  4-int bbox tuple serialised as JSON `output.json`),
+  `crop_to_content` (two-parent: binary image + bbox JSON, runner
+  dispatches mixed parent types), `auto_deskew` (wraps `auto_deskew
+  (pct=0.30)`, handles both bare-ndarray and (ndarray, angle) return
+  shapes), `morph_fill` (wraps `morph_fill`), `rescale` (re-invert +
+  `rescale_image(target_short_side=1000)`), `canvas_map` (wraps
+  `map_content_onto_scaled_canvas` with DEFAULT alignment and 1.294
+  h/w ratio). The runner was extended with `_JSON_OUTPUT_TYPES` /
+  `_IMAGE_OUTPUT_TYPES` constants and a parent-loader that branches on
+  `Stage.output_type` so image parents decode via cv2 and bbox/JSON
+  parents parse via `json.loads`. End-to-end chain test covers all 13
+  stages from `ingest_source` → `canvas_map` with no manual SQLite
+  seeding (Slices 9–11).
+
 **Queued for M2 follow-up slices (or rolled into M3):**
 
 - Multi-artifact writer: `ocr` (words.json + raw.txt),
@@ -160,15 +178,12 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   output_types and the runner translates that to
   `StageOutputUnsupported` → 501 in the route. Chip rail shows them as
   not-run; clicking yields a 501 toast.
-- Real implementations for the remaining 12 placeholder stages
-  (`thumbnail`, `find_content_edges`, `crop_to_content`,
-  `auto_deskew`, `morph_fill`, `rescale`, `canvas_map`,
-  `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
+- Real implementations for the remaining 6 placeholder stages
+  (`thumbnail`, `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
   `auto_detect_illustrations`, `text_postprocess`). Each is a
-  carve-out of the existing `process_page.py` monolith / sibling
-  modules (`ingest.py`, `auto_detect.py`, `illustrations.py`,
-  `crop_for_ocr.py`, `text_postprocess.py`) — landing them gradually
-  while the monolithic path stays in service.
+  carve-out from sibling modules (`ingest.py`, `auto_detect.py`,
+  `illustrations.py`, `crop_for_ocr.py`, `text_postprocess.py`) —
+  landing them gradually while the monolithic path stays in service.
 - Bounded deferred-write executor with `PGDP_STAGE_WRITE_POOL_SIZE` +
   `PGDP_STAGE_WRITE_QUEUE_CAP` knobs (canonical spec Q8). Dual-write
   reconciler is in place but writes go through synchronously today —
@@ -201,27 +216,29 @@ shipped today):**
    `PAGE_STAGE_IDS`. On a fresh page every chip shows `not-run` (slate).
 5. Click chips along the chain in order:
    `ingest_source` → `decode_source` → `initial_crop` →
-   `manual_deskew_pre` → `grayscale` → `threshold` → `invert`.
+   `manual_deskew_pre` → `grayscale` → `threshold` → `invert` →
+   `find_content_edges` → `crop_to_content` → `auto_deskew` →
+   `morph_fill` → `rescale` → `canvas_map`.
    Each click should transition `not-run → running → clean` with a
    green toast "stage `<id>` → clean". The on-disk artifacts appear at
-   `~/pgdp-projects/projects/<project_id>/pages/0000/stages/<stage_id>/output.png`.
+   `~/pgdp-projects/projects/<project_id>/pages/0000/stages/<stage_id>/output.<ext>`
+   (`.png` for image stages; `.json` for `find_content_edges`).
    No manual SQLite seeding required — the chain root reads source
    bytes from IStorage at the page's `source_key`.
 6. After each chip turns green, a small "view" link appears next to
-   it. Click it; the artifact opens in a new tab as an image (the
-   workbench tab is preserved). For pass-through stages
-   (`ingest_source`, `decode_source`, `initial_crop`,
-   `manual_deskew_pre`) the image is the original source. For
-   `grayscale` it's a 2-D grayscale render; `threshold` is binary;
-   `invert` is its complement.
+   it. Click it; the artifact opens in a new tab. For image stages
+   the browser renders the PNG; for `find_content_edges` (JSON) the
+   browser shows a raw JSON array `[minX, maxX, minY, maxY]`.
+   The `canvas_map` artifact is the canonical proofing PNG — it should
+   look like a binarised, deskewed, canvas-mapped version of the source.
 7. Click `grayscale` again. The chip flickers running → clean; every
    descendant currently `clean` flips to `dirty` (amber). You should
-   see `threshold` and `invert` go amber.
+   see `threshold` through `canvas_map` all go amber.
 8. Click an out-of-order chip (e.g. `crop_to_content` when its parents
    aren't clean) — fails with a 409 toast naming the missing parents.
    Chip stays `not-run`.
-9. Click any of the remaining 12 placeholder chips (e.g.
-   `find_content_edges`, `text_postprocess`). Two outcomes:
+9. Click any of the remaining 6 placeholder chips (e.g.
+   `thumbnail`, `text_postprocess`). Two outcomes:
    - If the stage's parents aren't clean: 409 with "dependencies not
      clean" toast.
    - If parents are clean and the stage is single-output: 500 toast
@@ -231,17 +248,20 @@ shipped today):**
      `extract_illustrations`, `text_review`): 501 toast with
      "compound output_type" message; chip stays `not-run`.
 
-**Pass criterion (Slices 1–8):** starting from a fresh page, the user
-clicks chips along the chain `ingest_source → invert` in order, every
-chip transitions to clean visibly, and at least one "view" link
-opens the produced artifact in a new tab. No SQLite manipulation;
-the entire flow is point-and-click in the browser.
+**Pass criterion (Slices 1–11):** starting from a fresh page, the user
+clicks chips along the chain `ingest_source → canvas_map` in order
+(13 chips), every chip transitions to clean visibly, and the
+`canvas_map` "view" link opens the final proofing PNG in a new tab.
+No SQLite manipulation; the entire flow is point-and-click in the
+browser.
 
 **UI artifacts that prove these slices shipped:** the chip rail
 itself (visible immediately when opening any page); per-status color
 coding (slate/sky/emerald/amber/rose/slate-50); the per-clean-chip
 "view" link affordance; the success/error toast surface;
-`data-status` attr on each chip for tests + future deep-linking.
+`data-status` attr on each chip for tests + future deep-linking;
+`canvas_map` chip turns green and its "view" link opens the final
+proofing PNG.
 
 **Likely failure modes:**
 
@@ -262,8 +282,10 @@ coding (slate/sky/emerald/amber/rose/slate-50); the per-clean-chip
 
 - The artifact viewer pane (side-by-side input/output for a selected
   chip) lands in M3.
-- Real implementations for the 12 placeholder stages land
-  incrementally as carve-outs from `process_page.py`.
+- Real implementations for the remaining 6 placeholder stages
+  (`thumbnail`, `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
+  `auto_detect_illustrations`, `text_postprocess`) land incrementally
+  as carve-outs from sibling modules.
 - Bounded deferred-write executor (Q8) is the next infrastructure
   prerequisite for "Run all dirty stages on this page".
 

@@ -70,6 +70,17 @@ class Stage:
     default_status: Literal["not-run", "clean"]
     code_pointer: str
     is_terminal: bool = False
+    any_parent_ok: bool = False
+    """When True, at least one clean parent satisfies the dependency check.
+
+    Used for stages with alternative producers — e.g. `ocr_crop` reads
+    from *either* `canvas_map` (normal pages) *or* `blank_proof_synth`
+    (blank / plate pages). Both parent IDs are listed in `depends_on` so
+    dirty-cascade and topo-sort are correct; this flag tells the runner
+    not to require all parents to be simultaneously clean.
+
+    The runner picks the *first* clean parent in `depends_on` order.
+    """
 
 
 # The 22 canonical stages. Order mirrors `PAGE_STAGE_IDS`; the DAG is
@@ -234,6 +245,9 @@ _STAGE_DAG_TABLE: tuple[Stage, ...] = (
         depends_on=("canvas_map", "blank_proof_synth"),
         default_status="not-run",
         code_pointer="pd_prep_for_pgdp.core.pipeline.crop_for_ocr:crop_for_ocr",
+        # Either canvas_map (normal pages) or blank_proof_synth (blank pages)
+        # is clean for a given page. The runner picks whichever is clean first.
+        any_parent_ok=True,
     ),
     Stage(
         id="extract_illustrations",
