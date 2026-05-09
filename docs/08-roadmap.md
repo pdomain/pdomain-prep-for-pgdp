@@ -169,6 +169,22 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   stages from `ingest_source` → `canvas_map` with no manual SQLite
   seeding (Slices 9–11).
 
+**Scope landed 2026-05-09 (Slice 13):**
+
+- Real implementations for four more single-artifact placeholder stages:
+  `thumbnail` (JPEG bytes via `_make_thumbnail_bytes`, artifact stored
+  as `output.jpg`), `auto_detect_illustrations` (wraps
+  `pd_book_tools.layout.get_layout_detector`, returns JSON list of
+  region dicts, falls back to `[]` gracefully when detector is
+  unavailable), `ocr_crop` (pass-through bytes; accepts input from either
+  `canvas_map` or `blank_proof_synth` via `any_parent_ok=True` on the
+  DAG node), `text_postprocess` (wraps `normalize_curly_quotes` +
+  `normalize_em_dash`; reads `ocr`'s compound artifact dir via
+  filesystem scan of `output.*` files since the multi-artifact writer
+  hasn't shipped yet). Runner extended with compound-output parent
+  handling, `_JSON_OUTPUT_TYPES` / `_PASSTHROUGH_BYTES_OUTPUT_TYPES`
+  constants, and `any_parent_ok` dispatch logic.
+
 **Queued for M2 follow-up slices (or rolled into M3):**
 
 - Multi-artifact writer: `ocr` (words.json + raw.txt),
@@ -178,12 +194,10 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   output_types and the runner translates that to
   `StageOutputUnsupported` → 501 in the route. Chip rail shows them as
   not-run; clicking yields a 501 toast.
-- Real implementations for the remaining 6 placeholder stages
-  (`thumbnail`, `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
-  `auto_detect_illustrations`, `text_postprocess`). Each is a
-  carve-out from sibling modules (`ingest.py`, `auto_detect.py`,
-  `illustrations.py`, `crop_for_ocr.py`, `text_postprocess.py`) —
-  landing them gradually while the monolithic path stays in service.
+- Real implementations for the remaining 2 placeholder stages
+  (`blank_proof_synth`, `auto_detect_attrs`). Each is a carve-out from
+  sibling modules — landing them gradually while the monolithic path
+  stays in service.
 - Bounded deferred-write executor with `PGDP_STAGE_WRITE_POOL_SIZE` +
   `PGDP_STAGE_WRITE_QUEUE_CAP` knobs (canonical spec Q8). Dual-write
   reconciler is in place but writes go through synchronously today —
@@ -237,16 +251,16 @@ shipped today):**
 8. Click an out-of-order chip (e.g. `crop_to_content` when its parents
    aren't clean) — fails with a 409 toast naming the missing parents.
    Chip stays `not-run`.
-9. Click any of the remaining 6 placeholder chips (e.g.
-   `thumbnail`, `text_postprocess`). Two outcomes:
-   - If the stage's parents aren't clean: 409 with "dependencies not
-     clean" toast.
-   - If parents are clean and the stage is single-output: 500 toast
-     "no implementation registered for cpu yet"; chip turns rose
-     (`failed`) with the placeholder text in its tooltip.
-   - If the stage emits compound output (`ocr`,
-     `extract_illustrations`, `text_review`): 501 toast with
-     "compound output_type" message; chip stays `not-run`.
+9. Click `thumbnail` (depends on `canvas_map`). It should transition
+   clean and produce `output.jpg` in the stage dir. Click
+   `text_postprocess` (depends on `ocr`, which is compound). `ocr`
+   will be not-run / 501 (compound output not yet implemented), so
+   `text_postprocess` yields a 409 "dependencies not clean" toast.
+   Click any of the 2 remaining placeholder chips (`blank_proof_synth`,
+   `auto_detect_attrs`). If parents are clean, these yield 500
+   "no implementation registered for cpu yet" with the chip turning
+   rose (`failed`). The 3 compound-output stages (`ocr`,
+   `extract_illustrations`, `text_review`) yield 501 toasts.
 
 **Pass criterion (Slices 1–11):** starting from a fresh page, the user
 clicks chips along the chain `ingest_source → canvas_map` in order
@@ -282,9 +296,8 @@ proofing PNG.
 
 - The artifact viewer pane (side-by-side input/output for a selected
   chip) lands in M3.
-- Real implementations for the remaining 6 placeholder stages
-  (`thumbnail`, `blank_proof_synth`, `ocr_crop`, `auto_detect_attrs`,
-  `auto_detect_illustrations`, `text_postprocess`) land incrementally
+- Real implementations for the remaining 2 placeholder stages
+  (`blank_proof_synth`, `auto_detect_attrs`) land incrementally
   as carve-outs from sibling modules.
 - Bounded deferred-write executor (Q8) is the next infrastructure
   prerequisite for "Run all dirty stages on this page".
