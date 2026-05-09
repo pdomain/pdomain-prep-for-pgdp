@@ -174,17 +174,21 @@ def test_run_stage_route_returns_409_when_dependencies_not_met(
     assert "manual_deskew_pre" in r.text
 
 
-def test_run_stage_route_returns_501_for_compound_output_stage(
+def test_run_stage_route_returns_409_for_ocr_without_parent(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """`ocr` has compound output_type — the multi-artifact writer isn't done
-    yet. Route returns 501 not-implemented with a clear message."""
+    """`ocr` returns 409 when its parent `ocr_crop` is not clean.
+
+    Slice 14 added the multi-artifact writer so `ocr` no longer returns 501;
+    instead it falls through to the standard dep-check and returns 409 when
+    the parent chain has not been run.
+    """
     client, _ = seeded_client
     client.get("/api/data/projects/m2s4/pages/0/stages")
 
     r = client.post("/api/data/projects/m2s4/pages/0/stages/ocr/run")
-    assert r.status_code == 501, r.text
-    assert "compound" in r.text.lower() or "multi-artifact" in r.text.lower()
+    assert r.status_code == 409, r.text
+    assert "ocr_crop" in r.text
 
 
 # ─── Validation paths ──────────────────────────────────────────────────────

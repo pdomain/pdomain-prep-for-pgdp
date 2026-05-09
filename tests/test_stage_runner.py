@@ -24,10 +24,9 @@ are NOT dirtied (the previous output, if any, is still consistent).
 `StageNotImplemented` (registry placeholder) becomes a clear "not yet
 implemented" message rather than the engine claiming a real bug.
 
-Compound-output stages (`ocr`, `extract_illustrations`, `text_review`)
-are out of scope at Slice 3 — they raise `StageOutputUnsupported` so
-the runner doesn't try to dual-write them through the single-file
-contract. Wire those when the multi-artifact writer lands (M3+).
+Compound-output stages (`ocr`, `text_review`) route through the
+multi-artifact writer added in Slice 14. `extract_illustrations` remains
+a placeholder until the illustration-crop logic lands.
 """
 
 from __future__ import annotations
@@ -49,7 +48,6 @@ from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
 )
 from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
-    StageOutputUnsupported,
     StageRunFailed,
     run_stage,
 )
@@ -346,13 +344,23 @@ async def test_run_stage_handles_stage_not_implemented(
 
 
 @pytest.mark.asyncio
-async def test_run_stage_compound_output_raises_clear_error(tmp_path: Path, db: SqliteDatabase) -> None:
-    """`ocr` (output_type='words+text') has no single-file writer support yet.
+async def test_run_stage_compound_output_no_longer_raises_unsupported(
+    tmp_path: Path,
+    db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`ocr` (output_type='words+text') is handled by the multi-artifact writer.
 
-    The runner should raise `StageOutputUnsupported` with a clear message
-    rather than the generic `StageArtifactWriteError` — that's the
-    breadcrumb for the next slice that adds the multi-artifact writer.
+    Slice 14 adds commit_stage_artifacts_multi and removes the
+    StageOutputUnsupported guard. This test verifies the stage runs cleanly
+    (using a monkeypatched impl to avoid loading DocTR weights in CI).
     """
+
+    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+
+    fake_result = {"words.json": b"[]", "raw.txt": b""}
+    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image: fake_result)
+
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
     await _seed_clean_parents(
@@ -364,15 +372,14 @@ async def test_run_stage_compound_output_raises_clear_error(tmp_path: Path, db: 
         payload=payload,
     )
 
-    with pytest.raises(StageOutputUnsupported) as exc_info:
-        await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id="ocr",
-        )
-    assert "compound" in str(exc_info.value).lower() or "ocr" in str(exc_info.value).lower()
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="ocr",
+    )
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
 
 
 # ─── Return shape ──────────────────────────────────────────────────────────
@@ -1177,3 +1184,113 @@ async def test_run_stage_full_chain_through_canvas_map(
         )
         artifact_path = stage_artifact_path(tmp_path, project_id, page_id, stage_id)
         assert artifact_path.exists(), f"stage {stage_id!r} produced no artifact on disk"
+
+
+# ─── Slice 14: compound-output stages via multi-artifact writer ────────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_ocr_produces_multi_artifact_dir(
+    tmp_path: Path,
+    db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Runner calls multi-artifact writer for compound-output `ocr` stage.
+
+    The `ocr` impl is monkeypatched to avoid loading DocTR weights in CI.
+    The important thing under test is the runner's compound-output dispatch
+    path: impl returns dict[str, bytes]; runner calls commit_stage_artifacts_multi;
+    both files land on disk; DB row is clean.
+    """
+    import json
+
+    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+
+    fake_words = [
+        {"id": "w0", "text": "Hello", "confidence": 0.9, "bounding_box": {"x": 0, "y": 0, "w": 10, "h": 10}}
+    ]
+    fake_result = {
+        "words.json": json.dumps(fake_words).encode(),
+        "raw.txt": b"Hello",
+    }
+    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image: fake_result)
+
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(db, tmp_path, project_id, page_id, parent_stages=["ocr_crop"], payload=payload)
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="ocr",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+    stage_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "ocr"
+    assert (stage_dir / "words.json").exists(), "words.json missing"
+    assert (stage_dir / "raw.txt").exists(), "raw.txt missing"
+    assert state.artifact_key is not None
+    assert state.artifact_key.endswith("words.json"), (
+        f"artifact_key should point to primary file, got {state.artifact_key!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_stage_text_review_produces_multi_artifact_dir(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """`text_review` gate stage runs via multi-artifact writer.
+
+    Seeds `text_postprocess` (output_type='text', written as output.txt),
+    then runs `text_review`. Verifies both output.txt and attestation.json
+    land in the stage directory and the DB row is clean.
+    """
+    import json
+    from time import time
+
+    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
+
+    project_id, page_id = "p1", "0000"
+    text_content = b"Hello world."
+
+    await db.init_page_stages_for_page(project_id, page_id)
+
+    # Seed text_postprocess artifact directly (it's single-artifact, output.txt).
+    tp_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "text_postprocess"
+    tp_dir.mkdir(parents=True, exist_ok=True)
+    (tp_dir / "output.txt").write_bytes(text_content)
+    await db.put_page_stage(
+        PageStageState(
+            project_id=project_id,
+            page_id=page_id,
+            stage_id="text_postprocess",
+            status=PageStageStatus.clean,
+            stage_version=1,
+            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/text_postprocess/output.txt",
+            input_hash=compute_content_hash(text_content),
+            last_run_at=time(),
+        )
+    )
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="text_review",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+    stage_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "text_review"
+    assert (stage_dir / "output.txt").exists(), "output.txt missing"
+    assert (stage_dir / "attestation.json").exists(), "attestation.json missing"
+    assert (stage_dir / "output.txt").read_bytes() == text_content
+    attestation = json.loads((stage_dir / "attestation.json").read_bytes())
+    assert isinstance(attestation, dict)
+    assert state.artifact_key is not None
+    assert state.artifact_key.endswith("output.txt"), (
+        f"artifact_key should point to primary file (output.txt), got {state.artifact_key!r}"
+    )

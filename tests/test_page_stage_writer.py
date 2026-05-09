@@ -408,3 +408,89 @@ async def test_reconcile_page_ignores_non_clean_rows_for_missing(tmp_path: Path,
     )
     report = await reconcile_page(data_root=tmp_path, database=db, project_id="p1", page_id="0000")
     assert report.missing_files == ()
+
+
+# ─── commit_stage_artifacts_multi ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_commit_stage_artifacts_multi_writes_all_files(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """Multi-artifact writer writes every file in the `files` dict to disk."""
+    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+
+    await db.init_page_stages_for_page("p1", "0000")
+    files = {"words.json": b'[{"text":"hello"}]', "raw.txt": b"hello"}
+    state = await commit_stage_artifacts_multi(
+        data_root=tmp_path,
+        database=db,
+        project_id="p1",
+        page_id="0000",
+        stage_id="ocr",
+        files=files,
+        primary_filename="words.json",
+    )
+
+    stage_dir = tmp_path / "projects" / "p1" / "pages" / "0000" / "stages" / "ocr"
+    assert (stage_dir / "words.json").exists()
+    assert (stage_dir / "raw.txt").exists()
+    assert (stage_dir / "words.json").read_bytes() == b'[{"text":"hello"}]'
+    assert (stage_dir / "raw.txt").read_bytes() == b"hello"
+    assert state.status.value == "clean"
+
+
+@pytest.mark.asyncio
+async def test_commit_stage_artifacts_multi_db_row_points_to_primary(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """DB `artifact_key` should point to the primary file."""
+    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+
+    await db.init_page_stages_for_page("p1", "0000")
+    files = {"words.json": b"[]", "raw.txt": b""}
+    state = await commit_stage_artifacts_multi(
+        data_root=tmp_path,
+        database=db,
+        project_id="p1",
+        page_id="0000",
+        stage_id="ocr",
+        files=files,
+        primary_filename="words.json",
+    )
+
+    assert state.artifact_key is not None
+    assert state.artifact_key.endswith("words.json"), (
+        f"artifact_key should end with primary filename, got {state.artifact_key!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_commit_stage_artifacts_multi_replaces_prior_files(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """Re-running multi-artifact writer overwrites previous files."""
+    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+
+    await db.init_page_stages_for_page("p1", "0000")
+    stage_dir = tmp_path / "projects" / "p1" / "pages" / "0000" / "stages" / "ocr"
+    stage_dir.mkdir(parents=True)
+    (stage_dir / "words.json").write_bytes(b"old")
+    (stage_dir / "raw.txt").write_bytes(b"old-text")
+
+    files = {"words.json": b'[{"text":"new"}]', "raw.txt": b"new"}
+    await commit_stage_artifacts_multi(
+        data_root=tmp_path,
+        database=db,
+        project_id="p1",
+        page_id="0000",
+        stage_id="ocr",
+        files=files,
+        primary_filename="words.json",
+    )
+
+    assert (stage_dir / "words.json").read_bytes() == b'[{"text":"new"}]'
+    assert (stage_dir / "raw.txt").read_bytes() == b"new"

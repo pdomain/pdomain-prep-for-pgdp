@@ -441,8 +441,9 @@ def _ocr_crop_cpu(image: Any) -> Any:
 # ─── Real implementations: thumbnail + auto_detect_illustrations + text_postprocess (Slice 13) ──
 
 # These three complete the set of single-artifact stages in the DAG.
-# The remaining placeholders (`extract_illustrations`, `ocr`, `text_review`)
-# all emit compound output and are blocked on the multi-artifact writer.
+# The remaining placeholder (`extract_illustrations`) requires compound
+# output (hi_res_crops); its multi-artifact path is wired but the
+# illustration-crop logic is deferred until M3.
 
 
 def _thumbnail_cpu(image: Any) -> bytes:
@@ -542,10 +543,10 @@ def _text_postprocess_cpu(text_bytes: Any) -> str:
     The full `postprocess_text` function requires `SystemDefaults` and
     `ProjectConfig` which the runner doesn't have yet (M3 config plumbing).
 
-    `text_bytes` is raw bytes from the `ocr` stage's text artifact — however,
-    `ocr` is compound-output (StageOutputUnsupported) so this stage cannot
-    be run end-to-end until the multi-artifact writer lands. The impl is
-    registered now so the chip shows it as wired, not as a placeholder.
+    `text_bytes` is raw bytes from the `ocr` stage's artifact dir; the
+    runner scans the dir for `output.*` and passes the first file's bytes.
+    With `ocr` now handled by the multi-artifact writer (Slice 14), this
+    stage is fully runnable end-to-end.
 
     Returns a str; the runner's `text` output-type path encodes it to UTF-8
     and writes `output.txt`.
@@ -560,6 +561,137 @@ def _text_postprocess_cpu(text_bytes: Any) -> str:
     text = normalize_curly_quotes(text)
     text = normalize_em_dash(text)
     return text
+
+
+# ─── Real implementations: ocr + text_review (Slice 14) ─────────────────────
+#
+# `ocr` is the first compound-output stage in the registry: it emits
+# `words.json` (JSON array of OcrWord dicts) + `raw.txt` (plain OCR text).
+# The runner's compound-output branch (added Slice 14) routes the returned
+# dict[str, bytes] through `commit_stage_artifacts_multi`.
+#
+# `text_review` is a gate stage: the human reviewer has confirmed the text.
+# At default config (no edit) it trivially copies the `text_postprocess`
+# output into `output.txt` and writes an empty `attestation.json`.  The
+# workbench's "Mark clean" button fires the `POST .../text_review/clean`
+# route which bypasses the runner entirely; this impl exists so `run_stage`
+# can be called programmatically (e.g. in batch mode) without raising
+# StageNotImplemented.
+
+
+def _default_resolved_page_config() -> Any:
+    """Build a minimal ResolvedPageConfig with all-default values.
+
+    Used by stage impls that haven't yet received ResolvedPageConfig plumbing
+    (M3 work). Callers must not assume any per-page override fields are set.
+    """
+    from ...core.models import AlignmentOverride, PageType, ResolvedPageConfig
+
+    return ResolvedPageConfig(
+        text_threshold=140,
+        page_h_w_ratio=1.65,
+        fuzzy_pct=0.02,
+        pixel_count_columns=150,
+        pixel_count_rows=75,
+        ocr_bbox_edge_min_words=5,
+        ocr_engine="doctr",
+        ocr_model_key=None,
+        ocr_dpi=150,
+        initial_crop_all=(0, 0, 0, 0),
+        ocr_crop=(0, 0, 0, 0),
+        page_type=PageType.normal,
+        alignment=AlignmentOverride.default,
+        initial_crop=None,
+        white_space_additional=None,
+        threshold_level=None,
+        skip_auto_deskew=True,
+        deskew_before_crop=None,
+        deskew_after_crop=None,
+        do_morph=False,
+        skip_denoise=False,
+        use_ocr_bbox_edge=False,
+        rotated_standard=False,
+        single_dimension_rescale=False,
+    )
+
+
+def _ocr_cpu(image: Any) -> dict[str, bytes]:
+    """Run OCR on the proofing image and emit words.json + raw.txt.
+
+    Accepts the ndarray from `ocr_crop` (output_type='image_bytes' decoded
+    by the runner). Writes the image to a temp file, calls `ocr_page` with
+    default config, serialises OcrPageResult.words to ``words.json`` (JSON
+    array of OcrWord dicts) and OcrPageResult.text to ``raw.txt`` (UTF-8).
+
+    The multi-artifact writer (Slice 14) routes the returned
+    ``dict[str, bytes]`` via ``commit_stage_artifacts_multi``.
+
+    OCR engine: defaults to doctr (system default). Tests override by
+    passing an image through the runner with PGDP_OCR_ENGINE=tesseract
+    (handled inside ``ocr_page`` via ``SystemDefaults``).
+    """
+    import json
+    import os
+    import tempfile
+
+    import cv2  # type: ignore[import-not-found]
+
+    from ...core.models import SystemDefaults
+    from ...core.ocr import ocr_page
+
+    cfg = _default_resolved_page_config()
+
+    # Honour PGDP_OCR_ENGINE env var so tests can force tesseract without
+    # loading DocTR weights.
+    ocr_engine = os.environ.get("PGDP_OCR_ENGINE")
+    if ocr_engine in ("tesseract", "doctr"):
+        cfg = cfg.model_copy(update={"ocr_engine": ocr_engine})
+
+    system = SystemDefaults(ocr_engine=cfg.ocr_engine)
+
+    # Write ndarray to a temp PNG that ocr_page can read via cv2/doctr.
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        tmp_path_str = f.name
+    try:
+        cv2.imwrite(tmp_path_str, image)
+        from pathlib import Path
+
+        result = ocr_page(Path(tmp_path_str), cfg=cfg, system=system)
+    finally:
+        try:
+            import os as _os
+
+            _os.unlink(tmp_path_str)
+        except OSError:
+            pass
+
+    words_data = [w.model_dump() for w in result.words]
+    words_json = json.dumps(words_data).encode()
+    raw_txt = (result.text or "").encode()
+    return {"words.json": words_json, "raw.txt": raw_txt}
+
+
+def _text_review_cpu(text_bytes: Any) -> dict[str, bytes]:
+    """Gate stage — copy text_postprocess output as the reviewed text.
+
+    At default config (no human edit) this is an identity pass: the
+    output.txt artifact is the text_postprocess result verbatim, and
+    attestation.json records an empty object. The 'Mark clean' UI button
+    (`POST .../text_review/clean`) short-circuits this by marking the DB
+    row clean directly without running the stage; this impl exists so
+    batch-mode callers can fire the stage programmatically.
+
+    Returns dict[str, bytes] with 'output.txt' and 'attestation.json'.
+    """
+    import json
+
+    if isinstance(text_bytes, (bytes, bytearray)):
+        text = bytes(text_bytes)
+    else:
+        text = str(text_bytes).encode()
+
+    attestation = json.dumps({}).encode()
+    return {"output.txt": text, "attestation.json": attestation}
 
 
 # ─── Registry assembly ──────────────────────────────────────────────────────
@@ -588,6 +720,9 @@ _REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
     "thumbnail": _thumbnail_cpu,
     "auto_detect_illustrations": _auto_detect_illustrations_cpu,
     "text_postprocess": _text_postprocess_cpu,
+    # Slice 14: compound-output stages (multi-artifact writer).
+    "ocr": _ocr_cpu,
+    "text_review": _text_review_cpu,
 }
 
 

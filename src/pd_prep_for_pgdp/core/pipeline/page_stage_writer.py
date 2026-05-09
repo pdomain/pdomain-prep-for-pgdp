@@ -73,6 +73,15 @@ COMPOUND_OUTPUT_TYPES: Final[frozenset[str]] = frozenset(
     }
 )
 
+# Primary filename for each compound-output type — this is the file the
+# DB `artifact_key` column points to (spec §"Filesystem layout").
+# Callers can index this to get the primary name without hardcoding it.
+COMPOUND_PRIMARY_FILENAME: Final[dict[str, str]] = {
+    "words+text": "words.json",
+    "hi_res_crops": "crops.json",
+    "text+attestation": "output.txt",
+}
+
 
 class StageArtifactWriteError(RuntimeError):
     """Raised when `commit_stage_artifact` fails part-way through.
@@ -262,6 +271,195 @@ async def commit_stage_artifact(
             prior_snapshot.unlink()
         except OSError:
             pass
+
+    return state
+
+
+# ─── commit_stage_artifacts_multi ───────────────────────────────────────────
+
+
+async def commit_stage_artifacts_multi(
+    *,
+    data_root: Path,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+    files: dict[str, bytes],
+    primary_filename: str,
+    stage_version: int = 1,
+    job_id: str | None = None,
+) -> PageStageState:
+    """Atomically commit a set of stage output files + DB row.
+
+    Used for compound-output stages whose ``output_type`` is in
+    ``COMPOUND_OUTPUT_TYPES`` (``words+text``, ``hi_res_crops``,
+    ``text+attestation``). Mirrors ``commit_stage_artifact``'s
+    dual-write contract for each file:
+
+    1. Create the stage directory if needed.
+    2. For each ``(filename, data)`` in ``files``: write to a sibling
+       ``.tmp-<uuid>`` then ``os.fsync``.
+    3. Snapshot any pre-existing file that would be overwritten.
+    4. Atomic-rename every tmp into its canonical name.
+    5. Upsert the ``page_stages`` DB row as ``status=clean``.  The
+       ``artifact_key`` column points to ``primary_filename`` within
+       the stage directory.
+    6. On any failure: unlink all tmp files, restore snapshots, raise
+       ``StageArtifactWriteError``.
+
+    ``primary_filename`` must be a key in ``files``.
+    """
+    if primary_filename not in files:
+        raise StageArtifactWriteError(
+            f"primary_filename {primary_filename!r} not in files dict for stage {stage_id!r}"
+        )
+
+    stage_dir = data_root / "projects" / project_id / "pages" / page_id / "stages" / stage_id
+    stage_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_uuid = uuid.uuid4().hex
+    # Map from canonical path -> tmp path for cleanup and rename.
+    tmp_paths: dict[Path, Path] = {}
+    # Snapshots of pre-existing files (canonical -> snapshot path).
+    snapshots: dict[Path, Path] = {}
+
+    # Step 2-3: write all tmps + fsync.
+    try:
+        for filename, data in files.items():
+            target = stage_dir / filename
+            tmp = target.with_name(f"{filename}.tmp-{tmp_uuid}")
+            tmp_paths[target] = tmp
+            try:
+                fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+                try:
+                    with os.fdopen(fd, "wb") as fp:
+                        fp.write(data)
+                        fp.flush()
+                        os.fsync(fp.fileno())
+                except BaseException:
+                    raise
+            except BaseException as exc:
+                if tmp.exists():
+                    try:
+                        tmp.unlink()
+                    except OSError:
+                        pass
+                raise StageArtifactWriteError(
+                    f"failed to write tmp artifact {filename!r} for stage {stage_id!r}: {exc!r}"
+                ) from exc
+    except StageArtifactWriteError:
+        # Clean up any tmps already written before the failure.
+        for t in tmp_paths.values():
+            if t.exists():
+                try:
+                    t.unlink()
+                except OSError:
+                    pass
+        raise
+
+    # Step 4: snapshot pre-existing files.
+    try:
+        for target, _tmp in tmp_paths.items():
+            if target.exists():
+                snap = target.with_name(f"{target.name}.tmp-prior-{tmp_uuid}")
+                try:
+                    os.replace(str(target), str(snap))
+                    snapshots[target] = snap
+                except OSError as exc:
+                    # Roll back tmps already written.
+                    for t in tmp_paths.values():
+                        if t.exists():
+                            try:
+                                t.unlink()
+                            except OSError:
+                                pass
+                    # Restore any snapshots already moved.
+                    for canon, snap2 in snapshots.items():
+                        if snap2.exists():
+                            try:
+                                os.replace(str(snap2), str(canon))
+                            except OSError:
+                                pass
+                    raise StageArtifactWriteError(
+                        f"failed to snapshot prior {target.name!r} for stage {stage_id!r}: {exc!r}"
+                    ) from exc
+    except StageArtifactWriteError:
+        raise
+
+    # Step 5: atomic rename tmps -> canonical names.
+    try:
+        for target, tmp in tmp_paths.items():
+            try:
+                os.replace(str(tmp), str(target))
+            except OSError as exc:
+                # Roll back: remove any canonical files already placed, restore
+                # snapshots, remove remaining tmps.
+                for _t2, canon2 in {v: k for k, v in tmp_paths.items()}.items():
+                    # Remove already-placed canonical files (except those with snapshot).
+                    if canon2.exists() and canon2 not in snapshots:
+                        try:
+                            canon2.unlink()
+                        except OSError:
+                            pass
+                for canon, snap in snapshots.items():
+                    if snap.exists():
+                        try:
+                            os.replace(str(snap), str(canon))
+                        except OSError:
+                            pass
+                for t in tmp_paths.values():
+                    if t.exists():
+                        try:
+                            t.unlink()
+                        except OSError:
+                            pass
+                raise StageArtifactWriteError(
+                    f"failed to rename tmp {target.name!r} for stage {stage_id!r}: {exc!r}"
+                ) from exc
+    except StageArtifactWriteError:
+        raise
+
+    # Step 6: DB upsert.
+    primary_key = f"projects/{project_id}/pages/{page_id}/stages/{stage_id}/{primary_filename}"
+    primary_hash = compute_content_hash(files[primary_filename])
+    state = PageStageState(
+        project_id=project_id,
+        page_id=page_id,
+        stage_id=stage_id,
+        status=PageStageStatus.clean,
+        stage_version=stage_version,
+        artifact_key=primary_key,
+        input_hash=primary_hash,
+        last_run_at=time(),
+        error_message=None,
+        job_id=job_id,
+    )
+    try:
+        await database.put_page_stage(state)
+    except BaseException as exc:
+        # Roll back all file writes: restore snapshots or remove placed files.
+        for target in tmp_paths:
+            snap = snapshots.get(target)
+            if snap is not None and snap.exists():
+                try:
+                    os.replace(str(snap), str(target))
+                except OSError:
+                    pass
+            elif target.exists():
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+        raise StageArtifactWriteError(f"DB upsert failed for {stage_id!r}: {exc!r}") from exc
+
+    # Cleanup: remove snapshots.
+    for snap in snapshots.values():
+        if snap.exists():
+            try:
+                snap.unlink()
+            except OSError:
+                pass
 
     return state
 

@@ -16,32 +16,30 @@ and the eager dirty cascade that follows on success.
    `StageDependenciesNotMet` with the offending stage_ids — the caller
    decides whether to recursively run them or surface the dep gap to
    the user.
-2. Validate the stage isn't compound-output (Slice 3 single-file
-   contract). Else raise `StageOutputUnsupported`.
-3. Mark the page_stages row `running` and commit. The GET endpoint
+2. Mark the page_stages row `running` and commit. The GET endpoint
    sees the transition immediately.
-4. Load each parent's clean artifact off disk. For image-typed parents,
-   decode bytes → ndarray. For json-typed parents, parse. (Slice 3
-   only handles the image case — the only stages with real impls are
-   grayscale/threshold/invert, all image-in/image-out.)
-5. Look up `STAGE_IMPL[stage_id][device]` (cpu by default).
-6. Call it with the loaded input(s).
-7. Encode the output (ndarray → PNG bytes) and dual-write via
-   `commit_stage_artifact`. That writes the file, fsyncs, atomically
-   renames, then upserts the DB row to `clean`.
-8. Cascade dirty: `compute_dirty_descendants(stage_id)` returns the
+3. Load each parent's clean artifact off disk. For image-typed parents,
+   decode bytes → ndarray. For json-typed parents, parse. For compound-
+   output parents (e.g. `ocr`), scan the stage dir and return the first
+   `output.*` file.
+4. Look up `STAGE_IMPL[stage_id][device]` (cpu by default).
+5. Call it with the loaded input(s).
+6. Encode the output and dual-write:
+   - Compound-output stages (output_type in COMPOUND_OUTPUT_TYPES):
+     impl returns dict[str, bytes]; runner calls
+     `commit_stage_artifacts_multi` with all files atomically.
+   - Single-file stages: encode (PNG/JSON/text/bytes) then call
+     `commit_stage_artifact` with the single artifact bytes.
+7. Cascade dirty: `compute_dirty_descendants(stage_id)` returns the
    transitive set of stage_ids downstream. For each one currently
    `clean` or `failed`, set status `dirty`. Rows already `not-run` or
    `dirty` stay as-is.
-9. Return the new `PageStageState`.
+8. Return the new `PageStageState`.
 
 ## Failure model
 
 - `StageDependenciesNotMet`: dep rows aren't `clean`. Raised before any
   state mutation; row stays `not-run` / whatever it was.
-- `StageOutputUnsupported`: stage's `output_type` is in
-  `COMPOUND_OUTPUT_TYPES`. Single-file writer can't dual-write; raise
-  before mutation. Row stays `not-run`.
 - `StageRunFailed`: the registered impl (or the encode/write step)
   raised. The runner catches, marks the row `failed` with the
   exception message, then re-raises wrapped in `StageRunFailed`.
@@ -69,8 +67,10 @@ from ...adapters.storage.base import IStorage
 from ..models import PageStageState, PageStageStatus
 from .page_stage_writer import (
     COMPOUND_OUTPUT_TYPES,
+    COMPOUND_PRIMARY_FILENAME,
     StageArtifactWriteError,
     commit_stage_artifact,
+    commit_stage_artifacts_multi,
     stage_artifact_path,
 )
 from .stage_dag import compute_dirty_descendants, get_stage
@@ -107,12 +107,10 @@ class StageDependenciesNotMet(RuntimeError):
 
 
 class StageOutputUnsupported(RuntimeError):
-    """Raised when the stage's `output_type` is compound (`ocr`, `extract_illustrations`,
-    `text_review`).
-
-    Slice 3 ships only the single-file writer; the multi-artifact writer
-    lands in a later slice. This is a clear breadcrumb so callers see
-    which surfaces still need the second writer.
+    """Formerly raised when a compound-output stage was attempted before the
+    multi-artifact writer existed (Slice 3 era). Retained for API route
+    compatibility (`pages.py` catches it → 501); the runner no longer raises
+    it since Slice 14 added `commit_stage_artifacts_multi`.
     """
 
 
@@ -350,20 +348,10 @@ async def run_stage(
     ------
     StageDependenciesNotMet
         Before any mutation, when not all parents are clean.
-    StageOutputUnsupported
-        Before any mutation, when the stage's output_type is compound.
     StageRunFailed
         After marking the row `failed` and updating the DB.
     """
     stage = get_stage(stage_id)
-
-    # Step 2 (early): refuse compound-output stages — single-file writer only.
-    if stage.output_type in COMPOUND_OUTPUT_TYPES:
-        raise StageOutputUnsupported(
-            f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
-            "the multi-artifact writer is not implemented yet (M2 slice 3 ships "
-            "the single-file contract only)"
-        )
 
     # Step 1: dependency check.
     if stage.depends_on:
@@ -496,7 +484,26 @@ async def run_stage(
             # Step 7: encode + dual-write.
             # Dispatch on the stage's output_type so non-image stages
             # don't try to PNG-encode their results.
-            if stage.output_type in _JSON_OUTPUT_TYPES:
+            if stage.output_type in COMPOUND_OUTPUT_TYPES:
+                # Compound-output stages return dict[str, bytes]; each entry
+                # is a named file in the stage directory. The primary file is
+                # looked up in COMPOUND_PRIMARY_FILENAME.
+                if not isinstance(output, dict):
+                    raise TypeError(
+                        f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
+                        f"impl must return dict[str, bytes], got {type(output).__name__}"
+                    )
+                primary_filename = COMPOUND_PRIMARY_FILENAME[stage.output_type]
+                committed = await commit_stage_artifacts_multi(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    files=output,
+                    primary_filename=primary_filename,
+                )
+            elif stage.output_type in _JSON_OUTPUT_TYPES:
                 # Coerce numpy scalar types (int64, float32, etc.) to native
                 # Python so json.dumps can serialise without a custom encoder.
                 # The output is a tuple/list of numbers for `bbox`, or a dict
@@ -504,27 +511,52 @@ async def run_stage(
                 if isinstance(output, (tuple, list)):
                     output = [int(v) if hasattr(v, "item") else v for v in output]
                 artifact_bytes = json.dumps(output).encode()
+                committed = await commit_stage_artifact(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    artifact_bytes=artifact_bytes,
+                )
             elif stage.output_type == "text":
-                # text_postprocess and text_review return a str; encode to UTF-8.
+                # text_postprocess returns a str; encode to UTF-8.
                 if isinstance(output, str):
                     artifact_bytes = output.encode()
                 else:
                     artifact_bytes = bytes(output)
-            elif stage.output_type in ("jpeg_bytes",) or isinstance(output, (bytes, bytearray)):
+                committed = await commit_stage_artifact(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    artifact_bytes=artifact_bytes,
+                )
+            elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES or isinstance(
+                output, (bytes, bytearray)
+            ):
                 # Impls that already return bytes (thumbnail, ocr_crop whole-page,
                 # canvas_map when implemented as bytes-in/bytes-out). Write verbatim.
-                artifact_bytes = bytes(output)
+                committed = await commit_stage_artifact(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    artifact_bytes=bytes(output),
+                )
             else:
                 # All image / gray / binary / image_bytes stages return ndarrays.
                 artifact_bytes = _encode_image_to_png(output)
-            committed = await commit_stage_artifact(
-                data_root=data_root,
-                database=database,
-                project_id=project_id,
-                page_id=page_id,
-                stage_id=stage_id,
-                artifact_bytes=artifact_bytes,
-            )
+                committed = await commit_stage_artifact(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    artifact_bytes=artifact_bytes,
+                )
     except StageNotImplemented as exc:
         await _mark_failed(
             database=database,

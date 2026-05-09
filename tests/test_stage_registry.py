@@ -573,3 +573,50 @@ def test_auto_detect_illustrations_cpu_returns_list() -> None:
     img = _solid_color_bgr(h=200, w=150)
     out = fn(img)
     assert isinstance(out, list)
+
+
+# ─── Real impl: ocr (Slice 14) ───────────────────────────────────────────────
+
+
+def test_ocr_cpu_returns_words_json_and_raw_txt(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """_ocr_cpu returns dict with 'words.json' and 'raw.txt' keys.
+
+    Forces PGDP_OCR_ENGINE=tesseract via monkeypatch so DocTR weights are
+    not loaded during the test suite.
+    """
+    import json
+
+    monkeypatch.setenv("PGDP_OCR_ENGINE", "tesseract")
+    fn = get_stage_impl("ocr", "cpu")
+    # Small white image with a 'B' drawn in black — tesseract can read it.
+    import cv2
+
+    img = np.full((60, 60, 3), 255, dtype=np.uint8)
+    cv2.putText(img, "B", (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 2)
+    out = fn(img)
+    assert isinstance(out, dict), f"expected dict, got {type(out).__name__}"
+    assert "words.json" in out, f"missing 'words.json' in keys: {list(out.keys())}"
+    assert "raw.txt" in out, f"missing 'raw.txt' in keys: {list(out.keys())}"
+    # words.json must be a valid JSON list.
+    words = json.loads(out["words.json"])
+    assert isinstance(words, list), f"words.json must be a list, got {type(words).__name__}"
+    # raw.txt must be bytes.
+    assert isinstance(out["raw.txt"], bytes), "raw.txt must be bytes"
+
+
+# ─── Real impl: text_review (Slice 14) ───────────────────────────────────────
+
+
+def test_text_review_cpu_returns_output_txt_and_attestation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_text_review_cpu returns dict with 'output.txt' and 'attestation.json'."""
+    import json
+
+    fn = get_stage_impl("text_review", "cpu")
+    input_bytes = b"Hello world."
+    out = fn(input_bytes)
+    assert isinstance(out, dict), f"expected dict, got {type(out).__name__}"
+    assert "output.txt" in out
+    assert "attestation.json" in out
+    assert out["output.txt"] == b"Hello world."
+    attestation = json.loads(out["attestation.json"])
+    assert isinstance(attestation, dict)
