@@ -194,10 +194,6 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   output_types and the runner translates that to
   `StageOutputUnsupported` → 501 in the route. Chip rail shows them as
   not-run; clicking yields a 501 toast.
-- Real implementations for the remaining 2 placeholder stages
-  (`blank_proof_synth`, `auto_detect_attrs`). Each is a carve-out from
-  sibling modules — landing them gradually while the monolithic path
-  stays in service.
 - Bounded deferred-write executor with `PGDP_STAGE_WRITE_POOL_SIZE` +
   `PGDP_STAGE_WRITE_QUEUE_CAP` knobs (canonical spec Q8). Dual-write
   reconciler is in place but writes go through synchronously today —
