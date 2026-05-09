@@ -179,21 +179,30 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   unavailable), `ocr_crop` (pass-through bytes; accepts input from either
   `canvas_map` or `blank_proof_synth` via `any_parent_ok=True` on the
   DAG node), `text_postprocess` (wraps `normalize_curly_quotes` +
-  `normalize_em_dash`; reads `ocr`'s compound artifact dir via
-  filesystem scan of `output.*` files since the multi-artifact writer
-  hasn't shipped yet). Runner extended with compound-output parent
+  `normalize_em_dash`; reads `ocr`'s compound artifact dir via filesystem
+  scan of `output.*` files). Runner extended with compound-output parent
   handling, `_JSON_OUTPUT_TYPES` / `_PASSTHROUGH_BYTES_OUTPUT_TYPES`
   constants, and `any_parent_ok` dispatch logic.
 
+**Scope landed 2026-05-09 (Slice 14):**
+
+- `commit_stage_artifacts_multi` in `page_stage_writer.py`:
+  multi-file atomic writer with the same fsync + rename + DB-upsert +
+  rollback contract as the single-file writer. `COMPOUND_PRIMARY_FILENAME`
+  maps each compound output_type to its primary file (`words.json` for
+  `ocr`, `output.txt` for `text_review`).
+- `_ocr_cpu` CPU impl: writes the ndarray to a temp PNG, calls `ocr_page`
+  with default config (doctr; tesseract override via `PGDP_OCR_ENGINE` env
+  for tests), serialises words → `words.json` and text → `raw.txt`.
+- `_text_review_cpu` CPU impl: identity pass (`output.txt` = postprocessed
+  text verbatim, `attestation.json` = `{}`). Gate stage; the workbench
+  "Mark clean" button bypasses the runner entirely.
+- Runner: `StageOutputUnsupported` early-exit removed; compound-output
+  stages now route through `commit_stage_artifacts_multi`. 21 of 22 stages
+  have real CPU impls (`extract_illustrations` deferred to M3).
+
 **Queued for M2 follow-up slices (or rolled into M3):**
 
-- Multi-artifact writer: `ocr` (words.json + raw.txt),
-  `extract_illustrations` (N crops),
-  `text_review` (output.txt + attestation.json). Today
-  `commit_stage_artifact` raises `StageArtifactWriteError` for these
-  output_types and the runner translates that to
-  `StageOutputUnsupported` → 501 in the route. Chip rail shows them as
-  not-run; clicking yields a 501 toast.
 - Bounded deferred-write executor with `PGDP_STAGE_WRITE_POOL_SIZE` +
   `PGDP_STAGE_WRITE_QUEUE_CAP` knobs (canonical spec Q8). Dual-write
   reconciler is in place but writes go through synchronously today —
@@ -210,8 +219,8 @@ concurrency-safe lazy-init, and `pgdp-prep reindex [--heal]`.
   working through the existing GPU backend until the registry is
   exhaustive.
 - Optional ?async=true flag on the run route returning a Job id for
-  slow stages (`ocr`, `extract_illustrations`). Not needed until those
-  stages have real impls.
+  slow stages (`ocr`, `extract_illustrations`). `ocr` now has a real
+  impl; async route flag becomes useful now that DocTR can be fired.
 
 **Required test fixtures:** the test zip from M1.
 
