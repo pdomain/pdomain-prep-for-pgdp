@@ -82,6 +82,11 @@ _JSON_OUTPUT_TYPES: frozenset[str] = frozenset({"bbox", "page_attrs", "illustrat
 # output_type values that are ndarrays and must be PNG-encoded.
 _IMAGE_OUTPUT_TYPES: frozenset[str] = frozenset({"image", "gray", "binary", "image_bytes"})
 
+# output_type values where the impl returns raw bytes (already encoded).
+# The runner writes these verbatim — no PNG or JSON round-trip.
+# `jpeg_bytes` (thumbnail stage): impl returns JPEG bytes from cv2.imencode.
+_PASSTHROUGH_BYTES_OUTPUT_TYPES: frozenset[str] = frozenset({"jpeg_bytes"})
+
 log = logging.getLogger(__name__)
 
 
@@ -167,10 +172,31 @@ async def _load_parent_artifact(
       decoded to numpy.ndarray via cv2.imdecode.
     - JSON types (`bbox`, `page_attrs`, `illustration_regions`): JSON text
       file parsed to a Python object (list/dict).
-
-    Other types are returned as raw bytes for now; callers that need
-    special handling should check explicitly.
+    - Compound-output parents (`words+text`, `hi_res_crops`,
+      `text+attestation`): `stage_artifact_path` raises for these, so we
+      look in the stage directory for the first `output.*` file (fallback
+      for when the multi-artifact writer seeds a primary text/json file).
+    - Other types: return raw bytes; the impl must handle them.
     """
+    parent_stage = get_stage(parent_stage_id)
+
+    if parent_stage.output_type in COMPOUND_OUTPUT_TYPES:
+        # Compound-output stages write multiple files; the single-file writer
+        # refuses to produce a canonical path for them. Look in the stage
+        # directory for the first `output.*` file to support downstream
+        # stages that consume their text output (e.g. text_postprocess
+        # consuming the text artifact from ocr).
+        stage_dir = data_root / "projects" / project_id / "pages" / page_id / "stages" / parent_stage_id
+        output_files = sorted(
+            f for f in (stage_dir.iterdir() if stage_dir.exists() else []) if f.name.startswith("output.")
+        )
+        if not output_files:
+            raise StageDependenciesNotMet(
+                parent_stage_id,
+                [f"{parent_stage_id}: compound artifact directory empty at {stage_dir}"],
+            )
+        return output_files[0].read_bytes()
+
     path = stage_artifact_path(data_root, project_id, page_id, parent_stage_id)
     if not path.exists():
         # Reconciler-visible drift: the row claims clean but the file is gone.
@@ -180,7 +206,6 @@ async def _load_parent_artifact(
             [f"{parent_stage_id}: artifact missing at {path}"],
         )
 
-    parent_stage = get_stage(parent_stage_id)
     raw = path.read_bytes()
 
     if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:

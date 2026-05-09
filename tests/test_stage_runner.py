@@ -291,15 +291,30 @@ async def test_run_stage_records_failure_when_impl_raises(
 async def test_run_stage_handles_stage_not_implemented(
     tmp_path: Path,
     db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A `StageNotImplemented` from the registry surfaces as a clear failure
     with a "not yet implemented in registry" message, not the generic engine
-    error."""
+    error.
+
+    All remaining non-compound placeholder stages now have real impls. We
+    test the `StageNotImplemented` path by monkeypatching `thumbnail` (a real
+    impl with a seedable single parent) back to a placeholder. pytest's
+    `monkeypatch` fixture ensures cleanup after the test regardless of ordering
+    or async event loop scope.
+    """
+
+    from pd_prep_for_pgdp.core.pipeline import stage_registry
+
     project_id, page_id = "p1", "0000"
-    # `thumbnail` is a registry placeholder at this iteration
-    # (no real impl yet — still a closure-bound StageNotImplemented stub).
-    # Its parent is `ingest_source` (output_type='image_bytes'), which can
-    # be seeded via commit_stage_artifact so the dep-check passes.
+
+    # Replace thumbnail's cpu impl with a placeholder that raises StageNotImplemented.
+    monkeypatch.setitem(
+        stage_registry.STAGE_IMPL["thumbnail"],
+        "cpu",
+        stage_registry._make_placeholder("thumbnail"),
+    )
+
     payload = _checkerboard_bgr_png()
     await _seed_clean_parents(
         db,
@@ -969,6 +984,139 @@ async def test_run_stage_ocr_crop_dep_check_fails_when_no_parent_clean(
             page_id=page_id,
             stage_id="ocr_crop",
         )
+
+
+# ─── Slice 13: thumbnail, auto_detect_illustrations, text_postprocess ─────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_thumbnail_produces_jpeg_artifact(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """`thumbnail` runs on the `ingest_source` artifact and produces a JPEG file.
+
+    Slice 13 registers `_thumbnail_cpu` which takes an ndarray (cv2-decoded
+    from the `ingest_source` image_bytes parent) and returns JPEG bytes.
+    The runner writes them verbatim as `output.jpg`.
+    """
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
+    )
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="thumbnail",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "thumbnail")
+    assert artifact_path.exists()
+    assert artifact_path.suffix == ".jpg"
+    # Artifact should decode as a valid image.
+    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
+    assert arr is not None, "thumbnail artifact is not a valid JPEG"
+
+
+@pytest.mark.asyncio
+async def test_run_stage_auto_detect_illustrations_produces_json(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """`auto_detect_illustrations` runs and produces a JSON artifact.
+
+    Without a layout detector installed, the impl returns an empty list —
+    the stage transitions to `clean` with `[]` JSON (valid empty
+    illustration set). Either outcome satisfies the test.
+    """
+    import json
+
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
+    )
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="auto_detect_illustrations",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "auto_detect_illustrations")
+    assert artifact_path.exists()
+    data = json.loads(artifact_path.read_text())
+    assert isinstance(data, list), f"expected a JSON list, got {type(data)}"
+
+
+@pytest.mark.asyncio
+async def test_run_stage_text_postprocess_normalises_curly_quotes(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """`text_postprocess` applies curly-quote and em-dash normalisation.
+
+    `ocr` is compound-output so `commit_stage_artifact` refuses to seed it.
+    Instead we write the artifact file directly and upsert the DB row via
+    `put_page_stage` -- the same state the multi-artifact writer will produce
+    when it lands. The runner falls back to loading `ocr` as raw bytes (its
+    output_type 'words+text' is not in _IMAGE_OUTPUT_TYPES or _JSON_OUTPUT_TYPES),
+    and the impl receives those bytes, decodes to str, normalises, and returns a
+    str that the runner encodes to UTF-8 `output.txt`.
+    """
+    from time import time
+
+    project_id, page_id = "p1", "0000"
+    # U+201C/U+201D = curly double quotes; U+2014 = em-dash
+    text_with_curly = "\u201cHello,\u201d he said\u2014quickly."
+    text_bytes = text_with_curly.encode()
+
+    await db.init_page_stages_for_page(project_id, page_id)
+
+    # Write the ocr artifact manually — bypassing commit_stage_artifact which
+    # refuses compound-output stages — then mark the row clean via put_page_stage.
+    ocr_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "ocr"
+    ocr_dir.mkdir(parents=True, exist_ok=True)
+    (ocr_dir / "output.txt").write_bytes(text_bytes)
+
+    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
+
+    await db.put_page_stage(
+        PageStageState(
+            project_id=project_id,
+            page_id=page_id,
+            stage_id="ocr",
+            status=PageStageStatus.clean,
+            stage_version=1,
+            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/ocr/output.txt",
+            input_hash=compute_content_hash(text_bytes),
+            last_run_at=time(),
+        )
+    )
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="text_postprocess",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "text_postprocess")
+    assert artifact_path.exists()
+    result = artifact_path.read_text()
+    # Em-dash should be replaced with double-hyphen.
+    assert "—" not in result
+    assert "--" in result
 
 
 @pytest.mark.asyncio

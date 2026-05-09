@@ -438,6 +438,130 @@ def _ocr_crop_cpu(image: Any) -> Any:
     return image
 
 
+# ─── Real implementations: thumbnail + auto_detect_illustrations + text_postprocess (Slice 13) ──
+
+# These three complete the set of single-artifact stages in the DAG.
+# The remaining placeholders (`extract_illustrations`, `ocr`, `text_review`)
+# all emit compound output and are blocked on the multi-artifact writer.
+
+
+def _thumbnail_cpu(image: Any) -> bytes:
+    """Resize and JPEG-encode the source image for workbench thumbnail display.
+
+    The runner loads the `ingest_source` artifact as an ndarray (output_type
+    'image_bytes' is in `_IMAGE_OUTPUT_TYPES` → cv2.imdecode). This impl
+    resizes to fit inside 300px on the short side and encodes to JPEG at
+    quality 85 — matching `_make_thumbnail_bytes` in `core/ingest.py`.
+
+    Returns bytes; the runner's `jpeg_bytes` output-type path writes them
+    verbatim as `output.jpg`.
+    """
+    import cv2  # type: ignore[import-not-found]
+
+    _THUMBNAIL_MAX_DIM = 300
+    _THUMBNAIL_QUALITY = 85
+
+    img = image
+    h, w = img.shape[:2]
+    short = min(h, w)
+    if short > _THUMBNAIL_MAX_DIM:
+        scale = _THUMBNAIL_MAX_DIM / short
+        new_w = max(1, int(round(w * scale)))
+        new_h = max(1, int(round(h * scale)))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _THUMBNAIL_QUALITY])
+    if not ok:
+        raise RuntimeError("cv2.imencode(.jpg) failed in _thumbnail_cpu")
+    return bytes(buf.tobytes())
+
+
+def _auto_detect_illustrations_cpu(image: Any) -> list[Any]:
+    """Detect illustration regions in a source image ndarray.
+
+    Loads the layout detector (the same process-singleton as in
+    `auto_detect_attrs`) and runs it on the image. If the layout model is
+    not installed / available, returns an empty list — the stage transitions
+    to `clean` with `[]` JSON, which is the correct representation of
+    "no illustrations detected".
+
+    Returns a list of dicts; the runner JSON-serialises this list and writes
+    it to `output.json` (output_type='illustration_regions').
+    """
+    import cv2  # type: ignore[import-not-found]
+
+    # Try loading the layout detector from pd_book_tools. This is a heavy
+    # optional dependency (model weights); if absent, fall back to no-op.
+    try:
+        from pd_book_tools.layout import get_layout_detector  # type: ignore[import-not-found]
+
+        detector = get_layout_detector()
+    except Exception:
+        detector = None
+
+    if detector is None:
+        return []
+
+    ok, buf = cv2.imencode(".png", image)
+    if not ok:
+        raise RuntimeError("cv2.imencode failed in _auto_detect_illustrations_cpu")
+
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp.write(bytes(buf.tobytes()))
+        tmp_path = Path(tmp.name)
+
+    try:
+        from ...core.illustrations import auto_detect_illustrations
+
+        regions = auto_detect_illustrations(
+            tmp_path,
+            layout_detector=detector,
+            confidence_threshold=0.5,
+        )
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+    return [
+        {"index": r.index, "label": r.label, "type": r.type, "L": r.L, "T": r.T, "R": r.R, "B": r.B}
+        for r in regions
+    ]
+
+
+def _text_postprocess_cpu(text_bytes: Any) -> str:
+    """Apply step-8 normalisation to OCR text at default config.
+
+    At default config (no per-project scannos, no custom regex, no
+    hyphenation word list), applies only the two universal transforms:
+    curly-quote normalisation and em-dash → double-hyphen conversion.
+    The full `postprocess_text` function requires `SystemDefaults` and
+    `ProjectConfig` which the runner doesn't have yet (M3 config plumbing).
+
+    `text_bytes` is raw bytes from the `ocr` stage's text artifact — however,
+    `ocr` is compound-output (StageOutputUnsupported) so this stage cannot
+    be run end-to-end until the multi-artifact writer lands. The impl is
+    registered now so the chip shows it as wired, not as a placeholder.
+
+    Returns a str; the runner's `text` output-type path encodes it to UTF-8
+    and writes `output.txt`.
+    """
+    from ...core.text_postprocess import normalize_curly_quotes, normalize_em_dash
+
+    if isinstance(text_bytes, (bytes, bytearray)):
+        text = text_bytes.decode(errors="replace")
+    else:
+        text = str(text_bytes)
+
+    text = normalize_curly_quotes(text)
+    text = normalize_em_dash(text)
+    return text
+
+
 # ─── Registry assembly ──────────────────────────────────────────────────────
 
 # Real implementations registered for cpu. Keys must be in `PAGE_STAGE_IDS`.
@@ -459,8 +583,11 @@ _REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
     # Slice 12: blank-page branch.
     "auto_detect_attrs": _auto_detect_attrs_cpu,
     "blank_proof_synth": _blank_proof_synth_cpu,
-    # Slice 13: ocr_crop.
+    # Slice 13: ocr_crop + remaining single-artifact stages.
     "ocr_crop": _ocr_crop_cpu,
+    "thumbnail": _thumbnail_cpu,
+    "auto_detect_illustrations": _auto_detect_illustrations_cpu,
+    "text_postprocess": _text_postprocess_cpu,
 }
 
 

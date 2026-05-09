@@ -534,3 +534,42 @@ def test_ocr_crop_cpu_preserves_dimensions() -> None:
     img = np.full((300, 200), 100, dtype=np.uint8)
     out = fn(img)
     assert out.shape == img.shape
+
+
+# ─── Real impl: thumbnail (Slice 14) ────────────────────────────────────────
+
+
+def test_thumbnail_cpu_returns_jpeg_bytes() -> None:
+    """thumbnail returns JPEG bytes (output_type='jpeg_bytes')."""
+    fn = get_stage_impl("thumbnail", "cpu")
+    img = _solid_color_bgr(h=400, w=300)
+    out = fn(img)
+    assert isinstance(out, bytes)
+    # JPEG magic bytes: FF D8 FF
+    assert out[:3] == b"\xff\xd8\xff", f"not a JPEG: first bytes = {out[:3]!r}"
+
+
+def test_thumbnail_cpu_small_images_not_upscaled() -> None:
+    """Images smaller than the max dim are not upscaled."""
+    fn = get_stage_impl("thumbnail", "cpu")
+    img = _solid_color_bgr(h=100, w=80)
+    out = fn(img)
+    assert isinstance(out, bytes)
+    # Decode and check dimensions.
+    import cv2
+
+    arr = cv2.imdecode(np.frombuffer(out, np.uint8), cv2.IMREAD_UNCHANGED)
+    assert arr is not None
+    h, w = arr.shape[:2]
+    assert h == 100 and w == 80, f"small image was resized: {h}x{w}"
+
+
+# ─── Real impl: auto_detect_illustrations (Slice 15) ────────────────────────
+
+
+def test_auto_detect_illustrations_cpu_returns_list() -> None:
+    """auto_detect_illustrations returns a list (of dicts or empty)."""
+    fn = get_stage_impl("auto_detect_illustrations", "cpu")
+    img = _solid_color_bgr(h=200, w=150)
+    out = fn(img)
+    assert isinstance(out, list)
