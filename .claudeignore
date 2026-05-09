@@ -1,0 +1,13 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Python build output
+dist/
+
+# Python env + cache
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
