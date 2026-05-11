@@ -25,6 +25,8 @@ distinguish.
 
 from __future__ import annotations
 
+import shutil
+
 import numpy as np
 import pytest
 
@@ -578,6 +580,10 @@ def test_auto_detect_illustrations_cpu_returns_list() -> None:
 # ─── Real impl: ocr (Slice 14) ───────────────────────────────────────────────
 
 
+@pytest.mark.skipif(
+    shutil.which("tesseract") is None,
+    reason="tesseract not installed — skipped in CI; run locally with tesseract in PATH",
+)
 def test_ocr_cpu_returns_words_json_and_raw_txt(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """_ocr_cpu returns dict with 'words.json' and 'raw.txt' keys.
 
