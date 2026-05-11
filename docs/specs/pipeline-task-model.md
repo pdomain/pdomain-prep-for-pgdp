@@ -3,6 +3,8 @@
 > **Status:** locked (2026-05-07). Spec-only — implementation lands in M1–M6
 > per `docs/08-roadmap.md` §P0.5.
 >
+> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#17
+>
 > **Supersedes (in intent):** the coarse-grained `JobType` set
 > (`batch_process_pages`, `batch_extract_illustrations`, `batch_ocr`,
 > `batch_text_postprocess`, `build_package`) as the *user-visible*
