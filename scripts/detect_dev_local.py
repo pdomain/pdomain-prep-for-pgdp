@@ -44,10 +44,7 @@ def _uv_reports_editable() -> bool:
         return False
     if result.returncode != 0:
         return False
-    for line in result.stdout.splitlines():
-        if line.lower().startswith("editable project location:"):
-            return True
-    return False
+    return any(line.lower().startswith("editable project location:") for line in result.stdout.splitlines())
 
 
 def _marker_file_present() -> bool:

@@ -30,6 +30,7 @@ storage_backend in production.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import uuid
@@ -207,10 +208,8 @@ async def commit_stage_artifact(
             raise
     except BaseException as exc:
         if tmp_path.exists():
-            try:
+            with contextlib.suppress(OSError):
                 tmp_path.unlink()
-            except OSError:
-                pass
         raise StageArtifactWriteError(f"failed to write tmp artifact for {stage_id!r}: {exc!r}") from exc
 
     # Step 4: snapshot prior file (if any) so we can roll back on DB failure.
@@ -230,10 +229,8 @@ async def commit_stage_artifact(
         if tmp_path.exists():
             tmp_path.unlink()
         if prior_snapshot is not None and prior_snapshot.exists():
-            try:
+            with contextlib.suppress(OSError):
                 os.replace(str(prior_snapshot), str(target_path))
-            except OSError:
-                pass
         raise StageArtifactWriteError(
             f"failed to rename tmp artifact to {target_path.name!r}: {exc!r}"
         ) from exc
@@ -256,21 +253,17 @@ async def commit_stage_artifact(
     except BaseException as exc:
         # File rollback: replace canonical with the snapshot, or delete it
         # if no prior file existed.
-        try:
+        with contextlib.suppress(OSError):
             if prior_snapshot is not None and prior_snapshot.exists():
                 os.replace(str(prior_snapshot), str(target_path))
             elif target_path.exists():
                 target_path.unlink()
-        except OSError:
-            pass
         raise StageArtifactWriteError(f"DB upsert failed for {stage_id!r}: {exc!r}") from exc
 
     # Cleanup: prior snapshot is no longer needed.
     if prior_snapshot is not None and prior_snapshot.exists():
-        try:
+        with contextlib.suppress(OSError):
             prior_snapshot.unlink()
-        except OSError:
-            pass
 
     return state
 
@@ -341,10 +334,8 @@ async def commit_stage_artifacts_multi(
                     raise
             except BaseException as exc:
                 if tmp.exists():
-                    try:
+                    with contextlib.suppress(OSError):
                         tmp.unlink()
-                    except OSError:
-                        pass
                 raise StageArtifactWriteError(
                     f"failed to write tmp artifact {filename!r} for stage {stage_id!r}: {exc!r}"
                 ) from exc
@@ -352,10 +343,8 @@ async def commit_stage_artifacts_multi(
         # Clean up any tmps already written before the failure.
         for t in tmp_paths.values():
             if t.exists():
-                try:
+                with contextlib.suppress(OSError):
                     t.unlink()
-                except OSError:
-                    pass
         raise
 
     # Step 4: snapshot pre-existing files.
@@ -370,17 +359,13 @@ async def commit_stage_artifacts_multi(
                     # Roll back tmps already written.
                     for t in tmp_paths.values():
                         if t.exists():
-                            try:
+                            with contextlib.suppress(OSError):
                                 t.unlink()
-                            except OSError:
-                                pass
                     # Restore any snapshots already moved.
                     for canon, snap2 in snapshots.items():
                         if snap2.exists():
-                            try:
+                            with contextlib.suppress(OSError):
                                 os.replace(str(snap2), str(canon))
-                            except OSError:
-                                pass
                     raise StageArtifactWriteError(
                         f"failed to snapshot prior {target.name!r} for stage {stage_id!r}: {exc!r}"
                     ) from exc
@@ -398,22 +383,16 @@ async def commit_stage_artifacts_multi(
                 for _t2, canon2 in {v: k for k, v in tmp_paths.items()}.items():
                     # Remove already-placed canonical files (except those with snapshot).
                     if canon2.exists() and canon2 not in snapshots:
-                        try:
+                        with contextlib.suppress(OSError):
                             canon2.unlink()
-                        except OSError:
-                            pass
                 for canon, snap in snapshots.items():
                     if snap.exists():
-                        try:
+                        with contextlib.suppress(OSError):
                             os.replace(str(snap), str(canon))
-                        except OSError:
-                            pass
                 for t in tmp_paths.values():
                     if t.exists():
-                        try:
+                        with contextlib.suppress(OSError):
                             t.unlink()
-                        except OSError:
-                            pass
                 raise StageArtifactWriteError(
                     f"failed to rename tmp {target.name!r} for stage {stage_id!r}: {exc!r}"
                 ) from exc
@@ -442,24 +421,18 @@ async def commit_stage_artifacts_multi(
         for target in tmp_paths:
             snap = snapshots.get(target)
             if snap is not None and snap.exists():
-                try:
+                with contextlib.suppress(OSError):
                     os.replace(str(snap), str(target))
-                except OSError:
-                    pass
             elif target.exists():
-                try:
+                with contextlib.suppress(OSError):
                     target.unlink()
-                except OSError:
-                    pass
         raise StageArtifactWriteError(f"DB upsert failed for {stage_id!r}: {exc!r}") from exc
 
     # Cleanup: remove snapshots.
     for snap in snapshots.values():
         if snap.exists():
-            try:
+            with contextlib.suppress(OSError):
                 snap.unlink()
-            except OSError:
-                pass
 
     return state
 

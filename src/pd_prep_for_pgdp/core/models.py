@@ -393,7 +393,7 @@ class JobType(str, Enum):
     batch_extract_illustrations = "batch_extract_illustrations"
     build_package = "build_package"
     # Per-page stage execution via the async route (?async=true).
-    # payload: {"project_id": str, "page_id": str, "stage_id": str, "device": str}
+    # payload: {"project_id": str, "page_id": str, "stage_id": str, "device": str}  # noqa: ERA001
     run_page_stage = "run_page_stage"
 
 

@@ -119,10 +119,7 @@ class CpuBackend(GPUBackend):
             cfg = cfg.model_copy(update={"ocr_engine": req.engine})
 
         # Locate the OCR-cropped image. process_page must have run first.
-        if req.split_suffix:
-            full_prefix = f"{page.prefix}{req.split_suffix}"
-        else:
-            full_prefix = page.prefix
+        full_prefix = f"{page.prefix}{req.split_suffix}" if req.split_suffix else page.prefix
         ocr_image_key = f"projects/{req.project_id}/ocr_images/{page.source_stem}_{full_prefix}.png"
         if not await self._storage.exists(ocr_image_key):
             raise FileNotFoundError(f"OCR-cropped image not found: {ocr_image_key} — run Step 6 first")

@@ -14,6 +14,7 @@ Behavior under test (per spec 07 §"In-process queue"):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from typing import Any
 
@@ -46,10 +47,8 @@ async def test_interactive_preempts_batch_in_window() -> None:
 
     assert order[0] == "i1", f"INTERACTIVE should run first; got {order}"
     drain.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await drain
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -78,10 +77,8 @@ async def test_work_runs_serialised() -> None:
 
     assert max_concurrent == 1, f"saw {max_concurrent} concurrent tasks; expected 1"
     drain.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await drain
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -99,10 +96,8 @@ async def test_submit_returns_work_result() -> None:
     assert result == 5
 
     drain.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await drain
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -119,10 +114,8 @@ async def test_work_exception_propagates_to_caller() -> None:
         await ex.submit(Priority.BATCH, boom, "x")
 
     drain.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await drain
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -133,8 +126,6 @@ async def test_drain_loop_cancellation_is_clean() -> None:
     drain = asyncio.create_task(ex.run_drain_loop())
     await asyncio.sleep(0.05)
     drain.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await drain
-    except asyncio.CancelledError:
-        pass
     # No assertion beyond "did not deadlock or raise unexpectedly".

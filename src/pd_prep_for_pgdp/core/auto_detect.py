@@ -79,7 +79,7 @@ def detect_page_attributes(image_bytes: bytes) -> PageAttributeSuggestion:
         )
 
     # ── Alignment heuristic ─────────────────────────────────────────────
-    h, w = gray.shape
+    _h, w = gray.shape
     content_mask = gray < CONTENT_DARKNESS_THRESHOLD
     if not content_mask.any():
         return PageAttributeSuggestion(

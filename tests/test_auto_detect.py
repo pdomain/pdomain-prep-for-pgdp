@@ -115,7 +115,7 @@ def test_median_aspect_across_pages() -> None:
 def _png_at_aspect(ratio: float) -> bytes:
     cv2 = pytest.importorskip("cv2")
     w = 400
-    h = int(round(w * ratio))
+    h = round(w * ratio)
     img = np.full((h, w, 3), 250, dtype=np.uint8)
     ok, buf = cv2.imencode(".png", img)
     assert ok

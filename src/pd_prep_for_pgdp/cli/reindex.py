@@ -474,12 +474,12 @@ def _print_heal_summary(
 # Re-export for tests that import these directly.
 __all__ = [
     "HealCounts",
-    "main",
-    "_parse_args",
-    "_run",
-    "_quarantine_orphan",
-    "_mark_descendants_dirty",
     "_enumerate_page_ids_on_disk",
+    "_mark_descendants_dirty",
+    "_parse_args",
+    "_quarantine_orphan",
+    "_run",
+    "main",
 ]
 
 

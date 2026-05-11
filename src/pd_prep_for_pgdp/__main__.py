@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import errno
 import os
 import socket
@@ -139,7 +140,7 @@ def _pick_port(
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((host, 0))
         chosen = probe.getsockname()[1]
-    print(
+    print(  # noqa: T201  # CLI user-facing fallback notice
         f"Port {preferred} in use; falling back to OS-assigned port {chosen}.",
     )
     _persist(chosen)
@@ -200,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         from . import __version__
 
-        print(__version__)
+        print(__version__)  # noqa: T201  # --version flag writes to stdout by convention
         return 0
 
     settings = Settings()
@@ -233,13 +234,11 @@ def main(argv: list[str] | None = None) -> int:
     _export_bound_env(host, port)
 
     url = f"http://{host}:{port}"
-    print(f"Listening on {url}")
+    print(f"Listening on {url}")  # noqa: T201  # startup banner intentionally goes to stdout
 
     if not args.no_browser and not args.reload:
-        try:
+        with contextlib.suppress(Exception):
             webbrowser.open(url, new=1)
-        except Exception:
-            pass
 
     uvicorn.run(
         "pd_prep_for_pgdp.bootstrap:build_app",

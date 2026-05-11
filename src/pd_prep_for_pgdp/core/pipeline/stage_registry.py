@@ -41,6 +41,7 @@ exists.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from typing import Any
 
@@ -49,7 +50,7 @@ from ..models import PAGE_STAGE_IDS
 # ─── Sentinel exception ─────────────────────────────────────────────────────
 
 
-class StageNotImplemented(RuntimeError):
+class StageNotImplemented(RuntimeError):  # noqa: N818  # intentional: signals "not yet wired", not an error state
     """Raised by placeholder stage callables when invoked.
 
     The runner catches this and records the page_stages row as `failed`
@@ -201,7 +202,7 @@ def _manual_deskew_pre_cpu(image: Any) -> Any:
     return image
 
 
-# ─── Real implementations: post-invert chain (Slice 9–11) ───────────────────
+# ─── Real implementations: post-invert chain (Slice 9-11) ───────────────────
 #
 # `find_content_edges` returns a bbox tuple (4 ints), not an ndarray.
 # The runner handles this by branching on `Stage.output_type == 'bbox'`:
@@ -212,7 +213,7 @@ def _manual_deskew_pre_cpu(image: Any) -> Any:
 # order declared in `Stage.depends_on`: (invert_image, bbox).
 #
 # `auto_deskew`, `morph_fill`, `rescale`, `canvas_map` are single-parent
-# image→image transforms that carve out the remainder of the 4i–4n chain.
+# image->image transforms that carve out the remainder of the 4i-4n chain.
 
 
 def _find_content_edges_cpu(image: Any) -> tuple[int, int, int, int]:
@@ -467,8 +468,8 @@ def _thumbnail_cpu(image: Any) -> bytes:
     short = min(h, w)
     if short > _THUMBNAIL_MAX_DIM:
         scale = _THUMBNAIL_MAX_DIM / short
-        new_w = max(1, int(round(w * scale)))
-        new_h = max(1, int(round(h * scale)))
+        new_w = max(1, round(w * scale))
+        new_h = max(1, round(h * scale))
         img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _THUMBNAIL_QUALITY])
@@ -523,10 +524,8 @@ def _auto_detect_illustrations_cpu(image: Any) -> list[Any]:
             confidence_threshold=0.5,
         )
     finally:
-        try:
+        with contextlib.suppress(OSError):
             tmp_path.unlink()
-        except OSError:
-            pass
 
     return [
         {"index": r.index, "label": r.label, "type": r.type, "L": r.L, "T": r.T, "R": r.R, "B": r.B}
@@ -685,10 +684,7 @@ def _text_review_cpu(text_bytes: Any) -> dict[str, bytes]:
     """
     import json
 
-    if isinstance(text_bytes, (bytes, bytearray)):
-        text = bytes(text_bytes)
-    else:
-        text = str(text_bytes).encode()
+    text = bytes(text_bytes) if isinstance(text_bytes, (bytes, bytearray)) else str(text_bytes).encode()
 
     attestation = json.dumps({}).encode()
     return {"output.txt": text, "attestation.json": attestation}
@@ -705,7 +701,7 @@ _REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
     "grayscale": _grayscale_cpu,
     "threshold": _threshold_cpu,
     "invert": _invert_cpu,
-    # Slices 9–11: post-invert proofing chain through canvas_map.
+    # Slices 9-11: post-invert proofing chain through canvas_map.
     "find_content_edges": _find_content_edges_cpu,
     "crop_to_content": _crop_to_content_cpu,
     "auto_deskew": _auto_deskew_cpu,

@@ -10,6 +10,7 @@ dispatcher. Locks in:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import pytest
 
@@ -51,10 +52,8 @@ async def test_run_forever_swallows_flush_exception() -> None:
     # interval=0 means flush spins fast; let it run a few iterations.
     await asyncio.sleep(0.05)
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
 
     # First call raised; subsequent calls must have happened anyway.
     assert calls["n"] >= 2, f"only {calls['n']} flush calls — exception killed loop"
@@ -66,7 +65,5 @@ async def test_run_forever_is_cancellable() -> None:
     task = asyncio.create_task(d.run_forever())
     await asyncio.sleep(0.01)
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass

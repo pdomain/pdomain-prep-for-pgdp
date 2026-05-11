@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import platform
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from importlib import resources
 from typing import Any
 
@@ -189,10 +189,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             # poll iterations. Cancelling mid-poll leaves a worker thread
             # mid-SQLite-call, which segfaults at the C boundary when we
             # close the connection below.
-            try:
+            with suppress(Exception):  # pragma: no cover - defensive
                 job_runner.stop()
-            except Exception:  # pragma: no cover - defensive
-                pass
 
             tasks = []
             for attr in ("dispatcher_task", "job_runner_task", "executor_task"):
@@ -201,10 +199,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                     task.cancel()
                     tasks.append(task)
             for task in tasks:
-                try:
+                with suppress(asyncio.CancelledError, Exception):
                     await task
-                except (asyncio.CancelledError, Exception):
-                    pass
             await database.close()
 
     app = FastAPI(

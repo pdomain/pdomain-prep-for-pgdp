@@ -132,7 +132,7 @@ class PostgresDatabase:
         if include_archived:
             return projects
         # Mirrors SqliteDatabase: filter post-load. `archived` is buried in
-        # the JSON body; per-owner project counts are small (∼dozens), so
+        # the JSON body; per-owner project counts are small (~dozens), so
         # an in-memory filter is fine and avoids a JSONB-extract clause.
         return [p for p in projects if not p.archived]
 

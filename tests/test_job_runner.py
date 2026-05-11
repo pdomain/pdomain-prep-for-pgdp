@@ -11,6 +11,7 @@ The runner picks up `queued` jobs from `IDatabase` and executes them. Locks in:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import zipfile
 from datetime import UTC, datetime
@@ -171,8 +172,6 @@ async def test_runner_loop_can_be_cancelled(db: SqliteDatabase, storage: Filesys
     task = asyncio.create_task(runner.run_forever())
     await asyncio.sleep(0.15)
     task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task
-    except asyncio.CancelledError:
-        pass
     # No assertion beyond "did not deadlock".

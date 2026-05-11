@@ -183,7 +183,7 @@ class SqliteDatabase:
                 return projects
             # Filter post-load: `archived` lives in the JSON body, not its own
             # column, so a SQL filter would need a JSON-extract expression.
-            # Project counts per owner are small (∼dozens) — in-memory is fine.
+            # Project counts per owner are small (~dozens) — in-memory is fine.
             return [p for p in projects if not p.archived]
 
         return await self._run(_go)

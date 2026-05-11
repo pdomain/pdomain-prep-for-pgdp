@@ -93,7 +93,7 @@ log = logging.getLogger(__name__)
 # ─── Typed exceptions ───────────────────────────────────────────────────────
 
 
-class StageDependenciesNotMet(RuntimeError):
+class StageDependenciesNotMet(RuntimeError):  # noqa: N818  # intentional: signals unmet deps, not an error state
     """Raised before any mutation when one or more `depends_on` rows are not `clean`.
 
     The exception's args[0] message names the offending stage_ids; programmatic
@@ -106,7 +106,7 @@ class StageDependenciesNotMet(RuntimeError):
         super().__init__(f"stage {stage_id!r}: dependencies not clean; missing or non-clean: {missing}")
 
 
-class StageOutputUnsupported(RuntimeError):
+class StageOutputUnsupported(RuntimeError):  # noqa: N818  # stable route-layer API name; renaming would break callers
     """Formerly raised when a compound-output stage was attempted before the
     multi-artifact writer existed (Slice 3 era). Retained for API route
     compatibility (`pages.py` catches it → 501); the runner no longer raises
@@ -114,7 +114,7 @@ class StageOutputUnsupported(RuntimeError):
     """
 
 
-class StageRunFailed(RuntimeError):
+class StageRunFailed(RuntimeError):  # noqa: N818  # intentional: describes the event (run failed), caught by route handlers
     """Raised when the registered impl or the dual-write commit failed.
 
     The page_stages row will already have been marked `failed` by the
@@ -476,10 +476,7 @@ async def run_stage(
                         )
                     )
 
-            if len(parent_artifacts) == 1:
-                output = impl(parent_artifacts[0])
-            else:
-                output = impl(*parent_artifacts)
+            output = impl(parent_artifacts[0]) if len(parent_artifacts) == 1 else impl(*parent_artifacts)
 
             # Step 7: encode + dual-write.
             # Dispatch on the stage's output_type so non-image stages
@@ -521,10 +518,7 @@ async def run_stage(
                 )
             elif stage.output_type == "text":
                 # text_postprocess returns a str; encode to UTF-8.
-                if isinstance(output, str):
-                    artifact_bytes = output.encode()
-                else:
-                    artifact_bytes = bytes(output)
+                artifact_bytes = output.encode() if isinstance(output, str) else bytes(output)
                 committed = await commit_stage_artifact(
                     data_root=data_root,
                     database=database,
@@ -578,7 +572,7 @@ async def run_stage(
     except StageRunFailed:
         # Already shaped — re-raise as-is.
         raise
-    except Exception as exc:  # noqa: BLE001 — Q9 fail-loud catch-all
+    except Exception as exc:
         await _mark_failed(
             database=database,
             project_id=project_id,

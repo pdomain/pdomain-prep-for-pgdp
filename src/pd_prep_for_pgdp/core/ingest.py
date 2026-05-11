@@ -377,7 +377,7 @@ def peek_zip_image_names(raw: bytes, limit: int) -> tuple[list[str], int]:
     return image_names[:limit], len(image_names)
 
 
-class ZipImageEntryNotFound(LookupError):
+class ZipImageEntryNotFound(LookupError):  # noqa: N818  # intentional: not an Error, maps to HTTP 404
     """Raised when the requested filename is not an image entry in the zip.
 
     Distinct from a generic ``KeyError`` so callers can map to HTTP 404
@@ -479,8 +479,8 @@ def _make_thumbnail_bytes(src: bytes) -> bytes:
     short = min(h, w)
     if short > THUMBNAIL_MAX_DIM:
         scale = THUMBNAIL_MAX_DIM / short
-        new_w = max(1, int(round(w * scale)))
-        new_h = max(1, int(round(h * scale)))
+        new_w = max(1, round(w * scale))
+        new_h = max(1, round(h * scale))
         img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), THUMBNAIL_QUALITY])

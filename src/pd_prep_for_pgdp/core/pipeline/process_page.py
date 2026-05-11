@@ -1,6 +1,6 @@
 """Step 4 — proofing-image pipeline (CPU path).
 
-Mirrors the GPU sub-step sequence in spec 02 §4c–4o using
+Mirrors the GPU sub-step sequence in spec 02 §4c-4o using
 `pd_book_tools.image_processing.cv2_processing` primitives. The GPU
 (`adapters/gpu/local.py`) overrides this with its cupy_processing variant
 later; the orchestration shape is identical.

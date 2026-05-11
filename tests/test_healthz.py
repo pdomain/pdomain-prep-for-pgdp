@@ -71,7 +71,7 @@ def test_healthz_reports_db_unreachable_when_probe_fails(tmp_path) -> None:
     use to liveness orchestrators)."""
     app = build_app(_settings(tmp_path))
 
-    async def _boom(*_a, **_kw):  # noqa: ANN001, ANN002, ANN003
+    async def _boom(*_a, **_kw):
         raise RuntimeError("simulated outage")
 
     with TestClient(app) as client:

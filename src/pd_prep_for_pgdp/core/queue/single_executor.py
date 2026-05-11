@@ -14,6 +14,7 @@ passes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 from collections.abc import Callable
@@ -55,10 +56,8 @@ class SingleExecutor:
 
     async def __aexit__(self, *_: Any) -> None:
         self._drain_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await self._drain_task
-        except asyncio.CancelledError:
-            pass
         self._thread.shutdown(wait=False)
 
     @property
@@ -117,7 +116,7 @@ class SingleExecutor:
         for _prio, _seq, fn, args, fut in items:
             try:
                 result = await loop.run_in_executor(self._thread, fn, *args)
-            except BaseException as e:  # noqa: BLE001 — propagate everything to caller
+            except BaseException as e:
                 if not fut.done():
                     fut.set_exception(e)
             else:

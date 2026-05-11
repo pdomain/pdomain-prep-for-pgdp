@@ -94,7 +94,7 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+select = ["E", "F", "W", "I", "N", "B", "SIM", "UP", "RUF", "ERA", "T20"]
 ignore = [
     # FastAPI's canonical pattern for dependency injection puts Depends()
     # in default arguments. Ignoring this rule across the whole repo.
@@ -105,16 +105,33 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Spec-aligned coordinate names (L/R/T/B) trigger E741 in tests.
-"tests/*" = ["E741"]
+# Spec-aligned coordinate names (L/R/T/B, minX/maxX/minY/maxY) trigger E741 in tests
+# and N806 wherever they appear as local variables — the uppercase form is intentional.
+"tests/*" = ["E741", "N806"]
 # `core/illustrations.py` and `core/pipeline/*` use the same coord names.
-"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741"]
-"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741"]
+"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741", "N806"]
+"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806"]
 "src/pd_prep_for_pgdp/core/models.py" = ["E741"]
 "src/pd_prep_for_pgdp/api/data/pages.py" = ["E741"]
+# `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pd-book-tools.
+"src/pd_prep_for_pgdp/core/ocr.py" = ["N806"]
+# Translation table keyed by the actual Unicode curly-quote characters — intentional.
+"src/pd_prep_for_pgdp/core/text_postprocess.py" = ["RUF001"]
+# Test verifies the normalizer round-trips curly quotes; the source literal is the input data.
+"tests/test_text_postprocess.py" = ["RUF001"]
+# Mock class mimics boto3's uppercase keyword argument names (Params, ExpiresIn).
+"tests/test_s3_storage.py" = ["N803", "N805"]
 # Lazy imports inside functions (cycle-breaking + optional-dep patterns).
 "src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402"]
 "src/pd_prep_for_pgdp/core/job_runner.py" = ["E402"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+typeCheckingMode = "basic"
+
+[[tool.pyright.executionEnvironments]]
+root = "src"
+typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

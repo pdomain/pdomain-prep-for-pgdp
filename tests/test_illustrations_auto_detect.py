@@ -84,7 +84,7 @@ def test_filters_by_type_and_confidence(monkeypatch: pytest.MonkeyPatch, tmp_pat
     fake_layout = types.ModuleType("pd_book_tools.layout")
     fake_types = types.ModuleType("pd_book_tools.layout.types")
 
-    class RegionType:  # noqa: D401 - mirrors enum-like attribute access only
+    class RegionType:
         figure = _figure
         decoration = _decoration
         table = _table
