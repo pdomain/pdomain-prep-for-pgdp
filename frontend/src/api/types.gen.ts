@@ -266,6 +266,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split Page
+         * @description Create N sibling child pages by splitting a parent page.
+         *
+         *     Spec: docs/specs/pipeline-task-model.md §"Splits as sibling pages (Q6)".
+         *     Each child is a first-class PageRecord that runs the full DAG independently.
+         *     Children start at post-ingest state; page_stages rows are lazy-init'd on
+         *     first access (same contract as root pages).
+         */
+        post: operations["split_page"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages/{idx0}/stages": {
         parameters: {
             query?: never;
@@ -1612,6 +1637,25 @@ export interface components {
             /** Total Image Count */
             total_image_count: number;
         };
+        /** SplitPageRequest */
+        SplitPageRequest: {
+            /** Bbox */
+            bbox: [
+                number,
+                number,
+                number,
+                number
+            ];
+            /** Split At Stage */
+            split_at_stage: string;
+            /** Suffixes */
+            suffixes: string[];
+        };
+        /** SplitPageResponse */
+        SplitPageResponse: {
+            /** Children */
+            children: components["schemas"]["PageRecord"][];
+        };
         /** StepState */
         StepState: {
             /** @default pending */
@@ -2392,6 +2436,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeleteWordsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    split_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitPageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SplitPageResponse"];
                 };
             };
             /** @description Validation Error */
