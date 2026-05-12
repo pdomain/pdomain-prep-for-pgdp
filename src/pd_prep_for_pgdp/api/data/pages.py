@@ -416,6 +416,75 @@ async def delete_page_words(
     )
 
 
+# ─── Split: POST /pages/{idx0}/split ─────────────────────────────────────────
+
+
+class SplitPageRequest(BaseModel):
+    bbox: tuple[int, int, int, int]  # x, y, w, h in parent source-image coords
+    split_at_stage: str
+    suffixes: list[str]  # one suffix per child, e.g. ["a", "b"]
+
+
+class SplitPageResponse(BaseModel):
+    children: list[PageRecord]
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/split",
+    response_model=SplitPageResponse,
+    operation_id="split_page",
+)
+async def split_page(
+    project_id: str,
+    idx0: int,
+    body: SplitPageRequest,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+) -> SplitPageResponse:
+    """Create N sibling child pages by splitting a parent page.
+
+    Spec: docs/specs/pipeline-task-model.md §"Splits as sibling pages (Q6)".
+    Each child is a first-class PageRecord that runs the full DAG independently.
+    Children start at post-ingest state; page_stages rows are lazy-init'd on
+    first access (same contract as root pages).
+    """
+    if body.split_at_stage not in PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown split_at_stage: {body.split_at_stage!r}")
+    if not body.suffixes:
+        raise HTTPException(422, "suffixes must not be empty")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    parent = await db.get_page(project_id, idx0)
+    if parent is None:
+        raise HTTPException(404, "page not found")
+
+    # Allocate idx0 values after the current maximum across all pages.
+    all_pages, _, _ = await db.list_pages(project_id, cursor=None, limit=10000)
+    next_idx0 = max((p.idx0 for p in all_pages), default=-1) + 1
+
+    parent_page_id = _page_id_for_idx0(idx0)
+    children: list[PageRecord] = []
+    for i, suffix in enumerate(body.suffixes):
+        child = PageRecord(
+            project_id=project_id,
+            idx0=next_idx0 + i,
+            prefix=f"{parent.prefix}{suffix}",
+            source_stem=parent.source_stem,
+            parent_page_id=parent_page_id,
+            source_crop_bbox=body.bbox,
+            split_index=i + 1,
+            split_at_stage=body.split_at_stage,
+            split_suffix=suffix,
+            reading_order=i,
+        )
+        children.append(child)
+
+    await db.put_pages(children)
+    return SplitPageResponse(children=children)
+
+
 # ─── Per-page DAG stages (M1 §C) ─────────────────────────────────────────────
 
 

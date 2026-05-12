@@ -937,6 +937,73 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/split": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Split Page",
+        "description": "Create N sibling child pages by splitting a parent page.\n\nSpec: docs/specs/pipeline-task-model.md \u00a7\"Splits as sibling pages (Q6)\".\nEach child is a first-class PageRecord that runs the full DAG independently.\nChildren start at post-ingest state; page_stages rows are lazy-init'd on\nfirst access (same contract as root pages).",
+        "operationId": "split_page",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitPageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SplitPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages/{idx0}/stages": {
       "get": {
         "tags": [
@@ -4610,6 +4677,64 @@
         ],
         "title": "SourcePreviewResponse",
         "description": "Cheap-to-compute preview of an uploaded source zip (P2 #8).\n\nLets the SPA render a thumbnail strip / sanity-check the upload before\ntriggering ingest. Backed by `peek_zip_image_names`, which only reads\nthe zip's central directory \u2014 no per-entry decompression."
+      },
+      "SplitPageRequest": {
+        "properties": {
+          "bbox": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Bbox"
+          },
+          "split_at_stage": {
+            "type": "string",
+            "title": "Split At Stage"
+          },
+          "suffixes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Suffixes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bbox",
+          "split_at_stage",
+          "suffixes"
+        ],
+        "title": "SplitPageRequest"
+      },
+      "SplitPageResponse": {
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/PageRecord"
+            },
+            "type": "array",
+            "title": "Children"
+          }
+        },
+        "type": "object",
+        "required": [
+          "children"
+        ],
+        "title": "SplitPageResponse"
       },
       "StepState": {
         "properties": {
