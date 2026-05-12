@@ -65,6 +65,7 @@ import numpy as np
 from ...adapters.database.base import IDatabase
 from ...adapters.storage.base import IStorage
 from ..models import PageStageState, PageStageStatus
+from . import stage_dag as _stage_dag_module
 from .page_stage_writer import (
     COMPOUND_OUTPUT_TYPES,
     COMPOUND_PRIMARY_FILENAME,
@@ -428,6 +429,10 @@ async def run_stage(
 
     # Step 4-5: load inputs, dispatch.
     try:
+        # Current algorithm version for this stage — written into the DB row on
+        # success so future reads can detect staleness against STAGE_VERSIONS.
+        _stage_ver = _stage_dag_module.STAGE_VERSIONS.get(stage_id, 1)
+
         # Resolve the impl. Lookup failures (unknown stage / device) are
         # programmer errors and should surface as KeyError from the registry —
         # caller is expected to validate before now. If we did get here with
@@ -465,6 +470,7 @@ async def run_stage(
                 page_id=page_id,
                 stage_id=stage_id,
                 artifact_bytes=bytes(artifact_bytes),
+                stage_version=_stage_ver,
             )
         else:
             # Load parents.
@@ -534,6 +540,7 @@ async def run_stage(
                     stage_id=stage_id,
                     files=output,
                     primary_filename=primary_filename,
+                    stage_version=_stage_ver,
                 )
             elif stage.output_type in _JSON_OUTPUT_TYPES:
                 # Coerce numpy scalar types (int64, float32, etc.) to native
@@ -550,6 +557,7 @@ async def run_stage(
                     page_id=page_id,
                     stage_id=stage_id,
                     artifact_bytes=artifact_bytes,
+                    stage_version=_stage_ver,
                 )
             elif stage.output_type == "text":
                 # text_postprocess returns a str; encode to UTF-8.
@@ -561,6 +569,7 @@ async def run_stage(
                     page_id=page_id,
                     stage_id=stage_id,
                     artifact_bytes=artifact_bytes,
+                    stage_version=_stage_ver,
                 )
             elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES or isinstance(
                 output, (bytes, bytearray)
@@ -574,6 +583,7 @@ async def run_stage(
                     page_id=page_id,
                     stage_id=stage_id,
                     artifact_bytes=bytes(output),
+                    stage_version=_stage_ver,
                 )
             else:
                 # All image / gray / binary / image_bytes stages return ndarrays.
@@ -585,6 +595,7 @@ async def run_stage(
                     page_id=page_id,
                     stage_id=stage_id,
                     artifact_bytes=artifact_bytes,
+                    stage_version=_stage_ver,
                 )
     except StageNotImplemented as exc:
         await _mark_failed(

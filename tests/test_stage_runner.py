@@ -1436,3 +1436,47 @@ async def test_run_stage_text_review_produces_multi_artifact_dir(
     assert state.artifact_key.endswith("output.txt"), (
         f"artifact_key should point to primary file (output.txt), got {state.artifact_key!r}"
     )
+
+
+# ─── Stage versioning: stage_version updated after successful run ────────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_updates_stage_version(
+    tmp_path: Path,
+    db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a successful run, the row's stage_version matches STAGE_VERSIONS[stage_id].
+
+    Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
+    """
+    import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
+
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(
+        db,
+        tmp_path,
+        project_id,
+        page_id,
+        parent_stages=["manual_deskew_pre"],
+        payload=payload,
+    )
+
+    # Bump the registry version for "grayscale" to 2.
+    original = dict(_stage_dag_mod.STAGE_VERSIONS)
+    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, grayscale=2))
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="grayscale",
+    )
+
+    assert state.status == PageStageStatus.clean
+    assert state.stage_version == 2, (
+        f"stage_version should be updated to STAGE_VERSIONS[stage_id]=2, got {state.stage_version}"
+    )
