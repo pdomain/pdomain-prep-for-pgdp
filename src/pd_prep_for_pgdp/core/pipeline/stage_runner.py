@@ -53,6 +53,7 @@ and the eager dirty cascade that follows on success.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -72,10 +73,13 @@ from .page_stage_writer import (
     StageArtifactWriteError,
     commit_stage_artifact,
     commit_stage_artifacts_multi,
+    compute_content_hash,
+    stage_artifact_key,
     stage_artifact_path,
 )
 from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
 from .stage_registry import StageNotImplemented, get_stage_impl
+from .stage_write_executor import StageWriteExecutor, _write_artifact_file_async
 
 # output_type values that are serialised as JSON rather than PNG.
 _JSON_OUTPUT_TYPES: frozenset[str] = frozenset({"bbox", "page_attrs", "illustration_regions"})
@@ -161,6 +165,7 @@ async def _load_parent_artifact(
     project_id: str,
     page_id: str,
     parent_stage_id: str,
+    write_executor: StageWriteExecutor | None = None,
 ) -> Any:
     """Load a parent stage's clean artifact, decoded into the runner's
     canonical in-memory type.
@@ -178,6 +183,18 @@ async def _load_parent_artifact(
     - Other types: return raw bytes; the impl must handle them.
     """
     parent_stage = get_stage(parent_stage_id)
+
+    # Check in-memory cache first (deferred-write path): the parent's file may
+    # not yet be on disk if its write is still in the executor queue.
+    if write_executor is not None:
+        cached = write_executor.consume_artifact((project_id, page_id, parent_stage_id))
+        if cached is not None:
+            if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:
+                return _decode_image_bytes(cached)
+            if parent_stage.output_type in _JSON_OUTPUT_TYPES:
+                return json.loads(cached)
+            # Compound or passthrough — return raw bytes; caller handles.
+            return cached
 
     if parent_stage.output_type in COMPOUND_OUTPUT_TYPES:
         # Compound-output stages write multiple files; the single-file writer
@@ -332,6 +349,93 @@ async def _mark_not_applicable(
         await database.put_page_stage(existing.model_copy(update={"status": PageStageStatus.not_applicable}))
 
 
+# ─── Deferred-write commit helper ────────────────────────────────────────────
+
+
+async def _commit_single_artifact(
+    *,
+    data_root: Path,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+    artifact_bytes: bytes,
+    stage_version: int,
+    write_executor: StageWriteExecutor | None,
+) -> PageStageState:
+    """Commit a single-file artifact, synchronously or via deferred write.
+
+    When ``write_executor`` is ``None`` the existing :func:`commit_stage_artifact`
+    path is used (full dual-write atomicity). When an executor is provided the
+    DB row is updated optimistically to ``clean`` and the file write is submitted
+    to the executor's background pool:
+
+    - Downstream stages can load the artifact from the executor's in-memory cache
+      without waiting for disk I/O.
+    - If the file write fails, the ``on_failure`` callback marks the row
+      ``failed`` and cascades dirty to descendants (Q9).
+    """
+    if write_executor is None:
+        return await commit_stage_artifact(
+            data_root=data_root,
+            database=database,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+            artifact_bytes=artifact_bytes,
+            stage_version=stage_version,
+        )
+
+    # Deferred path: optimistic DB update then background file write.
+    content_hash = compute_content_hash(artifact_bytes)
+    artifact_key_str = stage_artifact_key(project_id, page_id, stage_id)
+    target_path = stage_artifact_path(data_root, project_id, page_id, stage_id)
+
+    state = PageStageState(
+        project_id=project_id,
+        page_id=page_id,
+        stage_id=stage_id,
+        status=PageStageStatus.clean,
+        stage_version=stage_version,
+        artifact_key=artifact_key_str,
+        input_hash=content_hash,
+        last_run_at=time(),
+        error_message=None,
+    )
+    await database.put_page_stage(state)
+
+    # Register in-memory bytes for downstream stages (drop-on-last-consumer).
+    num_consumers = sum(1 for s in _stage_dag_module.STAGE_DAG if stage_id in s.depends_on)
+    write_executor.put_artifact((project_id, page_id, stage_id), artifact_bytes, num_consumers)
+
+    # Submit file write; blocks if queue at capacity (back-pressure, Q8).
+    loop = asyncio.get_running_loop()
+
+    async def _on_failure(exc: Exception) -> None:
+        await _mark_failed(
+            database=database,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+            error_message=f"deferred write failed: {exc}",
+        )
+        await _cascade_dirty(
+            database=database,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+        )
+
+    _tp, _ab = target_path, artifact_bytes
+    write_executor.submit_write(
+        lambda: _write_artifact_file_async(_tp, _ab),
+        on_failure=_on_failure,
+        loop=loop,
+    )
+
+    return state
+
+
 # ─── Public entry point ────────────────────────────────────────────────────
 
 
@@ -345,6 +449,7 @@ async def run_stage(
     device: str = "cpu",
     storage: IStorage | None = None,
     page_source_key: str | None = None,
+    write_executor: StageWriteExecutor | None = None,
 ) -> PageStageState:
     """Run one stage on one page. Dual-writes its artifact, then cascades
     dirty downstream.
@@ -503,6 +608,7 @@ async def run_stage(
                         project_id=project_id,
                         page_id=page_id,
                         parent_stage_id=chosen_parent,
+                        write_executor=write_executor,
                     )
                 )
             else:
@@ -514,18 +620,19 @@ async def run_stage(
                             project_id=project_id,
                             page_id=page_id,
                             parent_stage_id=parent_id,
+                            write_executor=write_executor,
                         )
                     )
 
             output = impl(parent_artifacts[0]) if len(parent_artifacts) == 1 else impl(*parent_artifacts)
 
-            # Step 7: encode + dual-write.
-            # Dispatch on the stage's output_type so non-image stages
-            # don't try to PNG-encode their results.
+            # Step 7: encode then commit (sync or deferred).
             if stage.output_type in COMPOUND_OUTPUT_TYPES:
                 # Compound-output stages return dict[str, bytes]; each entry
                 # is a named file in the stage directory. The primary file is
                 # looked up in COMPOUND_PRIMARY_FILENAME.
+                # Deferred writes for compound stages are not yet implemented;
+                # they always use the synchronous multi-artifact writer.
                 if not isinstance(output, dict):
                     raise TypeError(
                         f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
@@ -542,53 +649,25 @@ async def run_stage(
                     primary_filename=primary_filename,
                     stage_version=_stage_ver,
                 )
-            elif stage.output_type in _JSON_OUTPUT_TYPES:
-                # Coerce numpy scalar types (int64, float32, etc.) to native
-                # Python so json.dumps can serialise without a custom encoder.
-                # The output is a tuple/list of numbers for `bbox`, or a dict
-                # for page_attrs / illustration_regions.
-                if isinstance(output, (tuple, list)):
-                    output = [int(v) if hasattr(v, "item") else v for v in output]
-                artifact_bytes = json.dumps(output).encode()
-                committed = await commit_stage_artifact(
-                    data_root=data_root,
-                    database=database,
-                    project_id=project_id,
-                    page_id=page_id,
-                    stage_id=stage_id,
-                    artifact_bytes=artifact_bytes,
-                    stage_version=_stage_ver,
-                )
-            elif stage.output_type == "text":
-                # text_postprocess returns a str; encode to UTF-8.
-                artifact_bytes = output.encode() if isinstance(output, str) else bytes(output)
-                committed = await commit_stage_artifact(
-                    data_root=data_root,
-                    database=database,
-                    project_id=project_id,
-                    page_id=page_id,
-                    stage_id=stage_id,
-                    artifact_bytes=artifact_bytes,
-                    stage_version=_stage_ver,
-                )
-            elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES or isinstance(
-                output, (bytes, bytearray)
-            ):
-                # Impls that already return bytes (thumbnail, ocr_crop whole-page,
-                # canvas_map when implemented as bytes-in/bytes-out). Write verbatim.
-                committed = await commit_stage_artifact(
-                    data_root=data_root,
-                    database=database,
-                    project_id=project_id,
-                    page_id=page_id,
-                    stage_id=stage_id,
-                    artifact_bytes=bytes(output),
-                    stage_version=_stage_ver,
-                )
             else:
-                # All image / gray / binary / image_bytes stages return ndarrays.
-                artifact_bytes = _encode_image_to_png(output)
-                committed = await commit_stage_artifact(
+                # Single-file stages: encode to bytes then commit.
+                if stage.output_type in _JSON_OUTPUT_TYPES:
+                    # Coerce numpy scalar types (int64, float32, etc.) to native
+                    # Python so json.dumps can serialise without a custom encoder.
+                    if isinstance(output, (tuple, list)):
+                        output = [int(v) if hasattr(v, "item") else v for v in output]
+                    artifact_bytes = json.dumps(output).encode()
+                elif stage.output_type == "text":
+                    artifact_bytes = output.encode() if isinstance(output, str) else bytes(output)
+                elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES or isinstance(
+                    output, (bytes, bytearray)
+                ):
+                    artifact_bytes = bytes(output)
+                else:
+                    # Image / gray / binary / image_bytes stages return ndarrays.
+                    artifact_bytes = _encode_image_to_png(output)
+
+                committed = await _commit_single_artifact(
                     data_root=data_root,
                     database=database,
                     project_id=project_id,
@@ -596,6 +675,7 @@ async def run_stage(
                     stage_id=stage_id,
                     artifact_bytes=artifact_bytes,
                     stage_version=_stage_ver,
+                    write_executor=write_executor,
                 )
     except StageNotImplemented as exc:
         await _mark_failed(
