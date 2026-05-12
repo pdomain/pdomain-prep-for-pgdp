@@ -325,6 +325,49 @@ def topological_order() -> tuple[Stage, ...]:
     return tuple(out)
 
 
+# Stages not-applicable for blank / plate_b / plate_r pages: the full
+# image-processing chain is skipped; blank_proof_synth handles the output.
+_NOT_APPLICABLE_BLANK: frozenset[str] = frozenset(
+    {
+        "decode_source",
+        "initial_crop",
+        "manual_deskew_pre",
+        "grayscale",
+        "threshold",
+        "invert",
+        "find_content_edges",
+        "crop_to_content",
+        "auto_deskew",
+        "morph_fill",
+    }
+)
+
+# Stages not-applicable for plate_p pages: extract_illustrations is the
+# meaningful output; OCR / text stages are skipped.
+_NOT_APPLICABLE_PLATE_P: frozenset[str] = frozenset(
+    {
+        "ocr_crop",
+        "ocr",
+        "text_postprocess",
+        "text_review",
+    }
+)
+
+
+def not_applicable_stages_for_page_type(page_type: str) -> frozenset[str]:
+    """Return stage IDs that are not-applicable for the given page type string.
+
+    For blank / plate_b / plate_r: the image-processing chain is skipped.
+    For plate_p: the OCR / text chain is skipped.
+    For normal (or unknown): returns empty frozenset.
+    """
+    if page_type in {"blank", "plate_b", "plate_r"}:
+        return _NOT_APPLICABLE_BLANK
+    if page_type == "plate_p":
+        return _NOT_APPLICABLE_PLATE_P
+    return frozenset()
+
+
 def compute_dirty_descendants(stage_id: str) -> frozenset[str]:
     """Return the transitive set of stage IDs downstream of ``stage_id``.
 

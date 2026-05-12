@@ -1186,6 +1186,148 @@ async def test_run_stage_full_chain_through_canvas_map(
         assert artifact_path.exists(), f"stage {stage_id!r} produced no artifact on disk"
 
 
+# ─── Issue #58: not-applicable marking after auto_detect_attrs ────────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_auto_detect_attrs_marks_image_chain_not_applicable_for_blank(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """After `auto_detect_attrs` detects a blank page, stages decode_source
+    through morph_fill are marked not-applicable in the same transaction."""
+    project_id, page_id = "p1", "0000"
+
+    # Near-white source image — detected as blank by mean_luma heuristic.
+    img = np.full((100, 80, 3), 250, dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    payload = bytes(buf.tobytes())
+
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
+    )
+
+    state = await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="auto_detect_attrs",
+    )
+
+    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
+
+    na_stages = [
+        "decode_source",
+        "initial_crop",
+        "manual_deskew_pre",
+        "grayscale",
+        "threshold",
+        "invert",
+        "find_content_edges",
+        "crop_to_content",
+        "auto_deskew",
+        "morph_fill",
+    ]
+    for sid in na_stages:
+        row = await db.get_page_stage(project_id, page_id, sid)
+        assert row is not None, f"expected a row for {sid!r} after auto_detect_attrs on blank page"
+        assert row.status == PageStageStatus.not_applicable, (
+            f"stage {sid!r} should be not-applicable for blank page, got {row.status!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_stage_auto_detect_attrs_marks_ocr_chain_not_applicable_for_plate_p(
+    tmp_path: Path,
+    db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After `auto_detect_attrs` detects plate_p, ocr/text stages are not-applicable."""
+    from pd_prep_for_pgdp.core.pipeline import stage_registry
+
+    def _fake_plate_p(img: np.ndarray) -> dict:
+        h, w = img.shape[:2]
+        return {
+            "suggested_type": "plate_p",
+            "suggested_alignment": "default",
+            "confidence": 0.9,
+            "height": h,
+            "width": w,
+            "h_w_ratio": h / w if w > 0 else 1.65,
+        }
+
+    monkeypatch.setitem(stage_registry.STAGE_IMPL["auto_detect_attrs"], "cpu", _fake_plate_p)
+
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
+    )
+
+    await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="auto_detect_attrs",
+    )
+
+    na_stages = ["ocr_crop", "ocr", "text_postprocess", "text_review"]
+    for sid in na_stages:
+        row = await db.get_page_stage(project_id, page_id, sid)
+        assert row is not None, f"expected a row for {sid!r} after auto_detect_attrs on plate_p page"
+        assert row.status == PageStageStatus.not_applicable, (
+            f"stage {sid!r} should be not-applicable for plate_p, got {row.status!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_stage_auto_detect_attrs_no_not_applicable_for_normal_page(
+    tmp_path: Path,
+    db: SqliteDatabase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """auto_detect_attrs on a normal page leaves all descendant stages as not-run."""
+    from pd_prep_for_pgdp.core.pipeline import stage_registry
+
+    def _fake_normal(img: np.ndarray) -> dict:
+        h, w = img.shape[:2]
+        return {
+            "suggested_type": "normal",
+            "suggested_alignment": "default",
+            "confidence": 0.9,
+            "height": h,
+            "width": w,
+            "h_w_ratio": h / w if w > 0 else 1.65,
+        }
+
+    monkeypatch.setitem(stage_registry.STAGE_IMPL["auto_detect_attrs"], "cpu", _fake_normal)
+
+    project_id, page_id = "p1", "0000"
+    payload = _checkerboard_bgr_png()
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
+    )
+
+    await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="auto_detect_attrs",
+    )
+
+    rows = await db.list_page_stages_for_page(project_id, page_id)
+    for row in rows:
+        if row.stage_id == "auto_detect_attrs":
+            continue
+        assert row.status != PageStageStatus.not_applicable, (
+            f"stage {row.stage_id!r} was unexpectedly marked not-applicable for a normal page"
+        )
+
+
 # ─── Slice 14: compound-output stages via multi-artifact writer ────────────
 
 

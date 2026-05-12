@@ -40,6 +40,7 @@ from pd_prep_for_pgdp.bootstrap import build_app
 from pd_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
+    PageStageState,
     PageStageStatus,
     PipelineState,
     Project,
@@ -259,3 +260,35 @@ def test_run_stage_route_500_when_impl_raises_with_failed_row(
     failed_row = by_id["grayscale"]
     assert failed_row["status"] == PageStageStatus.failed.value
     assert "synthetic" in (failed_row["error_message"] or "")
+
+
+# ─── Issue #58: 422 for not-applicable stage ───────────────────────────────
+
+
+def test_run_stage_route_422_for_not_applicable_stage(
+    seeded_client: tuple[TestClient, Settings],
+) -> None:
+    """POST to run a stage whose current status is `not-applicable` returns 422."""
+    client, settings = seeded_client
+
+    async def _mark_not_applicable() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        try:
+            await db.init_page_stages_for_page("m2s4", "0000")
+            await db.put_page_stage(
+                PageStageState(
+                    project_id="m2s4",
+                    page_id="0000",
+                    stage_id="decode_source",
+                    status=PageStageStatus.not_applicable,
+                )
+            )
+        finally:
+            await db.close()
+
+    asyncio.run(_mark_not_applicable())
+
+    r = client.post("/api/data/projects/m2s4/pages/0/stages/decode_source/run")
+    assert r.status_code == 422, r.text
+    assert "not-applicable" in r.text.lower()

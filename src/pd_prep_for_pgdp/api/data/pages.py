@@ -26,6 +26,7 @@ from ...core.models import (
     PageRecord,
     PageSplit,
     PageStageState,
+    PageStageStatus,
     PageType,
 )
 from ...core.pipeline.page_stage_writer import (
@@ -602,6 +603,11 @@ async def run_page_stage(
         raise HTTPException(404, "page not found")
 
     page_id = _page_id_for_idx0(idx0)
+
+    # Return 422 immediately if the stage is marked not-applicable for this page.
+    existing_row = await db.get_page_stage(project_id, page_id, stage_id)
+    if existing_row is not None and existing_row.status == PageStageStatus.not_applicable:
+        raise HTTPException(422, f"stage {stage_id!r} is not-applicable for this page type")
 
     if async_:
         from fastapi.responses import JSONResponse

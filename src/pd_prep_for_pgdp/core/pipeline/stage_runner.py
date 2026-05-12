@@ -73,7 +73,7 @@ from .page_stage_writer import (
     commit_stage_artifacts_multi,
     stage_artifact_path,
 )
-from .stage_dag import compute_dirty_descendants, get_stage
+from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
 from .stage_registry import StageNotImplemented, get_stage_impl
 
 # output_type values that are serialised as JSON rather than PNG.
@@ -300,6 +300,37 @@ async def _mark_failed(
     await database.put_page_stage(failed)
 
 
+async def _mark_not_applicable(
+    *,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+    stage_ids: frozenset[str],
+) -> None:
+    """Upsert page_stages rows for the given stage IDs to `not-applicable`.
+
+    Called after `auto_detect_attrs` runs and reveals a non-normal page type.
+    Rows already in `not-run` are created/updated; rows already `not-applicable`
+    are left unchanged (idempotent). Rows that are `clean` from a prior run
+    on a different page type are overwritten — the type detection is the
+    authoritative source.
+    """
+    rows = await database.list_page_stages_for_page(project_id, page_id)
+    rows_by_stage = {r.stage_id: r for r in rows}
+    for sid in stage_ids:
+        existing = rows_by_stage.get(sid)
+        if existing is None:
+            existing = PageStageState(
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=sid,
+                status=PageStageStatus.not_run,
+            )
+        if existing.status == PageStageStatus.not_applicable:
+            continue  # already correct; skip the write
+        await database.put_page_stage(existing.model_copy(update={"status": PageStageStatus.not_applicable}))
+
+
 # ─── Public entry point ────────────────────────────────────────────────────
 
 
@@ -390,6 +421,10 @@ async def run_stage(
         page_id=page_id,
         stage_id=stage_id,
     )
+
+    # Sentinel for the impl's in-memory output; set inside the else branch
+    # (non-ingest_source path) so the post-run not-applicable logic can read it.
+    output: Any = None
 
     # Step 4-5: load inputs, dispatch.
     try:
@@ -582,7 +617,20 @@ async def run_stage(
         )
         raise StageRunFailed(f"stage {stage_id!r} impl raised {type(exc).__name__}: {exc}") from exc
 
-    # Step 8: cascade dirty.
+    # Step 8a: if auto_detect_attrs just ran, mark not-applicable stages based
+    # on the detected page type. This happens before dirty cascade so the
+    # cascade skips these rows (they're not `clean`/`failed`).
+    if stage_id == "auto_detect_attrs" and isinstance(output, dict):
+        na_ids = not_applicable_stages_for_page_type(output.get("suggested_type", "normal"))
+        if na_ids:
+            await _mark_not_applicable(
+                database=database,
+                project_id=project_id,
+                page_id=page_id,
+                stage_ids=na_ids,
+            )
+
+    # Step 8b: cascade dirty.
     await _cascade_dirty(
         database=database,
         project_id=project_id,
