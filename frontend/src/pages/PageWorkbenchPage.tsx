@@ -8,7 +8,7 @@ import {
   Transformer,
 } from "react-konva";
 import type Konva from "konva";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 
@@ -65,7 +65,7 @@ interface IllustrationRegion {
   convert_to_grayscale: boolean;
 }
 
-type EditMode = "view" | "split" | "illustration";
+type EditMode = "view" | "split" | "illustration" | "create-sibling";
 
 const PAGE_TYPES: PageType[] = [
   "normal",
@@ -80,6 +80,7 @@ export function PageWorkbenchPage() {
   const { projectId = "", idx0: idx0Str = "0" } = useParams();
   const idx0 = Number(idx0Str);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const page = useQuery({
     queryKey: ["page", projectId, idx0],
@@ -123,6 +124,32 @@ export function PageWorkbenchPage() {
   const [selectedStageId, setSelectedStageId] = useState<string | undefined>(
     undefined,
   );
+
+  // Create-sibling split state: bbox drawn by user + suffix list.
+  const [siblingBbox, setSiblingBbox] = useState<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  const [siblingSuffixes, setSiblingSuffixes] = useState("a,b");
+
+  const createSiblings = useMutation({
+    mutationFn: (body: {
+      bbox: [number, number, number, number];
+      split_at_stage: string;
+      suffixes: string[];
+    }) =>
+      api.post<{ children: PageRecord[] }>(
+        `/api/data/projects/${projectId}/pages/${idx0}/split`,
+        body,
+      ),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      const first = data.children[0];
+      if (first) navigate(`/projects/${projectId}/pages/${first.idx0}`);
+    },
+  });
 
   useEffect(() => {
     if (page.data) setOverrides(page.data.config_overrides);
@@ -306,6 +333,15 @@ export function PageWorkbenchPage() {
           onDrawRegion={handleAddRegion}
           onUpdateSplit={handleUpdateSplit}
           onUpdateRegion={handleUpdateRegion}
+          onCaptureSiblingBbox={(rect) => {
+            setSiblingBbox({
+              x: rect.L,
+              y: rect.T,
+              w: rect.R - rect.L,
+              h: rect.B - rect.T,
+            });
+            setEditMode("view");
+          }}
         />
       </div>
 
@@ -317,6 +353,32 @@ export function PageWorkbenchPage() {
         <SplitsPanel
           splits={(page.data.splits as PageSplit[]) ?? []}
           onDelete={handleDeleteSplit}
+        />
+        <CreateSiblingPanel
+          editMode={editMode}
+          onEnterDrawMode={() => setEditMode("create-sibling")}
+          bbox={siblingBbox}
+          suffixes={siblingSuffixes}
+          onChangeSuffixes={setSiblingSuffixes}
+          stageId={selectedStageId ?? "auto_deskew"}
+          onCommit={() => {
+            if (!siblingBbox) return;
+            const suffixList = siblingSuffixes
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            createSiblings.mutate({
+              bbox: [
+                siblingBbox.x,
+                siblingBbox.y,
+                siblingBbox.w,
+                siblingBbox.h,
+              ],
+              split_at_stage: selectedStageId ?? "auto_deskew",
+              suffixes: suffixList,
+            });
+          }}
+          isPending={createSiblings.isPending}
         />
         <RegionsPanel
           regions={
@@ -356,6 +418,7 @@ function CanvasViewer({
   onDrawRegion,
   onUpdateSplit,
   onUpdateRegion,
+  onCaptureSiblingBbox,
 }: {
   imageKey: string;
   page: PageRecord;
@@ -370,6 +433,12 @@ function CanvasViewer({
     index: number,
     r: { L: number; R: number; T: number; B: number },
   ) => void;
+  onCaptureSiblingBbox: (r: {
+    L: number;
+    R: number;
+    T: number;
+    B: number;
+  }) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -472,6 +541,7 @@ function CanvasViewer({
       };
       if (editMode === "split") onDrawSplit(rect);
       else if (editMode === "illustration") onDrawRegion(rect);
+      else if (editMode === "create-sibling") onCaptureSiblingBbox(rect);
     }
     setDrawStart(null);
     setDragRect(null);
@@ -653,11 +723,12 @@ function ModeToolbar({
     </button>
   );
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="text-slate-500">Mode:</span>
       {btn("view", "View", "bg-slate-700")}
       {btn("split", "Add split", "bg-blue-600")}
       {btn("illustration", "Add illustration", "bg-red-600")}
+      {btn("create-sibling", "Draw split region", "bg-indigo-600")}
     </div>
   );
 }
@@ -979,4 +1050,72 @@ function rectFromNode(
     T: Math.round(y / scale),
     B: Math.round((y + h) / scale),
   };
+}
+
+// ─── Create-sibling panel ────────────────────────────────────────────────────
+
+function CreateSiblingPanel({
+  editMode,
+  onEnterDrawMode,
+  bbox,
+  suffixes,
+  onChangeSuffixes,
+  stageId,
+  onCommit,
+  isPending,
+}: {
+  editMode: EditMode;
+  onEnterDrawMode: () => void;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+  suffixes: string;
+  onChangeSuffixes: (v: string) => void;
+  stageId: string;
+  onCommit: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="space-y-2 rounded border bg-white p-3 text-sm">
+      <h2 className="text-sm font-semibold">Create split</h2>
+      <p className="text-xs text-slate-500">
+        Draw a crop region on the image, then confirm to create sibling pages.
+      </p>
+      <button
+        onClick={onEnterDrawMode}
+        className={`w-full rounded border px-2 py-1 text-xs ${
+          editMode === "create-sibling"
+            ? "border-indigo-500 bg-indigo-50 text-indigo-800"
+            : "border-slate-300 hover:bg-slate-50"
+        }`}
+      >
+        {editMode === "create-sibling"
+          ? "Drawing… (drag on image)"
+          : bbox
+            ? `Region set (${bbox.w}×${bbox.h}) — redraw?`
+            : "Draw crop region"}
+      </button>
+      <label className="block">
+        <span className="text-xs text-slate-600">
+          Suffixes (comma-separated)
+        </span>
+        <input
+          type="text"
+          value={suffixes}
+          onChange={(e) => onChangeSuffixes(e.target.value)}
+          className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          placeholder="a,b"
+        />
+      </label>
+      <p className="text-[10px] text-slate-400">
+        Stage: <span className="font-mono">{stageId}</span>
+      </p>
+      <button
+        onClick={onCommit}
+        disabled={!bbox || isPending}
+        className="w-full rounded bg-indigo-600 px-2 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-40"
+        aria-label="Create split"
+      >
+        {isPending ? "Creating…" : "Create split"}
+      </button>
+    </div>
+  );
 }

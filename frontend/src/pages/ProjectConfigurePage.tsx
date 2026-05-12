@@ -83,6 +83,38 @@ export function ProjectConfigurePage() {
   // so PageGrid can pulse-highlight the matching tile. Null when no
   // such job is active.
   const [activePageIdx0, setActivePageIdx0] = useState<number | null>(null);
+  const [showSplitParents, setShowSplitParents] = useState(false);
+
+  // Compute the set of page_ids that are referenced as parent_page_id by
+  // at least one split child. These are "split parents" hidden by default.
+  const splitParentIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of allPages) {
+      if (p.parent_page_id != null) ids.add(p.parent_page_id);
+    }
+    return ids;
+  }, [allPages]);
+
+  const visiblePages = useMemo(
+    () =>
+      showSplitParents
+        ? allPages
+        : allPages.filter(
+            (p) =>
+              p.parent_page_id != null ||
+              !splitParentIds.has(String(p.idx0).padStart(4, "0")),
+          ),
+    [allPages, showSplitParents, splitParentIds],
+  );
+
+  // Build a map from page_id → prefix for split children to compute labels.
+  const prefixByPageId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of allPages) {
+      m.set(String(p.idx0).padStart(4, "0"), p.prefix);
+    }
+    return m;
+  }, [allPages]);
 
   if (project.isLoading || pages.isLoading) {
     return <p className="text-slate-500">Loading…</p>;
@@ -178,11 +210,26 @@ export function ProjectConfigurePage() {
         onClear={() => setSelected(new Set())}
       />
 
+      {splitParentIds.size > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={showSplitParents}
+              onChange={(e) => setShowSplitParents(e.target.checked)}
+              className="rounded"
+            />
+            Show split parents ({splitParentIds.size})
+          </label>
+        </div>
+      )}
+
       <PageGrid
-        pages={allPages}
+        pages={visiblePages}
         projectId={projectId}
         selected={selected}
         activePageIdx0={activePageIdx0}
+        prefixByPageId={prefixByPageId}
         onToggle={(idx0) => {
           setSelected((s) => {
             const next = new Set(s);
@@ -488,14 +535,28 @@ function PageGrid({
   projectId,
   selected,
   activePageIdx0,
+  prefixByPageId,
   onToggle,
 }: {
   pages: PageRecord[];
   projectId: string;
   selected: Set<number>;
   activePageIdx0: number | null;
+  prefixByPageId: Map<string, string>;
   onToggle: (idx0: number) => void;
 }) {
+  const queryClient = useQueryClient();
+
+  const unsplit = useMutation({
+    mutationFn: (idx0: number) =>
+      api.delete<PageRecord>(
+        `/api/data/projects/${projectId}/pages/${idx0}/split`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+    },
+  });
+
   const sorted = useMemo(
     () => [...pages].sort((a, b) => a.idx0 - b.idx0),
     [pages],
@@ -507,14 +568,22 @@ function PageGrid({
         const isActive = activePageIdx0 === p.idx0;
         const ptBadge = PAGE_TYPE_BADGE[p.page_type];
         const alBadge = ALIGNMENT_BADGE[p.alignment];
-        // Selection ring wins over the active-job pulse when both apply
-        // (user explicitly clicked the tile). Otherwise the sky pulse
-        // marks "the worker is on this page right now".
         const borderCls = sel
           ? "border-slate-900 ring-2 ring-slate-900"
           : isActive
             ? "border-sky-500 ring-2 ring-sky-400 animate-pulse"
             : "border-slate-200 hover:border-slate-400";
+
+        // Split-child display label: "{parent_prefix}-{split_index} (suffix)"
+        const isSplitChild = p.parent_page_id != null;
+        const parentPrefix = isSplitChild
+          ? (prefixByPageId.get(p.parent_page_id!) ?? "")
+          : null;
+        const splitLabel =
+          isSplitChild && parentPrefix != null
+            ? `${parentPrefix}-${p.split_index}${p.split_suffix ? ` (${p.split_suffix})` : ""}`
+            : null;
+
         return (
           <li
             key={p.idx0}
@@ -523,7 +592,7 @@ function PageGrid({
             <button
               onClick={() => onToggle(p.idx0)}
               className="block aspect-[2/3] w-full overflow-hidden rounded bg-slate-100"
-              aria-label={`page ${p.prefix || p.idx0}`}
+              aria-label={`page ${splitLabel ?? p.prefix ?? p.idx0}`}
             >
               {p.thumbnail_key ? (
                 <img
@@ -540,7 +609,9 @@ function PageGrid({
             </button>
             <div className="space-y-1 px-2 py-1">
               <div className="flex items-center justify-between text-[11px] text-slate-600">
-                <span className="font-mono">{p.prefix || `#${p.idx0}`}</span>
+                <span className="font-mono">
+                  {splitLabel ?? p.prefix ?? `#${p.idx0}`}
+                </span>
                 <Link
                   to={`/projects/${projectId}/pages/${p.idx0}`}
                   className="text-slate-400 hover:text-slate-900"
@@ -589,6 +660,16 @@ function PageGrid({
                   </span>
                 )}
               </div>
+              {isSplitChild && (
+                <button
+                  onClick={() => unsplit.mutate(p.idx0)}
+                  disabled={unsplit.isPending}
+                  className="mt-0.5 w-full rounded border border-rose-200 bg-rose-50 px-1 py-0.5 text-[10px] text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                  aria-label={`Reverse split for page ${splitLabel ?? p.prefix}`}
+                >
+                  Reverse split
+                </button>
+              )}
             </div>
           </li>
         );
