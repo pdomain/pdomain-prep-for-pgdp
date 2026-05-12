@@ -22,6 +22,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from ..adapters.database import IDatabase
 from ..adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
@@ -49,10 +50,12 @@ class InProcessJobRunner:
         events: JobEventBroker | None = None,
         poll_interval: float = 1.0,
         max_concurrency: int = 1,
+        data_root: Path | None = None,
     ) -> None:
         self._db = database
         self._storage = storage
         self._gpu = gpu
+        self._data_root = data_root
         self._dispatcher = dispatcher
         self._events = events
         self._poll = poll_interval
@@ -422,10 +425,30 @@ async def _handle_extract_illustrations(runner: InProcessJobRunner, job: Job) ->
 
 
 async def _handle_batch_process_pages(runner: InProcessJobRunner, job: Job) -> None:
+    if runner._data_root is not None:
+        from .jobs.legacy_shim import BATCH_JOB_TO_STAGES, run_legacy_batch_pages
+
+        await run_legacy_batch_pages(
+            runner,
+            job,
+            stage_ids=BATCH_JOB_TO_STAGES["batch_process_pages"],
+            data_root=runner._data_root,
+        )
+        return
     await _run_batch_pages(runner, job, job_type="batch_process_pages")
 
 
 async def _handle_batch_ocr(runner: InProcessJobRunner, job: Job) -> None:
+    if runner._data_root is not None:
+        from .jobs.legacy_shim import BATCH_JOB_TO_STAGES, run_legacy_batch_pages
+
+        await run_legacy_batch_pages(
+            runner,
+            job,
+            stage_ids=BATCH_JOB_TO_STAGES["batch_ocr"],
+            data_root=runner._data_root,
+        )
+        return
     await _run_batch_pages(runner, job, job_type="batch_ocr")
 
 

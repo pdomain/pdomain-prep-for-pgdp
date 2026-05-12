@@ -176,6 +176,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         gpu=gpu,
         dispatcher=dispatcher,
         events=job_events,
+        data_root=settings.data_root,
     )
 
     @asynccontextmanager
