@@ -102,7 +102,7 @@ def _make_placeholder(stage_id: str) -> Callable[..., Any]:
 # manual SQLite seeding, which is the M2 smoke-test pass criterion.
 
 
-def _grayscale_cpu(image: Any) -> Any:
+def _grayscale_cpu(image: Any, cfg: Any = None) -> Any:
     """Convert a 3-channel BGR ndarray to a 2-D grayscale ndarray.
 
     Wraps ``pd_book_tools.image_processing.cv2_processing.cv2_convert_to_grayscale``
@@ -116,14 +116,20 @@ def _grayscale_cpu(image: Any) -> Any:
     return cv2_convert_to_grayscale(image)
 
 
-def _threshold_cpu(image: Any) -> Any:
-    """Otsu binarisation of a 2-D grayscale ndarray.
+def _threshold_cpu(image: Any, cfg: Any = None) -> Any:
+    """Binarise a 2-D grayscale ndarray.
 
-    The full `Stage.threshold` in the monolithic chain also handles a
-    user-set ``threshold_level`` override — that lands when the runner
-    wires `ResolvedPageConfig` into stage inputs (Slice 3 / M3). For
-    now, plain Otsu is the documented behavior and the test fixture.
+    When ``cfg.threshold_level`` is set, applies a fixed-level binary threshold
+    (mirrors ``process_page_cpu``'s 4g branch). Otherwise falls back to Otsu
+    auto-thresholding.
     """
+    if cfg is not None and cfg.threshold_level is not None:
+        from pd_book_tools.image_processing.cv2_processing import (  # type: ignore[import-not-found]
+            binary_thresh,
+        )
+
+        return binary_thresh(image, level=cfg.threshold_level)
+
     from pd_book_tools.image_processing.cv2_processing import (  # type: ignore[import-not-found]
         otsu_binary_thresh,
     )
@@ -131,7 +137,7 @@ def _threshold_cpu(image: Any) -> Any:
     return otsu_binary_thresh(image)
 
 
-def _invert_cpu(image: Any) -> Any:
+def _invert_cpu(image: Any, cfg: Any = None) -> Any:
     """Bitwise complement of a uint8 ndarray (`255 - x`).
 
     Wraps ``pd_book_tools.image_processing.cv2_processing.invert_image``.
@@ -144,7 +150,7 @@ def _invert_cpu(image: Any) -> Any:
     return invert_image(image)
 
 
-def _ingest_source_cpu(source_bytes: bytes) -> bytes:
+def _ingest_source_cpu(source_bytes: bytes, cfg: Any = None) -> bytes:
     """Pass through the per-page source bytes unchanged.
 
     The runner reads the bytes from IStorage at the page's `source_key`
@@ -164,7 +170,7 @@ def _ingest_source_cpu(source_bytes: bytes) -> bytes:
     return source_bytes
 
 
-def _decode_source_cpu(image: Any) -> Any:
+def _decode_source_cpu(image: Any, cfg: Any = None) -> Any:
     """Pass through the already-decoded source image unchanged.
 
     The runner cv2.imdecodes parent bytes before calling the impl, so by
@@ -176,7 +182,7 @@ def _decode_source_cpu(image: Any) -> Any:
     return image
 
 
-def _initial_crop_cpu(image: Any) -> Any:
+def _initial_crop_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply project/per-page initial-crop insets, or pass through at default.
 
     Mirrors `process_page_cpu`'s 4d branch: when the resolved
@@ -191,7 +197,7 @@ def _initial_crop_cpu(image: Any) -> Any:
     return image
 
 
-def _manual_deskew_pre_cpu(image: Any) -> Any:
+def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply the optional pre-crop manual rotation, or pass through at default.
 
     Mirrors `process_page_cpu`'s 4e branch: rotation only fires when
@@ -216,7 +222,7 @@ def _manual_deskew_pre_cpu(image: Any) -> Any:
 # image->image transforms that carve out the remainder of the 4i-4n chain.
 
 
-def _find_content_edges_cpu(image: Any) -> tuple[int, int, int, int]:
+def _find_content_edges_cpu(image: Any, cfg: Any = None) -> tuple[int, int, int, int]:
     """Find the bounding box of the content region in a binary inverted image.
 
     Returns (minX, maxX, minY, maxY) — the four edge coordinates passed to
@@ -232,7 +238,7 @@ def _find_content_edges_cpu(image: Any) -> tuple[int, int, int, int]:
     return find_edges(image)
 
 
-def _crop_to_content_cpu(image: Any, bbox: tuple[int, int, int, int]) -> Any:
+def _crop_to_content_cpu(image: Any, bbox: tuple[int, int, int, int], cfg: Any = None) -> Any:
     """Crop the binary image to the content bounding box (step 4j).
 
     `image` is the inverted binary ndarray (from `invert`);
@@ -252,7 +258,7 @@ def _crop_to_content_cpu(image: Any, bbox: tuple[int, int, int, int]) -> Any:
     return crop_to_rectangle(image, minX, maxX, minY, maxY)
 
 
-def _auto_deskew_cpu(image: Any) -> Any:
+def _auto_deskew_cpu(image: Any, cfg: Any = None) -> Any:
     """Auto-deskew the binary content image (step 4k).
 
     Mirrors `process_page_cpu`'s 4k branch for the common case
@@ -269,7 +275,7 @@ def _auto_deskew_cpu(image: Any) -> Any:
     return out[0] if isinstance(out, tuple) else out
 
 
-def _morph_fill_cpu(image: Any) -> Any:
+def _morph_fill_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply morphological fill to close small gaps in text strokes (step 4l).
 
     Optional in `process_page_cpu` via `cfg.do_morph`; default is False,
@@ -285,7 +291,7 @@ def _morph_fill_cpu(image: Any) -> Any:
     return morph_fill(image)
 
 
-def _rescale_cpu(image: Any) -> Any:
+def _rescale_cpu(image: Any, cfg: Any = None) -> Any:
     """Re-invert + rescale to canonical aspect ratio (step 4m).
 
     `process_page_cpu` calls `rescale_image(invert_image(img_deskewed), target_short_side=1000)`.
@@ -301,7 +307,7 @@ def _rescale_cpu(image: Any) -> Any:
     return rescale_image(invert_image(image), target_short_side=1000)
 
 
-def _canvas_map_cpu(image: Any) -> Any:
+def _canvas_map_cpu(image: Any, cfg: Any = None) -> Any:
     """Map the rescaled image onto a canonical canvas (step 4n).
 
     Wraps `map_content_onto_scaled_canvas` with the default alignment
@@ -337,7 +343,7 @@ def _canvas_map_cpu(image: Any) -> Any:
 # PNG-encodes the ndarray (output_type='image_bytes').
 
 
-def _auto_detect_attrs_cpu(image: Any) -> dict[str, Any]:
+def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
     """Detect page attributes from a decoded source image ndarray.
 
     The runner loads the `ingest_source` parent artifact as an ndarray (via
@@ -383,7 +389,7 @@ def _auto_detect_attrs_cpu(image: Any) -> dict[str, Any]:
     }
 
 
-def _blank_proof_synth_cpu(page_attrs: dict[str, Any]) -> Any:
+def _blank_proof_synth_cpu(page_attrs: dict[str, Any], cfg: Any = None) -> Any:
     """Synthesise a blank proofing image for blank / plate-b / plate-r pages.
 
     Takes the `page_attrs` dict from `auto_detect_attrs` and returns an
@@ -424,7 +430,7 @@ def _blank_proof_synth_cpu(page_attrs: dict[str, Any]) -> Any:
 # stage impls (M3). Until then the impl always takes the no-crop branch.
 
 
-def _ocr_crop_cpu(image: Any) -> Any:
+def _ocr_crop_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply the OCR-crop margin and page-split logic to the proofing image.
 
     At default config (`cfg.ocr_crop == (0,0,0,0)`, no splits) this is a
@@ -447,7 +453,7 @@ def _ocr_crop_cpu(image: Any) -> Any:
 # illustration-crop logic is deferred until M3.
 
 
-def _thumbnail_cpu(image: Any) -> bytes:
+def _thumbnail_cpu(image: Any, cfg: Any = None) -> bytes:
     """Resize and JPEG-encode the source image for workbench thumbnail display.
 
     The runner loads the `ingest_source` artifact as an ndarray (output_type
@@ -478,7 +484,7 @@ def _thumbnail_cpu(image: Any) -> bytes:
     return bytes(buf.tobytes())
 
 
-def _auto_detect_illustrations_cpu(image: Any) -> list[Any]:
+def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
     """Detect illustration regions in a source image ndarray.
 
     Loads the layout detector (the same process-singleton as in
@@ -533,7 +539,7 @@ def _auto_detect_illustrations_cpu(image: Any) -> list[Any]:
     ]
 
 
-def _text_postprocess_cpu(text_bytes: Any) -> str:
+def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
     """Apply step-8 normalisation to OCR text at default config.
 
     At default config (no per-project scannos, no custom regex, no
@@ -614,7 +620,7 @@ def _default_resolved_page_config() -> Any:
     )
 
 
-def _ocr_cpu(image: Any) -> dict[str, bytes]:
+def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
     """Run OCR on the proofing image and emit words.json + raw.txt.
 
     Accepts the ndarray from `ocr_crop` (output_type='image_bytes' decoded
@@ -638,7 +644,8 @@ def _ocr_cpu(image: Any) -> dict[str, bytes]:
     from ...core.models import SystemDefaults
     from ...core.ocr import ocr_page
 
-    cfg = _default_resolved_page_config()
+    if cfg is None:
+        cfg = _default_resolved_page_config()
 
     # Honour PGDP_OCR_ENGINE env var so tests can force tesseract without
     # loading DocTR weights.
@@ -670,7 +677,7 @@ def _ocr_cpu(image: Any) -> dict[str, bytes]:
     return {"words.json": words_json, "raw.txt": raw_txt}
 
 
-def _text_review_cpu(text_bytes: Any) -> dict[str, bytes]:
+def _text_review_cpu(text_bytes: Any, cfg: Any = None) -> dict[str, bytes]:
     """Gate stage — copy text_postprocess output as the reviewed text.
 
     At default config (no human edit) this is an identity pass: the

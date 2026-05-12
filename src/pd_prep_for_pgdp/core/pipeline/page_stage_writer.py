@@ -202,6 +202,7 @@ async def commit_stage_artifact(
     artifact_bytes: bytes,
     stage_version: int = 1,
     content_hash: str | None = None,
+    config_hash: str | None = None,
     job_id: str | None = None,
 ) -> PageStageState:
     """Atomically commit a stage's output artifact + DB row.
@@ -285,6 +286,7 @@ async def commit_stage_artifact(
         stage_version=stage_version,
         artifact_key=artifact_key,
         input_hash=content_hash,
+        config_hash=config_hash,
         last_run_at=time(),
         error_message=None,
         job_id=job_id,
@@ -322,6 +324,7 @@ async def commit_stage_artifacts_multi(
     files: dict[str, bytes],
     primary_filename: str,
     stage_version: int = 1,
+    config_hash: str | None = None,
     job_id: str | None = None,
 ) -> PageStageState:
     """Atomically commit a set of stage output files + DB row.
@@ -451,6 +454,7 @@ async def commit_stage_artifacts_multi(
         stage_version=stage_version,
         artifact_key=primary_key,
         input_hash=primary_hash,
+        config_hash=config_hash,
         last_run_at=time(),
         error_message=None,
         job_id=job_id,

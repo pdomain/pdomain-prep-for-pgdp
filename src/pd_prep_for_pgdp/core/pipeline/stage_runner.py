@@ -54,6 +54,8 @@ and the eager dirty cascade that follows on success.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -127,6 +129,109 @@ class StageRunFailed(RuntimeError):  # noqa: N818  # intentional: describes the 
     before this is raised. Q9: fail loudly — the route handler / dispatcher
     is expected to surface this to the user, not swallow it.
     """
+
+
+# ─── Config-field mapping ────────────────────────────────────────────────────
+
+# Maps stage_id → set of PageConfigOverrides field names the stage reads.
+# Used for two purposes:
+#   1. cascade_dirty_for_config_change: dirty only stages whose fields changed.
+#   2. _compute_config_hash: include only relevant fields in the hash so
+#      reindex --heal can detect config-driven staleness.
+# Stages absent from this map read no per-page config fields.
+STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
+    "initial_crop": frozenset({"initial_crop"}),
+    "manual_deskew_pre": frozenset({"deskew_before_crop"}),
+    "threshold": frozenset({"threshold_level"}),
+    "find_content_edges": frozenset({"fuzzy_pct", "pixel_count_columns", "pixel_count_rows"}),
+    "crop_to_content": frozenset({"white_space_additional"}),
+    "auto_deskew": frozenset({"skip_auto_deskew", "deskew_after_crop"}),
+    "morph_fill": frozenset({"do_morph"}),
+    "rescale": frozenset({"single_dimension_rescale"}),
+    "ocr_crop": frozenset({"rotated_standard"}),
+    "ocr": frozenset({"use_ocr_bbox_edge"}),
+}
+
+
+def _compute_config_hash(cfg: Any, stage_id: str) -> str | None:
+    """sha256 of the resolved config fields relevant to ``stage_id``.
+
+    Returns ``None`` when ``stage_id`` has no entry in ``STAGE_CONFIG_FIELDS``
+    (no config fields → no config hash needed for reconciliation).
+    """
+    fields = STAGE_CONFIG_FIELDS.get(stage_id)
+    if not fields:
+        return None
+    subset = {f: getattr(cfg, f, None) for f in sorted(fields)}
+    return hashlib.sha256(json.dumps(subset, default=str).encode()).hexdigest()
+
+
+async def cascade_dirty_for_config_change(
+    *,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+    changed_fields: set[str],
+) -> None:
+    """Dirty stages whose config-field sets overlap with ``changed_fields``, plus
+    all of their transitive descendants.
+
+    Called by the ``PATCH /pages/{idx0}`` route when ``config_overrides`` changes
+    so the chip rail reflects the stale state immediately without waiting for
+    ``reindex --heal``.
+
+    Rows already ``dirty`` or ``not-run`` are left unchanged; only ``clean`` and
+    ``failed`` rows are flipped.
+    """
+    directly_affected = {sid for sid, fields in STAGE_CONFIG_FIELDS.items() if fields & changed_fields}
+    if not directly_affected:
+        return
+
+    to_dirty: set[str] = set()
+    for sid in directly_affected:
+        to_dirty.add(sid)
+        to_dirty.update(compute_dirty_descendants(sid))
+
+    rows = await database.list_page_stages_for_page(project_id, page_id)
+    for row in rows:
+        if row.stage_id not in to_dirty:
+            continue
+        if row.status not in {PageStageStatus.clean, PageStageStatus.failed}:
+            continue
+        await database.put_page_stage(row.model_copy(update={"status": PageStageStatus.dirty}))
+
+
+async def _resolve_config(
+    *,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+) -> Any:
+    """Load page + project + system defaults from DB and resolve to a
+    ``ResolvedPageConfig``.
+
+    Falls back to ``_default_resolved_page_config()`` (all-default values) when
+    any DB lookup returns ``None`` — this keeps existing tests that don't seed
+    project/page records working without modification.
+    """
+    from ..config_resolver import resolve_page_config
+    from .stage_registry import _default_resolved_page_config
+
+    project = await database.get_project(project_id)
+    if project is None:
+        return _default_resolved_page_config()
+
+    try:
+        idx0 = int(page_id)
+    except ValueError:
+        return _default_resolved_page_config()
+
+    page = await database.get_page(project_id, idx0)
+    if page is None:
+        return _default_resolved_page_config()
+
+    system = await database.get_system_defaults(project.owner_id)
+    return resolve_page_config(system, project.config, page)
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -362,6 +467,7 @@ async def _commit_single_artifact(
     artifact_bytes: bytes,
     stage_version: int,
     write_executor: StageWriteExecutor | None,
+    config_hash: str | None = None,
 ) -> PageStageState:
     """Commit a single-file artifact, synchronously or via deferred write.
 
@@ -384,6 +490,7 @@ async def _commit_single_artifact(
             stage_id=stage_id,
             artifact_bytes=artifact_bytes,
             stage_version=stage_version,
+            config_hash=config_hash,
         )
 
     # Deferred path: optimistic DB update then background file write.
@@ -399,6 +506,7 @@ async def _commit_single_artifact(
         stage_version=stage_version,
         artifact_key=artifact_key_str,
         input_hash=content_hash,
+        config_hash=config_hash,
         last_run_at=time(),
         error_message=None,
     )
@@ -434,6 +542,23 @@ async def _commit_single_artifact(
     )
 
     return state
+
+
+def _call_impl(impl: Any, artifacts: list[Any], cfg: Any) -> Any:
+    """Call a stage impl with its input artifacts and resolved config.
+
+    Passes ``cfg`` as a keyword argument only when the impl's signature
+    declares it, so existing test mocks that use bare ``lambda img: ...``
+    or ``def _kaboom(_x): raise ...`` continue to work without modification.
+    """
+    try:
+        accepts_cfg = "cfg" in inspect.signature(impl).parameters
+    except (ValueError, TypeError):
+        accepts_cfg = False
+
+    if accepts_cfg:
+        return impl(artifacts[0], cfg=cfg) if len(artifacts) == 1 else impl(*artifacts, cfg=cfg)
+    return impl(artifacts[0]) if len(artifacts) == 1 else impl(*artifacts)
 
 
 # ─── Public entry point ────────────────────────────────────────────────────
@@ -528,6 +653,13 @@ async def run_stage(
         stage_id=stage_id,
     )
 
+    # Resolve per-page config. Reads the latest page + project + system rows
+    # from DB at run time so config changes between request and execution are
+    # always picked up (the async job path guarantees this because the job
+    # handler calls run_stage after potentially waiting in the queue).
+    cfg = await _resolve_config(database=database, project_id=project_id, page_id=page_id)
+    _cfg_hash = _compute_config_hash(cfg, stage_id)
+
     # Sentinel for the impl's in-memory output; set inside the else branch
     # (non-ingest_source path) so the post-run not-applicable logic can read it.
     output: Any = None
@@ -562,7 +694,7 @@ async def run_stage(
                     "the per-page upload; route handler must pass both"
                 )
             source_bytes = await storage.get_bytes(page_source_key)
-            artifact_bytes = impl(source_bytes)
+            artifact_bytes = _call_impl(impl, [source_bytes], cfg)
             if not isinstance(artifact_bytes, (bytes, bytearray)):
                 raise TypeError(
                     f"stage {stage_id!r} impl returned {type(artifact_bytes).__name__}, "
@@ -624,7 +756,7 @@ async def run_stage(
                         )
                     )
 
-            output = impl(parent_artifacts[0]) if len(parent_artifacts) == 1 else impl(*parent_artifacts)
+            output = _call_impl(impl, parent_artifacts, cfg)
 
             # Step 7: encode then commit (sync or deferred).
             if stage.output_type in COMPOUND_OUTPUT_TYPES:
@@ -648,6 +780,7 @@ async def run_stage(
                     files=output,
                     primary_filename=primary_filename,
                     stage_version=_stage_ver,
+                    config_hash=_cfg_hash,
                 )
             else:
                 # Single-file stages: encode to bytes then commit.
@@ -676,6 +809,7 @@ async def run_stage(
                     artifact_bytes=artifact_bytes,
                     stage_version=_stage_ver,
                     write_executor=write_executor,
+                    config_hash=_cfg_hash,
                 )
     except StageNotImplemented as exc:
         await _mark_failed(

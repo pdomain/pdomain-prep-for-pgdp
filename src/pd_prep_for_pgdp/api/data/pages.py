@@ -40,6 +40,7 @@ from ...core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageOutputUnsupported,
     StageRunFailed,
+    cascade_dirty_for_config_change,
     run_stage,
 )
 from ...settings import Settings
@@ -193,6 +194,7 @@ async def update_page(
     if page is None:
         raise HTTPException(404, "page not found")
     update = body.model_dump(exclude_unset=True)
+    old_overrides = page.config_overrides.model_dump()
     if "config_overrides" in update and update["config_overrides"] is not None:
         page.config_overrides = PageConfigOverrides.model_validate(update["config_overrides"])
     if "page_type" in update:
@@ -204,6 +206,20 @@ async def update_page(
     if "illustration_regions" in update and body.illustration_regions is not None:
         page.illustration_regions = body.illustration_regions
     await db.put_page(page)
+
+    # Cascade dirty to stages whose config-field sets overlap with the changed
+    # config_overrides fields, so the chip rail reflects staleness immediately.
+    new_overrides = page.config_overrides.model_dump()
+    changed_fields = {f for f, v in new_overrides.items() if v != old_overrides.get(f)}
+    if changed_fields:
+        page_id = f"{idx0:04d}"
+        await cascade_dirty_for_config_change(
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            changed_fields=changed_fields,
+        )
+
     return page
 
 
@@ -626,7 +642,12 @@ async def run_page_stage(
             owner_id=user.user_id,
             type=JobType.run_page_stage,
             status=JobStatus.queued,
-            payload={"project_id": project_id, "page_id": page_id, "stage_id": stage_id},
+            payload={
+                "project_id": project_id,
+                "page_id": page_id,
+                "stage_id": stage_id,
+                "data_root": str(settings.data_root),
+            },
         )
         await db.put_job(job)
         return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
