@@ -166,8 +166,10 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     from .core.job_events import JobEventBroker
     from .core.job_runner import InProcessJobRunner
+    from .core.stage_events import StageEventBroker
 
     job_events = JobEventBroker()
+    stage_events = StageEventBroker()
     job_runner = InProcessJobRunner(
         database=database,
         storage=storage,
@@ -225,6 +227,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.job_events = job_events
+    app.state.stage_events = stage_events
     app.state.storage = storage
     app.state.database = database
     app.state.auth = auth
