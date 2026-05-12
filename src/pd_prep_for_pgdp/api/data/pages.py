@@ -45,7 +45,7 @@ from ...core.pipeline.stage_runner import (
     run_stage,
 )
 from ...settings import Settings
-from ..dependencies import get_database, get_settings, get_storage, get_user
+from ..dependencies import get_database, get_settings, get_stage_events, get_storage, get_user
 
 log = logging.getLogger(__name__)
 
@@ -858,3 +858,54 @@ async def get_page_stage_thumbnail(
     if etag is not None:
         headers["ETag"] = etag
     return Response(content=body, media_type="image/png", headers=headers)
+
+
+# ─── Per-page stage SSE stream ─────────────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/events",
+    operation_id="stream_page_stage_events",
+)
+async def stream_page_stage_events(
+    project_id: str,
+    idx0: int,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    stage_events=Depends(get_stage_events),
+):
+    """SSE — push stage-status and stage-progress events for one page.
+
+    Subscribes to the in-process `StageEventBroker` and forwards events as
+    `text/event-stream` frames. The first frame is a snapshot of current stage
+    states from the database so a late subscriber sees state immediately;
+    subsequent frames arrive from the broker (zero-poll).
+
+    Channel scope: per-page (M3). Project-level subscription is deferred to M5.
+    """
+    from sse_starlette.sse import EventSourceResponse
+
+    from ...core.stage_events import stage_events_key
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    key = stage_events_key(project_id, page_id)
+
+    async def stream():
+        rows = await db.list_page_stages_for_page(project_id, page_id)
+        snapshot = {
+            "type": "snapshot",
+            "stages": [r.model_dump(mode="json") for r in rows],
+        }
+        yield {"event": "snapshot", "data": json.dumps(snapshot)}
+
+        async for ev in stage_events.subscribe(key):
+            yield {"event": ev.get("type", "stage-status"), "data": json.dumps(ev)}
+
+    return EventSourceResponse(stream())
