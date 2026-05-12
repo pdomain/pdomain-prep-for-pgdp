@@ -43,6 +43,7 @@ from typing import TextIO
 from ..adapters.database.base import IDatabase
 from ..adapters.database.sqlite import SqliteDatabase
 from ..core.models import PageStageState, PageStageStatus, Project
+from ..core.pipeline import stage_dag as _stage_dag
 from ..core.pipeline.page_stage_writer import (
     HashMismatch,
     MissingFile,
@@ -62,6 +63,7 @@ class HealCounts:
     missing_marked_failed: int = 0
     hash_mismatches_marked_dirty: int = 0
     descendants_marked_dirty: int = 0
+    stale_versions_marked_dirty: int = 0
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -350,11 +352,34 @@ async def _heal_all(
             mismatches_marked += 1
             descendants_marked += await _mark_descendants_dirty(db, project.id, page_id, mismatch.stage_id)
 
+    # Stale-version rows: clean rows whose stored stage_version is behind
+    # STAGE_VERSIONS are marked dirty so the next run refreshes the artifact.
+    stale_marked = 0
+    for project, page_id, _report in reports:
+        rows = await db.list_page_stages_for_page(project.id, page_id)
+        for row in rows:
+            if row.status != PageStageStatus.clean:
+                continue
+            current_ver = _stage_dag.STAGE_VERSIONS.get(row.stage_id, 1)
+            if row.stage_version < current_ver:
+                updated = row.model_copy(
+                    update={
+                        "status": PageStageStatus.dirty,
+                        "error_message": (
+                            f"reconcile: stage_version {row.stage_version} < STAGE_VERSIONS={current_ver}"
+                        ),
+                        "last_run_at": time.time(),
+                    }
+                )
+                await db.put_page_stage(updated)
+                stale_marked += 1
+
     return HealCounts(
         orphans_moved=orphans_moved,
         missing_marked_failed=missing_marked,
         hash_mismatches_marked_dirty=mismatches_marked,
         descendants_marked_dirty=descendants_marked,
+        stale_versions_marked_dirty=stale_marked,
     )
 
 

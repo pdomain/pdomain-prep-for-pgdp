@@ -470,3 +470,59 @@ def test_main_dispatches_unknown_subcommand_falls_through(
 
     rc = m.main(["--version"])
     assert rc == 0
+
+
+# ─── Stage versioning: --heal marks stale-version rows dirty ────────────────
+
+
+@pytest.mark.asyncio
+async def test_reindex_heal_marks_stale_version_rows_dirty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """reindex --heal marks clean rows with stale stage_version as dirty.
+
+    Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
+    """
+    import pd_prep_for_pgdp.cli.reindex as r
+    import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
+    from pd_prep_for_pgdp.settings import Settings
+
+    db, data_root = await _prep_clean_state(tmp_path)
+    # _prep_clean_state seeds "threshold" as clean at stage_version=1.
+    row = await db.get_page_stage("proj1", "0000", "threshold")
+    assert row is not None and row.status == PageStageStatus.clean
+    assert row.stage_version == 1
+    await db.close()
+
+    # Bump STAGE_VERSIONS["threshold"] to 2 so the row is stale.
+    original = dict(_stage_dag_mod.STAGE_VERSIONS)
+    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, threshold=2))
+
+    args = _parse_args(["--heal"])
+    args.data_root = data_root
+    monkey_settings = Settings(
+        data_root=data_root,
+        config_dir=tmp_path / "config",
+        database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+        gpu_backend="cpu",
+        auth_mode="none",
+        dispatch_interval_seconds=0,
+    )
+    saved = r.Settings
+    r.Settings = lambda: monkey_settings  # type: ignore[assignment,misc]
+    try:
+        buf = io.StringIO()
+        rc = await _run(args, stdout=buf)
+        assert rc == 0
+    finally:
+        r.Settings = saved
+
+    db2 = SqliteDatabase(f"sqlite:///{(tmp_path / 'state.db').as_posix()}")
+    await db2.initialize()
+    threshold = await db2.get_page_stage("proj1", "0000", "threshold")
+    assert threshold is not None
+    assert threshold.status == PageStageStatus.dirty, (
+        f"reindex --heal should mark stale-version clean row as dirty, got {threshold.status}"
+    )
+    await db2.close()
