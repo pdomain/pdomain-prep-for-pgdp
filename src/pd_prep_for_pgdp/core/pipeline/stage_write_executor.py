@@ -82,15 +82,23 @@ class _PendingArtifact:
 # ─── Public async wrapper for the sync file write ────────────────────────────
 
 
-async def _write_artifact_file_async(path: Path, data: bytes) -> None:
+async def _write_artifact_file_async(
+    path: Path,
+    data: bytes,
+    *,
+    thumb_path: Path | None = None,
+    thumb_bytes: bytes | None = None,
+) -> None:
     """Async wrapper around the sync file-write helper.
 
     Runs inside ``asyncio.run()`` in the executor thread. No actual async I/O
     — the wrapper exists so the executor's coroutine interface is uniform.
+    Optional ``thumb_path`` / ``thumb_bytes`` are forwarded to the sync helper
+    for best-effort thumbnail persistence on the deferred-write path.
     """
     from .page_stage_writer import write_artifact_file_sync
 
-    write_artifact_file_sync(path, data)
+    write_artifact_file_sync(path, data, thumb_path=thumb_path, thumb_bytes=thumb_bytes)
 
 
 # ─── StageWriteExecutor ───────────────────────────────────────────────────────

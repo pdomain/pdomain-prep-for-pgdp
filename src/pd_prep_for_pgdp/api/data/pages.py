@@ -34,6 +34,7 @@ from ...core.models import (
 from ...core.pipeline.page_stage_writer import (
     StageArtifactWriteError,
     stage_artifact_path,
+    stage_thumbnail_path,
 )
 from ...core.pipeline.stage_dag import get_stage, topological_order
 from ...core.pipeline.stage_runner import (
@@ -720,6 +721,7 @@ async def get_page_stage_artifact(
     project_id: str,
     idx0: int,
     stage_id: str,
+    v: str | None = None,  # cache-busting: ?v=<last_run_at>; value is ignored server-side
     if_none_match: str | None = Header(None, alias="If-None-Match"),
     user: UserContext = Depends(get_user),
     db: IDatabase = Depends(get_database),
@@ -801,3 +803,58 @@ async def get_page_stage_artifact(
     if etag is not None:
         headers["ETag"] = etag
     return Response(content=body, media_type=content_type, headers=headers)
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/thumbnail",
+    operation_id="get_page_stage_thumbnail",
+    responses={
+        200: {"content": {"image/png": {}}, "description": "Small PNG thumbnail of the stage's output."},
+        304: {"description": "ETag matched If-None-Match — body unchanged."},
+        404: {"description": "Project/page not found, stage not clean, or no thumbnail generated."},
+        422: {"description": "Unknown stage_id."},
+    },
+)
+async def get_page_stage_thumbnail(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    if_none_match: str | None = Header(None, alias="If-None-Match"),
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Return the pre-generated thumbnail PNG for a clean stage's output.
+
+    Thumbnails are written at stage-write time (not generated on demand).
+    404 when the stage row is not-run, not-applicable, failed, or dirty.
+    ETag echoes the stage row's input_hash so the browser can revalidate.
+    """
+    if stage_id not in PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, stage_id)
+    if row is None or row.status != "clean":
+        raise HTTPException(404, "no clean artifact for this stage")
+
+    thumb_path = stage_thumbnail_path(settings.data_root, project_id, page_id, stage_id)
+    if not thumb_path.exists():
+        raise HTTPException(404, "thumbnail not available for this stage")
+
+    etag = f'"{row.input_hash}"' if row.input_hash else None
+    if etag is not None and if_none_match is not None and if_none_match.strip() == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+
+    body = thumb_path.read_bytes()
+    headers: dict[str, str] = {"Content-Type": "image/png"}
+    if etag is not None:
+        headers["ETag"] = etag
+    return Response(content=body, media_type="image/png", headers=headers)

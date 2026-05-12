@@ -1191,6 +1191,22 @@
             }
           },
           {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "V"
+            }
+          },
+          {
             "name": "If-None-Match",
             "in": "header",
             "required": false,
@@ -1224,6 +1240,86 @@
           },
           "404": {
             "description": "Project/page not found, cross-user, or no clean artifact."
+          },
+          "422": {
+            "description": "Unknown stage_id."
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Stage Thumbnail",
+        "description": "Return the pre-generated thumbnail PNG for a clean stage's output.\n\nThumbnails are written at stage-write time (not generated on demand).\n404 when the stage row is not-run, not-applicable, failed, or dirty.\nETag echoes the stage row's input_hash so the browser can revalidate.",
+        "operationId": "get_page_stage_thumbnail",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Small PNG thumbnail of the stage's output.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/png": {}
+            }
+          },
+          "304": {
+            "description": "ETag matched If-None-Match \u2014 body unchanged."
+          },
+          "404": {
+            "description": "Project/page not found, stage not clean, or no thumbnail generated."
           },
           "422": {
             "description": "Unknown stage_id."

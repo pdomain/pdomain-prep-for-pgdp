@@ -408,6 +408,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Stage Thumbnail
+         * @description Return the pre-generated thumbnail PNG for a clean stage's output.
+         *
+         *     Thumbnails are written at stage-write time (not generated on demand).
+         *     404 when the stage row is not-run, not-applicable, failed, or dirty.
+         *     ETag echoes the stage row's input_hash so the browser can revalidate.
+         */
+        get: operations["get_page_stage_thumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/system/defaults": {
         parameters: {
             query?: never;
@@ -2554,7 +2578,9 @@ export interface operations {
     };
     get_page_stage_artifact: {
         parameters: {
-            query?: never;
+            query?: {
+                v?: string | null;
+            };
             header?: {
                 "If-None-Match"?: string | null;
             };
@@ -2587,6 +2613,54 @@ export interface operations {
                 content?: never;
             };
             /** @description Project/page not found, cross-user, or no clean artifact. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown stage_id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_page_stage_thumbnail: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string | null;
+            };
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Small PNG thumbnail of the stage's output. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/png": unknown;
+                };
+            };
+            /** @description ETag matched If-None-Match — body unchanged. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project/page not found, stage not clean, or no thumbnail generated. */
             404: {
                 headers: {
                     [name: string]: unknown;

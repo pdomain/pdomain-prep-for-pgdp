@@ -76,8 +76,10 @@ from .page_stage_writer import (
     commit_stage_artifact,
     commit_stage_artifacts_multi,
     compute_content_hash,
+    make_stage_thumbnail_bytes,
     stage_artifact_key,
     stage_artifact_path,
+    stage_thumbnail_path,
 )
 from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
 from .stage_registry import StageNotImplemented, get_stage_impl
@@ -534,9 +536,12 @@ async def _commit_single_artifact(
             stage_id=stage_id,
         )
 
-    _tp, _ab = target_path, artifact_bytes
+    _stage = get_stage(stage_id)
+    _thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, _stage.output_type)
+    _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id) if _thumb_bytes else None
+    _tp, _ab, _thp, _thb = target_path, artifact_bytes, _thumb_path, _thumb_bytes
     write_executor.submit_write(
-        lambda: _write_artifact_file_async(_tp, _ab),
+        lambda: _write_artifact_file_async(_tp, _ab, thumb_path=_thp, thumb_bytes=_thb),
         on_failure=_on_failure,
         loop=loop,
     )

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -42,6 +43,8 @@ from typing import Final
 from ...adapters.database import IDatabase
 from ...core.models import PageStageState, PageStageStatus
 from .stage_dag import STAGE_DAG, get_stage
+
+log = logging.getLogger(__name__)
 
 # ─── Output extension mapping ────────────────────────────────────────────────
 
@@ -84,6 +87,61 @@ COMPOUND_PRIMARY_FILENAME: Final[dict[str, str]] = {
 }
 
 
+# output_type values for which a thumbnail PNG should be generated at write time.
+# These map to image artifact files that cv2 can decode and resize.
+_THUMBNAIL_OUTPUT_TYPES: Final[frozenset[str]] = frozenset(
+    {"image_bytes", "image", "gray", "binary", "jpeg_bytes"}
+)
+
+# Max dimension (px) for the per-stage thumbnail.
+_THUMB_MAX_DIM: Final[int] = 400
+
+
+def stage_thumbnail_path(
+    data_root: Path,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+) -> Path:
+    """Return the canonical path for a stage's thumbnail PNG.
+
+    Layout: ``<data_root>/projects/<project_id>/pages/<page_id>/stages/<stage_id>/thumb.png``.
+    Always returns a path even when the file doesn't exist.
+    """
+    return data_root / "projects" / project_id / "pages" / page_id / "stages" / stage_id / "thumb.png"
+
+
+def make_stage_thumbnail_bytes(artifact_bytes: bytes, output_type: str) -> bytes | None:
+    """Generate a small PNG thumbnail from image artifact bytes.
+
+    Returns ``None`` for non-image output types (text, JSON, compound).
+    Resizes to at most ``_THUMB_MAX_DIM`` pixels on the longest axis while
+    preserving aspect ratio. The output is always a PNG regardless of the
+    input encoding (PNG or JPEG).
+    """
+    if output_type not in _THUMBNAIL_OUTPUT_TYPES:
+        return None
+    try:
+        import cv2  # type: ignore[import-not-found]
+        import numpy as np
+
+        arr = np.frombuffer(artifact_bytes, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+        scale = min(_THUMB_MAX_DIM / max(h, w, 1), 1.0)
+        if scale < 1.0:
+            img = cv2.resize(
+                img, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA
+            )
+        ok, buf = cv2.imencode(".png", img)
+        return bytes(buf.tobytes()) if ok else None
+    except Exception:
+        log.warning("thumbnail generation failed for output_type=%r", output_type, exc_info=True)
+        return None
+
+
 class StageArtifactWriteError(RuntimeError):
     """Raised when `commit_stage_artifact` fails part-way through.
 
@@ -94,7 +152,13 @@ class StageArtifactWriteError(RuntimeError):
     """
 
 
-def write_artifact_file_sync(target_path: Path, artifact_bytes: bytes) -> None:
+def write_artifact_file_sync(
+    target_path: Path,
+    artifact_bytes: bytes,
+    *,
+    thumb_path: Path | None = None,
+    thumb_bytes: bytes | None = None,
+) -> None:
     """Write artifact bytes to disk atomically using tmp + fsync + rename.
 
     File-only counterpart to :func:`commit_stage_artifact` — does NOT touch
@@ -102,6 +166,9 @@ def write_artifact_file_sync(target_path: Path, artifact_bytes: bytes) -> None:
     optimistically by the runner before submitting this to the thread pool;
     if this raises, the runner's ``on_failure`` callback flips the row to
     ``failed`` (Q9).
+
+    When ``thumb_path`` and ``thumb_bytes`` are provided, the thumbnail is
+    written (best-effort, non-atomically) after the main artifact succeeds.
 
     Raises :exc:`StageArtifactWriteError` on any filesystem failure.
     """
@@ -133,6 +200,13 @@ def write_artifact_file_sync(target_path: Path, artifact_bytes: bytes) -> None:
         raise StageArtifactWriteError(
             f"deferred write failed (rename to {target_path.name!r}): {exc!r}"
         ) from exc
+
+    # Best-effort thumbnail write (must not raise — deferred path failure
+    # is handled by the on_failure callback for the main artifact only).
+    if thumb_path is not None and thumb_bytes is not None:
+        with contextlib.suppress(OSError):
+            thumb_path.parent.mkdir(parents=True, exist_ok=True)
+            thumb_path.write_bytes(thumb_bytes)
 
 
 def _ext_for_stage(stage_id: str) -> str:
@@ -187,6 +261,36 @@ def stage_artifact_key(project_id: str, page_id: str, stage_id: str) -> str:
 def compute_content_hash(data: bytes) -> str:
     """sha256-hex of the artifact bytes (Q1: `content_hash` policy)."""
     return hashlib.sha256(data).hexdigest()
+
+
+def _write_thumbnail(
+    data_root: Path,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+    artifact_bytes: bytes,
+) -> None:
+    """Write a thumbnail PNG alongside the stage artifact (best-effort).
+
+    Silently skips non-image stages and swallows I/O errors so a thumbnail
+    failure never blocks the primary write path.
+    """
+    stage = get_stage(stage_id)
+    thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, stage.output_type)
+    if thumb_bytes is None:
+        return
+    thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id)
+    try:
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        thumb_path.write_bytes(thumb_bytes)
+    except OSError:
+        log.warning(
+            "thumbnail write failed for stage %r (project=%s page=%s)",
+            stage_id,
+            project_id,
+            page_id,
+            exc_info=True,
+        )
 
 
 # ─── commit_stage_artifact ──────────────────────────────────────────────────
@@ -307,6 +411,9 @@ async def commit_stage_artifact(
     if prior_snapshot is not None and prior_snapshot.exists():
         with contextlib.suppress(OSError):
             prior_snapshot.unlink()
+
+    # Best-effort thumbnail write (not part of the dual-write contract).
+    _write_thumbnail(data_root, project_id, page_id, stage_id, artifact_bytes)
 
     return state
 
