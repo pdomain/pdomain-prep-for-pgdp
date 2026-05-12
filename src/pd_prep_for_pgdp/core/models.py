@@ -377,6 +377,7 @@ class JobStatus(str, Enum):
     queued = "queued"
     scheduled = "scheduled"
     running = "running"
+    awaiting_review = "awaiting_review"
     complete = "complete"
     error = "error"
     cancelled = "cancelled"

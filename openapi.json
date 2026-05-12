@@ -3115,6 +3115,7 @@
           "queued",
           "scheduled",
           "running",
+          "awaiting_review",
           "complete",
           "error",
           "cancelled"

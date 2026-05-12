@@ -24,6 +24,8 @@ from pd_prep_for_pgdp.core.models import (
     JobType,
     PageOutput,
     PageRecord,
+    PageStageState,
+    PageStageStatus,
     PipelineState,
     Project,
     ProjectConfig,
@@ -92,6 +94,15 @@ async def test_build_package_handler_writes_zip(db: SqliteDatabase, storage: Fil
     await db.put_pages([page])
     await storage.put_bytes(page.outputs[0].for_zip_image_key, b"\x89PNG-fake")
     await storage.put_bytes(page.outputs[0].for_zip_text_key, b"page text")
+    # Mark page as reviewed so build_package is not gated.
+    await db.put_page_stage(
+        PageStageState(
+            project_id=project.id,
+            page_id="0000",
+            stage_id="text_review",
+            status=PageStageStatus.clean,
+        )
+    )
 
     job = Job(
         id="j-pkg",

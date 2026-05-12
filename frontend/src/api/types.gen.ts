@@ -1110,7 +1110,7 @@ export interface components {
          * JobStatus
          * @enum {string}
          */
-        JobStatus: "queued" | "scheduled" | "running" | "complete" | "error" | "cancelled";
+        JobStatus: "queued" | "scheduled" | "running" | "awaiting_review" | "complete" | "error" | "cancelled";
         /**
          * JobType
          * @enum {string}

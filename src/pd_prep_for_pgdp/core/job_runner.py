@@ -32,7 +32,7 @@ from ..dispatcher.batched import BatchDispatcher
 from .illustrations import extract_illustration, regions_for_page
 from .ingest import generate_thumbnails, unzip_source
 from .job_events import JobEventBroker
-from .models import Job, JobStatus, JobType, PageRecord
+from .models import Job, JobStatus, JobType, PageRecord, PageStageStatus
 from .packaging import build_package
 from .text_postprocess import postprocess_text
 
@@ -64,6 +64,9 @@ class InProcessJobRunner:
         # NOT mark them complete on the way out — the dispatcher's completion
         # callback owns that transition.
         self._scheduled_jobs: set[str] = set()
+        # Jobs that parked themselves in awaiting_review; _run_one should NOT
+        # mark them complete — the resume check re-queues them when ready.
+        self._parked_jobs: set[str] = set()
         # Cooperative stop: setting this causes `run_forever` to exit between
         # poll iterations rather than mid-DB-call. The lifespan teardown sets
         # it BEFORE awaiting the runner task to avoid a SQLite-level segfault
@@ -157,6 +160,7 @@ class InProcessJobRunner:
         behind them. Returns the count of jobs that started in this call
         (settles only once they all complete).
         """
+        await self._check_awaiting_review()
         jobs = await self._find_queued()
         if not jobs:
             return 0
@@ -175,6 +179,19 @@ class InProcessJobRunner:
 
         await asyncio.gather(*(_bounded(j) for j in slated))
         return len(slated)
+
+    async def _check_awaiting_review(self) -> None:
+        """Re-queue any parked build_package jobs whose pages are all reviewed."""
+        for owner_id in await _distinct_owner_ids(self._db):
+            for job in await self._db.list_recent_jobs(owner_id, 200):
+                if job.status != JobStatus.awaiting_review:
+                    continue
+                if job.type != JobType.build_package:
+                    continue
+                if await _all_pages_reviewed(self._db, job.project_id):
+                    requeued = job.model_copy(update={"status": JobStatus.queued})
+                    await self._db.put_job(requeued)
+                    log.info("re-queued awaiting_review job %s (all pages reviewed)", job.id)
 
     async def _find_queued(self) -> list[Job]:
         # The current SqliteDatabase only exposes recent-jobs by owner_id; we
@@ -216,6 +233,12 @@ class InProcessJobRunner:
         # complete transition — the dispatcher's completion callback owns it.
         if job.id in self._scheduled_jobs:
             self._scheduled_jobs.discard(job.id)
+            return
+
+        # If the handler parked the job in awaiting_review, skip complete —
+        # the resume check will re-queue it when all pages are reviewed.
+        if job.id in self._parked_jobs:
+            self._parked_jobs.discard(job.id)
             return
 
         # Re-read so we preserve progress writes the handler made via _update_progress.
@@ -347,6 +370,14 @@ async def _handle_build_package(runner: InProcessJobRunner, job: Job) -> None:
     project = await runner._db.get_project(job.project_id)
     if project is None:
         raise FileNotFoundError(f"project {job.project_id} not found")
+
+    if not await _all_pages_reviewed(runner._db, job.project_id):
+        parked = job.model_copy(update={"status": JobStatus.awaiting_review})
+        await runner._db.put_job(parked)
+        await runner._emit(parked)
+        runner._parked_jobs.add(job.id)
+        return
+
     pages, _, _ = await runner._db.list_pages(job.project_id, None, 1_000_000)
     result = await build_package(project=project, pages=pages, storage=runner._storage)
     await runner._update_progress(
@@ -764,3 +795,15 @@ async def _distinct_owner_ids(db: IDatabase) -> list[str]:
     if callable(fn):
         return list(await fn())
     return ["default"]
+
+
+async def _all_pages_reviewed(db: IDatabase, project_id: str) -> bool:
+    """True when every non-ignored page has a clean text_review stage row."""
+    pages, _, _ = await db.list_pages(project_id, None, 1_000_000)
+    proof_pages = [p for p in pages if not p.ignore]
+    if not proof_pages:
+        return True
+    proof_page_ids = {f"{p.idx0:04d}" for p in proof_pages}
+    clean_stages = await db.list_page_stages_by_status(project_id, PageStageStatus.clean)
+    reviewed_ids = {s.page_id for s in clean_stages if s.stage_id == "text_review"}
+    return proof_page_ids <= reviewed_ids

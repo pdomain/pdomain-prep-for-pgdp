@@ -37,7 +37,7 @@ def _wait_for_job(client: TestClient, job_id: str, timeout: float = 5.0) -> str:
     while time.time() < deadline:
         r = client.get(f"/api/data/jobs/{job_id}")
         s = r.json()["status"]
-        if s in {"complete", "error", "cancelled"}:
+        if s in {"complete", "error", "cancelled", "awaiting_review"}:
             return s
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} did not complete within {timeout}s")
@@ -83,15 +83,14 @@ def test_ingest_then_assign_prefixes_then_package(client: TestClient) -> None:
     assert by_idx[1]["prefix"].startswith("p")
     assert by_idx[2]["prefix"].startswith("p")
 
-    # Submit a build_package job — proves the runner picks up CPU-only handlers.
+    # Submit a build_package job — proves the runner picks up the handler.
+    # Pages have no text_review=clean rows, so the job parks in awaiting_review.
     pkg = client.post(
         "/api/gpu/jobs",
         json={"project_id": project_id, "job_type": "build_package"},
     )
     assert pkg.status_code == 202
-    assert _wait_for_job(client, pkg.json()["job_id"]) == "complete"
+    assert _wait_for_job(client, pkg.json()["job_id"]) == "awaiting_review"
 
-    # The zip exists in storage even though no proofing images were written —
-    # build_package writes a manifest-only zip in that case.
     pages = client.get(f"/api/data/projects/{project_id}/pages").json()["pages"]
     assert len(pages) == 3
