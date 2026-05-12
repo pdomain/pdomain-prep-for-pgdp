@@ -1115,7 +1115,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "unzip" | "thumbnails" | "batch_process_pages" | "batch_ocr" | "batch_text_postprocess" | "batch_extract_illustrations" | "build_package" | "run_page_stage";
+        JobType: "unzip" | "thumbnails" | "batch_process_pages" | "batch_ocr" | "batch_text_postprocess" | "batch_extract_illustrations" | "build_package" | "run_page_stage" | "project_run_dirty" | "project_run_stage_all_pages";
         /** ListPagesResponse */
         ListPagesResponse: {
             /** Pages */

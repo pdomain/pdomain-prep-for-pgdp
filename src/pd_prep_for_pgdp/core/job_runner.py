@@ -578,6 +578,122 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
     )
 
 
+async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> None:
+    """Fan-out: run every dirty/not-run stage on every page (M5 §Decision #1).
+
+    Payload keys:
+      - ``data_root``: filesystem root for stage artifacts (required).
+      - ``stage_filter``: optional stage_id — restricts both page selection
+        and stage execution to this one stage.
+      - ``device``: ``"cpu"`` (default) or ``"cuda"``.
+
+    Creates one child job row per page-with-work; runs stages inline and
+    marks children complete/error.  Parent progress: current = pages done,
+    total = pages with dirty stages.
+    """
+    from pathlib import Path
+
+    from .models import PAGE_STAGE_IDS, PageStageStatus
+    from .pipeline.stage_runner import run_stage
+
+    stage_filter: str | None = job.payload.get("stage_filter")
+    data_root = Path(job.payload.get("data_root", "."))
+    device: str = job.payload.get("device", "cpu")
+
+    project = await runner._db.get_project(job.project_id)
+    if project is None:
+        raise FileNotFoundError(f"project {job.project_id!r} not found")
+
+    pages, _, _ = await runner._db.list_pages(job.project_id, None, 1_000_000)
+
+    # Collect pages that have at least one dirty/not-run stage (honouring filter).
+    dirty_statuses = {PageStageStatus.dirty, PageStageStatus.not_run}
+    pages_with_work: list[tuple[str, list[str], str | None]] = []
+
+    for page in pages:
+        if page.ignore:
+            continue
+        page_id = f"{page.idx0:04d}"
+        rows = await runner._db.list_page_stages_for_page(job.project_id, page_id)
+        stage_ids = [
+            r.stage_id
+            for r in rows
+            if r.status in dirty_statuses and (stage_filter is None or r.stage_id == stage_filter)
+        ]
+        if stage_ids:
+            pages_with_work.append((page_id, stage_ids, page.source_key))
+
+    total = len(pages_with_work)
+    job = await runner._update_progress(job, current=0, total=total, message=f"dispatching {total} pages")
+
+    for i, (page_id, stage_ids, page_source_key) in enumerate(pages_with_work, start=1):
+        child = Job(
+            id=uuid.uuid4().hex,
+            project_id=job.project_id,
+            owner_id=job.owner_id,
+            type=JobType.run_page_stage,
+            status=JobStatus.running,
+            started_at=datetime.now(UTC),
+            payload={
+                "parent_job_id": job.id,
+                "page_id": page_id,
+                "stage_ids": stage_ids,
+                "data_root": str(data_root),
+            },
+        )
+        await runner._db.put_job(child)
+
+        # Run dirty stages in canonical DAG order.
+        ordered = [sid for sid in PAGE_STAGE_IDS if sid in stage_ids]
+        child_ok = True
+        for stage_id in ordered:
+            try:
+                await run_stage(
+                    data_root=data_root,
+                    database=runner._db,
+                    project_id=job.project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    device=device,
+                    storage=runner._storage,
+                    page_source_key=page_source_key,
+                )
+            except Exception:
+                log.warning("page %s stage %s failed in project_run_dirty", page_id, stage_id)
+                child_ok = False
+
+        child_done = child.model_copy(
+            update={
+                "status": JobStatus.complete if child_ok else JobStatus.error,
+                "completed_at": datetime.now(UTC),
+            }
+        )
+        await runner._db.put_job(child_done)
+
+        job = await runner._update_progress(
+            job,
+            current=i,
+            total=total,
+            message=f"completed {i}/{total} pages",
+        )
+
+
+async def _handle_project_run_stage_all_pages(runner: InProcessJobRunner, job: Job) -> None:
+    """Run one specific stage on every page that needs it (M5 §Decision #1).
+
+    Payload keys:
+      - ``data_root``: filesystem root for stage artifacts (required).
+      - ``stage_id``: the stage to run on all dirty pages (required).
+      - ``device``: ``"cpu"`` (default) or ``"cuda"``.
+
+    Delegates to ``_handle_project_run_dirty`` with ``stage_filter`` set to
+    the requested ``stage_id``.
+    """
+    stage_id: str = job.payload["stage_id"]
+    delegated = job.model_copy(update={"payload": {**job.payload, "stage_filter": stage_id}})
+    await _handle_project_run_dirty(runner, delegated)
+
+
 _HANDLERS = {
     JobType.unzip: _handle_unzip,
     JobType.thumbnails: _handle_thumbnails,
@@ -587,6 +703,8 @@ _HANDLERS = {
     JobType.batch_process_pages: _handle_batch_process_pages,
     JobType.batch_ocr: _handle_batch_ocr,
     JobType.run_page_stage: _handle_run_page_stage,
+    JobType.project_run_dirty: _handle_project_run_dirty,
+    JobType.project_run_stage_all_pages: _handle_project_run_stage_all_pages,
 }
 
 

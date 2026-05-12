@@ -3131,7 +3131,9 @@
           "batch_text_postprocess",
           "batch_extract_illustrations",
           "build_package",
-          "run_page_stage"
+          "run_page_stage",
+          "project_run_dirty",
+          "project_run_stage_all_pages"
         ],
         "title": "JobType"
       },
