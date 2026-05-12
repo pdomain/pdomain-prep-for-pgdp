@@ -44,6 +44,10 @@ def get_job_events(request: Request):  # type: ignore[no-untyped-def]
     return request.app.state.job_events
 
 
+def get_stage_events(request: Request):  # type: ignore[no-untyped-def]
+    return request.app.state.stage_events
+
+
 def get_settings(request: Request) -> Settings:
     """Read-only access to the Settings instance for routes that need
     `data_root` (the on-disk artifact root) — e.g. the per-page stage runner."""
