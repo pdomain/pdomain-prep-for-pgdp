@@ -28,6 +28,7 @@ type PageConfigOverrides = components["schemas"]["PageConfigOverrides-Input"];
 type UpdatePageRequest = components["schemas"]["UpdatePageRequest"];
 import { useJobProgress } from "../hooks/useJobProgress";
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
+import { ArtifactViewer } from "../components/ArtifactViewer";
 import { StageChainRail } from "../components/StageChainRail";
 
 interface ProcessPageResponse {
@@ -280,12 +281,19 @@ export function PageWorkbenchPage() {
         )}
 
         {/* M3 — polished stage-chain rail. Clicking a clean/dirty chip
-            sets selectedStageId for the artifact viewer (sibling M3 chores). */}
+            sets selectedStageId for the artifact viewer below. */}
         <StageChainRail
           projectId={projectId}
           idx0={idx0}
           selectedStageId={selectedStageId}
           onStageSelect={setSelectedStageId}
+        />
+
+        {/* M3 — side-by-side artifact viewer (Stage + Compare selectors). */}
+        <ArtifactViewer
+          projectId={projectId}
+          idx0={idx0}
+          selectedStageId={selectedStageId}
         />
 
         <ModeToolbar mode={editMode} onChange={setEditMode} />
