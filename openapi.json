@@ -1002,6 +1002,61 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Unsplit Page",
+        "description": "Reverse a split: delete all sibling child pages and return the parent.\n\nSpec: docs/specs/pipeline-task-model.md \u00a7\"Splits as sibling pages (Q6)\".\nAfter this call:\n- All sibling pages (same parent_page_id) are deleted from the DB.\n- Their page_stages rows are deleted, making any on-disk artifacts\n  orphans that ``pgdp-prep reindex --heal`` will quarantine.\n- The parent page is unchanged and visible in list_pages again.\n- The parent's own page_stages rows are NOT touched (per spec \u00a7\"Reverse split\").",
+        "operationId": "unsplit_page",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/data/projects/{project_id}/pages/{idx0}/stages": {

@@ -505,6 +505,54 @@ async def split_page(
     return SplitPageResponse(children=children)
 
 
+# ─── Unsplit: DELETE /pages/{idx0}/split ────────────────────────────────────
+
+
+@router.delete(
+    "/projects/{project_id}/pages/{idx0}/split",
+    response_model=PageRecord,
+    operation_id="unsplit_page",
+)
+async def unsplit_page(
+    project_id: str,
+    idx0: int,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+) -> PageRecord:
+    """Reverse a split: delete all sibling child pages and return the parent.
+
+    Spec: docs/specs/pipeline-task-model.md §"Splits as sibling pages (Q6)".
+    After this call:
+    - All sibling pages (same parent_page_id) are deleted from the DB.
+    - Their page_stages rows are deleted, making any on-disk artifacts
+      orphans that ``pgdp-prep reindex --heal`` will quarantine.
+    - The parent page is unchanged and visible in list_pages again.
+    - The parent's own page_stages rows are NOT touched (per spec §"Reverse split").
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+    page = await db.get_page(project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    if page.parent_page_id is None:
+        raise HTTPException(422, "page is not a split child")
+
+    parent_page_id = page.parent_page_id
+    parent_idx0 = int(parent_page_id)
+    parent = await db.get_page(project_id, parent_idx0)
+    if parent is None:
+        raise HTTPException(404, "parent page not found")
+
+    siblings = await db.list_pages_by_parent_id(project_id, parent_page_id)
+    for sibling in siblings:
+        sibling_page_id = _page_id_for_idx0(sibling.idx0)
+        await db.delete_page_stages_for_page(project_id, sibling_page_id)
+        await db.delete_page(project_id, sibling.idx0)
+
+    return parent
+
+
 # ─── Per-page DAG stages (M1 §C) ─────────────────────────────────────────────
 
 

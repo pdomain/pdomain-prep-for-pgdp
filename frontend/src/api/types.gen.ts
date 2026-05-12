@@ -285,7 +285,19 @@ export interface paths {
          *     first access (same contract as root pages).
          */
         post: operations["split_page"];
-        delete?: never;
+        /**
+         * Unsplit Page
+         * @description Reverse a split: delete all sibling child pages and return the parent.
+         *
+         *     Spec: docs/specs/pipeline-task-model.md §"Splits as sibling pages (Q6)".
+         *     After this call:
+         *     - All sibling pages (same parent_page_id) are deleted from the DB.
+         *     - Their page_stages rows are deleted, making any on-disk artifacts
+         *       orphans that ``pgdp-prep reindex --heal`` will quarantine.
+         *     - The parent page is unchanged and visible in list_pages again.
+         *     - The parent's own page_stages rows are NOT touched (per spec §"Reverse split").
+         */
+        delete: operations["unsplit_page"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2496,6 +2508,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SplitPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsplit_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageRecord"];
                 };
             };
             /** @description Validation Error */

@@ -279,6 +279,34 @@ class SqliteDatabase:
 
         await self._run(_go)
 
+    async def delete_page(self, project_id: str, idx0: int) -> None:
+        def _go() -> None:
+            with self._cursor() as cur:
+                cur.execute(
+                    "DELETE FROM pages WHERE project_id=? AND idx0=?",
+                    (project_id, idx0),
+                )
+
+        await self._run(_go)
+
+    async def list_pages_by_parent_id(
+        self,
+        project_id: str,
+        parent_page_id: str,
+    ) -> list[PageRecord]:
+        """Return all pages in the project whose parent_page_id matches."""
+
+        def _go() -> list[PageRecord]:
+            with self._cursor() as cur:
+                rows = cur.execute(
+                    "SELECT body FROM pages WHERE project_id=? ORDER BY idx0",
+                    (project_id,),
+                ).fetchall()
+            pages = [PageRecord.model_validate_json(r[0]) for r in rows]
+            return [p for p in pages if p.parent_page_id == parent_page_id]
+
+        return await self._run(_go)
+
     # ── Jobs ────────────────────────────────────────────────────────────────
 
     async def get_job(self, job_id: str) -> Job | None:
