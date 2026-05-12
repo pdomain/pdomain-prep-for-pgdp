@@ -75,6 +75,17 @@ class Settings(BaseSettings):
     matches the test-suite default and avoids the fork overhead on tiny
     inputs."""
 
+    # ── Deferred stage-write executor (Q8/Q9) ────────────────────────────────
+    stage_write_pool_size: int | None = None
+    """Thread-pool size for the deferred stage-write executor.
+
+    None = ``min(os.cpu_count(), 4)``. Override: ``PGDP_STAGE_WRITE_POOL_SIZE``."""
+
+    stage_write_queue_cap: int | None = None
+    """Queue capacity for the deferred stage-write executor (outstanding tasks).
+
+    None = ``4 x resolved pool_size``. Override: ``PGDP_STAGE_WRITE_QUEUE_CAP``."""
+
     # ── Mode flag (for shared GPU worker container) ──────────────────────────
     mode: Literal["full", "gpu_worker_only"] = "full"
 

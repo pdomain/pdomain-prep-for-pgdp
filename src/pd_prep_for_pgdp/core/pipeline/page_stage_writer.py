@@ -94,6 +94,47 @@ class StageArtifactWriteError(RuntimeError):
     """
 
 
+def write_artifact_file_sync(target_path: Path, artifact_bytes: bytes) -> None:
+    """Write artifact bytes to disk atomically using tmp + fsync + rename.
+
+    File-only counterpart to :func:`commit_stage_artifact` — does NOT touch
+    the DB. Used by the deferred-write executor: the DB row is updated
+    optimistically by the runner before submitting this to the thread pool;
+    if this raises, the runner's ``on_failure`` callback flips the row to
+    ``failed`` (Q9).
+
+    Raises :exc:`StageArtifactWriteError` on any filesystem failure.
+    """
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_uuid = uuid.uuid4().hex
+    tmp_path = target_path.with_name(f"{target_path.name}.tmp-{tmp_uuid}")
+
+    try:
+        fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        try:
+            with os.fdopen(fd, "wb") as fp:
+                fp.write(artifact_bytes)
+                fp.flush()
+                os.fsync(fp.fileno())
+        except BaseException:
+            raise
+    except BaseException as exc:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        raise StageArtifactWriteError(
+            f"deferred write failed (tmp write to {target_path.name!r}): {exc!r}"
+        ) from exc
+
+    try:
+        os.replace(str(tmp_path), str(target_path))
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        raise StageArtifactWriteError(
+            f"deferred write failed (rename to {target_path.name!r}): {exc!r}"
+        ) from exc
+
+
 def _ext_for_stage(stage_id: str) -> str:
     """Resolve the canonical file extension for `stage_id`'s output, or raise.
 
