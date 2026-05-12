@@ -68,6 +68,7 @@ import numpy as np
 from ...adapters.database.base import IDatabase
 from ...adapters.storage.base import IStorage
 from ..models import PageStageState, PageStageStatus
+from ..stage_events import StageEventBroker, stage_events_key
 from . import stage_dag as _stage_dag_module
 from .page_stage_writer import (
     COMPOUND_OUTPUT_TYPES,
@@ -97,6 +98,20 @@ _IMAGE_OUTPUT_TYPES: frozenset[str] = frozenset({"image", "gray", "binary", "ima
 _PASSTHROUGH_BYTES_OUTPUT_TYPES: frozenset[str] = frozenset({"jpeg_bytes"})
 
 log = logging.getLogger(__name__)
+
+
+async def _emit(
+    broker: StageEventBroker | None,
+    project_id: str,
+    page_id: str,
+    event_type: str,
+    stage_id: str,
+    status: str,
+) -> None:
+    if broker is None:
+        return
+    key = stage_events_key(project_id, page_id)
+    await broker.publish(key, {"type": event_type, "stage_id": stage_id, "status": status})
 
 
 # ─── Typed exceptions ───────────────────────────────────────────────────────
@@ -580,6 +595,7 @@ async def run_stage(
     storage: IStorage | None = None,
     page_source_key: str | None = None,
     write_executor: StageWriteExecutor | None = None,
+    stage_events: StageEventBroker | None = None,
 ) -> PageStageState:
     """Run one stage on one page. Dual-writes its artifact, then cascades
     dirty downstream.
@@ -657,6 +673,8 @@ async def run_stage(
         page_id=page_id,
         stage_id=stage_id,
     )
+    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "running")
+    await _emit(stage_events, project_id, page_id, "stage-progress", stage_id, "running")
 
     # Resolve per-page config. Reads the latest page + project + system rows
     # from DB at run time so config changes between request and execution are
@@ -824,6 +842,7 @@ async def run_stage(
             stage_id=stage_id,
             error_message=str(exc),
         )
+        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
         raise StageRunFailed(str(exc)) from exc
     except StageArtifactWriteError as exc:
         await _mark_failed(
@@ -833,6 +852,7 @@ async def run_stage(
             stage_id=stage_id,
             error_message=f"dual-write failed: {exc}",
         )
+        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
         raise StageRunFailed(f"dual-write failed for {stage_id!r}: {exc}") from exc
     except StageRunFailed:
         # Already shaped — re-raise as-is.
@@ -845,6 +865,7 @@ async def run_stage(
             stage_id=stage_id,
             error_message=f"{type(exc).__name__}: {exc}",
         )
+        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
         raise StageRunFailed(f"stage {stage_id!r} impl raised {type(exc).__name__}: {exc}") from exc
 
     # Step 8a: if auto_detect_attrs just ran, mark not-applicable stages based
@@ -860,12 +881,21 @@ async def run_stage(
                 stage_ids=na_ids,
             )
 
-    # Step 8b: cascade dirty.
+    # Step 8b: cascade dirty — emit stage-status events for all descendants
+    # that the cascade will mark dirty. The SSE subscribers refetch the full
+    # stage list on any event, so emitting the full descendant set is correct
+    # even if some rows were already dirty or not-run.
+    descendant_ids = compute_dirty_descendants(stage_id)
     await _cascade_dirty(
         database=database,
         project_id=project_id,
         page_id=page_id,
         stage_id=stage_id,
     )
+    for desc_id in descendant_ids:
+        await _emit(stage_events, project_id, page_id, "stage-status", desc_id, "dirty")
+
+    # Emit clean event for the completed stage after the cascade.
+    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean")
 
     return committed

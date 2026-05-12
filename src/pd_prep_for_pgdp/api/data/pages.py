@@ -588,6 +588,7 @@ async def run_page_stage(
     db: IDatabase = Depends(get_database),
     storage: IStorage = Depends(get_storage),
     settings: Settings = Depends(get_settings),
+    stage_events=Depends(get_stage_events),
 ) -> Job | PageStageState:
     """Run one stage on one page synchronously and return the new row.
 
@@ -665,6 +666,7 @@ async def run_page_stage(
             # has them when it needs them (other stages ignore both).
             storage=storage,
             page_source_key=page.source_key,
+            stage_events=stage_events,
         )
     except StageDependenciesNotMet as exc:
         raise HTTPException(409, str(exc)) from exc
