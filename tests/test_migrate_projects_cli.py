@@ -224,7 +224,10 @@ async def test_force_rebuild_summary_line(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_force_rebuild_page_idx_narrows(tmp_path: Path) -> None:
     """--page-idx limits rebuild to one page; other pages untouched."""
-    db, data_root = await _seed_db(tmp_path, page_count=2)
+    # Use pending (non-legacy) status so stage rows start as not_run.
+    # --force-rebuild --page-idx 0 must flip page 0 -> dirty while leaving
+    # page 1 at not_run, proving the page-idx filter is respected.
+    db, data_root = await _seed_db(tmp_path, page_count=2, processing_status=PageProcessingStatus.pending)
     await db.close()
 
     import pd_prep_for_pgdp.cli.migrate_projects as m
