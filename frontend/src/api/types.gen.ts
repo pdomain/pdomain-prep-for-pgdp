@@ -444,6 +444,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Page Stage Events
+         * @description SSE — push stage-status and stage-progress events for one page.
+         *
+         *     Subscribes to the in-process `StageEventBroker` and forwards events as
+         *     `text/event-stream` frames. The first frame is a snapshot of current stage
+         *     states from the database so a late subscriber sees state immediately;
+         *     subsequent frames arrive from the broker (zero-poll).
+         *
+         *     Channel scope: per-page (M3). Project-level subscription is deferred to M5.
+         */
+        get: operations["stream_page_stage_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/system/defaults": {
         parameters: {
             query?: never;
@@ -2717,6 +2744,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    stream_page_stage_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

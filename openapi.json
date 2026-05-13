@@ -1382,6 +1382,61 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/events": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Stream Page Stage Events",
+        "description": "SSE \u2014 push stage-status and stage-progress events for one page.\n\nSubscribes to the in-process `StageEventBroker` and forwards events as\n`text/event-stream` frames. The first frame is a snapshot of current stage\nstates from the database so a late subscriber sees state immediately;\nsubsequent frames arrive from the broker (zero-poll).\n\nChannel scope: per-page (M3). Project-level subscription is deferred to M5.",
+        "operationId": "stream_page_stage_events",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/system/defaults": {
       "get": {
         "tags": [
