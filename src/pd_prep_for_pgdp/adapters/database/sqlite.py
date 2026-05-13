@@ -109,7 +109,7 @@ class SqliteDatabase:
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
     async def initialize(self) -> None:
-        await anyio.to_thread.run_sync(self._initialize_sync, abandon_on_cancel=False)
+        await anyio.to_thread.run_sync(self._initialize_sync)
 
     def _initialize_sync(self) -> None:
         if not self._memory:
@@ -120,9 +120,16 @@ class SqliteDatabase:
         self._conn.commit()
 
     async def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        if self._conn is None:
+            return
+        # Hold _write_lock during close — racing an in-flight query segfaults on Py 3.13.
+        await anyio.to_thread.run_sync(self._close_sync)
+
+    def _close_sync(self) -> None:
+        with self._write_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     @contextmanager
     def _cursor(self):
@@ -136,7 +143,7 @@ class SqliteDatabase:
                 cur.close()
 
     async def _run(self, fn, *args):  # type: ignore[no-untyped-def]
-        return await anyio.to_thread.run_sync(lambda: fn(*args), abandon_on_cancel=False)
+        return await anyio.to_thread.run_sync(lambda: fn(*args))
 
     # ── System defaults ─────────────────────────────────────────────────────
 
