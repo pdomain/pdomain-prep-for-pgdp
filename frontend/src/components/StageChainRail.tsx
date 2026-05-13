@@ -19,6 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
+import { useStageEvents } from "../hooks/useStageEvents";
 
 type PageStageState = components["schemas"]["PageStageState"];
 type PageStageStatus = components["schemas"]["PageStageStatus"];
@@ -79,19 +80,18 @@ export function StageChainRail({
   selectedStageId,
   onStageSelect,
 }: Props) {
-  // List all 22 stage rows for this page. Poll every 2s while any row is
-  // `running` so chip transitions show without manual refresh.
+  // Subscribe to the per-page SSE stream. Events seed and patch the query
+  // cache directly, so the useQuery below gets live updates without polling.
+  useStageEvents(projectId, idx0);
+
+  // Initial data load and fallback source of truth for the chip rail.
+  // refetchInterval is omitted — SSE pushes status changes in real time.
   const stages = useQuery({
     queryKey: ["page-stages", projectId, idx0],
     queryFn: () =>
       api.get<PageStageState[]>(
         `/api/data/projects/${projectId}/pages/${idx0}/stages`,
       ),
-    refetchInterval: (q) => {
-      const data = q.state.data as PageStageState[] | undefined;
-      const anyRunning = (data ?? []).some((row) => row.status === "running");
-      return anyRunning ? 2000 : false;
-    },
   });
 
   if (stages.isPending) {
