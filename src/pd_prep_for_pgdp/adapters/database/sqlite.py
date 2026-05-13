@@ -17,6 +17,7 @@ import anyio.to_thread
 from ...core.models import (
     PAGE_STAGE_IDS,
     Job,
+    PageProcessingStatus,
     PageRecord,
     PageStageState,
     PageStageStatus,
@@ -121,6 +122,26 @@ CREATE VIRTUAL TABLE IF NOT EXISTS page_text_fts USING fts5(
     ocr_text
 );
 """
+
+
+# ─── Legacy migration helpers ───────────────────────────────────────────────────
+
+
+def _initial_stage_status(page: PageRecord) -> str:
+    """Determine initial stage status for lazy-init.
+
+    Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §"Legacy detection".
+    Pre-M1 pages with legacy processing_status values are marked as `dirty`
+    to indicate they need re-running through the new DAG.
+    """
+    legacy_statuses = {
+        PageProcessingStatus.complete,
+        PageProcessingStatus.processing,
+        PageProcessingStatus.error,
+    }
+    if page.processing_status in legacy_statuses:
+        return PageStageStatus.dirty.value
+    return PageStageStatus.not_run.value
 
 
 class SqliteDatabase:
@@ -598,7 +619,7 @@ class SqliteDatabase:
         project_id: str,
         page_id: str,
     ) -> int:
-        """Idempotently insert one ``not-run`` row per canonical stage_id.
+        """Idempotently insert one row per canonical stage_id.
 
         Lazy side of the dual-write reconciliation contract (Q1-followup):
         the first time anyone reads a page's stage state, all 22 rows
@@ -606,9 +627,15 @@ class SqliteDatabase:
         callers race safely — `INSERT OR IGNORE` skips the second
         inserter's row at the composite PK.
 
+        Status is `dirty` for legacy pre-M1 pages (processing_status ∈
+        {complete, processing, error}); `not-run` otherwise.
+
         Returns the number of rows actually inserted (0 if all 22 already
         exist).
         """
+        idx0 = int(page_id)
+        page = await self.get_page(project_id, idx0)
+        initial_status = PageStageStatus.not_run.value if page is None else _initial_stage_status(page)
 
         def _go() -> int:
             with self._cursor() as cur:
@@ -619,7 +646,7 @@ class SqliteDatabase:
                 cur.executemany(
                     "INSERT OR IGNORE INTO page_stages "
                     "(project_id, page_id, stage_id, status, stage_version) "
-                    "VALUES (?, ?, ?, 'not-run', 1)",
+                    f"VALUES (?, ?, ?, '{initial_status}', 1)",
                     [(project_id, page_id, sid) for sid in PAGE_STAGE_IDS],
                 )
                 rows_after = cur.execute(

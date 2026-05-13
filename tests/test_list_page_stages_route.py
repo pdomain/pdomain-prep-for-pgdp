@@ -314,3 +314,231 @@ def test_stale_stage_version_served_as_dirty(
     assert rows_by_id["thumbnail"]["status"] == "dirty", (
         "stale stage_version row must be served as dirty by the GET /stages route"
     )
+
+
+# ─── Legacy migration: M4 lazy detection ──────────────────────────────────────
+
+
+def test_legacy_page_with_complete_status_gets_dirty_stages(tmp_path: Path) -> None:
+    """A pre-M1 page with processing_status=complete must init with dirty stages.
+
+    Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §"Legacy detection".
+    """
+    settings = _settings(tmp_path)
+
+    async def _seed_legacy() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id="legacy",
+                owner_id="default",
+                name="legacy",
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=1,
+                proof_page_count=1,
+                config=ProjectConfig(book_name="legacy", source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix="projects/legacy/",
+            )
+        )
+        await db.put_pages(
+            [
+                PageRecord(
+                    project_id="legacy",
+                    idx0=0,
+                    prefix="p001",
+                    source_stem="src1",
+                    processing_status=PageProcessingStatus.complete,
+                ),
+            ]
+        )
+        await db.close()
+
+    asyncio.run(_seed_legacy())
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.get("/api/data/projects/legacy/pages/0/stages")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 22
+    for row in rows:
+        assert row["status"] == PageStageStatus.dirty.value, (
+            f"legacy page with processing_status=complete must have dirty stages, "
+            f"got {row['status']} for stage {row['stage_id']}"
+        )
+
+
+def test_legacy_page_with_processing_status_gets_dirty_stages(tmp_path: Path) -> None:
+    """A pre-M1 page with processing_status=processing must init with dirty stages."""
+    settings = _settings(tmp_path)
+
+    async def _seed_legacy() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id="legacy",
+                owner_id="default",
+                name="legacy",
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=1,
+                proof_page_count=1,
+                config=ProjectConfig(book_name="legacy", source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix="projects/legacy/",
+            )
+        )
+        await db.put_pages(
+            [
+                PageRecord(
+                    project_id="legacy",
+                    idx0=0,
+                    prefix="p001",
+                    source_stem="src1",
+                    processing_status=PageProcessingStatus.processing,
+                ),
+            ]
+        )
+        await db.close()
+
+    asyncio.run(_seed_legacy())
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.get("/api/data/projects/legacy/pages/0/stages")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 22
+    for row in rows:
+        assert row["status"] == PageStageStatus.dirty.value
+
+
+def test_legacy_page_with_error_status_gets_dirty_stages(tmp_path: Path) -> None:
+    """A pre-M1 page with processing_status=error must init with dirty stages."""
+    settings = _settings(tmp_path)
+
+    async def _seed_legacy() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id="legacy",
+                owner_id="default",
+                name="legacy",
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=1,
+                proof_page_count=1,
+                config=ProjectConfig(book_name="legacy", source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix="projects/legacy/",
+            )
+        )
+        await db.put_pages(
+            [
+                PageRecord(
+                    project_id="legacy",
+                    idx0=0,
+                    prefix="p001",
+                    source_stem="src1",
+                    processing_status=PageProcessingStatus.error,
+                ),
+            ]
+        )
+        await db.close()
+
+    asyncio.run(_seed_legacy())
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.get("/api/data/projects/legacy/pages/0/stages")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 22
+    for row in rows:
+        assert row["status"] == PageStageStatus.dirty.value
+
+
+def test_non_legacy_page_with_pending_status_gets_not_run_stages(
+    seeded_client: tuple[TestClient, Settings],
+) -> None:
+    """A page with processing_status=pending (non-legacy) must init with not-run stages."""
+    client, _ = seeded_client
+    r = client.get("/api/data/projects/m1c/pages/0/stages")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) == 22
+    for row in rows:
+        assert row["status"] == PageStageStatus.not_run.value, (
+            f"non-legacy page with processing_status=pending must have not-run stages, "
+            f"got {row['status']} for stage {row['stage_id']}"
+        )
+
+
+def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
+    """Calling GET /stages twice on a legacy page must not flip status back to not-run."""
+    settings = _settings(tmp_path)
+
+    async def _seed_legacy() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id="legacy",
+                owner_id="default",
+                name="legacy",
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=1,
+                proof_page_count=1,
+                config=ProjectConfig(book_name="legacy", source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix="projects/legacy/",
+            )
+        )
+        await db.put_pages(
+            [
+                PageRecord(
+                    project_id="legacy",
+                    idx0=0,
+                    prefix="p001",
+                    source_stem="src1",
+                    processing_status=PageProcessingStatus.complete,
+                ),
+            ]
+        )
+        await db.close()
+
+    asyncio.run(_seed_legacy())
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r1 = client.get("/api/data/projects/legacy/pages/0/stages")
+        r2 = client.get("/api/data/projects/legacy/pages/0/stages")
+
+    assert r1.status_code == 200 and r2.status_code == 200
+    rows1 = r1.json()
+    rows2 = r2.json()
+
+    # All rows in both responses should be dirty
+    for row in rows1:
+        assert row["status"] == PageStageStatus.dirty.value
+    for row in rows2:
+        assert row["status"] == PageStageStatus.dirty.value
+
+    # Verify row identities match (idempotent, no duplicates)
+    keys1 = sorted((r["stage_id"], r["status"]) for r in rows1)
+    keys2 = sorted((r["stage_id"], r["status"]) for r in rows2)
+    assert keys1 == keys2
