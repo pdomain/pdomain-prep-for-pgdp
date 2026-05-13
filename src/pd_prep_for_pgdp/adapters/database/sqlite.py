@@ -109,7 +109,7 @@ class SqliteDatabase:
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
     async def initialize(self) -> None:
-        await anyio.to_thread.run_sync(self._initialize_sync)
+        await anyio.to_thread.run_sync(self._initialize_sync, abandon_on_cancel=False)
 
     def _initialize_sync(self) -> None:
         if not self._memory:
@@ -136,7 +136,7 @@ class SqliteDatabase:
                 cur.close()
 
     async def _run(self, fn, *args):  # type: ignore[no-untyped-def]
-        return await anyio.to_thread.run_sync(lambda: fn(*args))
+        return await anyio.to_thread.run_sync(lambda: fn(*args), abandon_on_cancel=False)
 
     # ── System defaults ─────────────────────────────────────────────────────
 
