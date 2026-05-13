@@ -271,7 +271,7 @@ clean: ## Clean cache + build artifacts
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf dist/ src/pd_prep_for_pgdp/static/ frontend/dist/ 2>/dev/null || true
 
-ci: setup frontend-install pre-commit-check frontend-build test frontend-lint frontend-format-check frontend-test ## Full CI pipeline
+ci: setup frontend-install pre-commit-check frontend-build test frontend-format-check frontend-lint frontend-test ## Full CI pipeline
 
 # ---------------------------------------------------------------------------
 # Local editable workflow (requires ../pd-book-tools sibling checkout)
