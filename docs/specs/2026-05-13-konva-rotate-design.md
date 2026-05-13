@@ -32,6 +32,9 @@ break the existing illustration-region-draw or word-bbox-select interactions.
   plumbing (spec `#81` / `#87`).
 - Flip is deferred: too much scope for a rare use case, and `manual_deskew_pre`
   does not currently have a flip impl in the stage registry.
+- Discrete 90° CW / 90° CCW / 180° orientation buttons must be provided for
+  plates printed sideways or upside-down in a book — free-rotate alone is
+  insufficiently precise for this coarse-correction use case.
 
 ## Decision
 
@@ -69,12 +72,25 @@ If `manual_deskew_pre` is currently `clean` and already has an angle, entering
 rotate mode pre-fills `draftAngle` from the stored config value so the user
 sees the current angle.
 
+### Discrete orientation buttons
+
+Three buttons in the rotate-mode toolbar: **90° CW**, **90° CCW**, **180°**.
+Each button:
+
+1. Adds ±90° or 180° to the current `draftAngle` (wraps within ±180°).
+2. Immediately triggers the Apply path (PATCH config + POST re-run) without
+   requiring a separate "Apply" click — orientation corrections are deliberate,
+   not exploratory.
+
+This covers the common case of a full-page plate scanned sideways or
+upside-down, where free-rotate is unnecessarily imprecise.
+
 ### Angle range and precision
 
 - Free-rotate (Konva default): any angle ±180°.
 - Displayed and stored to one decimal place (e.g. `−3.5`).
-- No snap-to-grid — this is a fine-correction tool. Discrete 90° buttons are
-  not needed (scanner orientation is handled by auto-deskew).
+- No snap-to-grid — free-rotate is a fine-correction tool. Coarse corrections
+  use the discrete orientation buttons.
 
 ## Contract / Acceptance
 
@@ -91,15 +107,21 @@ sees the current angle.
 - [ ] Entering rotate mode on a page that already has a stored angle pre-fills
   the readout with the stored value.
 - [ ] Flip affordance is absent from the UI (scope deferred).
+- [ ] 90° CW, 90° CCW, 180° buttons appear in the rotate-mode toolbar.
+- [ ] Each discrete button immediately fires PATCH config + POST re-run (no
+  separate "Apply" step).
+- [ ] Discrete buttons update `draftAngle` by ±90° or 180°, wrapping within
+  ±180°.
 - [ ] Vitest: toolbar button toggles mode; Apply fires PATCH + POST; Escape
-  cancels.
+  cancels; discrete buttons fire immediately.
 - [ ] Existing word-bbox and illustration-region tests are unaffected.
 
 ## Trade-offs considered
 
-**Discrete 90°/180° buttons instead of free-rotate.** Easier to implement (no
-Konva Transformer needed) but insufficient for the stated use case (correcting
-skew, not fixing orientation). Free-rotate is the right primitive.
+**Discrete 90°/180° buttons vs free-rotate.** Both are needed: free-rotate for
+fine skew correction (sub-5° scanner tilt), discrete buttons for coarse
+orientation correction (plates printed sideways or upside-down in a book).
+The two affordances are complementary, not alternatives.
 
 **View-state only (no persistence).** Simpler — no config write, no re-run.
 But the correction is lost on page reload, making it useless for the actual
