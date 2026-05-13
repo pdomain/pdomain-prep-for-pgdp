@@ -23,6 +23,20 @@ from ...core.models import (
     Project,
     SystemDefaults,
 )
+from .base import SearchResult
+
+_LONG_S = chr(0x17F)  # U+017F LATIN SMALL LETTER LONG S
+
+
+def _normalize_for_fts(text: str) -> str:
+    """Expand long-s (U+017F) before indexing or querying."""
+    return text.replace(_LONG_S, "s")
+
+
+def _normalize_fts_score(rank: float) -> float:
+    """Map FTS5 BM25 rank (≤0, more negative = better) to [0.0, 1.0]."""
+    return 1.0 / (1.0 + abs(rank))
+
 
 # Inline string-list literal of the 22 canonical stage IDs (built once at
 # import time from `PAGE_STAGE_IDS`) so the CHECK constraint stays
@@ -88,6 +102,24 @@ CREATE INDEX IF NOT EXISTS page_stages_proj_status
     ON page_stages(project_id, status);
 CREATE INDEX IF NOT EXISTS page_stages_proj_page
     ON page_stages(project_id, page_id);
+
+-- Full-text search tables. Spec: docs/specs/2026-05-11-search-across-pages-design.md §Decision.
+-- `page_text` is authoritative; `page_text_fts` is the FTS5 index (self-contained copy).
+-- Upsert: DELETE old FTS row + INSERT new FTS row + INSERT OR REPLACE page_text.
+CREATE TABLE IF NOT EXISTS page_text (
+    project_id TEXT NOT NULL,
+    page_id    TEXT NOT NULL,
+    idx0       INTEGER NOT NULL,
+    ocr_text   TEXT NOT NULL,
+    PRIMARY KEY (project_id, page_id)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS page_text_fts USING fts5(
+    page_id    UNINDEXED,
+    project_id UNINDEXED,
+    idx0       UNINDEXED,
+    ocr_text
+);
 """
 
 
@@ -311,6 +343,94 @@ class SqliteDatabase:
                 ).fetchall()
             pages = [PageRecord.model_validate_json(r[0]) for r in rows]
             return [p for p in pages if p.parent_page_id == parent_page_id]
+
+        return await self._run(_go)
+
+    # ── Full-text search ─────────────────────────────────────────────────────
+
+    async def upsert_page_text(
+        self,
+        project_id: str,
+        page_id: str,
+        idx0: int,
+        ocr_text: str,
+    ) -> None:
+        """Upsert one page's OCR text into page_text + page_text_fts atomically.
+
+        Existing FTS entry for this (project_id, page_id) is removed before
+        inserting the new one so re-runs of text_postprocess replace old text.
+        Both the companion table and the FTS virtual table are updated in a
+        single _cursor() transaction.
+        """
+        normalized = _normalize_for_fts(ocr_text)
+
+        def _go() -> None:
+            with self._cursor() as cur:
+                # Remove stale FTS entry (no-op if missing).
+                cur.execute(
+                    "DELETE FROM page_text_fts WHERE page_id=? AND project_id=?",
+                    (page_id, project_id),
+                )
+                # Authoritative companion row (upsert).
+                cur.execute(
+                    "INSERT OR REPLACE INTO page_text "
+                    "(project_id, page_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
+                    (project_id, page_id, idx0, normalized),
+                )
+                # New FTS entry.
+                cur.execute(
+                    "INSERT INTO page_text_fts (page_id, project_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
+                    (page_id, project_id, idx0, normalized),
+                )
+
+        await self._run(_go)
+
+    async def search(
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[SearchResult], int]:
+        """Full-text search across the project's indexed OCR pages.
+
+        Returns (results, total_count). `total_count` is the total number of
+        matching rows (before limit/offset) so callers can render pagination.
+        FTS5 BM25 rank is normalized to [0.0, 1.0] (1.0 = best match).
+        Snippet uses ocr_text column (index 3) with plain markers for now.
+        """
+        normalized_query = _normalize_for_fts(query)
+
+        def _go() -> tuple[list[SearchResult], int]:
+            with self._cursor() as cur:
+                total_row = cur.execute(
+                    "SELECT COUNT(*) FROM page_text_fts WHERE page_text_fts MATCH ? AND project_id=?",
+                    (normalized_query, project_id),
+                ).fetchone()
+                total = int(total_row[0]) if total_row else 0
+
+                rows = cur.execute(
+                    "SELECT page_id, idx0, "
+                    "snippet(page_text_fts, 3, '', '', '...', 15), rank "
+                    "FROM page_text_fts "
+                    "WHERE page_text_fts MATCH ? AND project_id=? "
+                    "ORDER BY rank "
+                    "LIMIT ? OFFSET ?",
+                    (normalized_query, project_id, limit, offset),
+                ).fetchall()
+
+            return (
+                [
+                    SearchResult(
+                        page_id=r[0],
+                        idx0=int(r[1]),
+                        snippet=r[2] or "",
+                        score=_normalize_fts_score(r[3]),
+                    )
+                    for r in rows
+                ],
+                total,
+            )
 
         return await self._run(_go)
 

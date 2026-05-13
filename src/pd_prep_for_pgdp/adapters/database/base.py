@@ -23,22 +23,18 @@ from ...core.models import (
 # ── Search results (M5) ──────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SearchResult:
-    """A single search result from full-text search."""
+    """One hit from a full-text search query.
+
+    `score` is normalized to [0.0, 1.0] (1.0 = best match).
+    `snippet` is a short excerpt with match context from FTS5 snippet().
+    """
 
     page_id: str
     idx0: int
     snippet: str
     score: float
-
-
-@dataclass(frozen=True)
-class SearchResultList:
-    """Search results with pagination metadata."""
-
-    results: list[SearchResult]
-    total_count: int
 
 
 class IDatabase(Protocol):
@@ -107,7 +103,13 @@ class IDatabase(Protocol):
 
     async def list_pages_by_parent_id(self, project_id: str, parent_page_id: str) -> list[PageRecord]: ...
 
-    # ── Search (M5) ──────────────────────────────────────────────────────────
+    # ── Full-text search (FTS5 / tsvector) ───────────────────────────────────
+    async def upsert_page_text(self, project_id: str, page_id: str, idx0: int, ocr_text: str) -> None: ...
+
     async def search(
-        self, project_id: str, query: str, *, limit: int = 20, offset: int = 0
-    ) -> SearchResultList: ...
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[SearchResult], int]: ...

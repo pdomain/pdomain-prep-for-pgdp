@@ -308,6 +308,7 @@ async def commit_stage_artifact(
     content_hash: str | None = None,
     config_hash: str | None = None,
     job_id: str | None = None,
+    idx0: int | None = None,
 ) -> PageStageState:
     """Atomically commit a stage's output artifact + DB row.
 
@@ -411,6 +412,22 @@ async def commit_stage_artifact(
     if prior_snapshot is not None and prior_snapshot.exists():
         with contextlib.suppress(OSError):
             prior_snapshot.unlink()
+
+    # FTS index upsert for text_postprocess (spec §"Index update path").
+    # Requires idx0 to be passed by the caller; skipped silently when absent
+    # (e.g. older call sites not yet updated). The reindex --heal path
+    # back-fills missing entries.
+    if stage_id == "text_postprocess" and idx0 is not None:
+        try:
+            ocr_text = artifact_bytes.decode("utf-8", errors="replace")
+            await database.upsert_page_text(project_id, page_id, idx0, ocr_text)
+        except BaseException:
+            log.warning(
+                "FTS index upsert failed for %s/%s (non-fatal; reindex --heal can repair)",
+                project_id,
+                page_id,
+                exc_info=True,
+            )
 
     # Best-effort thumbnail write (not part of the dual-write contract).
     _write_thumbnail(data_root, project_id, page_id, stage_id, artifact_bytes)

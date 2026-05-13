@@ -21,6 +21,7 @@ from __future__ import annotations
 from psycopg import AsyncConnection
 
 from ...core.models import Job, PageRecord, Project, SystemDefaults
+from .base import SearchResult
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS system_defaults (
@@ -251,3 +252,23 @@ class PostgresDatabase:
             )
             rows = await cur.fetchall()
         return [Job.model_validate_json(r[0]) for r in rows]
+
+    # ── Full-text search (stub — Postgres tsvector implementation deferred) ──
+
+    async def upsert_page_text(
+        self,
+        project_id: str,
+        page_id: str,
+        idx0: int,
+        ocr_text: str,
+    ) -> None:
+        raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
+
+    async def search(
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[SearchResult], int]:
+        raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
