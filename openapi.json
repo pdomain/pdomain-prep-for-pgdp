@@ -1834,6 +1834,49 @@
         }
       }
     },
+    "/api/data/pipeline/stages/{stage_id}/fields": {
+      "get": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Get Stage Fields",
+        "description": "Return the sorted list of PageConfigOverrides field names that stage reads.\n\nBacked by STAGE_CONFIG_FIELDS in stage_runner.py \u2014 the same map that\ncascade_dirty_for_config_change uses. Stages not in the map read no\nper-page config fields; they return an empty list.\n\nStatus codes:\n- 200: known stage_id; body has sorted fields list (may be empty).\n- 422: unknown stage_id (not in PAGE_STAGE_IDS).",
+        "operationId": "get_stage_fields",
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageFieldsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gpu/ingest": {
       "post": {
         "tags": [
@@ -4944,6 +4987,27 @@
           "children"
         ],
         "title": "SplitPageResponse"
+      },
+      "StageFieldsResponse": {
+        "properties": {
+          "stage_id": {
+            "type": "string",
+            "title": "Stage Id"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage_id",
+          "fields"
+        ],
+        "title": "StageFieldsResponse"
       },
       "StepState": {
         "properties": {
