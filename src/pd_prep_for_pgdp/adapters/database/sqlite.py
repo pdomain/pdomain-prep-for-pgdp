@@ -631,7 +631,6 @@ class SqliteDatabase:
         return await self._run(_go)
 
 
-
 def _row_to_page_stage(row: tuple) -> PageStageState:
     """Hydrate a fetched DB row into a PageStageState model.
 
