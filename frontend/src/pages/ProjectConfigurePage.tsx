@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { AwaitingReviewBanner } from "../components/AwaitingReviewBanner";
+import { DiskCostBanner } from "../components/DiskCostBanner";
 import { SourcePreview } from "../components/SourcePreview";
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 import { useJobProgress } from "../hooks/useJobProgress";
@@ -192,6 +193,7 @@ export function ProjectConfigurePage() {
       </header>
 
       <AwaitingReviewBanner projectId={projectId} />
+      <DiskCostBanner project={project.data} />
 
       <BookSettingsAccordion
         projectId={projectId}
