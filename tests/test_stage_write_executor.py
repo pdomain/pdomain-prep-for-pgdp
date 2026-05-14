@@ -1,6 +1,6 @@
-"""Bounded deferred-write executor — issue #60 acceptance tests.
+"""Bounded deferred-write executor — issue #60 / #86 acceptance tests.
 
-Acceptance bullets (from issue body, acceptance JSON was empty):
+Acceptance bullets (original from issue #60):
 
 1. Stage runs submit writes to the executor and advance immediately on the
    in-memory artifact.
@@ -11,11 +11,17 @@ Acceptance bullets (from issue body, acceptance JSON was empty):
 4. Pool/queue size env knobs take effect at startup.
 5. Drop-on-last-consumer keeps peak RAM bounded for a multi-stage DAG run on
    a large page.
+
+Additional bullet from issue #86 (M2 executor integration):
+
+6. Concurrent `run_stage` calls on a page with a small queue cap complete
+   without data loss (all stages written, all DB rows clean).
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 import time
 from pathlib import Path
@@ -370,3 +376,81 @@ def test_large_artifact_dropped_after_all_consumers(tmp_path: Path) -> None:
     gc.collect()
 
     executor.shutdown(wait=False)
+
+
+# ─── Bullet 6 (issue #86): concurrent run_stage calls with small queue cap ───
+
+
+@pytest.mark.asyncio
+async def test_concurrent_run_stage_small_queue_cap_no_data_loss(tmp_path: Path, db: SqliteDatabase) -> None:
+    """Concurrent run_stage calls on independent pages with queue_cap=2.
+
+    Three pages run the same stage chain (manual_deskew_pre → grayscale) with
+    a small queue cap. The executor must not drop any writes; every stage row
+    must be 'clean' and every artifact file must exist on disk when the
+    executor drains.
+
+    This is issue #86 acceptance bullet 5: concurrent run_stage calls on a
+    page with a small queue cap complete without data loss.
+    """
+    project_id = "p-concurrent"
+    page_ids = ["0001", "0002", "0003"]
+    parent_bytes = _checkerboard_bgr_png()
+
+    # Seed manual_deskew_pre as clean on disk for each page.
+    for pid in page_ids:
+        await db.init_page_stages_for_page(project_id, pid)
+        await commit_stage_artifact(
+            data_root=tmp_path,
+            database=db,
+            project_id=project_id,
+            page_id=pid,
+            stage_id="manual_deskew_pre",
+            artifact_bytes=parent_bytes,
+        )
+
+    # Use pool_size=1, queue_cap=2 — tighter than the number of concurrent tasks
+    # so back-pressure kicks in while tasks run concurrently.
+    executor = StageWriteExecutor(pool_size=1, queue_cap=2)
+
+    try:
+        # Run grayscale concurrently on all three pages.
+        results = await asyncio.gather(
+            *[
+                run_stage(
+                    data_root=tmp_path,
+                    database=db,
+                    project_id=project_id,
+                    page_id=pid,
+                    stage_id="grayscale",
+                    write_executor=executor,
+                )
+                for pid in page_ids
+            ]
+        )
+
+        # All three stages must return 'clean' (optimistic DB update).
+        for state in results:
+            assert state.status == PageStageStatus.clean, (
+                f"expected clean, got {state.status} for page {state.page_id}"
+            )
+
+        # Drain the executor (wait for all background file writes).
+        await asyncio.get_event_loop().run_in_executor(None, executor.shutdown)
+
+        # Verify no data loss: every artifact file must exist on disk.
+        for pid in page_ids:
+            artifact_path = stage_artifact_path(tmp_path, project_id, pid, "grayscale")
+            assert artifact_path.exists(), f"artifact missing for page {pid} at {artifact_path}"
+
+        # DB rows must still be 'clean' (no failure callback fired).
+        for pid in page_ids:
+            row = await db.get_page_stage(project_id, pid, "grayscale")
+            assert row is not None
+            assert row.status == PageStageStatus.clean, (
+                f"DB row for page {pid} is {row.status}, expected clean"
+            )
+    finally:
+        # Ensure executor is fully shut down even if the test fails partway.
+        with contextlib.suppress(RuntimeError):
+            executor.shutdown(wait=False)
