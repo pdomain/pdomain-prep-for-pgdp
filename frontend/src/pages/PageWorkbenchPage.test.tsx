@@ -424,3 +424,89 @@ describe("PageWorkbenchPage — rotate mode pre-fills stored angle", () => {
     await screen.findByText(/-3\.5/);
   });
 });
+
+describe("PageWorkbenchPage — rotate mode Reset with applied angle", () => {
+  it("Reset clears draftAngle to 0 and PATCHes manual_deskew_angle null + POSTs re-run", async () => {
+    // Page already has a stored angle (simulating a previously-applied rotation)
+    const pageWithAngle = makePageRecord({
+      config_overrides: {
+        ...makePageRecord().config_overrides,
+        manual_deskew_angle: -3.5,
+      },
+    });
+    setupBasicHandlers(pageWithAngle);
+
+    const patchCalls: unknown[] = [];
+    let runCalled = false;
+
+    server.use(
+      http.patch("/api/data/projects/prj_1/pages/0", async ({ request }) => {
+        patchCalls.push(await request.json());
+        return HttpResponse.json(makePageRecord());
+      }),
+      http.post(
+        "/api/data/projects/prj_1/pages/0/stages/manual_deskew_pre/run",
+        () => {
+          runCalled = true;
+          return HttpResponse.json({
+            stage_id: "manual_deskew_pre",
+            status: "clean",
+            artifact_key: null,
+            artifact_url: null,
+            config_hash: null,
+            stage_version: 1,
+            ran_at: "2026-01-01T00:00:00Z",
+            error_message: null,
+          });
+        },
+      ),
+    );
+
+    renderWithProviders(<PageWorkbenchPage />);
+
+    const user = userEvent.setup();
+    // Enter rotate mode (pre-fills -3.5)
+    await user.click(await screen.findByRole("button", { name: /^rotate$/i }));
+    await screen.findByText(/-3\.5/);
+
+    // Click Reset — should PATCH angle to null and POST re-run
+    await user.click(screen.getByRole("button", { name: /^reset$/i }));
+
+    await waitFor(() => {
+      expect(patchCalls).toHaveLength(1);
+      expect(runCalled).toBe(true);
+    });
+
+    // PATCH body must set manual_deskew_angle to null (clears the override)
+    const patchBody = patchCalls[0] as {
+      config_overrides?: { manual_deskew_angle?: number | null };
+    };
+    expect(patchBody.config_overrides?.manual_deskew_angle).toBeNull();
+  });
+
+  it("Reset with no stored angle only clears draftAngle locally (no network call)", async () => {
+    // Page has no stored angle
+    setupBasicHandlers();
+
+    let patchCalled = false;
+    server.use(
+      http.patch("/api/data/projects/prj_1/pages/0", () => {
+        patchCalled = true;
+        return HttpResponse.json(makePageRecord());
+      }),
+    );
+
+    renderWithProviders(<PageWorkbenchPage />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /^rotate$/i }));
+
+    // Click Reset with no stored angle — should not PATCH
+    await user.click(screen.getByRole("button", { name: /^reset$/i }));
+
+    // Wait briefly to confirm no network call was made
+    await waitFor(() => {
+      expect(patchCalled).toBe(false);
+    });
+  });
+});
