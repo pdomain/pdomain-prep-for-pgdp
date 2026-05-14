@@ -708,4 +708,153 @@ describe("TextReviewPage §9a delete-words flow", () => {
     const btn = screen.getByRole("button", { name: /^Delete words$/i });
     expect(btn).toBeDisabled();
   });
+
+  it("navigate away while undo window is open fires DELETE on unmount", async () => {
+    const deleteCalls: { body: unknown }[] = [];
+
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [makeWordRow("w_alpha", 0), makeWordRow("w_beta", 60)],
+        }),
+      ),
+      http.delete(
+        "/api/data/projects/:projectId/pages/:idx0/words",
+        async ({ request }) => {
+          deleteCalls.push({ body: await request.json() });
+          return HttpResponse.json({
+            text_key: "k",
+            words_key: "k.words.json",
+            deleted_count: 1,
+            text: "beta\n",
+            remaining_words: [makeWordRow("w_beta", 60)],
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    const { unmount } = renderAtRoute(
+      <TextReviewPage />,
+      "/projects/prj_abc/pages/0/review",
+    );
+
+    await waitFor(() => {
+      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      expect(el.value).toBe("alpha beta\n");
+    });
+    fireImgLoad({ w: 1000, h: 100 });
+
+    const rects = await screen.findAllByTestId("konva-rect");
+    await user.click(rects[0]); // select w_alpha
+
+    await screen.findByRole("button", { name: /^Delete 1 word$/i });
+    fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    // Banner appears, DELETE has not fired yet.
+    await screen.findByTestId("undo-banner");
+    expect(deleteCalls).toHaveLength(0);
+
+    // Unmount while undo window is open — should fire DELETE.
+    unmount();
+
+    await waitFor(() => {
+      expect(deleteCalls).toHaveLength(1);
+    });
+    expect(deleteCalls[0].body).toEqual({
+      word_ids: ["w_alpha"],
+      split_suffix: null,
+    });
+  });
+
+  it("second delete while undo window open commits first batch", async () => {
+    const deleteCalls: { body: unknown }[] = [];
+
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta gamma\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [
+            makeWordRow("w_alpha", 0),
+            makeWordRow("w_beta", 60),
+            makeWordRow("w_gamma", 120),
+          ],
+        }),
+      ),
+      http.delete(
+        "/api/data/projects/:projectId/pages/:idx0/words",
+        async ({ request }) => {
+          const deleted = (await request.json()) as { word_ids: string[] };
+          deleteCalls.push({ body: deleted });
+          const remaining = [
+            makeWordRow("w_alpha", 0),
+            makeWordRow("w_beta", 60),
+            makeWordRow("w_gamma", 120),
+          ].filter((w) => !deleted.word_ids.includes(w.id));
+          return HttpResponse.json({
+            text_key: "k",
+            words_key: "k.words.json",
+            deleted_count: deleted.word_ids.length,
+            text: remaining.map((w) => w.text).join(" ") + "\n",
+            remaining_words: remaining,
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
+
+    await waitFor(() => {
+      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      expect(el.value).toBe("alpha beta gamma\n");
+    });
+    fireImgLoad({ w: 1000, h: 100 });
+
+    const rects = await screen.findAllByTestId("konva-rect");
+    await user.click(rects[0]); // select w_alpha
+
+    await screen.findByRole("button", { name: /^Delete 1 word$/i });
+    fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    // First undo window opens.
+    await screen.findByTestId("undo-banner");
+    expect(deleteCalls).toHaveLength(0);
+
+    // Select second word and trigger delete again while first window is open.
+    await user.click(rects[1]); // select w_beta (adds to selection)
+
+    fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    // First batch should have been committed immediately.
+    await waitFor(() => {
+      expect(deleteCalls).toHaveLength(1);
+    });
+    expect(deleteCalls[0].body).toEqual({
+      word_ids: ["w_alpha"],
+      split_suffix: null,
+    });
+
+    // New undo window should be open for the second batch.
+    await screen.findByTestId("undo-banner");
+  });
 });
