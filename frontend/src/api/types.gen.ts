@@ -1719,6 +1719,11 @@ export interface components {
             layout_category_overrides: {
                 [key: string]: string | null;
             };
+            /**
+             * Optimize Png
+             * @default true
+             */
+            optimize_png: boolean;
             /** Default Overrides */
             default_overrides: {
                 [key: string]: unknown;

@@ -18,10 +18,27 @@ import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import oxipng
+
 from ..adapters.storage import IStorage
 from .models import PageRecord, Project
 
 log = logging.getLogger(__name__)
+
+_OXIPNG_LEVEL = 4
+
+
+def _optimize_png(data: bytes) -> bytes:
+    """Return losslessly optimised PNG bytes (oxipng level 4).
+
+    Falls back to the original bytes on any error — a failed optimisation
+    must never drop a page from the package.
+    """
+    try:
+        return oxipng.optimize_from_memory(data, level=_OXIPNG_LEVEL)
+    except Exception:
+        log.warning("oxipng optimisation failed; using original bytes", exc_info=True)
+        return data
 
 
 @dataclass
@@ -37,8 +54,15 @@ async def build_package(
     project: Project,
     pages: list[PageRecord],
     storage: IStorage,
+    optimize_png: bool | None = None,
 ) -> PackagingResult:
-    """Build the PGDP zip and write it to `for_zip/<project_id>.zip`."""
+    """Build the PGDP zip and write it to `for_zip/<project_id>.zip`.
+
+    ``optimize_png`` controls lossless oxipng optimisation of proofing images.
+    When ``None`` (default) the value is read from ``project.config.optimize_png``.
+    Pass ``False`` explicitly to skip optimisation regardless of project config.
+    """
+    run_optimize = optimize_png if optimize_png is not None else project.config.optimize_png
     buf = io.BytesIO()
     page_count = 0
     illustration_count = 0
@@ -56,6 +80,8 @@ async def build_package(
                 img_bytes: bytes | None = None
                 if output.for_zip_image_key and await storage.exists(output.for_zip_image_key):
                     img_bytes = await storage.get_bytes(output.for_zip_image_key)
+                    if run_optimize:
+                        img_bytes = _optimize_png(img_bytes)
                     zf.writestr(f"{output.full_prefix}.png", img_bytes)
                     page_count += 1
 

@@ -24,6 +24,7 @@ dependencies = [
     "transformers>=4.45",
     "sse-starlette>=2.1",
     "anyio>=4.4",
+    "pyoxipng>=9.1.1",
 ]
 
 [project.optional-dependencies]

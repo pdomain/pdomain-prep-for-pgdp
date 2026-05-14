@@ -79,6 +79,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
       custom_regex_passes: [],
       custom_scannos: {},
       layout_category_overrides: {},
+      optimize_png: true,
       default_overrides: {},
     },
     ...overrides,

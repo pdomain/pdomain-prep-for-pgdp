@@ -82,6 +82,13 @@ class ProjectConfig(ApiModel):
 
     layout_category_overrides: dict[str, str | None] = Field(default_factory=dict)
 
+    optimize_png: bool = True
+    """Run lossless oxipng optimisation on proofing images before packaging.
+
+    Defaults to ``True`` (level-4 optimisation). Set to ``False`` to skip
+    the pass during development for faster packaging turnaround.
+    """
+
     default_overrides: dict[str, Any] = Field(default_factory=dict)
     """Sparse map: SystemDefaults field name -> override value for this project."""
 

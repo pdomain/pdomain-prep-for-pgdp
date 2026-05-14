@@ -4995,6 +4995,11 @@
             "type": "object",
             "title": "Layout Category Overrides"
           },
+          "optimize_png": {
+            "type": "boolean",
+            "title": "Optimize Png",
+            "default": true
+          },
           "default_overrides": {
             "additionalProperties": true,
             "type": "object",
@@ -5023,6 +5028,7 @@
           "custom_regex_passes",
           "custom_scannos",
           "layout_category_overrides",
+          "optimize_png",
           "default_overrides"
         ],
         "title": "ProjectConfig"
