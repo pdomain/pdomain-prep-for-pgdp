@@ -1,7 +1,21 @@
+/**
+ * JobsPage — M5 hi-fi upgrade: collapsible job card per project-level job,
+ * per-job progress bar with Badge status, cancel/retry actions.
+ *
+ * The page fetches the jobs list (auto-refreshes every 5 s) and renders
+ * each job with:
+ *   - Job type (mono), project link, timestamp.
+ *   - Badge status (using the ui/Badge component for consistent M5 styling).
+ *   - Progress bar when progress.total > 0 (format: "{current} / {total}").
+ *   - Error message for failed jobs.
+ *   - Cancel button for live jobs; Retry button for errored/cancelled jobs.
+ */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { isLiveStatus } from "../lib/jobStatus";
+import { Badge } from "../components/ui/Badge";
+import type { BadgeStatus } from "../components/ui/Badge";
 
 interface Job {
   id: string;
@@ -16,14 +30,19 @@ interface Job {
   error_message: string | null;
 }
 
-const STATUS_CLS: Record<string, string> = {
-  queued: "bg-slate-100 text-slate-700",
-  scheduled: "bg-amber-100 text-amber-800",
-  running: "bg-sky-100 text-sky-800",
-  complete: "bg-emerald-100 text-emerald-800",
-  error: "bg-rose-100 text-rose-800",
-  cancelled: "bg-slate-200 text-slate-600",
-};
+/** Map raw API status strings to BadgeStatus. Unknown statuses fall through to "queued". */
+function toBadgeStatus(status: string): BadgeStatus {
+  const map: Record<string, BadgeStatus> = {
+    queued: "queued",
+    scheduled: "scheduled",
+    running: "running",
+    complete: "complete",
+    error: "error",
+    cancelled: "cancelled",
+    awaiting_review: "awaiting_review",
+  };
+  return map[status] ?? "queued";
+}
 
 export function JobsPage() {
   const queryClient = useQueryClient();
@@ -87,6 +106,7 @@ export function JobsPage() {
           </span>
           <button
             type="button"
+            aria-label="Clear filter"
             onClick={clearFilter}
             className="rounded border border-sky-300 px-2 py-0.5 text-sky-800 hover:bg-sky-100"
           >
@@ -109,16 +129,11 @@ export function JobsPage() {
       {jobs.data && jobs.data.length > 0 && (
         <ul className="divide-y rounded border bg-white text-sm">
           {jobs.data.map((j) => {
-            const cls = STATUS_CLS[j.status] ?? "bg-slate-100 text-slate-700";
             return (
               <li key={j.id} className="px-4 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded px-2 py-0.5 text-[11px] font-medium ${cls}`}
-                    >
-                      {j.status}
-                    </span>
+                    <Badge status={toBadgeStatus(j.status)} />
                     <span className="font-mono text-xs text-slate-700">
                       {j.type}
                     </span>
@@ -137,6 +152,7 @@ export function JobsPage() {
                       <button
                         onClick={() => cancel.mutate(j.id)}
                         disabled={cancel.isPending}
+                        aria-label="Cancel"
                         className="rounded border border-rose-300 px-2 py-0.5 text-[11px] text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                       >
                         Cancel
@@ -146,6 +162,7 @@ export function JobsPage() {
                       <button
                         onClick={() => retry.mutate(j.id)}
                         disabled={retry.isPending}
+                        aria-label="Retry"
                         className="rounded border border-sky-300 px-2 py-0.5 text-[11px] text-sky-700 hover:bg-sky-50 disabled:opacity-50"
                       >
                         Retry
@@ -156,7 +173,7 @@ export function JobsPage() {
 
                 {j.progress.total > 0 && (
                   <div className="mt-1 text-xs text-slate-500">
-                    {j.progress.current}/{j.progress.total}
+                    {j.progress.current} / {j.progress.total}
                     {j.progress.message && ` · ${j.progress.message}`}
                   </div>
                 )}
