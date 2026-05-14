@@ -20,7 +20,7 @@ from pd_prep_for_pgdp.bootstrap import build_app
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("usage: export_openapi.py <output-path>", file=sys.stderr)  # usage msg to stderr
+        print("usage: export_openapi.py <output-path>", file=sys.stderr)
         raise SystemExit(2)
     out = Path(sys.argv[1])
     app = build_app()
