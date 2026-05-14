@@ -27,16 +27,16 @@ as historical context.
 ## Commands
 
 ```sh
-make test       # canonical — `uv run pytest tests/ -v --ignore=tests/e2e`
-make e2e        # Playwright e2e suite (separate uv group)
-make run        # builds SPA bundle, then launches pgdp-prep at http://127.0.0.1:8765
-make run-cpu    # same, forces PGDP_GPU_BACKEND=cpu
+make ci AI=1        # full CI — always run before committing
+make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e`
+make e2e AI=1       # Playwright e2e suite (separate uv group)
+make run            # builds SPA bundle, then launches pgdp-prep at http://127.0.0.1:8765
+make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
 ```
 
-Append `AI=1` to any target for agent-friendly output — verbose output is
-captured to `.ci-ai.log`; stdout shows `✅ <target> passed` on success or
-filtered failure sections on error. Works for every target: `make ci AI=1`,
-`make test AI=1`, etc.
+`AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
+filtered failure sections on error. Remove `AI=1` only if you need full verbose
+output for debugging.
 
 Local dev with hot-reload (two-process):
 
@@ -50,6 +50,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
 
 ## Rules
 
+- Always run `make ci AI=1` before committing.
 - Make targets first; fall back to `uv run …` only when no target exists.
 - Never `python -m pytest`. Always `uv run pytest` or `make test`.
   Bare `python`/`python3`/`.venv/bin/python` miss the venv.
