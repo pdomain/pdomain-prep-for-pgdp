@@ -4,7 +4,10 @@
  * Pydantic models change).
  */
 
-const API_BASE: string = (window as any).__ENV__?.API_BASE ?? "";
+// Use `globalThis` rather than `window` so this module can be imported
+// in Node/jsdom test environments where `window` is not available at
+// module-load time. At runtime in the browser, `globalThis === window`.
+const API_BASE: string = (globalThis as any).__ENV__?.API_BASE ?? "";
 const TOKEN_STORAGE_KEY = "pgdp.api_token";
 
 /** Token resolution order: explicit storage (JWT login flow), then env (apikey mode). */
@@ -15,7 +18,7 @@ export function getAuthToken(): string | null {
   } catch {
     /* private mode / SSR */
   }
-  return (window as any).__ENV__?.API_TOKEN ?? null;
+  return (globalThis as any).__ENV__?.API_TOKEN ?? null;
 }
 
 export function setAuthToken(token: string | null): void {
