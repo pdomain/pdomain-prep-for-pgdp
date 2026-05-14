@@ -165,6 +165,7 @@ def _export_bound_env(host: str, port: int) -> None:
 _SUBCOMMANDS: dict[str, str] = {
     # subcommand name -> dotted module path; module must expose `main(argv)`.
     "reindex": "pd_prep_for_pgdp.cli.reindex",
+    "migrate-projects": "pd_prep_for_pgdp.cli.migrate_projects",
 }
 
 

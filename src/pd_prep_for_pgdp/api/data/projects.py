@@ -18,6 +18,9 @@ from ...core.ingest import (
     peek_zip_image_names,
 )
 from ...core.models import (
+    JobStatus,
+    JobType,
+    PageStageStatus,
     PipelineState,
     Project,
     ProjectConfig,
@@ -290,3 +293,50 @@ async def unarchive_project(
 ) -> Project:
     """Restore a soft-deleted project. Idempotent."""
     return await _set_archived(project_id, archived=False, user=user, db=db)
+
+
+class ReviewStatusResponse(BaseModel):
+    unreviewed_count: int
+    """Number of non-ignored proof pages without a clean text_review stage row."""
+    awaiting_review_job_id: str | None
+    """Job id of the parked build_package job, or null if none exists."""
+
+
+@router.get(
+    "/projects/{project_id}/review-status",
+    response_model=ReviewStatusResponse,
+    operation_id="get_project_review_status",
+)
+async def get_project_review_status(
+    project_id: str,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+) -> ReviewStatusResponse:
+    """Return unreviewed page count + awaiting_review job for a project."""
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    pages, _, _ = await db.list_pages(project_id, None, 1_000_000)
+    proof_pages = [p for p in pages if not p.ignore]
+    proof_page_ids = {f"{p.idx0:04d}" for p in proof_pages}
+
+    clean_stages = await db.list_page_stages_by_status(project_id, PageStageStatus.clean)
+    reviewed_ids = {s.page_id for s in clean_stages if s.stage_id == "text_review"}
+    unreviewed_count = len(proof_page_ids - reviewed_ids)
+
+    awaiting_review_job_id: str | None = None
+    jobs = await db.list_recent_jobs(user.user_id, 200)
+    for job in jobs:
+        if (
+            job.project_id == project_id
+            and job.type == JobType.build_package
+            and job.status == JobStatus.awaiting_review
+        ):
+            awaiting_review_job_id = job.id
+            break
+
+    return ReviewStatusResponse(
+        unreviewed_count=unreviewed_count,
+        awaiting_review_job_id=awaiting_review_job_id,
+    )

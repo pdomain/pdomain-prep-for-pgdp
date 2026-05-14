@@ -5,11 +5,15 @@ import {
   Routes,
   Link,
   useLocation,
+  useMatch,
   useNavigate,
 } from "react-router-dom";
 import { api, getAuthToken, setAuthToken } from "./api/client";
+import type { components } from "./api/types.gen";
 import { ProfileDropdown } from "./components/ProfileDropdown";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
+
+type ReviewStatusResponse = components["schemas"]["ReviewStatusResponse"];
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
@@ -37,6 +41,7 @@ export default function App() {
           <Link to="/settings" className="text-slate-600 hover:text-slate-900">
             Settings
           </Link>
+          <OpenTasksBell />
           <AuthBadge />
         </nav>
       </header>
@@ -68,6 +73,46 @@ export default function App() {
 
       <ServerInfoFooter />
     </div>
+  );
+}
+
+/**
+ * Bell icon in the navbar showing unreviewed-page count for the active project.
+ * Only renders when the user is on a project route and there are pages
+ * awaiting review with a parked build_package job.
+ */
+function OpenTasksBell() {
+  const match = useMatch("/projects/:projectId/*");
+  const projectId = match?.params?.projectId ?? null;
+
+  const status = useQuery({
+    queryKey: ["review-status", projectId],
+    queryFn: () =>
+      api.get<ReviewStatusResponse>(
+        `/api/data/projects/${projectId}/review-status`,
+      ),
+    refetchInterval: 1000,
+    enabled: projectId !== null,
+  });
+
+  const count = status.data?.awaiting_review_job_id
+    ? status.data.unreviewed_count
+    : 0;
+
+  if (!projectId || count === 0) return null;
+
+  return (
+    <Link
+      to={`/projects/${projectId}/review`}
+      className="relative ml-auto flex items-center text-slate-600 hover:text-slate-900"
+      title={`${count} page${count === 1 ? "" : "s"} awaiting review`}
+      aria-label={`Open tasks: ${count} page${count === 1 ? "" : "s"} awaiting review`}
+    >
+      <span className="text-base">🔔</span>
+      <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
+        {count}
+      </span>
+    </Link>
   );
 }
 

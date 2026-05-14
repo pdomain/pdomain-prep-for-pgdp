@@ -17,12 +17,27 @@ import anyio.to_thread
 from ...core.models import (
     PAGE_STAGE_IDS,
     Job,
+    PageProcessingStatus,
     PageRecord,
     PageStageState,
     PageStageStatus,
     Project,
     SystemDefaults,
 )
+from .base import SearchResult
+
+_LONG_S = chr(0x17F)  # U+017F LATIN SMALL LETTER LONG S
+
+
+def _normalize_for_fts(text: str) -> str:
+    """Expand long-s (U+017F) before indexing or querying."""
+    return text.replace(_LONG_S, "s")
+
+
+def _normalize_fts_score(rank: float) -> float:
+    """Map FTS5 BM25 rank (≤0, more negative = better) to [0.0, 1.0]."""
+    return 1.0 / (1.0 + abs(rank))
+
 
 # Inline string-list literal of the 22 canonical stage IDs (built once at
 # import time from `PAGE_STAGE_IDS`) so the CHECK constraint stays
@@ -88,7 +103,45 @@ CREATE INDEX IF NOT EXISTS page_stages_proj_status
     ON page_stages(project_id, status);
 CREATE INDEX IF NOT EXISTS page_stages_proj_page
     ON page_stages(project_id, page_id);
+
+-- Full-text search tables. Spec: docs/specs/2026-05-11-search-across-pages-design.md §Decision.
+-- `page_text` is authoritative; `page_text_fts` is the FTS5 index (self-contained copy).
+-- Upsert: DELETE old FTS row + INSERT new FTS row + INSERT OR REPLACE page_text.
+CREATE TABLE IF NOT EXISTS page_text (
+    project_id TEXT NOT NULL,
+    page_id    TEXT NOT NULL,
+    idx0       INTEGER NOT NULL,
+    ocr_text   TEXT NOT NULL,
+    PRIMARY KEY (project_id, page_id)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS page_text_fts USING fts5(
+    page_id    UNINDEXED,
+    project_id UNINDEXED,
+    idx0       UNINDEXED,
+    ocr_text
+);
 """
+
+
+# ─── Legacy migration helpers ───────────────────────────────────────────────────
+
+
+def _initial_stage_status(page: PageRecord) -> str:
+    """Determine initial stage status for lazy-init.
+
+    Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §"Legacy detection".
+    Pre-M1 pages with legacy processing_status values are marked as `dirty`
+    to indicate they need re-running through the new DAG.
+    """
+    legacy_statuses = {
+        PageProcessingStatus.complete,
+        PageProcessingStatus.processing,
+        PageProcessingStatus.error,
+    }
+    if page.processing_status in legacy_statuses:
+        return PageStageStatus.dirty.value
+    return PageStageStatus.not_run.value
 
 
 class SqliteDatabase:
@@ -314,6 +367,91 @@ class SqliteDatabase:
 
         return await self._run(_go)
 
+    # ── Full-text search ─────────────────────────────────────────────────────
+
+    async def upsert_page_text(
+        self,
+        project_id: str,
+        page_id: str,
+        idx0: int,
+        ocr_text: str,
+    ) -> None:
+        """Upsert page OCR text into page_text + page_text_fts atomically."""
+        normalized = _normalize_for_fts(ocr_text)
+
+        def _go() -> None:
+            with self._cursor() as cur:
+                # Remove stale FTS entry (no-op if missing).
+                cur.execute(
+                    "DELETE FROM page_text_fts WHERE page_id=? AND project_id=?",
+                    (page_id, project_id),
+                )
+                # Authoritative companion row (upsert).
+                cur.execute(
+                    "INSERT OR REPLACE INTO page_text "
+                    "(project_id, page_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
+                    (project_id, page_id, idx0, normalized),
+                )
+                # New FTS entry.
+                cur.execute(
+                    "INSERT INTO page_text_fts (page_id, project_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
+                    (page_id, project_id, idx0, normalized),
+                )
+
+        await self._run(_go)
+
+    async def search_index_page(
+        self,
+        project_id: str,
+        page_id: str,
+        idx0: int,
+        ocr_text: str,
+    ) -> None:
+        await self.upsert_page_text(project_id, page_id, idx0, ocr_text)
+
+    async def search(
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[SearchResult], int]:
+        """FTS5 search; returns (results, total_count) sorted by BM25 rank."""
+        normalized_query = _normalize_for_fts(query)
+
+        def _go() -> tuple[list[SearchResult], int]:
+            with self._cursor() as cur:
+                total_row = cur.execute(
+                    "SELECT COUNT(*) FROM page_text_fts WHERE page_text_fts MATCH ? AND project_id=?",
+                    (normalized_query, project_id),
+                ).fetchone()
+                total = int(total_row[0]) if total_row else 0
+
+                rows = cur.execute(
+                    "SELECT page_id, idx0, "
+                    "snippet(page_text_fts, 3, '', '', '...', 15), rank "
+                    "FROM page_text_fts "
+                    "WHERE page_text_fts MATCH ? AND project_id=? "
+                    "ORDER BY rank "
+                    "LIMIT ? OFFSET ?",
+                    (normalized_query, project_id, limit, offset),
+                ).fetchall()
+
+            return (
+                [
+                    SearchResult(
+                        page_id=r[0],
+                        idx0=int(r[1]),
+                        snippet=r[2] or "",
+                        score=_normalize_fts_score(r[3]),
+                    )
+                    for r in rows
+                ],
+                total,
+            )
+
+        return await self._run(_go)
+
     # ── Jobs ────────────────────────────────────────────────────────────────
 
     async def get_job(self, job_id: str) -> Job | None:
@@ -469,7 +607,7 @@ class SqliteDatabase:
         project_id: str,
         page_id: str,
     ) -> int:
-        """Idempotently insert one ``not-run`` row per canonical stage_id.
+        """Idempotently insert one row per canonical stage_id.
 
         Lazy side of the dual-write reconciliation contract (Q1-followup):
         the first time anyone reads a page's stage state, all 22 rows
@@ -477,9 +615,15 @@ class SqliteDatabase:
         callers race safely — `INSERT OR IGNORE` skips the second
         inserter's row at the composite PK.
 
+        Status is `dirty` for legacy pre-M1 pages (processing_status ∈
+        {complete, processing, error}); `not-run` otherwise.
+
         Returns the number of rows actually inserted (0 if all 22 already
         exist).
         """
+        idx0 = int(page_id)
+        page = await self.get_page(project_id, idx0)
+        initial_status = PageStageStatus.not_run.value if page is None else _initial_stage_status(page)
 
         def _go() -> int:
             with self._cursor() as cur:
@@ -490,7 +634,7 @@ class SqliteDatabase:
                 cur.executemany(
                     "INSERT OR IGNORE INTO page_stages "
                     "(project_id, page_id, stage_id, status, stage_version) "
-                    "VALUES (?, ?, ?, 'not-run', 1)",
+                    f"VALUES (?, ?, ?, '{initial_status}', 1)",
                     [(project_id, page_id, sid) for sid in PAGE_STAGE_IDS],
                 )
                 rows_after = cur.execute(

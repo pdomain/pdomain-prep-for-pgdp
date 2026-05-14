@@ -67,7 +67,7 @@ import numpy as np
 
 from ...adapters.database.base import IDatabase
 from ...adapters.storage.base import IStorage
-from ..models import PageStageState, PageStageStatus
+from ..models import PageRecord, PageStageState, PageStageStatus
 from ..stage_events import StageEventBroker, stage_events_key
 from . import stage_dag as _stage_dag_module
 from .page_stage_writer import (
@@ -380,6 +380,44 @@ async def _cascade_dirty(
         await database.put_page_stage(row.model_copy(update={"status": PageStageStatus.dirty}))
 
 
+async def _cascade_dirty_to_split_children(
+    *,
+    database: IDatabase,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+) -> None:
+    """Dirty split children's decode_source when stage_id is at or before each child's split_at_stage.
+
+    Spec: docs/specs/pipeline-task-model.md §"Cross-page dirty propagation: split children".
+    """
+    children = await database.list_pages_by_parent_id(project_id, page_id)
+    if not children:
+        return
+
+    descendants_of_stage = compute_dirty_descendants(stage_id)
+
+    for child in children:
+        if child.split_at_stage is None:
+            continue
+        at_or_before = stage_id == child.split_at_stage or child.split_at_stage in descendants_of_stage
+        if not at_or_before:
+            continue
+        child_page_id = f"{child.idx0:04d}"
+        decode_row = await database.get_page_stage(project_id, child_page_id, "decode_source")
+        if decode_row is None:
+            continue
+        if decode_row.status in {PageStageStatus.clean, PageStageStatus.failed}:
+            await database.put_page_stage(decode_row.model_copy(update={"status": PageStageStatus.dirty}))
+        # Cascade dirty from decode_source to its descendants within the child.
+        await _cascade_dirty(
+            database=database,
+            project_id=project_id,
+            page_id=child_page_id,
+            stage_id="decode_source",
+        )
+
+
 async def _mark_running(
     *,
     database: IDatabase,
@@ -636,8 +674,34 @@ async def run_stage(
     """
     stage = get_stage(stage_id)
 
+    # Detect split-child decode_source before the dependency check. A child
+    # page's decode_source reads the PARENT's ingest_source artifact (not its
+    # own), so both the dep check and the artifact loading differ from the
+    # normal single-page path.  We look up the PageRecord once here and reuse
+    # it below — this avoids a second DB round-trip inside _resolve_config.
+    _child_decode_page: PageRecord | None = None
+    if stage_id == "decode_source":
+        try:
+            _idx0 = int(page_id)
+            _page_rec = await database.get_page(project_id, _idx0)
+            if _page_rec is not None and _page_rec.parent_page_id is not None:
+                _child_decode_page = _page_rec
+        except (ValueError, TypeError):
+            pass
+
     # Step 1: dependency check.
-    if stage.depends_on:
+    if _child_decode_page is not None:
+        # Child decode_source: the dependency is the PARENT's ingest_source,
+        # not the child's own (child pages don't have a source file of their own).
+        _parent_ingest = await database.get_page_stage(
+            project_id, _child_decode_page.parent_page_id, "ingest_source"
+        )
+        if _parent_ingest is None or _parent_ingest.status != PageStageStatus.clean:
+            raise StageDependenciesNotMet(
+                "decode_source",
+                [f"parent[{_child_decode_page.parent_page_id}]:ingest_source"],
+            )
+    elif stage.depends_on:
         rows = await database.list_page_stages_for_page(project_id, page_id)
         rows_by_stage = {r.stage_id: r for r in rows}
 
@@ -731,6 +795,57 @@ async def run_stage(
                 stage_id=stage_id,
                 artifact_bytes=bytes(artifact_bytes),
                 stage_version=_stage_ver,
+            )
+        elif _child_decode_page is not None:
+            # Split-child decode_source path: load the PARENT's ingest_source
+            # artifact, crop to source_crop_bbox, and write the cropped image.
+            # The input_hash records (parent_page_id, source_crop_bbox) so that
+            # a parent re-ingest correctly marks this row dirty via the cross-page
+            # cascade below (spec §"Cross-page dirty propagation: split children").
+            _parent_pid = _child_decode_page.parent_page_id
+            _bbox = _child_decode_page.source_crop_bbox  # (x, y, w, h)
+            assert _parent_pid is not None and _bbox is not None  # enforced by validator
+
+            parent_img = await _load_parent_artifact(
+                data_root=data_root,
+                database=database,
+                project_id=project_id,
+                page_id=_parent_pid,
+                parent_stage_id="ingest_source",
+                write_executor=write_executor,
+            )
+
+            # Crop to bbox (x, y, w, h) in source-image coordinate space.
+            # Clamp to image bounds to guard against out-of-range bboxes.
+            _bx, _by, _bw, _bh = _bbox
+            _img_h, _img_w = parent_img.shape[:2]
+            _y1, _y2 = max(0, _by), min(_img_h, _by + _bh)
+            _x1, _x2 = max(0, _bx), min(_img_w, _bx + _bw)
+            cropped = parent_img[_y1:_y2, _x1:_x2]
+            artifact_bytes_crop = _encode_image_to_png(cropped)
+
+            # Identity hash: deterministic on (parent_page_id, source_crop_bbox).
+            # Changing either value changes the hash (acceptance bullet 2).
+            _child_input_hash = hashlib.sha256(
+                json.dumps(
+                    {
+                        "parent_page_id": _parent_pid,
+                        "source_crop_bbox": list(_bbox),
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+
+            committed = await commit_stage_artifact(
+                data_root=data_root,
+                database=database,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                artifact_bytes=artifact_bytes_crop,
+                stage_version=_stage_ver,
+                content_hash=_child_input_hash,
+                config_hash=_cfg_hash,
             )
         else:
             # Load parents.
@@ -894,6 +1009,15 @@ async def run_stage(
     )
     for desc_id in descendant_ids:
         await _emit(stage_events, project_id, page_id, "stage-status", desc_id, "dirty")
+
+    # Step 8c: cross-page cascade — dirty split children's decode_source when
+    # this stage is at or before each child's split_at_stage (issue #55).
+    await _cascade_dirty_to_split_children(
+        database=database,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id=stage_id,
+    )
 
     # Emit clean event for the completed stage after the cascade.
     await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean")

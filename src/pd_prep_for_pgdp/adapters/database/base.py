@@ -8,6 +8,7 @@ JSON files are not written and the DB is authoritative.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from ...core.models import (
@@ -18,6 +19,28 @@ from ...core.models import (
     Project,
     SystemDefaults,
 )
+
+# ── Search results (M5) ──────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class SearchResult:
+    """One hit from a full-text search query.
+
+    `score` is normalized to [0.0, 1.0] (1.0 = best match).
+    `snippet` is a short excerpt with match context from FTS5 snippet().
+    """
+
+    page_id: str
+    idx0: int
+    snippet: str
+    score: float
+
+
+@dataclass
+class SearchResultList:
+    results: list[SearchResult]
+    total_count: int
 
 
 class IDatabase(Protocol):
@@ -85,3 +108,14 @@ class IDatabase(Protocol):
     async def delete_page(self, project_id: str, idx0: int) -> None: ...
 
     async def list_pages_by_parent_id(self, project_id: str, parent_page_id: str) -> list[PageRecord]: ...
+
+    # ── Full-text search (FTS5 / tsvector) ───────────────────────────────────
+    async def upsert_page_text(self, project_id: str, page_id: str, idx0: int, ocr_text: str) -> None: ...
+
+    async def search(
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[SearchResult], int]: ...

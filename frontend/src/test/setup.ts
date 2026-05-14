@@ -23,6 +23,20 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
 }
 
+// jsdom does not implement EventSource. Components using useStageEvents would
+// throw at mount time without this stub. Tests that need real SSE event
+// dispatch should override globalThis.EventSource with their own mock via
+// vi.stubGlobal (as useStageEvents.test.tsx does).
+class EventSourceStub {
+  constructor(_url: string) {}
+  addEventListener(_type: string, _fn: unknown): void {}
+  removeEventListener(_type: string, _fn: unknown): void {}
+  close(): void {}
+}
+if (typeof globalThis.EventSource === "undefined") {
+  (globalThis as any).EventSource = EventSourceStub;
+}
+
 // Start the mock server before any test runs.
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });

@@ -30,6 +30,7 @@ import { useJobProgress } from "../hooks/useJobProgress";
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 import { ArtifactViewer } from "../components/ArtifactViewer";
 import { StageChainRail } from "../components/StageChainRail";
+import { StageControlsPanel } from "../components/StageControlsPanel";
 
 interface ProcessPageResponse {
   processed_image_key: string;
@@ -321,6 +322,19 @@ export function PageWorkbenchPage() {
           projectId={projectId}
           idx0={idx0}
           selectedStageId={selectedStageId}
+        />
+
+        {/* M3 — stage-controls panel: filtered config fields + Apply + Run. */}
+        <StageControlsPanel
+          projectId={projectId}
+          idx0={idx0}
+          stageId={selectedStageId}
+          page={page.data}
+          onApplied={() =>
+            queryClient.invalidateQueries({
+              queryKey: ["stages", projectId, idx0],
+            })
+          }
         />
 
         <ModeToolbar mode={editMode} onChange={setEditMode} />

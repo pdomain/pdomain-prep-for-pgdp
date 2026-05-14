@@ -1480,3 +1480,162 @@ async def test_run_stage_updates_stage_version(
     assert state.stage_version == 2, (
         f"stage_version should be updated to STAGE_VERSIONS[stage_id]=2, got {state.stage_version}"
     )
+
+
+# ─── Cross-page dirty cascade: split children (issue #55) ──────────────────
+
+
+async def _seed_split_child(
+    db: SqliteDatabase,
+    data_root: Path,
+    project_id: str,
+    parent_page_id: str,
+    child_idx0: int,
+    split_at_stage: str,
+    clean_stages: list[str],
+    payload: bytes,
+) -> None:
+    """Create a split-child PageRecord and seed some stages as clean."""
+    from pd_prep_for_pgdp.core.models import PageRecord
+
+    suffix = chr(ord("a") + child_idx0 - 1)
+    child = PageRecord(
+        project_id=project_id,
+        idx0=child_idx0,
+        prefix=f"0000{suffix}",
+        source_stem="page",
+        parent_page_id=parent_page_id,
+        source_crop_bbox=(0, 0, 100, 100),
+        split_index=child_idx0,
+        split_at_stage=split_at_stage,
+        split_suffix=suffix,
+    )
+    await db.put_page(child)
+    child_page_id = f"{child_idx0:04d}"
+    await db.init_page_stages_for_page(project_id, child_page_id)
+    for sid in clean_stages:
+        await commit_stage_artifact(
+            data_root=data_root,
+            database=db,
+            project_id=project_id,
+            page_id=child_page_id,
+            stage_id=sid,
+            artifact_bytes=payload,
+        )
+
+
+@pytest.mark.asyncio
+async def test_cross_page_cascade_dirties_split_children_when_stage_upstream(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """Re-running a parent stage upstream of split_at_stage marks each split
+    child's decode_source dirty (issue #55 acceptance bullet 1).
+
+    Setup: parent page 0000; two split children (idx0=1, idx0=2) both with
+    split_at_stage="threshold". Run grayscale on parent — grayscale is
+    upstream of threshold, so both children's decode_source must become dirty.
+    """
+    project_id = "p1"
+    parent_page_id = "0000"
+    payload = _checkerboard_bgr_png()
+
+    # Seed parent with manual_deskew_pre clean (grayscale's dependency).
+    await _seed_clean_parents(
+        db,
+        tmp_path,
+        project_id,
+        parent_page_id,
+        parent_stages=["manual_deskew_pre"],
+        payload=payload,
+    )
+
+    # Create two split children, each with decode_source seeded clean.
+    for child_idx0 in (1, 2):
+        await _seed_split_child(
+            db,
+            tmp_path,
+            project_id,
+            parent_page_id,
+            child_idx0=child_idx0,
+            split_at_stage="threshold",
+            clean_stages=["decode_source"],
+            payload=payload,
+        )
+
+    # Confirm children's decode_source is clean before the run.
+    for child_idx0 in (1, 2):
+        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "decode_source")
+        assert row is not None and row.status == PageStageStatus.clean
+
+    # Run grayscale on the parent — grayscale is upstream of threshold.
+    await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=parent_page_id,
+        stage_id="grayscale",
+    )
+
+    # Both children's decode_source must now be dirty.
+    for child_idx0 in (1, 2):
+        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "decode_source")
+        assert row is not None
+        assert row.status == PageStageStatus.dirty, (
+            f"child {child_idx0} decode_source expected dirty, got {row.status}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_cross_page_cascade_does_not_dirty_children_when_stage_downstream(
+    tmp_path: Path,
+    db: SqliteDatabase,
+) -> None:
+    """Re-running a parent stage downstream of split_at_stage does NOT dirty
+    split children (issue #55 acceptance bullet 2).
+
+    Setup: parent page 0000; one split child with split_at_stage="decode_source".
+    Run initial_crop on parent — initial_crop is downstream of decode_source,
+    so the child's decode_source must remain clean.
+    """
+    project_id = "p1"
+    parent_page_id = "0000"
+    payload = _checkerboard_bgr_png()
+
+    # Seed parent with decode_source clean so initial_crop can run.
+    await _seed_clean_parents(
+        db,
+        tmp_path,
+        project_id,
+        parent_page_id,
+        parent_stages=["decode_source"],
+        payload=payload,
+    )
+
+    # Create one split child with split_at_stage="decode_source" and decode_source clean.
+    await _seed_split_child(
+        db,
+        tmp_path,
+        project_id,
+        parent_page_id,
+        child_idx0=1,
+        split_at_stage="decode_source",
+        clean_stages=["decode_source"],
+        payload=payload,
+    )
+
+    # Run initial_crop on parent — initial_crop is downstream of decode_source.
+    await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=parent_page_id,
+        stage_id="initial_crop",
+    )
+
+    # Child's decode_source must still be clean (not dirtied).
+    row = await db.get_page_stage(project_id, "0001", "decode_source")
+    assert row is not None
+    assert row.status == PageStageStatus.clean, (
+        f"child decode_source should stay clean when stage is downstream of split_at_stage, got {row.status}"
+    )

@@ -480,6 +480,54 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/review-status": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Review Status",
+        "description": "Return unreviewed page count + awaiting_review job for a project.\n\nUsed by the project banner and Open Tasks bell badge to show how many\npages still need text review before build_package can run.",
+        "operationId": "get_project_review_status",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages": {
       "get": {
         "tags": [
@@ -1817,6 +1865,129 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/pipeline/stages/{stage_id}/fields": {
+      "get": {
+        "tags": [
+          "pipeline"
+        ],
+        "summary": "Get Stage Fields",
+        "description": "Return the sorted list of PageConfigOverrides field names that stage reads.\n\nBacked by STAGE_CONFIG_FIELDS in stage_runner.py \u2014 the same map that\ncascade_dirty_for_config_change uses. Stages not in the map read no\nper-page config fields; they return an empty list.\n\nStatus codes:\n- 200: known stage_id; body has sorted fields list (may be empty).\n- 422: unknown stage_id (not in PAGE_STAGE_IDS).",
+        "operationId": "get_stage_fields",
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageFieldsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Search Project Pages",
+        "operationId": "search_project_pages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
                 }
               }
             }
@@ -4865,6 +5036,80 @@
         "title": "RetryJobRequest",
         "description": "Optional body for `POST /api/gpu/jobs/{id}/retry`.\n\n`payload_override`, when non-null, is shallow-merged over the original\njob's payload \u2014 keys present in the override replace the corresponding\nkeys; keys not present are preserved from the original. The original\njob is never mutated, so the audit trail stays intact."
       },
+      "ReviewStatusResponse": {
+        "properties": {
+          "unreviewed_count": {
+            "type": "integer",
+            "title": "Unreviewed Count"
+          },
+          "awaiting_review_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awaiting Review Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "unreviewed_count",
+          "awaiting_review_job_id"
+        ],
+        "title": "ReviewStatusResponse"
+      },
+      "SearchHitResponse": {
+        "properties": {
+          "page_id": {
+            "type": "string",
+            "title": "Page Id"
+          },
+          "idx0": {
+            "type": "integer",
+            "title": "Idx0"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_id",
+          "idx0",
+          "snippet",
+          "score"
+        ],
+        "title": "SearchHitResponse"
+      },
+      "SearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHitResponse"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total_count"
+        ],
+        "title": "SearchResponse"
+      },
       "SourcePreviewResponse": {
         "properties": {
           "filenames": {
@@ -4944,6 +5189,27 @@
           "children"
         ],
         "title": "SplitPageResponse"
+      },
+      "StageFieldsResponse": {
+        "properties": {
+          "stage_id": {
+            "type": "string",
+            "title": "Stage Id"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage_id",
+          "fields"
+        ],
+        "title": "StageFieldsResponse"
       },
       "StepState": {
         "properties": {

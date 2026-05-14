@@ -25,7 +25,7 @@ def main() -> None:
     out = Path(sys.argv[1])
     app = build_app()
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(app.openapi(), indent=2))
+    out.write_text(json.dumps(app.openapi(), indent=2) + "\n")
 
 
 if __name__ == "__main__":

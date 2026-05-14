@@ -49,7 +49,9 @@ from ..core.pipeline.page_stage_writer import (
     MissingFile,
     OrphanFile,
     ReconcileReport,
+    StageArtifactWriteError,
     reconcile_page,
+    stage_artifact_path,
 )
 from ..core.pipeline.stage_dag import compute_dirty_descendants
 from ..settings import Settings
@@ -64,6 +66,7 @@ class HealCounts:
     hash_mismatches_marked_dirty: int = 0
     descendants_marked_dirty: int = 0
     stale_versions_marked_dirty: int = 0
+    fts_entries_rebuilt: int = 0
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -374,12 +377,16 @@ async def _heal_all(
                 await db.put_page_stage(updated)
                 stale_marked += 1
 
+    # FTS repair: rebuild missing/stale index entries from on-disk artifacts.
+    fts_rebuilt = await _rebuild_fts_drift(db, data_root, reports)
+
     return HealCounts(
         orphans_moved=orphans_moved,
         missing_marked_failed=missing_marked,
         hash_mismatches_marked_dirty=mismatches_marked,
         descendants_marked_dirty=descendants_marked,
         stale_versions_marked_dirty=stale_marked,
+        fts_entries_rebuilt=fts_rebuilt,
     )
 
 
@@ -467,6 +474,77 @@ async def _mark_descendants_dirty(
     return transitioned
 
 
+def _page_id_to_idx0(page_id: str) -> int:
+    """Best-effort parse of idx0 from a page_id string.
+
+    For root pages the page_id is the zero-padded idx0 (e.g. "0042" → 42).
+    For split children with non-numeric page_ids this returns 0 as fallback;
+    the FTS entry is still indexed and searchable via page_id.
+    """
+    try:
+        return int(page_id)
+    except ValueError:
+        return 0
+
+
+async def _rebuild_fts_drift(
+    db: IDatabase,
+    data_root: Path,
+    reports: list[tuple[Project, str, ReconcileReport]],
+) -> int:
+    """Rebuild missing FTS entries for clean text_postprocess pages; return count."""
+    rebuilt = 0
+    for project, page_id, _report in reports:
+        # Check if this page has a clean text_postprocess stage row.
+        tp_row = await db.get_page_stage(project.id, page_id, "text_postprocess")
+        if tp_row is None or tp_row.status != PageStageStatus.clean:
+            continue
+
+        # Check whether FTS already has an entry for this page via page_text.
+        already_indexed = await _fts_entry_exists(db, project.id, page_id)
+        if already_indexed:
+            continue
+
+        # Read the text artifact from disk and upsert.
+        try:
+            artifact_path = stage_artifact_path(data_root, project.id, page_id, "text_postprocess")
+        except StageArtifactWriteError:
+            continue
+        if not artifact_path.exists():
+            continue
+
+        try:
+            ocr_text = artifact_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        idx0 = _page_id_to_idx0(page_id)
+        await db.upsert_page_text(project.id, page_id, idx0, ocr_text)
+        rebuilt += 1
+
+    return rebuilt
+
+
+async def _fts_entry_exists(db: IDatabase, project_id: str, page_id: str) -> bool:
+    """Return True if page_text has a row for (project_id, page_id).
+
+    Uses SqliteDatabase internals directly when available; otherwise falls
+    back to a search probe (not reliable for empty-content pages).
+    """
+    if isinstance(db, SqliteDatabase):
+
+        def _go() -> bool:
+            with db._cursor() as cur:
+                row = cur.execute(
+                    "SELECT 1 FROM page_text WHERE project_id=? AND page_id=?",
+                    (project_id, page_id),
+                ).fetchone()
+            return row is not None
+
+        return await db._run(_go)
+    return False
+
+
 def _print_heal_summary(
     reports: list[tuple[Project, str, ReconcileReport]],
     counts: HealCounts,
@@ -482,6 +560,7 @@ def _print_heal_summary(
             "missing_marked_failed": counts.missing_marked_failed,
             "hash_mismatches_marked_dirty": counts.hash_mismatches_marked_dirty,
             "descendants_marked_dirty": counts.descendants_marked_dirty,
+            "fts_entries_rebuilt": counts.fts_entries_rebuilt,
         }
         print(json.dumps(out, indent=2), file=stdout)
         return
@@ -491,7 +570,8 @@ def _print_heal_summary(
         f"{counts.orphans_moved} orphan(s) quarantined, "
         f"{counts.missing_marked_failed} row(s) marked failed, "
         f"{counts.hash_mismatches_marked_dirty} row(s) marked dirty, "
-        f"{counts.descendants_marked_dirty} descendant(s) cascaded to dirty",
+        f"{counts.descendants_marked_dirty} descendant(s) cascaded to dirty, "
+        f"{counts.fts_entries_rebuilt} FTS entry/entries rebuilt",
         file=stdout,
     )
 

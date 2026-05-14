@@ -170,6 +170,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/review-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Review Status
+         * @description Return unreviewed page count + awaiting_review job for a project.
+         *
+         *     Used by the project banner and Open Tasks bell badge to show how many
+         *     pages still need text review before build_package can run.
+         */
+        get: operations["get_project_review_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages": {
         parameters: {
             query?: never;
@@ -596,6 +619,51 @@ export interface paths {
         };
         /** Get Job */
         get: operations["get_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/pipeline/stages/{stage_id}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Fields
+         * @description Return the sorted list of PageConfigOverrides field names that stage reads.
+         *
+         *     Backed by STAGE_CONFIG_FIELDS in stage_runner.py — the same map that
+         *     cascade_dirty_for_config_change uses. Stages not in the map read no
+         *     per-page config fields; they return an empty list.
+         *
+         *     Status codes:
+         *     - 200: known stage_id; body has sorted fields list (may be empty).
+         *     - 422: unknown stage_id (not in PAGE_STAGE_IDS).
+         */
+        get: operations["get_stage_fields"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Project Pages */
+        get: operations["search_project_pages"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1686,6 +1754,31 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ReviewStatusResponse */
+        ReviewStatusResponse: {
+            /** Unreviewed Count */
+            unreviewed_count: number;
+            /** Awaiting Review Job Id */
+            awaiting_review_job_id: string | null;
+        };
+        /** SearchHitResponse */
+        SearchHitResponse: {
+            /** Page Id */
+            page_id: string;
+            /** Idx0 */
+            idx0: number;
+            /** Snippet */
+            snippet: string;
+            /** Score */
+            score: number;
+        };
+        /** SearchResponse */
+        SearchResponse: {
+            /** Results */
+            results: components["schemas"]["SearchHitResponse"][];
+            /** Total Count */
+            total_count: number;
+        };
         /**
          * SourcePreviewResponse
          * @description Cheap-to-compute preview of an uploaded source zip (P2 #8).
@@ -1718,6 +1811,13 @@ export interface components {
         SplitPageResponse: {
             /** Children */
             children: components["schemas"]["PageRecord"][];
+        };
+        /** StageFieldsResponse */
+        StageFieldsResponse: {
+            /** Stage Id */
+            stage_id: string;
+            /** Fields */
+            fields: string[];
         };
         /** StepState */
         StepState: {
@@ -2288,6 +2388,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_review_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3023,6 +3154,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stage_fields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageFieldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_project_pages: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
                 };
             };
             /** @description Validation Error */
