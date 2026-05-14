@@ -197,8 +197,9 @@ export function PageWorkbenchPage() {
     },
   });
 
+  // angle=null clears the stored override (Reset path); angle=number persists it (Apply path).
   const applyRotation = useMutation({
-    mutationFn: (angle: number) =>
+    mutationFn: (angle: number | null) =>
       api.patch<PageRecord>(`/api/data/projects/${projectId}/pages/${idx0}`, {
         config_overrides: { ...overrides, manual_deskew_angle: angle },
       }),
@@ -397,6 +398,12 @@ export function PageWorkbenchPage() {
             onApply={() => applyRotation.mutate(draftAngle)}
             onReset={() => {
               setDraftAngle(0);
+              // If a stored angle exists, clear the config override and re-run.
+              const storedAngle =
+                page.data?.config_overrides.manual_deskew_angle ?? null;
+              if (storedAngle !== null) {
+                applyRotation.mutate(null);
+              }
             }}
             onEscape={() => setEditMode("view")}
             onDiscreteRotate={(delta) => {
