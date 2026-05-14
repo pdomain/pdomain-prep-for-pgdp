@@ -185,27 +185,42 @@ def _decode_source_cpu(image: Any, cfg: Any = None) -> Any:
 def _initial_crop_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply project/per-page initial-crop insets, or pass through at default.
 
-    Mirrors `process_page_cpu`'s 4d branch: when the resolved
-    `(left, right, top, bottom)` insets are all zero the image is
-    forwarded unchanged. ResolvedPageConfig plumbing through the runner
-    isn't wired yet (Q5 follow-up), so this iteration's impl always
-    takes the no-crop branch — that's the documented default and the
-    one the M2 smoke-test exercises. When the config plumbing lands the
-    signature gains a `cfg: ResolvedPageConfig` kwarg and the actual
-    `crop_edges` call moves here.
+    Mirrors ``process_page_cpu``'s 4d branch: resolves the effective crop
+    insets from ``cfg.initial_crop`` (per-page) or ``cfg.initial_crop_all``
+    (project-wide). When all four insets are zero the image is forwarded
+    unchanged.
     """
-    return image
+    if cfg is None:
+        return image
+
+    # Per-page override wins over project-wide default (same as process_page_cpu).
+    crop = cfg.initial_crop or cfg.initial_crop_all
+    if not any(crop):
+        return image
+
+    from pd_book_tools.image_processing.cv2_processing import (  # type: ignore[import-not-found]
+        crop_edges,
+    )
+
+    L_, R_, T_, B_ = crop
+    return crop_edges(image, top=T_, bottom=B_, left=L_, right=R_)
 
 
 def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
     """Apply the optional pre-crop manual rotation, or pass through at default.
 
-    Mirrors `process_page_cpu`'s 4e branch: rotation only fires when
-    `cfg.deskew_before_crop is not None`. At default the image is
-    forwarded unchanged. Same ResolvedPageConfig follow-up as
-    `initial_crop` — the impl learns about cfg later.
+    Mirrors ``process_page_cpu``'s 4e branch: rotation fires when
+    ``cfg.deskew_before_crop`` is not ``None``. At default (``None``) the image
+    is forwarded unchanged.
     """
-    return image
+    if cfg is None or cfg.deskew_before_crop is None:
+        return image
+
+    from pd_book_tools.image_processing.cv2_processing import (  # type: ignore[import-not-found]
+        rotate_image,
+    )
+
+    return rotate_image(image, cfg.deskew_before_crop)
 
 
 # ─── Real implementations: post-invert chain (Slice 9-11) ───────────────────

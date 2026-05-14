@@ -86,6 +86,7 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
       use_ocr_bbox_edge: null,
       rotated_standard: null,
       single_dimension_rescale: null,
+      manual_deskew_angle: null,
     },
     splits: [],
     illustration_regions: [],

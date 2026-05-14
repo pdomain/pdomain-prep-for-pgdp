@@ -128,6 +128,7 @@ class PageConfigOverrides(ApiModel):
     use_ocr_bbox_edge: bool | None = None
     rotated_standard: bool | None = None
     single_dimension_rescale: bool | None = None
+    manual_deskew_angle: float | None = None
 
 
 class PageSplit(ApiModel):

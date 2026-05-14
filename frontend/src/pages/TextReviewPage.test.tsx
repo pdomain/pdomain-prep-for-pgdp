@@ -107,6 +107,7 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
       use_ocr_bbox_edge: null,
       rotated_standard: null,
       single_dimension_rescale: null,
+      manual_deskew_angle: null,
     },
     splits: [],
     illustration_regions: [],
@@ -346,6 +347,10 @@ describe("TextReviewPage §9a delete-words flow", () => {
     }
   });
 
+  // Note: fake timers are only used in specific tests that need timer
+  // advancement (undo expiry). See individual tests for vi.useFakeTimers()
+  // calls. Tests that don't need fake timers use real timers.
+
   function fireImgLoad(natural: { w: number; h: number }) {
     const img = document.querySelector("img") as HTMLImageElement;
     expect(img).not.toBeNull();
@@ -369,7 +374,10 @@ describe("TextReviewPage §9a delete-words flow", () => {
     };
   }
 
-  it("selects words via clicks, then DELETEs the selected ids on keydown", async () => {
+  it("selects words via clicks, opens undo window on Delete keydown; ✕ confirm fires DELETE", async () => {
+    // Tests the core flow: select → Delete key → undo banner appears →
+    // ✕ button fires DELETE immediately.
+    // The 5-second timer expiry is tested in useUndoWindow.test.ts.
     const deleteCalls: { url: string; body: unknown }[] = [];
 
     server.use(
@@ -418,12 +426,10 @@ describe("TextReviewPage §9a delete-words flow", () => {
       expect(el.value).toBe("alpha beta gamma\n");
     });
 
-    // Light up the bbox overlay (see helper above for why both
-    // dimensions and the bounding rect must be stubbed).
+    // Light up the bbox overlay.
     fireImgLoad({ w: 1000, h: 100 });
 
-    // Three rects → one per OCR word. The mock surfaces them as
-    // `data-testid="konva-rect"` divs with the click handler bound.
+    // Three rects → one per OCR word.
     const rects = await screen.findAllByTestId("konva-rect");
     expect(rects).toHaveLength(3);
 
@@ -432,16 +438,21 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await user.click(rects[0]);
     await user.click(rects[1]);
 
-    // The delete button label reflects selection size — proves the
-    // selection state actually flipped.
+    // The delete button label reflects selection size.
     await screen.findByRole("button", { name: /^Delete 2 words$/i });
 
-    // Press Delete on document.body (NOT in the textarea — the hotkey
-    // hook ignores INPUT/TEXTAREA focus by default, matching the
-    // previous hand-rolled scope check). `react-hotkeys-hook` keys off
-    // `event.code`, so include both `key` and `code` — `key` alone is
-    // silently dropped by the hook's normalisation path.
+    // Press Delete on document.body — opens the undo window, no DELETE
+    // fires yet.
     fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    // Undo banner should appear immediately.
+    await screen.findByTestId("undo-banner");
+    // No DELETE fired yet.
+    expect(deleteCalls).toHaveLength(0);
+
+    // Click ✕ — DELETE fires immediately without waiting 5 seconds.
+    const confirmBtn = screen.getByRole("button", { name: /Confirm delete/i });
+    await user.click(confirmBtn);
 
     await waitFor(() => {
       expect(deleteCalls).toHaveLength(1);
@@ -454,13 +465,79 @@ describe("TextReviewPage §9a delete-words flow", () => {
       split_suffix: null,
     });
 
-    // After success: textarea reflects the rebuilt text, button
-    // returns to its empty-selection label.
+    // After success: textarea reflects the rebuilt text from the server.
     await waitFor(() => {
       const el = document.querySelector("textarea") as HTMLTextAreaElement;
       expect(el.value).toBe("gamma\n");
     });
+    // Banner dismissed.
+    expect(screen.queryByTestId("undo-banner")).toBeNull();
     await screen.findByRole("button", { name: /^Delete words$/i });
+  });
+
+  it("undo banner: Undo button restores words and cancels DELETE", async () => {
+    const deleteCalls: { body: unknown }[] = [];
+
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [makeWordRow("w_alpha", 0), makeWordRow("w_beta", 60)],
+        }),
+      ),
+      http.delete(
+        "/api/data/projects/:projectId/pages/:idx0/words",
+        async ({ request }) => {
+          deleteCalls.push({ body: await request.json() });
+          return HttpResponse.json({
+            text_key: "k",
+            words_key: "k.words.json",
+            deleted_count: 1,
+            text: "beta\n",
+            remaining_words: [makeWordRow("w_beta", 60)],
+          });
+        },
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
+
+    await waitFor(() => {
+      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      expect(el.value).toBe("alpha beta\n");
+    });
+    fireImgLoad({ w: 1000, h: 100 });
+
+    const rects = await screen.findAllByTestId("konva-rect");
+    await user.click(rects[0]); // select w_alpha
+
+    await screen.findByRole("button", { name: /^Delete 1 word$/i });
+    fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    // Banner appears.
+    await screen.findByTestId("undo-banner");
+    expect(deleteCalls).toHaveLength(0);
+
+    // Click the "Undo (Ctrl+Z)" button — banner closes, no DELETE fires.
+    const undoBtn = screen.getByRole("button", { name: /Undo/i });
+    await user.click(undoBtn);
+
+    // Banner is dismissed.
+    expect(screen.queryByTestId("undo-banner")).toBeNull();
+
+    // Confirm no DELETE fires (give a tick for any spurious mutation).
+    await new Promise((r) => setTimeout(r, 20));
+    expect(deleteCalls).toHaveLength(0);
   });
 
   it("clears selection when Escape is pressed", async () => {

@@ -47,6 +47,7 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
       use_ocr_bbox_edge: null,
       rotated_standard: null,
       single_dimension_rescale: null,
+      manual_deskew_angle: null,
     },
     splits: [],
     illustration_regions: [],
@@ -266,5 +267,121 @@ describe("StageControlsPanel Run button", () => {
     await waitFor(() => {
       expect(runCalled).toBe(true);
     });
+  });
+
+  it("Run fires POST .../stages/ocr/run?async=true for the ocr slow stage", async () => {
+    let asyncCalled = false;
+    let syncCalled = false;
+
+    server.use(
+      http.get("/api/data/pipeline/stages/ocr/fields", () =>
+        HttpResponse.json({ stage_id: "ocr", fields: [] }),
+      ),
+      // async path handler — URL ends with "?async=true"
+      http.post(
+        "/api/data/projects/p1/pages/0/stages/ocr/run",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("async") === "true") {
+            asyncCalled = true;
+            return HttpResponse.json(makeStageRow("ocr"), { status: 202 });
+          }
+          syncCalled = true;
+          return HttpResponse.json(makeStageRow("ocr"));
+        },
+      ),
+    );
+
+    renderPanel({ stageId: "ocr" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stage-controls-panel")).toBeInTheDocument();
+    });
+
+    const runBtn = screen.getByRole("button", { name: /run/i });
+    const user = userEvent.setup();
+    await user.click(runBtn);
+
+    await waitFor(() => {
+      expect(asyncCalled).toBe(true);
+    });
+    expect(syncCalled).toBe(false);
+  });
+
+  it("Run fires POST .../stages/extract_illustrations/run?async=true for the extract_illustrations slow stage", async () => {
+    let asyncCalled = false;
+
+    server.use(
+      http.get("/api/data/pipeline/stages/extract_illustrations/fields", () =>
+        HttpResponse.json({
+          stage_id: "extract_illustrations",
+          fields: [],
+        }),
+      ),
+      http.post(
+        "/api/data/projects/p1/pages/0/stages/extract_illustrations/run",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("async") === "true") {
+            asyncCalled = true;
+          }
+          return HttpResponse.json(makeStageRow("extract_illustrations"), {
+            status: asyncCalled ? 202 : 200,
+          });
+        },
+      ),
+    );
+
+    renderPanel({ stageId: "extract_illustrations" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stage-controls-panel")).toBeInTheDocument();
+    });
+
+    const runBtn = screen.getByRole("button", { name: /run/i });
+    const user = userEvent.setup();
+    await user.click(runBtn);
+
+    await waitFor(() => {
+      expect(asyncCalled).toBe(true);
+    });
+  });
+
+  it("Run fires sync path (no ?async) for normal stages like grayscale", async () => {
+    let asyncCalled = false;
+    let syncCalled = false;
+
+    server.use(
+      http.get("/api/data/pipeline/stages/grayscale/fields", () =>
+        HttpResponse.json({ stage_id: "grayscale", fields: [] }),
+      ),
+      http.post(
+        "/api/data/projects/p1/pages/0/stages/grayscale/run",
+        ({ request }) => {
+          const url = new URL(request.url);
+          if (url.searchParams.get("async") === "true") {
+            asyncCalled = true;
+          } else {
+            syncCalled = true;
+          }
+          return HttpResponse.json(makeStageRow("grayscale"));
+        },
+      ),
+    );
+
+    renderPanel({ stageId: "grayscale" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stage-controls-panel")).toBeInTheDocument();
+    });
+
+    const runBtn = screen.getByRole("button", { name: /run/i });
+    const user = userEvent.setup();
+    await user.click(runBtn);
+
+    await waitFor(() => {
+      expect(syncCalled).toBe(true);
+    });
+    expect(asyncCalled).toBe(false);
   });
 });

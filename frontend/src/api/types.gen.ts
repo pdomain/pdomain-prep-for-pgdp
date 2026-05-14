@@ -180,9 +180,6 @@ export interface paths {
         /**
          * Get Project Review Status
          * @description Return unreviewed page count + awaiting_review job for a project.
-         *
-         *     Used by the project banner and Open Tasks bell badge to show how many
-         *     pages still need text review before build_package can run.
          */
         get: operations["get_project_review_status"];
         put?: never;
@@ -634,18 +631,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Stage Fields
-         * @description Return the sorted list of PageConfigOverrides field names that stage reads.
-         *
-         *     Backed by STAGE_CONFIG_FIELDS in stage_runner.py — the same map that
-         *     cascade_dirty_for_config_change uses. Stages not in the map read no
-         *     per-page config fields; they return an empty list.
-         *
-         *     Status codes:
-         *     - 200: known stage_id; body has sorted fields list (may be empty).
-         *     - 422: unknown stage_id (not in PAGE_STAGE_IDS).
-         */
+        /** Get Stage Fields */
         get: operations["get_stage_fields"];
         put?: never;
         post?: never;
@@ -1302,6 +1288,8 @@ export interface components {
             rotated_standard?: boolean | null;
             /** Single Dimension Rescale */
             single_dimension_rescale?: boolean | null;
+            /** Manual Deskew Angle */
+            manual_deskew_angle?: number | null;
         };
         /**
          * PageConfigOverrides
@@ -1346,6 +1334,8 @@ export interface components {
             rotated_standard: boolean | null;
             /** Single Dimension Rescale */
             single_dimension_rescale: boolean | null;
+            /** Manual Deskew Angle */
+            manual_deskew_angle: number | null;
         };
         /**
          * PageOutput

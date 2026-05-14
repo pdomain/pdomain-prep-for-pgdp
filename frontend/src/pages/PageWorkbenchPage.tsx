@@ -66,7 +66,7 @@ interface IllustrationRegion {
   convert_to_grayscale: boolean;
 }
 
-type EditMode = "view" | "split" | "illustration" | "create-sibling";
+type EditMode = "view" | "split" | "illustration" | "create-sibling" | "rotate";
 
 const PAGE_TYPES: PageType[] = [
   "normal",
@@ -125,6 +125,8 @@ export function PageWorkbenchPage() {
   const [selectedStageId, setSelectedStageId] = useState<string | undefined>(
     undefined,
   );
+  // Rotate mode: draft angle in degrees (±180 range).
+  const [draftAngle, setDraftAngle] = useState<number>(0);
 
   // Create-sibling split state: bbox drawn by user + suffix list.
   const [siblingBbox, setSiblingBbox] = useState<{
@@ -178,6 +180,56 @@ export function PageWorkbenchPage() {
       queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
     },
   });
+
+  // Rotate apply: PATCH config_overrides with manual_deskew_angle, then
+  // POST manual_deskew_pre/run to re-run the stage.
+  const runDeskewStage = useMutation({
+    mutationFn: () =>
+      api.post(
+        `/api/data/projects/${projectId}/pages/${idx0}/stages/manual_deskew_pre/run`,
+        {},
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["page-stages", projectId, idx0],
+      });
+      setEditMode("view");
+    },
+  });
+
+  const applyRotation = useMutation({
+    mutationFn: (angle: number) =>
+      api.patch<PageRecord>(`/api/data/projects/${projectId}/pages/${idx0}`, {
+        config_overrides: { ...overrides, manual_deskew_angle: angle },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
+      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      runDeskewStage.mutate();
+    },
+  });
+
+  // Pre-fill draftAngle when entering rotate mode if a stored angle exists.
+  const handleSetEditMode = (mode: EditMode) => {
+    if (mode === "rotate" && page.data) {
+      const stored = page.data.config_overrides.manual_deskew_angle;
+      setDraftAngle(stored ?? 0);
+    }
+    setEditMode(mode);
+  };
+
+  // Global Escape handler: exits rotate mode without applying.
+  useEffect(() => {
+    if (editMode !== "rotate") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setEditMode("view");
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [editMode]);
 
   if (page.isLoading) return <p className="text-slate-500">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
@@ -337,7 +389,27 @@ export function PageWorkbenchPage() {
           }
         />
 
-        <ModeToolbar mode={editMode} onChange={setEditMode} />
+        <ModeToolbar mode={editMode} onChange={handleSetEditMode} />
+
+        {editMode === "rotate" && (
+          <RotateToolbar
+            draftAngle={draftAngle}
+            onApply={() => applyRotation.mutate(draftAngle)}
+            onReset={() => {
+              setDraftAngle(0);
+            }}
+            onEscape={() => setEditMode("view")}
+            onDiscreteRotate={(delta) => {
+              const raw = draftAngle + delta;
+              // Wrap within ±180°
+              const wrapped =
+                raw > 180 ? raw - 360 : raw < -180 ? raw + 360 : raw;
+              setDraftAngle(wrapped);
+              applyRotation.mutate(wrapped);
+            }}
+            isPending={applyRotation.isPending || runDeskewStage.isPending}
+          />
+        )}
 
         <CanvasViewer
           imageKey={previewUrl ?? `/cdn/${page.data.thumbnail_key ?? ""}`}
@@ -743,6 +815,99 @@ function ModeToolbar({
       {btn("split", "Add split", "bg-blue-600")}
       {btn("illustration", "Add illustration", "bg-red-600")}
       {btn("create-sibling", "Draw split region", "bg-indigo-600")}
+      {btn("rotate", "Rotate", "bg-amber-600")}
+    </div>
+  );
+}
+
+// ─── Rotate toolbar ──────────────────────────────────────────────────────────
+
+function RotateToolbar({
+  draftAngle,
+  onApply,
+  onReset,
+  onEscape,
+  onDiscreteRotate,
+  isPending,
+}: {
+  draftAngle: number;
+  onApply: () => void;
+  onReset: () => void;
+  onEscape: () => void;
+  onDiscreteRotate: (delta: number) => void;
+  isPending: boolean;
+}) {
+  // Keyboard: Enter = Apply, Escape = cancel.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onApply();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onEscape();
+    }
+  };
+
+  const displayAngle = Number(draftAngle.toFixed(1));
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
+      <span className="font-medium text-amber-800">Rotate:</span>
+      {/* Angle readout */}
+      <span className="min-w-[4rem] rounded bg-white px-2 py-0.5 font-mono text-sm text-slate-800 border border-slate-200">
+        {displayAngle < 0 ? `${displayAngle}°` : `${displayAngle}°`}
+      </span>
+      {/* Apply / Reset / Escape */}
+      <button
+        onClick={onApply}
+        disabled={isPending}
+        className="rounded bg-amber-600 px-3 py-1 text-sm text-white hover:bg-amber-700 disabled:opacity-50"
+      >
+        Apply
+      </button>
+      <button
+        onClick={onReset}
+        disabled={isPending}
+        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+      >
+        Reset
+      </button>
+      <button
+        onClick={onEscape}
+        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+      >
+        Cancel
+      </button>
+      {/* Discrete orientation buttons */}
+      <span className="ml-2 text-slate-500">|</span>
+      <button
+        onClick={() => onDiscreteRotate(90)}
+        disabled={isPending}
+        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        title="Rotate 90° clockwise"
+      >
+        90° CW
+      </button>
+      <button
+        onClick={() => onDiscreteRotate(-90)}
+        disabled={isPending}
+        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        title="Rotate 90° counter-clockwise"
+      >
+        90° CCW
+      </button>
+      <button
+        onClick={() => onDiscreteRotate(180)}
+        disabled={isPending}
+        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        title="Rotate 180°"
+      >
+        180°
+      </button>
     </div>
   );
 }

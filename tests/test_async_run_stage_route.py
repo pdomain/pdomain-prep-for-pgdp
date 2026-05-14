@@ -22,6 +22,8 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,11 +34,13 @@ from pd_prep_for_pgdp.core.models import (
     JobType,
     PageProcessingStatus,
     PageRecord,
+    PageStageStatus,
     PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
 )
+from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pd_prep_for_pgdp.settings import Settings
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
@@ -198,3 +202,108 @@ def test_async_404_for_unknown_page(seeded_client: tuple[TestClient, Settings]) 
     client, _ = seeded_client
     r = client.post("/api/data/projects/async_proj/pages/99/stages/ocr/run?async=true")
     assert r.status_code == 404
+
+
+# ─── Integration: job runner processes the queued job ─────────────────────
+
+
+def _checkerboard_bgr_png() -> bytes:
+    img = np.zeros((20, 20, 3), dtype=np.uint8)
+    img[::2, ::2] = (200, 200, 200)
+    img[1::2, 1::2] = (200, 200, 200)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return bytes(buf.tobytes())
+
+
+async def _seed_clean_parent_async(
+    settings: Settings, project_id: str, page_id: str, stage_id: str, payload: bytes
+) -> None:
+    """Seed a clean stage row + on-disk artifact via the canonical writer."""
+    db = SqliteDatabase(settings.derived_database_url)
+    await db.initialize()
+    try:
+        await db.init_page_stages_for_page(project_id, page_id)
+        await commit_stage_artifact(
+            data_root=settings.data_root,
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            stage_id=stage_id,
+            artifact_bytes=payload,
+        )
+    finally:
+        await db.close()
+
+
+def test_async_job_runs_to_completion_and_stage_is_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integration: `?async=true` on `ocr` enqueues a job; the job runner
+    processes it; the stage row transitions to `clean`.
+
+    The `ocr` impl is monkeypatched to avoid loading DocTR weights in CI.
+    The test exercises the full route → DB job insert → InProcessJobRunner →
+    run_stage → DB stage row = clean path.
+    """
+    import json
+
+    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+
+    fake_words = [
+        {
+            "id": "w0",
+            "text": "Hello",
+            "confidence": 0.9,
+            "bounding_box": {"x": 0, "y": 0, "w": 10, "h": 10},
+        }
+    ]
+    fake_result = {
+        "words.json": json.dumps(fake_words).encode(),
+        "raw.txt": b"Hello",
+    }
+    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image: fake_result)
+
+    settings = _settings(tmp_path)
+    _seed(settings)
+
+    # Seed ocr_crop as a clean parent so the ocr stage can run.
+    asyncio.run(_seed_clean_parent_async(settings, "async_proj", "0000", "ocr_crop", _checkerboard_bgr_png()))
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # POST async=true on ocr — should return 202 with a queued job.
+        r = client.post("/api/data/projects/async_proj/pages/0/stages/ocr/run?async=true")
+        assert r.status_code == 202, r.text
+        job_id = r.json()["id"]
+
+        # Drive the job runner directly: run_pending picks up the queued job.
+        job_runner = app.state.job_runner
+        asyncio.run(job_runner.run_pending())
+
+    # After the runner completes, verify the stage row is clean.
+    async def _check() -> PageStageStatus:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        try:
+            row = await db.get_page_stage("async_proj", "0000", "ocr")
+            return row.status if row is not None else PageStageStatus.not_run
+        finally:
+            await db.close()
+
+    status = asyncio.run(_check())
+    assert status == PageStageStatus.clean, f"expected clean, got {status!r}"
+
+    # Job row should be marked complete too.
+    async def _check_job() -> JobStatus:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        try:
+            job = await db.get_job(job_id)
+            return job.status if job is not None else JobStatus.queued
+        finally:
+            await db.close()
+
+    job_status = asyncio.run(_check_job())
+    assert job_status == JobStatus.complete, f"expected job complete, got {job_status!r}"

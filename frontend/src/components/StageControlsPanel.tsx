@@ -3,6 +3,13 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 
+/**
+ * Stages that require the async run path (`?async=true`) because they may
+ * take seconds or minutes. The chip rail uses this to enqueue a job rather
+ * than blocking the request handler.
+ */
+const SLOW_STAGES = new Set(["ocr", "extract_illustrations"]);
+
 type PageRecord = components["schemas"]["PageRecord"];
 type PageConfigOverrides = components["schemas"]["PageConfigOverrides-Input"];
 type PageStageState = components["schemas"]["PageStageState"];
@@ -71,12 +78,15 @@ export function StageControlsPanel({
     },
   });
 
+  const isSlowStage = stageId != null && SLOW_STAGES.has(stageId);
+
   const runMutation = useMutation({
-    mutationFn: () =>
-      api.post<PageStageState>(
-        `/api/data/projects/${projectId}/pages/${idx0}/stages/${stageId}/run`,
-        {},
-      ),
+    mutationFn: () => {
+      const url = isSlowStage
+        ? `/api/data/projects/${projectId}/pages/${idx0}/stages/${stageId}/run?async=true`
+        : `/api/data/projects/${projectId}/pages/${idx0}/stages/${stageId}/run`;
+      return api.post<PageStageState>(url, {});
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["stages", projectId, idx0],

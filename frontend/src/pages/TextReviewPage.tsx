@@ -10,6 +10,7 @@ import { FormErrorBanner } from "../components/FormErrorBanner";
 import { WordBboxOverlay } from "../components/WordBboxOverlay";
 import { diffLines } from "../lib/lineDiff";
 import { LineDiffView } from "../lib/LineDiffView";
+import { useUndoWindow } from "../hooks/useUndoWindow";
 import {
   buildWordOffsetIndex,
   offsetToWord,
@@ -58,6 +59,9 @@ export function TextReviewPage() {
   // screen readers narrate marquee selection size, manual clears, and
   // delete completions. Empty string = nothing to announce.
   const [liveMessage, setLiveMessage] = useState<string>("");
+
+  // §undo: 5-second debounced undo window for word deletes.
+  const undoWindow = useUndoWindow();
 
   // Image-load state drives the overlay sizing — Konva Stage waits
   // until the <img> has rendered so we know natural & rendered sizes.
@@ -116,6 +120,20 @@ export function TextReviewPage() {
     setPriorText(null);
   }, [projectId, idx0, splitSuffix]);
 
+  // §undo: navigate-away while undo window is open — fire DELETE immediately
+  // so the deletion is not silently dropped on unmount. The useUndoWindow
+  // hook already calls commitNow in its own cleanup effect; this effect
+  // additionally handles the Prev/Next navigation case where :idx0 changes
+  // while this component instance stays mounted (the component is remounted
+  // by the route, so cleanup fires on idx0 change too).
+  useEffect(() => {
+    return () => {
+      undoWindow.commitNow();
+    };
+    // undoWindow is stable (returned from a hook), so this runs only on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const wordIndex = useMemo(
     () => buildWordOffsetIndex(text, words),
     [text, words],
@@ -141,9 +159,11 @@ export function TextReviewPage() {
   // §9a: hard-delete the selected words server-side. The endpoint
   // rewrites `<root>.words.json` and `<root>.txt`; we mirror the new
   // canonical state into local `text` / `words` so the textarea and
-  // overlay refresh without a query round-trip. The destructive
-  // server semantics intentionally rule out client-side undo for v1
-  // (no restore endpoint exists) — see roadmap §9a "Status (tick 22)".
+  // overlay refresh without a query round-trip.
+  //
+  // §undo: DELETE is now deferred — it fires only after the 5-second undo
+  // window expires (or the user confirms). Words are removed from the canvas
+  // immediately (optimistic UI) and restored if the user undoes.
   const deleteWords = useMutation({
     mutationFn: (ids: string[]) =>
       api.delete<DeleteWordsResponse>(
@@ -174,6 +194,28 @@ export function TextReviewPage() {
     },
   });
 
+  // §undo: trigger word delete with undo window.
+  // 1. Optimistically remove the selected words from the canvas.
+  // 2. Open the 5-second undo window. The onCommit fires the real DELETE.
+  // 3. If the user undoes, restore the words to the canvas (no server call).
+  const triggerDeleteWithUndo = (ids: string[]) => {
+    if (ids.length === 0) return;
+
+    // Snapshot the words being deleted for potential restoration.
+    const deletedWords = words.filter((w) => ids.includes(w.id));
+
+    // Optimistically remove from canvas immediately.
+    setWords((prev) => prev.filter((w) => !ids.includes(w.id)));
+    setSelectedWordIds(new Set());
+    const n = ids.length;
+    setLiveMessage(`Deleted ${n} word${n === 1 ? "" : "s"} — Undo available`);
+
+    // Open the undo window. onCommit fires the real DELETE after the window.
+    undoWindow.openWindow(ids, deletedWords, () => {
+      deleteWords.mutate(ids);
+    });
+  };
+
   // §9a / §13a-step-2: bulk-delete + clear-selection hotkeys via
   // `react-hotkeys-hook`. The hook handles scope automatically — it
   // ignores INPUT / TEXTAREA / SELECT focus by default (see
@@ -188,10 +230,26 @@ export function TextReviewPage() {
     (ev) => {
       if (selectedWordIds.size === 0) return;
       ev.preventDefault();
-      deleteWords.mutate(Array.from(selectedWordIds));
+      triggerDeleteWithUndo(Array.from(selectedWordIds));
     },
     { preventDefault: true },
-    [selectedWordIds, deleteWords],
+    [selectedWordIds],
+  );
+
+  // §undo: Ctrl+Z / Cmd+Z restores deleted words during the undo window.
+  // Scope: body only (react-hotkeys-hook ignores INPUT/TEXTAREA by default).
+  useHotkeys(
+    "mod+z",
+    (ev) => {
+      if (!undoWindow.window) return;
+      ev.preventDefault();
+      const restored = undoWindow.undo();
+      if (restored) {
+        setWords((prev) => [...prev, ...(restored as OcrWord[])]);
+        setLiveMessage("Undo: words restored");
+      }
+    },
+    [undoWindow],
   );
   useHotkeys(
     "escape",
@@ -344,6 +402,42 @@ export function TextReviewPage() {
         </div>
       </header>
 
+      {/* §undo: Undo banner — visible for 5 seconds after a delete. */}
+      {undoWindow.window && (
+        <div
+          data-testid="undo-banner"
+          role="alert"
+          className="flex items-center gap-3 rounded border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+        >
+          <span>
+            Deleted {undoWindow.window.wordIds.length} word
+            {undoWindow.window.wordIds.length === 1 ? "" : "s"}.
+          </span>
+          <span className="text-xs text-amber-600">
+            {Math.ceil(undoWindow.window.remainingMs / 1000)}s
+          </span>
+          <button
+            onClick={() => {
+              const restored = undoWindow.undo();
+              if (restored) {
+                setWords((prev) => [...prev, ...(restored as OcrWord[])]);
+                setLiveMessage("Undo: words restored");
+              }
+            }}
+            className="rounded border border-amber-400 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100"
+          >
+            Undo (Ctrl+Z)
+          </button>
+          <button
+            onClick={() => undoWindow.confirm()}
+            className="ml-auto rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100"
+            aria-label="Confirm delete"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded border bg-white p-2">
           {imageKey ? (
@@ -451,7 +545,7 @@ export function TextReviewPage() {
               {reocr.isPending ? "Re-OCR…" : "Re-OCR this page"}
             </button>
             <button
-              onClick={() => deleteWords.mutate(Array.from(selectedWordIds))}
+              onClick={() => triggerDeleteWithUndo(Array.from(selectedWordIds))}
               disabled={selectedWordIds.size === 0 || deleteWords.isPending}
               className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent"
               title="Delete the words highlighted in red on the source image"

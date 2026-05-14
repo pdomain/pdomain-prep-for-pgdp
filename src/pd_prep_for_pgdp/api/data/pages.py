@@ -702,6 +702,17 @@ async def run_page_stage(
         await db.put_job(job)
         return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
 
+    # Resolve per-page config here in the route handler so that config-aware
+    # stages receive the current DB values. We already fetched `project` and
+    # `page` above; pass them directly to avoid a second DB round-trip inside
+    # run_stage. The async path intentionally skips this — the job handler
+    # will call run_stage itself and must re-resolve at execution time so any
+    # config changes that arrived while the job was queued are picked up.
+    from ...core.config_resolver import resolve_page_config
+
+    _system = await db.get_system_defaults(project.owner_id)
+    _resolved_config = resolve_page_config(_system, project.config, page)
+
     try:
         return await run_stage(
             data_root=settings.data_root,
@@ -715,6 +726,7 @@ async def run_page_stage(
             storage=storage,
             page_source_key=page.source_key,
             stage_events=stage_events,
+            resolved_config=_resolved_config,
         )
     except StageDependenciesNotMet as exc:
         raise HTTPException(409, str(exc)) from exc
