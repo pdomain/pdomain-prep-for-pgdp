@@ -401,10 +401,6 @@ class JobType(str, Enum):
     # progress + can keep working on the project page while thumbnails finish.
     unzip = "unzip"
     thumbnails = "thumbnails"
-    batch_process_pages = "batch_process_pages"
-    batch_ocr = "batch_ocr"
-    batch_text_postprocess = "batch_text_postprocess"
-    batch_extract_illustrations = "batch_extract_illustrations"
     build_package = "build_package"
     # Per-page stage execution via the async route (?async=true).
     # payload: {"project_id": str, "page_id": str, "stage_id": str, "device": str}  # noqa: ERA001
@@ -438,7 +434,7 @@ class Job(ApiModel):
     error_message: str | None = None
     gpu_backend: Literal["local", "cpu", "modal", "shared_container"] = "local"
     payload: dict[str, Any] = Field(default_factory=dict)
-    """Job-type-specific arguments. e.g. batch_process_pages -> {"page_idxs": [...]}.
+    """Job-type-specific arguments. e.g. run_page_stage -> {"page_id": "...", "stage_id": "..."}.
     The jobs table stores Job as JSON, so this is schema-migration-free."""
 
 
