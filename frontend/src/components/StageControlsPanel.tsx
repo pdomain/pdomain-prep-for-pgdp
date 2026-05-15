@@ -2,6 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
+import { Button } from "./ui/Button";
+import { Card } from "./ui/Card";
+import { Input } from "./ui/Input";
+import { Separator } from "./ui/Separator";
 
 /**
  * Stages that require the async run path (`?async=true`) because they may
@@ -108,69 +112,83 @@ export function StageControlsPanel({
         Controls — <span className="font-mono text-slate-600">{stageId}</span>
       </h2>
 
-      {fields.isLoading && (
-        <p className="text-xs text-slate-400">Loading fields…</p>
-      )}
+      <Card className="p-4">
+        {fields.isLoading && (
+          <p className="text-xs text-slate-400">Loading fields…</p>
+        )}
 
-      {visibleFields.length === 0 && !fields.isLoading && (
-        <p className="text-xs text-slate-400">
-          No config fields for this stage.
-        </p>
-      )}
+        {visibleFields.length === 0 && !fields.isLoading && (
+          <p className="text-xs text-slate-400">
+            No config fields for this stage.
+          </p>
+        )}
 
-      {visibleFields.map((field) => {
-        const f = field as keyof PageConfigOverrides;
-        if (BOOL_FIELDS.has(f)) {
-          return (
-            <ToggleField
-              key={f}
-              field={f}
-              value={(localOverrides[f] as boolean | null | undefined) ?? null}
-              onChange={(v) =>
-                setLocalOverrides((prev) => ({ ...prev, [f]: v }))
-              }
-            />
-          );
-        }
-        if (f in NUM_FIELDS) {
-          return (
-            <NumField
-              key={f}
-              field={f}
-              step={NUM_FIELDS[f]}
-              value={(localOverrides[f] as number | null | undefined) ?? null}
-              onChange={(v) =>
-                setLocalOverrides((prev) => ({ ...prev, [f]: v }))
-              }
-            />
-          );
-        }
-        return null;
-      })}
+        <div className="space-y-2">
+          {visibleFields.map((field) => {
+            const f = field as keyof PageConfigOverrides;
+            if (BOOL_FIELDS.has(f)) {
+              return (
+                <ToggleField
+                  key={f}
+                  field={f}
+                  value={
+                    (localOverrides[f] as boolean | null | undefined) ?? null
+                  }
+                  onChange={(v) =>
+                    setLocalOverrides((prev) => ({ ...prev, [f]: v }))
+                  }
+                />
+              );
+            }
+            if (f in NUM_FIELDS) {
+              return (
+                <NumField
+                  key={f}
+                  field={f}
+                  step={NUM_FIELDS[f]}
+                  value={
+                    (localOverrides[f] as number | null | undefined) ?? null
+                  }
+                  onChange={(v) =>
+                    setLocalOverrides((prev) => ({ ...prev, [f]: v }))
+                  }
+                />
+              );
+            }
+            return null;
+          })}
+        </div>
+      </Card>
 
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          onClick={() => applyMutation.mutate()}
-          disabled={applyMutation.isPending}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs text-white disabled:opacity-50 hover:bg-slate-800"
-        >
-          {applyMutation.isPending ? "Applying…" : "Apply"}
-        </button>
-        <button
-          onClick={() => runMutation.mutate()}
-          disabled={runMutation.isPending || !stageId}
-          className="rounded border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 disabled:opacity-50"
-        >
-          {runMutation.isPending ? "Running…" : "Run this stage"}
-        </button>
-      </div>
+      <Separator />
 
-      {applyMutation.isError && (
-        <p className="text-xs text-red-600">Apply failed.</p>
-      )}
-      {runMutation.isError && (
-        <p className="text-xs text-red-600">Run failed.</p>
-      )}
+      <Card className="p-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            size="xs"
+            onClick={() => applyMutation.mutate()}
+            disabled={applyMutation.isPending}
+          >
+            {applyMutation.isPending ? "Applying…" : "Apply"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={() => runMutation.mutate()}
+            disabled={runMutation.isPending || !stageId}
+          >
+            {runMutation.isPending ? "Running…" : "Run this stage"}
+          </Button>
+        </div>
+
+        {applyMutation.isError && (
+          <p className="text-xs text-red-600 mt-1">Apply failed.</p>
+        )}
+        {runMutation.isError && (
+          <p className="text-xs text-red-600 mt-1">Run failed.</p>
+        )}
+      </Card>
     </div>
   );
 }
@@ -189,7 +207,7 @@ function NumField({
   return (
     <label className="block">
       <span className="text-xs text-slate-600">{field}</span>
-      <input
+      <Input
         data-testid={`field-${field}`}
         type="number"
         step={step}
@@ -199,7 +217,7 @@ function NumField({
           const raw = e.target.value;
           onChange(raw === "" ? null : Number(raw));
         }}
-        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+        className="mt-1"
       />
     </label>
   );
