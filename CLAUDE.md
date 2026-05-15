@@ -65,15 +65,6 @@ Targeted runs: `uv run pytest -k <pattern>`.
   tests on synthetic inputs (e.g. `test_process_page.py`'s black-on-white
   round-trip through Step 4).
 
-## Known spec quirks
-
-- **`compute_prefix` off-by-one:** the spec's loop
-  `range(start, min(idx0, end+1))` is empty when `idx0 == start`, so the first
-  frontmatter page resolves to `f000` instead of `f001` despite
-  `frontmatter_page_nbr_start=1`. Implementation matches the spec verbatim;
-  `test_compute_prefix_basic_numbering` asserts current `f000` behavior so a
-  future fix is an intentional change.
-
 ## Decisions (locked 2026-05-07 — details in linked specs)
 
 - **Pipeline task-model refactor:** per-page stage DAG + dirty propagation +
