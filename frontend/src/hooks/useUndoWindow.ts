@@ -1,5 +1,5 @@
 /**
- * useUndoWindow — manages the 5-second debounced undo window for word deletes.
+ * useUndoWindow — manages the 5-second countdown UI for word-delete undo.
  *
  * Spec: docs/specs/2026-05-13-word-delete-undo-design.md
  *
@@ -7,19 +7,27 @@
  *   null → open  (openWindow)
  *   open → null  (undo, confirm, commitNow, or 5 s expiry)
  *
+ * Current contract (§9a — immediate-delete model):
+ *   DELETE fires immediately when the user confirms the delete action.
+ *   This hook is responsible only for the countdown UI and undo-window
+ *   state; `onCommit` is always passed as a no-op (`() => {}`) because
+ *   there is nothing left to commit after the server has already persisted
+ *   the deletion.
+ *
  * The hook returns:
  *   - `window`: the current undo window state, or null if no window is open.
  *   - `openWindow(wordIds, words, onCommit)`: open a new undo window. If one
- *     is already open, it commits the first batch immediately (double-delete
- *     policy), then opens a new window for the new batch. Returns the
- *     `AbortController` signal that the caller should pass to the DELETE
- *     mutation so the mutation can be cancelled on undo.
- *   - `undo()`: cancel the pending DELETE, restore the saved words, and close
- *     the window. Returns the words to restore, or null if no window is open.
- *   - `confirm()`: commit the pending DELETE immediately (fire onCommit) and
- *     close the window. Equivalent to the ✕ / Confirm button.
- *   - `commitNow()`: commit without aborting — used for navigate-away cleanup
- *     (route change, useEffect cleanup).
+ *     is already open, it fires onCommit for the first batch immediately
+ *     (double-delete policy), then opens a new window for the new batch.
+ *     Returns an `AbortController` signal (legacy; callers pass `() => {}`
+ *     for onCommit in the immediate-delete model).
+ *   - `undo()`: abort the saved AbortController signal, close the window,
+ *     and return the saved words so the caller can call `restoreWords`.
+ *     Returns null if no window is open.
+ *   - `confirm()`: fire onCommit (no-op in §9a) and close the window.
+ *     Equivalent to the ✕ / Confirm button.
+ *   - `commitNow()`: same as confirm() — fires onCommit (no-op in §9a) and
+ *     closes the window without aborting. Used for navigate-away cleanup.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

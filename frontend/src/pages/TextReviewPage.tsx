@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -200,6 +200,14 @@ export function TextReviewPage() {
         undoWindow.openWindow(pendingIds, snapshot, () => {});
       }
     },
+    onError: () => {
+      pendingDeleteRef.current = null;
+      // Soft-delete didn't happen on the server — re-fetch canonical state
+      // so the optimistically-removed words reappear on the canvas.
+      queryClient.invalidateQueries({
+        queryKey: ["page-text", projectId, idx0, splitSuffix],
+      });
+    },
   });
 
   // §9a: restore soft-deleted words. Calls POST .../words/restore; on
@@ -219,7 +227,27 @@ export function TextReviewPage() {
       setDirty(false);
       setActiveWordIndex(null);
     },
+    onError: (_err, ids) => {
+      // Remove the words we optimistically added back — restore failed on server.
+      setWords((prev) => prev.filter((w) => !ids.includes(w.id)));
+      setLiveMessage("Restore failed — please try again");
+      // Re-sync with server to ensure UI matches actual state.
+      queryClient.invalidateQueries({
+        queryKey: ["page-text", projectId, idx0, splitSuffix],
+      });
+    },
   });
+
+  // §undo: shared undo handler — called from the Ctrl+Z hotkey and the banner
+  // button. Extracted to avoid copy-pasting the same three-line pattern.
+  const handleUndo = useCallback(() => {
+    const restored = undoWindow.undo();
+    if (!restored) return;
+    const ids = (restored as OcrWord[]).map((w) => w.id);
+    setWords((prev) => [...prev, ...(restored as OcrWord[])]);
+    setLiveMessage("Undo: words restored");
+    restoreWords.mutate(ids);
+  }, [undoWindow, restoreWords]);
 
   // §undo: trigger word delete with undo window.
   // 1. Optimistically remove the selected words from the canvas.
@@ -272,15 +300,9 @@ export function TextReviewPage() {
     (ev) => {
       if (!undoWindow.window) return;
       ev.preventDefault();
-      const restored = undoWindow.undo();
-      if (restored) {
-        const ids = (restored as OcrWord[]).map((w) => w.id);
-        setWords((prev) => [...prev, ...(restored as OcrWord[])]);
-        setLiveMessage("Undo: words restored");
-        restoreWords.mutate(ids);
-      }
+      handleUndo();
     },
-    [undoWindow, restoreWords],
+    [undoWindow, handleUndo],
   );
   useHotkeys(
     "escape",
@@ -448,15 +470,7 @@ export function TextReviewPage() {
             {Math.ceil(undoWindow.window.remainingMs / 1000)}s
           </span>
           <button
-            onClick={() => {
-              const restored = undoWindow.undo();
-              if (restored) {
-                const ids = (restored as OcrWord[]).map((w) => w.id);
-                setWords((prev) => [...prev, ...(restored as OcrWord[])]);
-                setLiveMessage("Undo: words restored");
-                restoreWords.mutate(ids);
-              }
-            }}
+            onClick={handleUndo}
             className="rounded border border-amber-400 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100"
           >
             Undo (Ctrl+Z)
