@@ -432,7 +432,7 @@ export function PageWorkbenchPage() {
           page={page.data}
           editMode={editMode}
           draftAngle={draftAngle}
-          onRotate={(a) => setDraftAngle(a)}
+          onRotate={setDraftAngle}
           onDrawSplit={handleAddSplit}
           onDrawRegion={handleAddRegion}
           onUpdateSplit={handleUpdateSplit}
@@ -610,10 +610,11 @@ function CanvasViewer({
       tr.borderEnabled(true);
       tr.getLayer()?.batchDraw();
     }
-  }, [editMode, selection, page.splits, page.illustration_regions]);
+  }, [editMode, selection, page.splits, page.illustration_regions, img]);
 
-  // Apply draftAngle to the image node imperatively so the canvas reflects the
-  // current angle before the user clicks Apply.
+  // Must run after the transformer effect (both fire on editMode change).
+  // Setting node.rotation after the transformer is attached prevents a
+  // single-frame rotation flash; React 18 batches both in the same commit.
   useEffect(() => {
     const node = imageRef.current;
     if (!node) return;
@@ -806,16 +807,17 @@ function CanvasViewer({
                 if (newBox.width < 8 || newBox.height < 8) return oldBox;
                 return newBox;
               }}
+              // Konva's reconciler updates JSX event handlers on every render,
+              // so onRotate here always receives the current prop value even
+              // though it is captured in a closure.
               onTransform={() => {
                 if (editMode === "rotate" && imageRef.current) {
                   const rawAngle = imageRef.current.rotation();
-                  // Normalise to ±180°.
-                  const normalised =
-                    rawAngle > 180
-                      ? rawAngle - 360
-                      : rawAngle < -180
-                        ? rawAngle + 360
-                        : rawAngle;
+                  // Full modulo normalisation — handles arbitrary accumulated
+                  // rotations from repeated drag gestures. Single-pass clamp
+                  // (raw > 180 ? raw - 360 : ...) fails for |raw| > 360.
+                  // Examples: 0→0, 90→90, 270→-90, -270→90, 450→90, 360→0.
+                  const normalised = (((rawAngle % 360) + 540) % 360) - 180;
                   onRotate(Number(normalised.toFixed(1)));
                 }
               }}
