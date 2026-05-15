@@ -72,3 +72,5 @@ docs/spec-chain-report.md
 .venv
 frontend/node_modules
 .venv
+.worktrees/**/.venv
+.worktrees/**/frontend/node_modules
