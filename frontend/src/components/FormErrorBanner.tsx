@@ -12,7 +12,7 @@
  * and benign re-renders from sibling state).
  */
 import { useEffect, useRef } from "react";
-import { toast } from "sonner";
+import { toast } from "../lib/toast";
 
 export interface FormErrorBannerProps {
   /** Short label shown before the error message (e.g. "save failed"). */

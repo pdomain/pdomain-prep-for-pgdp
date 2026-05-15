@@ -48,6 +48,20 @@
   --stage-na: #e2e8f0;
 }
 
+/* Sonner toast token overrides — left-edge status stripe */
+[data-sonner-toast][data-type="success"] {
+  border-left: 4px solid var(--status-done);
+}
+[data-sonner-toast][data-type="error"] {
+  border-left: 4px solid var(--status-error);
+}
+[data-sonner-toast][data-type="warning"] {
+  border-left: 4px solid var(--status-review);
+}
+[data-sonner-toast]:not([data-type]) {
+  border-left: 4px solid var(--accent);
+}
+
 /* Dark override — uses labeler-spa dark values so both apps read as one product */
 [data-theme="dark"] {
   --bg-page: #020617;
