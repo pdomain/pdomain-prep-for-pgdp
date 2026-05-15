@@ -328,7 +328,8 @@ async def get_page_text(
 def _rebuild_text_from_words(words: list[OcrWord]) -> str:
     """Reconstruct page text from a `list[OcrWord]` after a delete.
 
-    Filters out deleted words before rebuilding.
+    Callers are expected to pass only the survivor words (non-deleted).
+    No internal filtering is applied.
 
     v1 strategy (deliberately simple, see roadmap §9a "Open questions"):
 
@@ -345,7 +346,6 @@ def _rebuild_text_from_words(words: list[OcrWord]) -> str:
     proofer's textarea is still the source of truth for the final
     `<root>.txt` once they save.
     """
-    words = [w for w in words if not w.deleted]
     if not words:
         return ""
 
@@ -435,18 +435,22 @@ async def delete_page_words(
         raise HTTPException(500, "words blob is corrupt") from exc
 
     drop = set(body.word_ids)
+    updated_words = []
     deleted_count = 0
     for w in words:
         if w.id in drop and not w.deleted:
-            w.deleted = True
+            updated_words.append(w.model_copy(update={"deleted": True}))
             deleted_count += 1
+        else:
+            updated_words.append(w)
+    words = updated_words
 
     survivors = [w for w in words if not w.deleted]
 
     # Even when deleted_count == 0 we rewrite — keeps the response
     # contract uniform and lets the client treat this as the canonical
     # "current state of the page" round-trip.
-    new_text = _rebuild_text_from_words(words)
+    new_text = _rebuild_text_from_words(survivors)
     payload = json.dumps([w.model_dump(mode="json") for w in words]).encode("utf-8")
     await storage.put_bytes(words_key, payload, "application/json")
     await storage.put_bytes(text_key, new_text.encode("utf-8"), "text/plain")
@@ -510,14 +514,18 @@ async def restore_page_words(
         raise HTTPException(500, "words blob is corrupt") from exc
 
     restore = set(body.word_ids)
+    updated_words = []
     restored_count = 0
     for w in words:
         if w.id in restore and w.deleted:
-            w.deleted = False
+            updated_words.append(w.model_copy(update={"deleted": False}))
             restored_count += 1
+        else:
+            updated_words.append(w)
+    words = updated_words
 
     survivors = [w for w in words if not w.deleted]
-    new_text = _rebuild_text_from_words(words)
+    new_text = _rebuild_text_from_words(survivors)
     payload = json.dumps([w.model_dump(mode="json") for w in words]).encode("utf-8")
     await storage.put_bytes(words_key, payload, "application/json")
     await storage.put_bytes(text_key, new_text.encode("utf-8"), "text/plain")

@@ -342,10 +342,9 @@ def test_restore_words_flips_deleted_flag(tmp_path) -> None:
         # All three words should be back in remaining_words
         remaining_ids = {w["id"] for w in body["remaining_words"]}
         assert remaining_ids == {"w1", "w2", "w3"}
-        # Text should be rebuilt from all three
-        assert "hello" in body["text"]
-        assert "noise" in body["text"]
-        assert "world" in body["text"]
+        # Text should be rebuilt from all three: w1+w2 share y_mid=20 (same line),
+        # w3 is on its own line at y_mid=60.
+        assert body["text"] == "hello noise\nworld"
 
     # Storage: all words with deleted=False
     raw = _read_storage_bytes(settings, wkey)
