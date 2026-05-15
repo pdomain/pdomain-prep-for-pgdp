@@ -1,16 +1,18 @@
 /**
- * Tests for JobsPage — M5 hi-fi upgrade covering the collapsible job card,
- * per-page stage cells, filter tabs, progress bar, and page detail drawer.
+ * Tests for JobsPage — hi-fi P3-1 redesign.
  *
  * Covers:
- * - "Recent jobs" heading is shown.
+ * - PageHeader "Jobs" heading is shown.
+ * - Filter ToggleGroup renders (All / Running / Queued / Done / Errored / Awaiting review).
  * - Jobs list renders job type and status badges.
  * - "No jobs yet" empty state is shown when the list is empty.
+ * - Job Card renders for each job (type + id visible).
  * - Project filter chip is shown when ?project_id= is present.
  * - Live count badge appears when jobs are in-flight.
- * - Cancel button appears for live jobs.
- * - Retry button appears for errored/cancelled jobs.
+ * - Cancel button appears in More menu for live jobs.
+ * - Retry button appears in More menu for errored/cancelled jobs.
  * - Progress text is shown when progress.total > 0.
+ * - Filter ToggleGroup filters the displayed jobs.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -57,7 +59,29 @@ describe("JobsPage", () => {
   it("renders the page heading", async () => {
     server.use(http.get("/api/data/jobs", () => HttpResponse.json([])));
     renderWithProviders(<JobsPage />);
-    expect(await screen.findByText(/recent jobs/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /jobs/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the filter ToggleGroup with all options", async () => {
+    server.use(http.get("/api/data/jobs", () => HttpResponse.json([])));
+    renderWithProviders(<JobsPage />);
+    await screen.findByRole("heading", { name: /jobs/i });
+    expect(screen.getByRole("radio", { name: /^all$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: /^running$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: /^queued$/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^done$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: /^errored$/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: /awaiting review/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows empty state when no jobs", async () => {
@@ -74,6 +98,12 @@ describe("JobsPage", () => {
     await waitFor(() =>
       expect(screen.getByText("batch_process_pages")).toBeInTheDocument(),
     );
+  });
+
+  it("renders job Card for each job (id visible)", async () => {
+    server.use(http.get("/api/data/jobs", () => HttpResponse.json([baseJob])));
+    renderWithProviders(<JobsPage />);
+    await waitFor(() => expect(screen.getByText("job_1")).toBeInTheDocument());
   });
 
   it("shows status badge for each job", async () => {
@@ -100,17 +130,22 @@ describe("JobsPage", () => {
     );
   });
 
-  it("shows cancel button for live jobs", async () => {
+  it("shows cancel button in More menu for live jobs", async () => {
     server.use(http.get("/api/data/jobs", () => HttpResponse.json([baseJob])));
     renderWithProviders(<JobsPage />);
+    await waitFor(() => screen.getByText("batch_process_pages"));
+    // Open the More dropdown
+    await userEvent.click(
+      screen.getByRole("button", { name: /more actions/i }),
+    );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /cancel/i }),
+        screen.getByRole("menuitem", { name: /cancel/i }),
       ).toBeInTheDocument(),
     );
   });
 
-  it("shows retry button for errored jobs", async () => {
+  it("shows retry button in More menu for errored jobs", async () => {
     const errorJob = {
       ...baseJob,
       id: "job_err",
@@ -119,9 +154,13 @@ describe("JobsPage", () => {
     };
     server.use(http.get("/api/data/jobs", () => HttpResponse.json([errorJob])));
     renderWithProviders(<JobsPage />);
+    await waitFor(() => screen.getByText("job_err"));
+    await userEvent.click(
+      screen.getByRole("button", { name: /more actions/i }),
+    );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /retry/i }),
+        screen.getByRole("menuitem", { name: /retry/i }),
       ).toBeInTheDocument(),
     );
   });
@@ -161,5 +200,32 @@ describe("JobsPage", () => {
     await waitFor(() =>
       expect(screen.getByText(/timeout after 60s/i)).toBeInTheDocument(),
     );
+  });
+
+  it("filters jobs to Done when Done tab is clicked", async () => {
+    const doneJob = {
+      ...baseJob,
+      id: "job_done",
+      status: "complete",
+      progress: { current: 0, total: 0, message: "" },
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([baseJob, doneJob])),
+    );
+    renderWithProviders(<JobsPage />);
+    await waitFor(() => screen.getByText("job_done"));
+
+    // Both visible initially
+    expect(screen.getByText("job_1")).toBeInTheDocument();
+
+    // Click "Done" filter
+    await userEvent.click(screen.getByRole("radio", { name: /^done$/i }));
+
+    // Only done job visible
+    await waitFor(() =>
+      expect(screen.queryByText("batch_process_pages")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("job_done")).toBeInTheDocument();
+    expect(screen.queryByText("job_1")).not.toBeInTheDocument();
   });
 });
