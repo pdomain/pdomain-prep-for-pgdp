@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Route,
   Routes,
@@ -8,11 +8,13 @@ import {
   useMatch,
   useNavigate,
 } from "react-router-dom";
+import { useHotkeys } from "react-hotkeys-hook";
 import { api, getAuthToken } from "./api/client";
 import type { components } from "./api/types.gen";
 import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
 import { AppShell } from "./components/shell/AppShell";
+import { HotkeyHelpModal } from "./components/shell/HotkeyHelpModal";
 import { SearchModal } from "./components/shell/SearchModal";
 import { TopNav } from "./components/shell/TopNav";
 import { UserMenu } from "./components/shell/UserMenu";
@@ -31,10 +33,17 @@ import { TextReviewPage } from "./pages/TextReviewPage";
 export default function App() {
   const { setSearchOpen } = useUiPrefs();
   const projectMatch = useMatch("/projects/:projectId/*");
+  const [hotkeyHelpOpen, setHotkeyHelpOpen] = useState(false);
+
+  useHotkeys("?", () => setHotkeyHelpOpen(true), { preventDefault: true });
 
   return (
     <>
       <SearchModal />
+      <HotkeyHelpModal
+        open={hotkeyHelpOpen}
+        onClose={() => setHotkeyHelpOpen(false)}
+      />
       <AppShell
         header={
           <TopNav
