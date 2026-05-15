@@ -366,7 +366,7 @@ export function TextReviewPage() {
     [diff],
   );
 
-  if (page.isLoading) return <p className="text-slate-500">Loading…</p>;
+  if (page.isLoading) return <p className="text-ink-3">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
   const splits = page.data.splits as Array<{
