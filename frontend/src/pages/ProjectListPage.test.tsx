@@ -14,12 +14,12 @@
  * thing that proves the modal is wired).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { components } from "../api/types.gen";
 
 type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
@@ -268,6 +268,192 @@ describe("ProjectListPage layout (P2-1)", () => {
     expect(
       await screen.findByRole("button", { name: /^open$/i }),
     ).toBeInTheDocument();
+  });
+});
+
+// ─── JSZip mock ─────────────────────────────────────────────────────────────
+// We mock jszip so the client-side zip step resolves synchronously in tests,
+// avoiding real file reads and async compression. The mock generateAsync call
+// returns a Blob directly.
+vi.mock("jszip", () => {
+  const MockJSZip = vi.fn().mockImplementation(() => ({
+    file: vi.fn(),
+    generateAsync: vi
+      .fn()
+      .mockResolvedValue(
+        new Blob(["fake zip content"], { type: "application/zip" }),
+      ),
+  }));
+  return { default: MockJSZip };
+});
+
+describe("ProjectListPage folder-upload mode", () => {
+  it("renders a mode toggle with 'ZIP file' and 'Folder' options in the create modal", async () => {
+    server.use(http.get("/api/data/projects", () => HttpResponse.json([])));
+    renderWithProviders(<ProjectListPage />);
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: /new project/i });
+
+    // Both mode tabs must be present
+    expect(
+      within(dialog).getByRole("tab", { name: /zip file/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("tab", { name: /folder/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a standard zip file input when 'ZIP file' mode is active (default)", async () => {
+    server.use(http.get("/api/data/projects", () => HttpResponse.json([])));
+    renderWithProviders(<ProjectListPage />);
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
+    await screen.findByRole("dialog", { name: /new project/i });
+
+    // In default ZIP mode the zip input is present
+    const zipInput = document.querySelector(
+      'input[type="file"][accept*=".zip"]',
+    ) as HTMLInputElement | null;
+    expect(zipInput).not.toBeNull();
+
+    // The folder (webkitdirectory) input must NOT be present
+    const folderInput = document.querySelector(
+      'input[type="file"][multiple][data-folder-input="true"]',
+    ) as HTMLInputElement | null;
+    expect(folderInput).toBeNull();
+  });
+
+  it("switches to a folder input when 'Folder' tab is selected", async () => {
+    server.use(http.get("/api/data/projects", () => HttpResponse.json([])));
+    renderWithProviders(<ProjectListPage />);
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: /new project/i });
+
+    // Switch to Folder tab
+    await user.click(within(dialog).getByRole("tab", { name: /folder/i }));
+
+    // Folder input is now present (data-folder-input is the testable marker)
+    const folderInput = document.querySelector(
+      'input[type="file"][multiple][data-folder-input="true"]',
+    ) as HTMLInputElement | null;
+    expect(folderInput).not.toBeNull();
+
+    // The ZIP-only input must NOT be present any more
+    const zipInput = document.querySelector(
+      'input[type="file"][accept*=".zip"]',
+    ) as HTMLInputElement | null;
+    expect(zipInput).toBeNull();
+  });
+
+  it("folder mode: zips selected files via JSZip and uploads the result with source_type=zip", async () => {
+    const createCalls: CreateProjectRequest[] = [];
+    let ingestCalled = false;
+
+    server.use(
+      http.get("/api/data/projects", () => HttpResponse.json([])),
+      http.post("/api/data/projects", async ({ request }) => {
+        createCalls.push((await request.json()) as CreateProjectRequest);
+        const body: CreateProjectResponse = {
+          project: makeProject(),
+          upload_url: "/cdn/uploads/prj_abc123/source.zip",
+          upload_key: "uploads/prj_abc123/source.zip",
+        };
+        return HttpResponse.json(body, { status: 201 });
+      }),
+      http.put("/cdn/uploads/prj_abc123/source.zip", () =>
+        HttpResponse.text("", { status: 200 }),
+      ),
+      http.post("/api/gpu/ingest", () => {
+        ingestCalled = true;
+        return HttpResponse.json({ job_id: "job_1", status: "queued" });
+      }),
+    );
+
+    renderWithProviders(<ProjectListPage />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: /new project/i });
+
+    // Type the book name
+    await user.type(
+      screen.getByPlaceholderText(/Belloc/i),
+      "Belloc — The Four Men",
+    );
+
+    // Switch to folder mode
+    await user.click(within(dialog).getByRole("tab", { name: /folder/i }));
+
+    // Upload a couple of "image" files into the folder input
+    const folderInput = document.querySelector(
+      'input[type="file"][multiple][data-folder-input="true"]',
+    ) as HTMLInputElement;
+    const img1 = new File(["img1"], "page001.png", { type: "image/png" });
+    const img2 = new File(["img2"], "page002.png", { type: "image/png" });
+    await user.upload(folderInput, [img1, img2]);
+
+    // Submit
+    await user.click(screen.getByRole("button", { name: /create \+ upload/i }));
+
+    // Modal transitions out of the form step (zipping then uploading)
+    await screen.findByText(/Zipping|Uploading|Error/i, undefined, {
+      timeout: 3000,
+    });
+
+    // The create POST must have used source_type=zip regardless of folder mode
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0]).toEqual({
+      name: "Belloc — The Four Men",
+      source_type: "zip",
+    } satisfies CreateProjectRequest);
+    expect(ingestCalled).toBe(true);
+  });
+
+  it("'Create + Upload' button is disabled until name + folder files are provided", async () => {
+    server.use(http.get("/api/data/projects", () => HttpResponse.json([])));
+    renderWithProviders(<ProjectListPage />);
+
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /new project/i }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: /new project/i });
+
+    // Switch to folder mode
+    await user.click(within(dialog).getByRole("tab", { name: /folder/i }));
+
+    const submitBtn = screen.getByRole("button", { name: /create \+ upload/i });
+
+    // No name, no files → disabled
+    expect(submitBtn).toBeDisabled();
+
+    // Add a name but no files → still disabled
+    await user.type(screen.getByPlaceholderText(/Belloc/i), "Some Book");
+    expect(submitBtn).toBeDisabled();
+
+    // Add files without a name → still disabled (clear name first)
+    // (userEvent clear then check; easier: just confirm the previous state is enough
+    //  since picking files alone also won't enable without a name)
+    const folderInput = document.querySelector(
+      'input[type="file"][multiple][data-folder-input="true"]',
+    ) as HTMLInputElement;
+    const img = new File(["img"], "page001.png", { type: "image/png" });
+    await user.upload(folderInput, [img]);
+
+    // Now both name and file exist → enabled
+    expect(submitBtn).not.toBeDisabled();
   });
 });
 

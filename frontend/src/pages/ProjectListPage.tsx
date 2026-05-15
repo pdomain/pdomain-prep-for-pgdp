@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import JSZip from "jszip";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -189,7 +190,12 @@ function ProjectCard({
   );
 }
 
-type Step = { kind: "form" } | { kind: "uploading"; pct: number };
+type Step =
+  | { kind: "form" }
+  | { kind: "zipping" }
+  | { kind: "uploading"; pct: number };
+
+type UploadMode = "zip" | "folder";
 
 function CreateProjectModal({
   open,
@@ -202,6 +208,8 @@ function CreateProjectModal({
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [folderFiles, setFolderFiles] = useState<File[]>([]);
+  const [mode, setMode] = useState<UploadMode>("zip");
   const [step, setStep] = useState<Step>({ kind: "form" });
 
   // Radix Dialog handles the a11y previously wired by hand:
@@ -220,7 +228,26 @@ function CreateProjectModal({
 
   const createMut = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error("Choose a zip file first.");
+      // Determine the file to upload — either the selected zip or a
+      // client-side zip built from the folder selection.
+      let uploadFile_: File;
+      if (mode === "folder") {
+        if (folderFiles.length === 0)
+          throw new Error("Select a folder of images first.");
+        setStep({ kind: "zipping" });
+        const zip = new JSZip();
+        for (const f of folderFiles) {
+          zip.file(f.name, f);
+        }
+        const blob = await zip.generateAsync({ type: "blob" });
+        uploadFile_ = new File([blob], "upload.zip", {
+          type: "application/zip",
+        });
+      } else {
+        if (!file) throw new Error("Choose a zip file first.");
+        uploadFile_ = file;
+      }
+
       const created = await api.post<CreateProjectResponse>(
         "/api/data/projects",
         { name, source_type: "zip" } satisfies CreateProjectRequest,
@@ -231,7 +258,7 @@ function CreateProjectModal({
 
       // PUT the zip to /cdn/<key> (filesystem mode) or S3 (managed mode).
       setStep({ kind: "uploading", pct: 0 });
-      await uploadFile(created.upload_url, file, (pct) =>
+      await uploadFile(created.upload_url, uploadFile_, (pct) =>
         setStep({ kind: "uploading", pct }),
       );
 
@@ -258,6 +285,10 @@ function CreateProjectModal({
     },
   });
 
+  const isReady =
+    name.trim().length > 0 &&
+    (mode === "zip" ? file !== null : folderFiles.length > 0);
+
   return (
     <Dialog
       open={open}
@@ -280,29 +311,98 @@ function CreateProjectModal({
               />
             </label>
 
-            <label className="block">
-              <span className="text-sm text-ink-2">Source zip</span>
-              <input
-                type="file"
-                accept=".zip,application/zip"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                className="mt-1 block w-full text-sm"
-              />
-            </label>
+            {/* Mode toggle — ZIP file vs Folder */}
+            <div
+              role="tablist"
+              aria-label="Upload source"
+              className="flex gap-1 rounded border border-border-2 p-0.5 w-fit"
+            >
+              <button
+                role="tab"
+                aria-selected={mode === "zip"}
+                onClick={() => {
+                  setMode("zip");
+                  setFolderFiles([]);
+                }}
+                className={`rounded px-3 py-1 text-sm transition-colors ${
+                  mode === "zip"
+                    ? "bg-accent text-white"
+                    : "text-ink-2 hover:bg-bg-raised"
+                }`}
+              >
+                ZIP file
+              </button>
+              <button
+                role="tab"
+                aria-selected={mode === "folder"}
+                onClick={() => {
+                  setMode("folder");
+                  setFile(null);
+                }}
+                className={`rounded px-3 py-1 text-sm transition-colors ${
+                  mode === "folder"
+                    ? "bg-accent text-white"
+                    : "text-ink-2 hover:bg-bg-raised"
+                }`}
+              >
+                Folder
+              </button>
+            </div>
+
+            {mode === "zip" && (
+              <label className="block">
+                <span className="text-sm text-ink-2">Source zip</span>
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 block w-full text-sm"
+                />
+              </label>
+            )}
+
+            {mode === "folder" && (
+              <label className="block">
+                <span className="text-sm text-ink-2">
+                  Image folder{" "}
+                  <span className="text-ink-3">(select your scans folder)</span>
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  data-folder-input="true"
+                  {...({ webkitdirectory: "" } as object)}
+                  onChange={(e) => {
+                    const files = e.target.files
+                      ? Array.from(e.target.files)
+                      : [];
+                    setFolderFiles(files);
+                  }}
+                  className="mt-1 block w-full text-sm"
+                />
+                {folderFiles.length > 0 && (
+                  <p className="mt-1 text-xs text-ink-3">
+                    {folderFiles.length} image
+                    {folderFiles.length !== 1 ? "s" : ""} selected — will be
+                    zipped before upload
+                  </p>
+                )}
+              </label>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button
-                onClick={() => createMut.mutate()}
-                disabled={!name.trim() || !file}
-              >
+              <Button onClick={() => createMut.mutate()} disabled={!isReady}>
                 Create + Upload
               </Button>
             </div>
           </>
         )}
+
+        {step.kind === "zipping" && <ProgressLine label="Zipping…" pct={0} />}
 
         {step.kind === "uploading" && (
           <ProgressLine label={`Uploading… ${step.pct}%`} pct={step.pct} />
