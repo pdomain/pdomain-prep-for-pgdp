@@ -99,11 +99,75 @@ const pagesResponse = {
   next_cursor: null,
 };
 
+const samplePage = {
+  project_id: "proj1",
+  idx0: 0,
+  prefix: "0001",
+  source_stem: "scan_0001",
+  ignore: false,
+  page_type: "normal",
+  alignment: "default",
+  config_overrides: {
+    initial_crop: null,
+    white_space_additional: null,
+    threshold_level: null,
+    fuzzy_pct: null,
+    pixel_count_columns: null,
+    pixel_count_rows: null,
+    skip_auto_deskew: null,
+    deskew_before_crop: null,
+    deskew_after_crop: null,
+    do_morph: null,
+    skip_denoise: null,
+    use_ocr_bbox_edge: null,
+    rotated_standard: null,
+    single_dimension_rescale: null,
+    manual_deskew_angle: null,
+  },
+  splits: [],
+  illustration_regions: [],
+  source_key: null,
+  thumbnail_key: null,
+  processed_image_key: null,
+  ocr_image_key: null,
+  processing_status: "complete",
+  processing_job_id: null,
+  processing_error: null,
+  last_processed_at: null,
+  outputs: [],
+  parent_page_id: null,
+  source_crop_bbox: null,
+  split_index: null,
+  split_at_stage: null,
+  split_suffix: null,
+  reading_order: 0,
+};
+
+const pagesWithOneResponse = {
+  pages: [samplePage],
+  total: 1,
+  next_cursor: null,
+};
+
 function setupBaseHandlers() {
   server.use(
     http.get("/api/data/projects/proj1", () => HttpResponse.json(baseProject)),
     http.get("/api/data/projects/proj1/pages", () =>
       HttpResponse.json(pagesResponse),
+    ),
+    http.get("/api/gpu/jobs", () => HttpResponse.json([])),
+    http.get("/api/data/jobs", () => HttpResponse.json([])),
+    http.get("/api/data/projects/proj1/review-status", () =>
+      HttpResponse.json({ unreviewed_count: 0, awaiting_review_job_id: null }),
+    ),
+  );
+}
+
+function setupHandlersWithPage() {
+  server.use(
+    http.get("/api/data/projects/proj1", () => HttpResponse.json(baseProject)),
+    http.get("/api/data/projects/proj1/pages", () =>
+      HttpResponse.json(pagesWithOneResponse),
     ),
     http.get("/api/gpu/jobs", () => HttpResponse.json([])),
     http.get("/api/data/jobs", () => HttpResponse.json([])),
@@ -269,6 +333,53 @@ describe("ProjectConfigurePage — P2-2 tab scaffold", () => {
     // StatTile for total pages renders the page_count value (3) with label
     await waitFor(() => {
       expect(screen.getByText("Total pages")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("ProjectConfigurePage — P2-3 PageDrawer via URL", () => {
+  it("shows PageDrawer when ?tab=pages&drawer=0 is in the URL", async () => {
+    setupHandlersWithPage();
+    renderWithProviders(
+      <ProjectConfigurePage />,
+      "/projects/proj1?tab=pages&drawer=0",
+    );
+
+    // Drawer should be visible
+    await waitFor(() => {
+      expect(screen.getByTestId("page-drawer")).toBeInTheDocument();
+    });
+    // Header shows "Page 1" (idx0=0 → 1-indexed)
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+  });
+
+  it("does not show PageDrawer when ?drawer is absent", async () => {
+    setupHandlersWithPage();
+    renderWithProviders(<ProjectConfigurePage />, "/projects/proj1?tab=pages");
+
+    // Drawer should not be in the document
+    await screen.findByTestId("pages-card");
+    expect(screen.queryByTestId("page-drawer")).not.toBeInTheDocument();
+  });
+
+  it("closes the drawer when close button is clicked", async () => {
+    setupHandlersWithPage();
+    renderWithProviders(
+      <ProjectConfigurePage />,
+      "/projects/proj1?tab=pages&drawer=0",
+    );
+
+    // Wait for drawer to open
+    await waitFor(() => {
+      expect(screen.getByTestId("page-drawer")).toBeInTheDocument();
+    });
+
+    // Click close
+    await userEvent.click(screen.getByTestId("page-drawer-close"));
+
+    // Drawer should be gone
+    await waitFor(() => {
+      expect(screen.queryByTestId("page-drawer")).not.toBeInTheDocument();
     });
   });
 });
