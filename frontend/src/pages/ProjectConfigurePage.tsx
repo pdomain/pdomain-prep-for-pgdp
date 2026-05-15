@@ -201,6 +201,8 @@ export function ProjectConfigurePage() {
         totalPages={total}
       />
 
+      <RunAllDirtyPanel projectId={projectId} />
+
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <RunPipelinePanel
           projectId={projectId}
@@ -680,6 +682,62 @@ function PageGrid({
         );
       })}
     </ul>
+  );
+}
+
+// ─── M5: Run all dirty stages panel ───────────────────────────────────────
+
+/**
+ * One-click project-level fan-out: POST /api/data/projects/{id}/run-dirty.
+ * Shows inline progress after submission using the job's SSE stream.
+ */
+function RunAllDirtyPanel({ projectId }: { projectId: string }) {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const { event, isTerminal } = useJobProgress(jobId);
+
+  // Clear job display when it reaches a terminal state so the button
+  // is re-enabled and the panel resets to "idle".
+  useEffect(() => {
+    if (isTerminal) setJobId(null);
+  }, [isTerminal]);
+
+  const submit = useMutation({
+    mutationFn: () =>
+      api.post<{ job_id: string; status: string }>(
+        `/api/data/projects/${projectId}/run-dirty`,
+      ),
+    onSuccess: (res) => setJobId(res.job_id),
+  });
+
+  const colour =
+    event?.status === "complete"
+      ? "text-emerald-700"
+      : event?.status === "error"
+        ? "text-rose-600"
+        : "text-slate-500";
+  const progress =
+    event && event.total > 0 ? `${event.current}/${event.total} pages` : "";
+
+  return (
+    <div className="flex items-center gap-3 rounded border bg-white px-4 py-3">
+      <button
+        onClick={() => submit.mutate()}
+        disabled={submit.isPending || jobId !== null}
+        className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+        aria-label="Run all dirty stages"
+      >
+        Run all dirty stages
+      </button>
+      {jobId && event && (
+        <span className={`text-xs ${colour}`}>
+          {event.status} {progress}
+          {event.error ? ` · ${event.error}` : ""}
+        </span>
+      )}
+      {submit.isError && (
+        <span className="text-xs text-rose-600">Submit failed</span>
+      )}
+    </div>
   );
 }
 
