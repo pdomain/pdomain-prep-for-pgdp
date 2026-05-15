@@ -13,6 +13,7 @@ import { api, getAuthToken } from "./api/client";
 import type { components } from "./api/types.gen";
 import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
+import { TooltipProvider } from "./components/ui/Tooltip";
 import { AppShell } from "./components/shell/AppShell";
 import { HotkeyHelpModal } from "./components/shell/HotkeyHelpModal";
 import { SearchModal } from "./components/shell/SearchModal";
@@ -38,7 +39,7 @@ export default function App() {
   useHotkeys("?", () => setHotkeyHelpOpen(true), { preventDefault: true });
 
   return (
-    <>
+    <TooltipProvider>
       <SearchModal />
       <HotkeyHelpModal
         open={hotkeyHelpOpen}
@@ -99,7 +100,7 @@ export default function App() {
           </Routes>
         </div>
       </AppShell>
-    </>
+    </TooltipProvider>
   );
 }
 

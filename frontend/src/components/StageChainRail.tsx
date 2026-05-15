@@ -28,6 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 import { useStageEvents } from "../hooks/useStageEvents";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/Tooltip";
 import { StageCell } from "./ui/StageCell";
 import type { StageStatus } from "./ui/StageCell";
 
@@ -212,26 +213,34 @@ export function StageChainRail({
                   {"{}"}
                 </span>
               ) : null}
-              <button
-                type="button"
-                data-testid={`stage-chip-${row.stage_id}`}
-                data-status={row.status}
-                data-stage-id={row.stage_id}
-                className={`rounded-md border-0 bg-transparent p-0 ${cursor} ${animation} focus:outline-none disabled:opacity-60`}
-                title={tooltipFor(row)}
-                disabled={!selectable}
-                onClick={
-                  selectable ? () => onStageSelect?.(row.stage_id) : undefined
-                }
-              >
-                <StageCell
-                  stage={row.stage_id}
-                  status={toStageCellStatus(row.status)}
-                  className={
-                    selected ? "ring-2 ring-offset-1 ring-blue-500" : undefined
-                  }
-                />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-testid={`stage-chip-${row.stage_id}`}
+                    data-status={row.status}
+                    data-stage-id={row.stage_id}
+                    className={`rounded-md border-0 bg-transparent p-0 ${cursor} ${animation} focus:outline-none disabled:opacity-60`}
+                    disabled={!selectable}
+                    onClick={
+                      selectable
+                        ? () => onStageSelect?.(row.stage_id)
+                        : undefined
+                    }
+                  >
+                    <StageCell
+                      stage={row.stage_id}
+                      status={toStageCellStatus(row.status)}
+                      className={
+                        selected
+                          ? "ring-2 ring-offset-1 ring-blue-500"
+                          : undefined
+                      }
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{tooltipFor(row)}</TooltipContent>
+              </Tooltip>
               {/* Run button: only shown for the selected selectable chip.
                   This replaces click-to-run semantics: clicking the chip
                   selects it; clicking "Run" triggers the stage. */}
