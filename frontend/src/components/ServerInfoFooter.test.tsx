@@ -93,4 +93,27 @@ describe("ServerInfoFooter", () => {
       expect(matches.length).toBeGreaterThan(0);
     });
   });
+
+  it("uses token utility classes for status-bar styling", async () => {
+    server.use(
+      http.get("/api/server-info", () =>
+        HttpResponse.json({
+          host: "127.0.0.1",
+          port: 8765,
+          url: "http://127.0.0.1:8765",
+        }),
+      ),
+    );
+    const { container } = renderWithProviders(<ServerInfoFooter />);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/http:\/\/127\.0\.0\.1:8765/),
+      ).toBeInTheDocument();
+    });
+    const footer = container.querySelector("footer");
+    expect(footer).not.toBeNull();
+    expect(footer?.className).toContain("bg-bg-page");
+    expect(footer?.className).toContain("text-ink-4");
+    expect(footer?.className).toContain("border-border-1");
+  });
 });

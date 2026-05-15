@@ -110,4 +110,12 @@ describe("DiskCostBanner", () => {
     );
     expect(screen.getByText(/2\.50 GB/)).toBeInTheDocument();
   });
+
+  it("has blue left-accent border styling (status-running token)", () => {
+    const { container } = render(
+      <DiskCostBanner project={makeProject({ stage_artifacts_bytes: 1024 })} />,
+    );
+    const accentEl = container.querySelector(".border-status-running");
+    expect(accentEl).not.toBeNull();
+  });
 });

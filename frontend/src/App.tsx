@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 import { api, getAuthToken } from "./api/client";
 import type { components } from "./api/types.gen";
+import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
 import { AppShell } from "./components/shell/AppShell";
 import { SearchModal } from "./components/shell/SearchModal";
@@ -29,6 +30,7 @@ import { TextReviewPage } from "./pages/TextReviewPage";
 
 export default function App() {
   const { setSearchOpen } = useUiPrefs();
+  const projectMatch = useMatch("/projects/:projectId/*");
 
   return (
     <>
@@ -59,6 +61,10 @@ export default function App() {
         footer={<ServerInfoFooter />}
       >
         <AuthGuard />
+        {/* Global banner slot — rendered above all page content */}
+        <div className="banner-slot mx-auto max-w-7xl px-4 pt-4 space-y-2">
+          {projectMatch && <AwaitingReviewBanner />}
+        </div>
         <div className="mx-auto max-w-7xl p-4">
           <Routes>
             <Route path="/login" element={<LoginPage />} />

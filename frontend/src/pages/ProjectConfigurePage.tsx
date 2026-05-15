@@ -7,7 +7,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { AwaitingReviewBanner } from "../components/AwaitingReviewBanner";
 import { DiskCostBanner } from "../components/DiskCostBanner";
 import { SearchPanel } from "../components/SearchPanel";
 import { SourcePreview } from "../components/SourcePreview";
@@ -193,7 +192,7 @@ export function ProjectConfigurePage() {
         </div>
       </header>
 
-      <AwaitingReviewBanner projectId={projectId} />
+      {/* DiskCostBanner — page-local because it requires project prop from this page's query */}
       <DiskCostBanner project={project.data} />
 
       <BookSettingsAccordion

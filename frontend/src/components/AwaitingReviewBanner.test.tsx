@@ -150,8 +150,8 @@ describe("AwaitingReviewBanner", () => {
       expect(screen.getByText(/2 pages need review/i)).toBeInTheDocument(),
     );
 
-    // The inner accent element should have the amber left-border class
-    const accentEl = container.querySelector(".border-amber-500");
+    // The inner accent element should have the status-review left-border token class
+    const accentEl = container.querySelector(".border-status-review");
     expect(accentEl).not.toBeNull();
   });
 });

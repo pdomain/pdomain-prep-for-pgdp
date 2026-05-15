@@ -44,13 +44,13 @@ export function ServerInfoFooter(): React.ReactElement | null {
   };
 
   return (
-    <footer className="border-t bg-white py-2 text-center text-xs text-slate-500">
+    <footer className="border-t border-border-1 bg-bg-page py-2 text-center text-xs text-ink-4">
       <span>Server: </span>
-      <span className="select-all font-mono text-slate-700">{data.url}</span>
+      <span className="select-all font-mono text-ink-2">{data.url}</span>
       <button
         type="button"
         onClick={onCopy}
-        className="ml-2 rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="ml-2 rounded px-1.5 py-0.5 text-ink-4 hover:bg-bg-raised hover:text-ink-2"
         aria-label="Copy server URL"
       >
         {copied ? "copied" : "copy"}

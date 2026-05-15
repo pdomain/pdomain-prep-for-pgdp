@@ -41,21 +41,21 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
   return (
     <>
       <div
-        className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden"
+        className="overflow-hidden rounded-lg border border-status-running/30 bg-status-running-bg shadow-sm"
         data-testid="disk-cost-banner"
       >
-        <div className="flex items-center gap-3 pl-4 pr-3 py-3 border-l-4 border-slate-400">
+        <div className="flex items-center gap-3 border-l-4 border-status-running py-3 pl-4 pr-3">
           <HardDrive
-            className="h-5 w-5 shrink-0 text-slate-500"
+            className="h-5 w-5 shrink-0 text-status-running"
             strokeWidth={2}
             aria-hidden
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-900">
+            <p className="text-sm text-ink-1">
               <span className="font-semibold">Stage artifacts:</span>{" "}
               {formatBytes(stage_artifacts_bytes)}
               {estimated > 0 && (
-                <span className="text-slate-500">
+                <span className="text-ink-3">
                   {" "}
                   / ~{formatBytes(estimated)} estimated full DAG
                 </span>
@@ -66,7 +66,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
             <button
               type="button"
               onClick={() => setDialogOpen(true)}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border-2 text-xs font-medium text-ink-2 hover:bg-bg-raised transition-colors"
             >
               Reclaim space
             </button>
