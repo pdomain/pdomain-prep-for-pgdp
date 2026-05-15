@@ -235,12 +235,18 @@ describe("StageChainRail tooltip", () => {
     await user.hover(chip);
 
     // Verify that all expected tooltip content appears in the portal.
-    // The tooltipFor() function returns a multi-line string with status, version, etc.
-    expect(await screen.findByText(/status: failed/)).toBeInTheDocument();
-    expect(await screen.findByText(/v7/)).toBeInTheDocument();
-    expect(await screen.findByText(/hash: abcd1234/)).toBeInTheDocument();
+    // Radix Tooltip renders content twice: once in the visible <div> and once in
+    // a visually-hidden <span role="tooltip"> for a11y. Use getAllByText and assert
+    // the first match is in the document — avoids "Found multiple elements" error.
     expect(
-      await screen.findByText(/error: synthetic boom/),
+      (await screen.findAllByText(/status: failed/))[0],
+    ).toBeInTheDocument();
+    expect((await screen.findAllByText(/v7/))[0]).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/hash: abcd1234/))[0],
+    ).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/error: synthetic boom/))[0],
     ).toBeInTheDocument();
   });
 
@@ -264,11 +270,15 @@ describe("StageChainRail tooltip", () => {
     const user = userEvent.setup();
     await user.hover(chip);
 
-    // Verify status and version appear
-    expect(await screen.findByText(/status: clean/)).toBeInTheDocument();
-    expect(await screen.findByText(/v3/)).toBeInTheDocument();
+    // Verify status and version appear (use findAllByText — Radix renders tooltip content twice)
+    expect(
+      (await screen.findAllByText(/status: clean/))[0],
+    ).toBeInTheDocument();
+    expect((await screen.findAllByText(/v3/))[0]).toBeInTheDocument();
     // Verify timestamp appears (ISO format from tooltipFor)
-    expect(await screen.findByText(/last run: 2024-04-15/)).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/last run: 2024-04-15/))[0],
+    ).toBeInTheDocument();
   });
 });
 
