@@ -273,6 +273,30 @@ export interface paths {
         patch: operations["update_page"];
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Reorder Pages
+         * @description Reorder pages in a project.
+         *
+         *     Takes a list of idx0 values in the desired order and updates idx0 and
+         *     prefix for all pages accordingly. All pages must be from this project
+         *     and appear exactly once.
+         */
+        patch: operations["reorder_pages"];
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages/{idx0}/text": {
         parameters: {
             query?: never;
@@ -1719,6 +1743,26 @@ export interface components {
          * @enum {string}
          */
         ProjectStatus: "ingesting" | "configuring" | "processing" | "reviewing" | "packaging" | "complete";
+        /**
+         * ReorderPagesRequest
+         * @description Request to reorder pages in a project.
+         *
+         *     page_ids: Ordered list of current idx0 values (zero-padded, e.g. '0000')
+         *               representing the desired page order. Must include all pages in
+         *               the project exactly once and match the project's page count.
+         */
+        ReorderPagesRequest: {
+            /** Page Ids */
+            page_ids: string[];
+        };
+        /**
+         * ReorderPagesResponse
+         * @description Response after reordering pages.
+         */
+        ReorderPagesResponse: {
+            /** Pages */
+            pages: components["schemas"]["PageRecord"][];
+        };
         /** RestoreWordsRequest */
         RestoreWordsRequest: {
             /** Split Suffix */
@@ -2589,6 +2633,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderPagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderPagesResponse"];
                 };
             };
             /** @description Validation Error */
