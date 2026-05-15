@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Download, Loader2, AlertCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -21,7 +22,10 @@ import {
 } from "../components/ui/Tabs";
 import { PageDrawer } from "../components/workbench/PageDrawer";
 import { PageRow } from "../components/workbench/PageRow";
-import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
+import {
+  useActiveBatchJob,
+  type JobSnapshot,
+} from "../hooks/useActiveBatchJob";
 import { useJobProgress } from "../hooks/useJobProgress";
 import type { components } from "../api/types.gen";
 
@@ -724,14 +728,6 @@ function RunAllDirtyPanel({ projectId }: { projectId: string }) {
 
 type JobType = "build_package";
 
-interface JobSnapshot {
-  id: string;
-  type: string;
-  status: string;
-  progress: { current: number; total: number; message: string };
-  error_message: string | null;
-}
-
 const STEPS: { type: JobType; label: string; subtitle: string }[] = [
   {
     type: "build_package",
@@ -767,6 +763,16 @@ function RunPipelinePanel({
       setActive((s) => ({ ...s, build_package: liveBatch.jobId }));
     }
   }, [liveBatch.jobId, active.build_package]);
+
+  // Find the completed build_package job to pass to DownloadPackageButton
+  const completedBuildJob = useMemo(() => {
+    if (!liveBatch.jobs) return null;
+    return (
+      liveBatch.jobs.find(
+        (j) => j.type === "build_package" && j.status === "complete",
+      ) ?? null
+    );
+  }, [liveBatch.jobs]);
 
   const submit = useMutation({
     mutationFn: async (type: JobType) => {
@@ -856,10 +862,73 @@ function RunPipelinePanel({
                 >
                   Run
                 </button>
+                {step.type === "build_package" && (
+                  <DownloadPackageButton
+                    projectId={projectId}
+                    completedBuildJob={completedBuildJob}
+                  />
+                )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+// ─── Download Package Button ──────────────────────────────────────────────
+
+type DownloadUrlResponse = components["schemas"]["DownloadUrlResponse"];
+
+function DownloadPackageButton({
+  projectId,
+  completedBuildJob,
+}: {
+  projectId: string;
+  completedBuildJob: JobSnapshot | null;
+}) {
+  // Mutation to fetch the download URL when the button is clicked
+  const downloadMutation = useMutation({
+    mutationFn: () =>
+      api.get<DownloadUrlResponse>(
+        `/api/data/projects/${projectId}/assets/download-url`,
+      ),
+    onSuccess: (data) => {
+      // Open the URL in a new tab/window with noopener noreferrer for security
+      window.open(data.download_url, "_blank", "noopener,noreferrer");
+    },
+  });
+
+  if (!completedBuildJob) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => downloadMutation.mutate()}
+        disabled={downloadMutation.isPending}
+        className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1.5"
+        aria-label="Download package"
+      >
+        {downloadMutation.isPending ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Downloading…</span>
+          </>
+        ) : (
+          <>
+            <Download className="h-4 w-4" />
+            <span>Download package</span>
+          </>
+        )}
+      </button>
+      {downloadMutation.isError && (
+        <div className="flex items-center gap-1 text-xs text-rose-600">
+          <AlertCircle className="h-4 w-4" />
+          <span>Failed to download</span>
+        </div>
       )}
     </div>
   );

@@ -511,6 +511,183 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
   });
 });
 
+describe("ProjectConfigurePage — Download Package button", () => {
+  it("does not show Download Package button when no build_package job exists", async () => {
+    setupBaseHandlers();
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Wait for the page to load
+    await screen.findByRole("tab", { name: /pipeline/i });
+
+    // Download Package button should not exist
+    expect(
+      screen.queryByRole("button", { name: /download package/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Download Package button when build_package job has completed status", async () => {
+    setupBaseHandlers();
+    const completedJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "complete",
+      progress: { current: 1, total: 1, message: "" },
+      error_message: null,
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([completedJob])),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Wait for the Download Package button to appear
+    const downloadBtn = await screen.findByRole("button", {
+      name: /download package/i,
+    });
+    expect(downloadBtn).toBeInTheDocument();
+    expect(downloadBtn).not.toBeDisabled();
+  });
+
+  it("clicking Download Package button fetches the download URL and opens it", async () => {
+    setupBaseHandlers();
+    const completedJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "complete",
+      progress: { current: 1, total: 1, message: "" },
+      error_message: null,
+    };
+    let downloadUrlFetched = false;
+    const mockDownloadUrl =
+      "https://example.com/download/project.zip?token=abc123";
+
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/data/projects/proj1/assets/download-url", () => {
+        downloadUrlFetched = true;
+        return HttpResponse.json({
+          download_url: mockDownloadUrl,
+          expires_in: 3600,
+        });
+      }),
+    );
+
+    // Mock window.open
+    const mockOpen = vi.fn();
+    globalThis.window.open = mockOpen;
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    const downloadBtn = await screen.findByRole("button", {
+      name: /download package/i,
+    });
+    await userEvent.click(downloadBtn);
+
+    await waitFor(() => {
+      expect(downloadUrlFetched).toBe(true);
+      expect(mockOpen).toHaveBeenCalledWith(
+        mockDownloadUrl,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    });
+  });
+
+  it("shows loading spinner while download URL is being fetched", async () => {
+    setupBaseHandlers();
+    const completedJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "complete",
+      progress: { current: 1, total: 1, message: "" },
+      error_message: null,
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([completedJob])),
+      http.get(
+        "/api/data/projects/proj1/assets/download-url",
+        () => new Promise(() => {}), // Never resolves — keeps query pending
+      ),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    const downloadBtn = await screen.findByRole("button", {
+      name: /download package/i,
+    });
+    await userEvent.click(downloadBtn);
+
+    // Button should be disabled while fetching
+    await waitFor(() => {
+      expect(downloadBtn).toBeDisabled();
+    });
+
+    // There should be a loading indicator text
+    expect(screen.getByText(/downloading/i)).toBeInTheDocument();
+  });
+
+  it("shows error message if download URL fetch fails", async () => {
+    setupBaseHandlers();
+    const completedJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "complete",
+      progress: { current: 1, total: 1, message: "" },
+      error_message: null,
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([completedJob])),
+      http.get("/api/data/projects/proj1/assets/download-url", () =>
+        HttpResponse.json(
+          { detail: "Failed to generate download URL" },
+          { status: 500 },
+        ),
+      ),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    const downloadBtn = await screen.findByRole("button", {
+      name: /download package/i,
+    });
+    await userEvent.click(downloadBtn);
+
+    // Error message should appear
+    await waitFor(() => {
+      expect(screen.getByText(/failed to download/i)).toBeInTheDocument();
+    });
+  });
+
+  it("does not show Download Package button while build_package is still running", async () => {
+    setupBaseHandlers();
+    const runningJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "running",
+      progress: { current: 0, total: 1, message: "" },
+      error_message: null,
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([runningJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([runningJob])),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Wait for the page to load
+    await screen.findByRole("tab", { name: /pipeline/i });
+
+    // Download Package button should not be shown while job is running
+    expect(
+      screen.queryByRole("button", { name: /download package/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("ProjectConfigurePage — P2-3 PageDrawer via URL", () => {
   it("shows PageDrawer when ?tab=pages&drawer=0 is in the URL", async () => {
     setupHandlersWithPage();
