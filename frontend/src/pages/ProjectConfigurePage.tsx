@@ -9,6 +9,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { AwaitingReviewBanner } from "../components/AwaitingReviewBanner";
 import { DiskCostBanner } from "../components/DiskCostBanner";
+import { SearchPanel } from "../components/SearchPanel";
 import { SourcePreview } from "../components/SourcePreview";
 import { useActiveBatchJob } from "../hooks/useActiveBatchJob";
 import { useJobProgress } from "../hooks/useJobProgress";
@@ -208,7 +209,10 @@ export function ProjectConfigurePage() {
           projectId={projectId}
           onActivePageChange={setActivePageIdx0}
         />
-        <ProjectJobsFeed projectId={projectId} />
+        <div className="space-y-4">
+          <ProjectJobsFeed projectId={projectId} />
+          <SearchPanel projectId={projectId} />
+        </div>
       </div>
 
       <BulkActions
