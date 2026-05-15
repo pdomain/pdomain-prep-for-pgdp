@@ -209,6 +209,67 @@ describe("StageChainRail tooltip", () => {
     // (it was removed in favor of Radix Tooltip wrapper)
     expect(chip).not.toHaveAttribute("title");
   });
+
+  it("tooltip content renders on hover with status, version, hash, and error message", async () => {
+    // Verify that the tooltip portal content actually renders when the user
+    // hovers over the chip. The Radix Tooltip renders its content into a portal
+    // on interaction, not at initial mount.
+    server.use(
+      http.get("/api/data/projects/p1/pages/0/stages", () =>
+        HttpResponse.json([
+          makeRow("grayscale", "failed", {
+            error_message: "synthetic boom",
+            stage_version: 7,
+            input_hash: "abcd1234567890",
+          }),
+          ...STAGE_IDS.filter((s) => s !== "grayscale").map((s) => makeRow(s)),
+        ]),
+      ),
+    );
+
+    renderRail();
+    const chip = await screen.findByTestId("stage-chip-grayscale");
+
+    // Hover over the chip to trigger tooltip content rendering in the portal.
+    const user = userEvent.setup();
+    await user.hover(chip);
+
+    // Verify that all expected tooltip content appears in the portal.
+    // The tooltipFor() function returns a multi-line string with status, version, etc.
+    expect(await screen.findByText(/status: failed/)).toBeInTheDocument();
+    expect(await screen.findByText(/v7/)).toBeInTheDocument();
+    expect(await screen.findByText(/hash: abcd1234/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/error: synthetic boom/),
+    ).toBeInTheDocument();
+  });
+
+  it("tooltip content includes last_run_at timestamp when present", async () => {
+    const lastRunTimestamp = 1713139200; // 2024-04-15T00:00:00Z
+    server.use(
+      http.get("/api/data/projects/p1/pages/0/stages", () =>
+        HttpResponse.json([
+          makeRow("grayscale", "clean", {
+            last_run_at: lastRunTimestamp,
+            stage_version: 3,
+          }),
+          ...STAGE_IDS.filter((s) => s !== "grayscale").map((s) => makeRow(s)),
+        ]),
+      ),
+    );
+
+    renderRail();
+    const chip = await screen.findByTestId("stage-chip-grayscale");
+
+    const user = userEvent.setup();
+    await user.hover(chip);
+
+    // Verify status and version appear
+    expect(await screen.findByText(/status: clean/)).toBeInTheDocument();
+    expect(await screen.findByText(/v3/)).toBeInTheDocument();
+    // Verify timestamp appears (ISO format from tooltipFor)
+    expect(await screen.findByText(/last run: 2024-04-15/)).toBeInTheDocument();
+  });
 });
 
 // ─── M3: Click-to-select ───────────────────────────────────────────────────
