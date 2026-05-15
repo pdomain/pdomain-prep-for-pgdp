@@ -107,10 +107,6 @@ export function ProjectConfigurePage() {
   );
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  // RunPipelinePanel reports the current page idx0 so we can pass it to
-  // setActivePageIdx0 for future active-page highlighting. The value
-  // itself is no longer consumed in this component (PageGrid removed).
-  const [, setActivePageIdx0] = useState<number | null>(null);
   const [showSplitParents, setShowSplitParents] = useState(false);
 
   // Compute the set of page_ids that are referenced as parent_page_id by
@@ -256,10 +252,7 @@ export function ProjectConfigurePage() {
           <RunAllDirtyPanel projectId={projectId} />
 
           <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-            <RunPipelinePanel
-              projectId={projectId}
-              onActivePageChange={setActivePageIdx0}
-            />
+            <RunPipelinePanel projectId={projectId} />
             <div className="space-y-4">
               <ProjectJobsFeed projectId={projectId} />
               <SearchPanel projectId={projectId} />
@@ -678,12 +671,7 @@ function RunAllDirtyPanel({ projectId }: { projectId: string }) {
 
 // ─── Run-pipeline panel ────────────────────────────────────────────────────
 
-type JobType =
-  | "batch_process_pages"
-  | "batch_ocr"
-  | "batch_text_postprocess"
-  | "batch_extract_illustrations"
-  | "build_package";
+type JobType = "build_package";
 
 interface JobSnapshot {
   id: string;
@@ -695,67 +683,35 @@ interface JobSnapshot {
 
 const STEPS: { type: JobType; label: string; subtitle: string }[] = [
   {
-    type: "batch_process_pages",
-    label: "Step 4 — Process pages",
-    subtitle:
-      "Auto-deskew, threshold, edge-find, rescale all proof-range pages.",
-  },
-  {
-    type: "batch_extract_illustrations",
-    label: "Step 4.5 — Extract illustrations",
-    subtitle: "Crop hi-res images for every region marked on a page.",
-  },
-  {
-    type: "batch_ocr",
-    label: "Step 7 — OCR",
-    subtitle: "Run DocTR on every cropped page; layout-aware reorganization.",
-  },
-  {
-    type: "batch_text_postprocess",
-    label: "Step 8 — Text post-process",
-    subtitle: "Apply scannos, hyphenation join, and custom regex passes.",
-  },
-  {
     type: "build_package",
     label: "Step 10 — Build package",
     subtitle: "Assemble PNG + TXT + illustrations into the PGDP zip.",
   },
 ];
 
-function RunPipelinePanel({
-  projectId,
-  onActivePageChange,
-}: {
-  projectId: string;
-  onActivePageChange: (idx0: number | null) => void;
-}) {
+function RunPipelinePanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(true);
   const [active, setActive] = useState<Record<JobType, string | null>>({
-    batch_process_pages: null,
-    batch_ocr: null,
-    batch_text_postprocess: null,
-    batch_extract_illustrations: null,
     build_package: null,
   });
 
-  // If a batch_process_pages job is already running on this project (e.g.
-  // user came back to this page mid-run, or it was kicked off elsewhere),
-  // pre-populate `active.batch_process_pages` so the inline progress and
-  // tile-pulse render without requiring the user to click Run again.
+  // Track any build_package job that is already running on this project (e.g.
+  // user came back to this page mid-run, or it was kicked off elsewhere).
+  // Pre-populate `active.build_package` so the inline progress and tile-pulse
+  // render without requiring the user to click Run again.
   // Reuses the shared `["jobs", projectId]` poll so this is free.
-  const liveBatch = useActiveBatchJob(projectId, ["batch_process_pages"]);
+  const liveBatch = useActiveBatchJob(projectId, ["build_package"]);
   useEffect(() => {
-    if (liveBatch.jobId && active.batch_process_pages !== liveBatch.jobId) {
-      setActive((s) => ({ ...s, batch_process_pages: liveBatch.jobId }));
+    if (liveBatch.jobId && active.build_package !== liveBatch.jobId) {
+      setActive((s) => ({ ...s, build_package: liveBatch.jobId }));
     }
-  }, [liveBatch.jobId, active.batch_process_pages]);
+  }, [liveBatch.jobId, active.build_package]);
 
   const submit = useMutation({
     mutationFn: async (type: JobType) => {
-      const r = await api.post<{ job_id: string }>("/api/gpu/jobs", {
-        project_id: projectId,
-        job_type: type,
-      });
+      const r = await api.post<{ job_id: string }>(
+        `/api/data/projects/${projectId}/build-package`,
+      );
       setActive((s) => ({ ...s, [type]: r.job_id }));
       return r;
     },
@@ -783,18 +739,11 @@ function RunPipelinePanel({
               </div>
               <div className="flex items-center gap-2">
                 {active[step.type] && (
-                  <JobProgressInline
-                    jobId={active[step.type]!}
-                    onCurrentPageChange={
-                      step.type === "batch_process_pages"
-                        ? onActivePageChange
-                        : undefined
-                    }
-                  />
+                  <JobProgressInline jobId={active[step.type]!} />
                 )}
                 <button
                   onClick={() => submit.mutate(step.type)}
-                  disabled={submit.isPending}
+                  disabled={submit.isPending || active[step.type] !== null}
                   className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
                 >
                   Run

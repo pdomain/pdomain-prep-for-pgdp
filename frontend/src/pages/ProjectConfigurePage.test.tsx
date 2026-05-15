@@ -337,6 +337,104 @@ describe("ProjectConfigurePage — P2-2 tab scaffold", () => {
   });
 });
 
+describe("ProjectConfigurePage — RunPipelinePanel", () => {
+  it("does not render stale batch pipeline buttons (Process pages, OCR, Post-process, Extract illustrations)", async () => {
+    setupBaseHandlers();
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Wait for the page to load
+    await screen.findByRole("tab", { name: /pipeline/i });
+
+    // Verify that stale batch job type step labels do NOT exist
+    expect(
+      screen.queryByText(/step 4 — process pages/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/step 4.5 — extract illustrations/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/step 7 — ocr/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/step 8 — text post-process/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders a Build package button in the Pipeline tab", async () => {
+    setupBaseHandlers();
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Wait for pipeline to load and verify Build package step label exists
+    const buildLabel = await screen.findByText(/step 10 — build package/i);
+    expect(buildLabel).toBeInTheDocument();
+  });
+
+  it("Build package button POSTs to /api/data/projects/{id}/build-package", async () => {
+    setupBaseHandlers();
+    let called = false;
+    let calledUrl = "";
+    server.use(
+      http.post(
+        "/api/data/projects/proj1/build-package",
+        async ({ request }) => {
+          called = true;
+          calledUrl = request.url;
+          return HttpResponse.json(
+            { job_id: "job_build_1", status: "queued" },
+            { status: 202 },
+          );
+        },
+      ),
+      http.get("/api/gpu/jobs/:jobId/events", () => HttpResponse.json({})),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Find the Build package step, then click its Run button
+    const buildLabel = await screen.findByText(/step 10 — build package/i);
+    const buildListItem = buildLabel.closest("li");
+    const runBtn = buildListItem?.querySelector(
+      'button[class*="hover:bg-slate-50"]',
+    ) as HTMLButtonElement;
+
+    await userEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(called).toBe(true);
+      expect(calledUrl).toContain("/api/data/projects/proj1/build-package");
+    });
+  });
+
+  it("disables Build package button while build_package job is pending", async () => {
+    setupBaseHandlers();
+    // Return a build_package job that is "running"
+    const buildJob = {
+      id: "job_build_1",
+      type: "build_package",
+      status: "running",
+      progress: { current: 1, total: 1, message: "" },
+      error_message: null,
+    };
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([buildJob])),
+      http.get("/api/gpu/jobs", () => HttpResponse.json([buildJob])),
+    );
+
+    renderWithProviders(<ProjectConfigurePage />);
+
+    // Find the Build package step
+    const buildLabel = await screen.findByText(/step 10 — build package/i);
+    const buildListItem = buildLabel.closest("li");
+    const runBtn = buildListItem?.querySelector(
+      'button[class*="hover:bg-slate-50"]',
+    ) as HTMLButtonElement;
+
+    // The build_package button should be disabled while the job is active
+    // (because useActiveBatchJob should detect the running job)
+    await waitFor(() => {
+      expect(runBtn).toBeDisabled();
+    });
+  });
+});
+
 describe("ProjectConfigurePage — P2-3 PageDrawer via URL", () => {
   it("shows PageDrawer when ?tab=pages&drawer=0 is in the URL", async () => {
     setupHandlersWithPage();
