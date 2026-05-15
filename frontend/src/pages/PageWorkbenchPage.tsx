@@ -181,6 +181,27 @@ export function PageWorkbenchPage() {
     },
   });
 
+  // Stages that require the async run path because they may take seconds.
+  const SLOW_STAGES = new Set(["ocr", "extract_illustrations"]);
+
+  // Run a stage from the chip rail "Run" button. Fast stages use the sync path
+  // (200 + PageStageState on success); slow stages enqueue a job (202 + Job).
+  // Either way the stages query is invalidated so the chip rail updates.
+  const runStage = useMutation({
+    mutationFn: (stageId: string) => {
+      const isAsync = SLOW_STAGES.has(stageId);
+      const url = isAsync
+        ? `/api/data/projects/${projectId}/pages/${idx0}/stages/${stageId}/run?async=true`
+        : `/api/data/projects/${projectId}/pages/${idx0}/stages/${stageId}/run`;
+      return api.post(url, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["page-stages", projectId, idx0],
+      });
+    },
+  });
+
   // Rotate apply: PATCH config_overrides with manual_deskew_angle, then
   // POST manual_deskew_pre/run to re-run the stage.
   const runDeskewStage = useMutation({
@@ -366,13 +387,16 @@ export function PageWorkbenchPage() {
           </div>
         )}
 
-        {/* M3 — polished stage-chain rail. Clicking a clean/dirty chip
-            sets selectedStageId for the artifact viewer below. */}
+        {/* M3 — polished stage-chain rail. Clicking any selectable chip
+            sets selectedStageId for the artifact viewer below. The "Run"
+            button that appears on the selected chip fires runStage so the
+            user can advance the chain without navigating away. */}
         <StageChainRail
           projectId={projectId}
           idx0={idx0}
           selectedStageId={selectedStageId}
           onStageSelect={setSelectedStageId}
+          onStageRun={(stageId) => runStage.mutate(stageId)}
         />
 
         {/* M3 — side-by-side artifact viewer (Stage + Compare selectors). */}
@@ -390,7 +414,7 @@ export function PageWorkbenchPage() {
           page={page.data}
           onApplied={() =>
             queryClient.invalidateQueries({
-              queryKey: ["stages", projectId, idx0],
+              queryKey: ["page-stages", projectId, idx0],
             })
           }
         />

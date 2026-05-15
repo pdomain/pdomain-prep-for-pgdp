@@ -240,7 +240,7 @@ describe("StageChainRail M3 click-to-select", () => {
     expect(onSelect).toHaveBeenCalledWith("grayscale");
   });
 
-  it("not-run chip is disabled so onStageSelect is never called", async () => {
+  it("not-run chip is selectable so onStageSelect is called (allows Run in controls panel)", async () => {
     const onSelect = vi.fn();
     server.use(
       http.get("/api/data/projects/p1/pages/0/stages", () =>
@@ -250,11 +250,11 @@ describe("StageChainRail M3 click-to-select", () => {
 
     renderRail({ onStageSelect: onSelect });
     const chip = await screen.findByTestId("stage-chip-grayscale");
-    expect(chip).toBeDisabled();
+    expect(chip).not.toBeDisabled();
     const user = userEvent.setup();
     await user.click(chip);
 
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith("grayscale");
   });
 
   it("not-applicable chip is disabled so onStageSelect is never called", async () => {
@@ -468,10 +468,31 @@ describe("StageChainRail M3 run button", () => {
     expect(onRun).toHaveBeenCalledWith("grayscale");
   });
 
-  it("Run button does not appear for disabled (not-run) chips even if selectedStageId matches", async () => {
+  it("Run button appears for not-run selected chips so user can advance the chain", async () => {
+    // not-run chips are now selectable so the user can pick any stage and hit Run
+    // — this is the primary affordance for advancing a fresh page's chain.
     server.use(
       http.get("/api/data/projects/p1/pages/0/stages", () =>
         HttpResponse.json(STAGE_IDS.map((sid) => makeRow(sid, "not-run"))),
+      ),
+    );
+
+    renderRail({ selectedStageId: "grayscale" });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("stage-run-btn-grayscale"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("Run button does not appear for not-applicable chips even if selectedStageId matches", async () => {
+    server.use(
+      http.get("/api/data/projects/p1/pages/0/stages", () =>
+        HttpResponse.json([
+          makeRow("grayscale", "not-applicable"),
+          ...STAGE_IDS.filter((s) => s !== "grayscale").map((s) => makeRow(s)),
+        ]),
       ),
     );
 

@@ -44,7 +44,7 @@ function chipClassesFor(status: PageStageStatus, selected: boolean): string {
   const ring = selected ? " ring-2 ring-offset-1 ring-blue-500" : "";
   switch (status) {
     case "not-run":
-      return `bg-slate-200 text-slate-700 border-slate-300 cursor-default opacity-60${ring}`;
+      return `bg-slate-200 text-slate-700 border-slate-300 hover:bg-slate-300 cursor-pointer${ring}`;
     case "running":
       return `bg-sky-200 text-sky-900 border-sky-400 animate-pulse cursor-default${ring}`;
     case "clean":
@@ -52,7 +52,7 @@ function chipClassesFor(status: PageStageStatus, selected: boolean): string {
     case "dirty":
       return `bg-amber-200 text-amber-900 hover:bg-amber-300 border-amber-400 cursor-pointer${ring}`;
     case "failed":
-      return `bg-rose-200 text-rose-900 border-rose-400 cursor-default opacity-70${ring}`;
+      return `bg-rose-200 text-rose-900 border-rose-400 hover:bg-rose-300 cursor-pointer${ring}`;
     case "not-applicable":
       return `bg-slate-50 text-slate-400 border-slate-200 italic cursor-default opacity-60${ring}`;
     default:
@@ -81,7 +81,20 @@ function tooltipFor(row: PageStageState): string {
   return parts.join("\n");
 }
 
-const SELECTABLE: ReadonlySet<PageStageStatus> = new Set(["clean", "dirty"]);
+// Stages that can be clicked to select (shows in controls panel + viewer).
+// Includes not-run and failed so users can select them and hit "Run this stage"
+// in the controls panel — the only way to advance a not-run chain from the UI.
+// running and not-applicable are excluded: running is in-flight, not-applicable
+// has no impl for this page type.
+const SELECTABLE: ReadonlySet<PageStageStatus> = new Set([
+  "clean",
+  "dirty",
+  "not-run",
+  "failed",
+]);
+
+// Stages with on-disk artifacts (thumbnail + artifact viewer available).
+const HAS_ARTIFACT: ReadonlySet<PageStageStatus> = new Set(["clean", "dirty"]);
 
 // Stage output type → whether the stage produces an image artifact.
 // Mirrors STAGE_OUTPUT_TYPE / IMAGE_OUTPUT_TYPES in ArtifactViewer.tsx.
@@ -163,6 +176,7 @@ export function StageChainRail({
       <div className="flex flex-wrap gap-1">
         {rows.map((row) => {
           const selectable = SELECTABLE.has(row.status);
+          const hasArtifact = HAS_ARTIFACT.has(row.status);
           const selected = row.stage_id === selectedStageId;
           const cls = chipClassesFor(row.status, selected);
           const isImageStage = IMAGE_STAGE_IDS.has(row.stage_id);
@@ -177,7 +191,7 @@ export function StageChainRail({
                   text/JSON-type stages get a small text icon. The thumbnail
                   URL carries no ?v= param — the browser handles ETag
                   revalidation (If-None-Match) natively. */}
-              {selectable && isImageStage ? (
+              {hasArtifact && isImageStage ? (
                 <img
                   data-testid={`stage-thumb-${row.stage_id}`}
                   src={thumbUrl}
@@ -185,7 +199,7 @@ export function StageChainRail({
                   loading="lazy"
                   className="h-10 w-10 rounded border border-slate-200 object-cover"
                 />
-              ) : selectable && !isImageStage ? (
+              ) : hasArtifact && !isImageStage ? (
                 <span
                   data-testid={`stage-icon-${row.stage_id}`}
                   className="flex h-10 w-10 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs text-slate-500"

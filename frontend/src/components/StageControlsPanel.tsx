@@ -89,7 +89,7 @@ export function StageControlsPanel({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["stages", projectId, idx0],
+        queryKey: ["page-stages", projectId, idx0],
       });
       onRunComplete?.();
     },
