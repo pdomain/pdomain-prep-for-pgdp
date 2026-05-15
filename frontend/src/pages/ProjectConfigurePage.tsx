@@ -191,6 +191,12 @@ export function ProjectConfigurePage() {
               Open Workbench
             </Link>
             <Link
+              to={`/projects/${projectId}/crops`}
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              Crops
+            </Link>
+            <Link
               to={`/projects/${projectId}/review`}
               className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
             >

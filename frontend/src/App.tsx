@@ -30,6 +30,7 @@ import { PageWorkbenchPage } from "./pages/PageWorkbenchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ProjectReviewQueuePage } from "./pages/ProjectReviewQueuePage";
 import { TextReviewPage } from "./pages/TextReviewPage";
+import { CropsGridPage } from "./pages/CropsGridPage";
 
 export default function App() {
   const { setSearchOpen } = useUiPrefs();
@@ -91,6 +92,10 @@ export default function App() {
             <Route
               path="/projects/:projectId/pages/:idx0/review"
               element={<TextReviewPage />}
+            />
+            <Route
+              path="/projects/:projectId/crops"
+              element={<CropsGridPage />}
             />
             <Route
               path="/projects/:projectId/review"
