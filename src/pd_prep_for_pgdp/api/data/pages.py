@@ -44,6 +44,7 @@ from ...core.pipeline.stage_runner import (
     cascade_dirty_for_config_change,
     run_stage,
 )
+from ...core.prefix import compute_prefix
 from ...settings import Settings
 from ..dependencies import get_database, get_settings, get_stage_events, get_storage, get_user
 
@@ -114,6 +115,23 @@ class RestoreWordsResponse(BaseModel):
     restored_count: int
     remaining_words: list[OcrWord]
     text: str
+
+
+class ReorderPagesRequest(BaseModel):
+    """Request to reorder pages in a project.
+
+    page_ids: List of page IDs (zero-padded 4-digit idx0 strings, e.g., "0000")
+              in the desired new order. Must include all pages in the project
+              and match the project's page count.
+    """
+
+    page_ids: list[str]
+
+
+class ReorderPagesResponse(BaseModel):
+    """Response after reordering pages."""
+
+    pages: list[PageRecord]
 
 
 @router.get(
@@ -188,6 +206,71 @@ async def get_page(
     if page is None:
         raise HTTPException(404, "page not found")
     return page
+
+
+@router.patch(
+    "/projects/{project_id}/pages/reorder",
+    response_model=ReorderPagesResponse,
+    operation_id="reorder_pages",
+)
+async def reorder_pages(
+    project_id: str,
+    body: ReorderPagesRequest,
+    user: UserContext = Depends(get_user),
+    db: IDatabase = Depends(get_database),
+) -> ReorderPagesResponse:
+    """Reorder pages in a project.
+
+    Takes a list of page IDs in the desired order and updates idx0 and prefix
+    for all pages accordingly. All pages must be from this project.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    # Validate: must have correct count
+    if len(body.page_ids) != project.page_count:
+        raise HTTPException(
+            422,
+            f"page count mismatch: expected {project.page_count}, got {len(body.page_ids)}",
+        )
+
+    # Fetch all pages and validate all IDs belong to this project
+    pages_by_id: dict[str, PageRecord] = {}
+    for page_id in body.page_ids:
+        try:
+            idx0 = int(page_id)
+        except ValueError as err:
+            raise HTTPException(422, f"invalid page_id format: {page_id}") from err
+        page = await db.get_page(project_id, idx0)
+        if page is None:
+            raise HTTPException(404, f"page not found: {page_id}")
+        pages_by_id[page_id] = page
+
+    # Verify we got exactly the right set of pages (no duplicates, all accounted for)
+    if set(body.page_ids) != set(pages_by_id.keys()):
+        raise HTTPException(422, "page list contains duplicates or invalid entries")
+
+    # Update idx0 and prefix for each page based on new order
+    updated_pages: list[PageRecord] = []
+    pages_by_idx: dict[int, PageRecord] = {}
+
+    for new_idx0, page_id in enumerate(body.page_ids):
+        page = pages_by_id[page_id]
+        page.idx0 = new_idx0
+        # Build the by-idx mapping with updated idx0 for compute_prefix to work
+        pages_by_idx[new_idx0] = page
+        updated_pages.append(page)
+
+    # Recompute prefix for all pages using existing compute_prefix logic
+    for page in updated_pages:
+        new_prefix = compute_prefix(page.idx0, project.config, pages_by_idx)
+        page.prefix = new_prefix or ""
+
+    # Write all updated pages to the database in a batch
+    await db.put_pages(updated_pages)
+
+    return ReorderPagesResponse(pages=updated_pages)
 
 
 @router.patch(

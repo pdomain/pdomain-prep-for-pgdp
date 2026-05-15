@@ -899,6 +899,64 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/reorder": {
+      "patch": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Reorder Pages",
+        "description": "Reorder pages in a project.\n\nTakes a list of page IDs in the desired order and updates idx0 and prefix\nfor all pages accordingly. All pages must be from this project.",
+        "operationId": "reorder_pages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderPagesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReorderPagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages/{idx0}/text": {
       "patch": {
         "tags": [
@@ -4918,6 +4976,40 @@
           "complete"
         ],
         "title": "ProjectStatus"
+      },
+      "ReorderPagesRequest": {
+        "properties": {
+          "page_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Page Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_ids"
+        ],
+        "title": "ReorderPagesRequest",
+        "description": "Request to reorder pages in a project.\n\npage_ids: List of page IDs (zero-padded 4-digit idx0 strings, e.g., \"0000\")\n          in the desired new order. Must include all pages in the project\n          and match the project's page count."
+      },
+      "ReorderPagesResponse": {
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageRecord"
+            },
+            "type": "array",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pages"
+        ],
+        "title": "ReorderPagesResponse",
+        "description": "Response after reordering pages."
       },
       "RestoreWordsRequest": {
         "properties": {
