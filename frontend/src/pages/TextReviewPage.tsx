@@ -7,10 +7,16 @@ import type { components } from "../api/types.gen";
 
 type PageRecord = components["schemas"]["PageRecord"];
 import { FormErrorBanner } from "../components/FormErrorBanner";
+import { PageHeader } from "../components/shell/PageHeader";
 import { WordBboxOverlay } from "../components/WordBboxOverlay";
+import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { KeyCap } from "../components/ui/KeyCap";
+import { ToggleGroup, ToggleGroupItem } from "../components/ui/ToggleGroup";
 import { diffLines } from "../lib/lineDiff";
 import { LineDiffView } from "../lib/LineDiffView";
 import { useUndoWindow } from "../hooks/useUndoWindow";
+import { HOTKEY_MAP } from "../lib/hotkeyMap";
 import {
   buildWordOffsetIndex,
   offsetToWord,
@@ -49,7 +55,8 @@ export function TextReviewPage() {
   // accepts the diff, saves the page, navigates away, or the
   // mutation fails. `null` means "no pending diff to show".
   const [priorText, setPriorText] = useState<string | null>(null);
-  const [showDiff, setShowDiff] = useState<boolean>(true);
+  // "text" = normal editing view; "diff" = re-OCR diff view.
+  const [viewMode, setViewMode] = useState<"text" | "diff">("text");
   // Tick 24: aria-live announcer for selection / delete state. Plain
   // string surfaced in a `role="status"` `aria-live="polite"` div so
   // screen readers narrate marquee selection size, manual clears, and
@@ -331,7 +338,7 @@ export function TextReviewPage() {
       // text that was on screen immediately before THIS click —
       // not the very first prior-text we ever captured.
       setPriorText(text);
-      setShowDiff(true);
+      setViewMode("diff");
     },
     onSuccess: () => {
       // Invalidate the text query; the useEffect on text$.data updates
@@ -415,45 +422,44 @@ export function TextReviewPage() {
 
   return (
     <section className="space-y-3">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">
-            Text review — {page.data.prefix || `#${idx0}`}
-          </h1>
-          <p className="text-xs text-slate-500">{page.data.source_stem}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {splits.length > 0 && (
-            <select
-              value={splitSuffix}
-              onChange={(e) => setSplitSuffix(e.target.value)}
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
+      {/* §4.4 PageHeader */}
+      <PageHeader
+        title={`Page ${(page.data.idx0 ?? 0) + 1}`}
+        description={page.data.source_stem}
+        actions={
+          <div className="flex items-center gap-2">
+            {splits.length > 0 && (
+              <select
+                value={splitSuffix}
+                onChange={(e) => setSplitSuffix(e.target.value)}
+                className="rounded border border-border-2 bg-bg-surface px-2 py-1 text-sm text-ink-1"
+              >
+                <option value="">(whole page)</option>
+                {[...splits]
+                  .sort((a, b) => a.reading_order - b.reading_order)
+                  .map((s) => (
+                    <option key={s.suffix} value={s.suffix}>
+                      {page.data!.prefix}
+                      {s.suffix}
+                    </option>
+                  ))}
+              </select>
+            )}
+            <Link
+              to={`/projects/${projectId}/pages/${Math.max(0, idx0 - 1)}/review`}
+              className="rounded border border-border-2 px-2 py-1 text-sm text-ink-1 hover:bg-bg-raised"
             >
-              <option value="">(whole page)</option>
-              {[...splits]
-                .sort((a, b) => a.reading_order - b.reading_order)
-                .map((s) => (
-                  <option key={s.suffix} value={s.suffix}>
-                    {page.data!.prefix}
-                    {s.suffix}
-                  </option>
-                ))}
-            </select>
-          )}
-          <Link
-            to={`/projects/${projectId}/pages/${Math.max(0, idx0 - 1)}/review`}
-            className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            ← Prev
-          </Link>
-          <Link
-            to={`/projects/${projectId}/pages/${idx0 + 1}/review`}
-            className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
-          >
-            Next →
-          </Link>
-        </div>
-      </header>
+              ← Prev
+            </Link>
+            <Link
+              to={`/projects/${projectId}/pages/${idx0 + 1}/review`}
+              className="rounded border border-border-2 px-2 py-1 text-sm text-ink-1 hover:bg-bg-raised"
+            >
+              Next →
+            </Link>
+          </div>
+        }
+      />
 
       {/* §undo: Undo banner — visible for 5 seconds after a delete. */}
       {undoWindow.window && (
@@ -469,24 +475,29 @@ export function TextReviewPage() {
           <span className="text-xs text-amber-600">
             {Math.ceil(undoWindow.window.remainingMs / 1000)}s
           </span>
-          <button
+          <Button
+            variant="outline"
+            size="xs"
             onClick={handleUndo}
-            className="rounded border border-amber-400 bg-white px-2 py-0.5 text-xs font-medium hover:bg-amber-100"
+            className="border-amber-400 bg-white hover:bg-amber-100"
           >
             Undo (Ctrl+Z)
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
             onClick={() => undoWindow.confirm()}
-            className="ml-auto rounded border border-amber-400 px-2 py-0.5 text-xs hover:bg-amber-100"
+            className="ml-auto hover:bg-amber-100"
             aria-label="Confirm delete"
           >
             ✕
-          </button>
+          </Button>
         </div>
       )}
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded border bg-white p-2">
+        {/* Left pane: Konva canvas / image + word overlay */}
+        <Card className="overflow-hidden">
           {imageKey ? (
             <div className="relative inline-block w-full">
               <img
@@ -551,13 +562,14 @@ export function TextReviewPage() {
               />
             </div>
           ) : (
-            <div className="flex h-96 items-center justify-center text-slate-400">
+            <div className="flex h-96 items-center justify-center text-ink-3">
               no image
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="flex flex-col rounded border bg-white p-2">
+        {/* Right pane: GT textarea, diff view, controls */}
+        <Card className="p-4 flex flex-col gap-4">
           <textarea
             ref={textareaRef}
             value={text}
@@ -569,32 +581,37 @@ export function TextReviewPage() {
             onClick={handleTextareaSelect}
             onKeyUp={handleTextareaSelect}
             spellCheck
-            className="min-h-[60vh] w-full resize-y rounded border-0 p-2 font-mono text-sm focus:outline-none"
+            className="min-h-[60vh] w-full resize-y rounded border border-border-1 p-2 font-mono text-sm focus:outline-none bg-bg-surface text-ink-1"
             placeholder={
               text$.error
                 ? "No OCR text yet. Click 're-OCR' to run OCR for this page."
                 : "Loading…"
             }
           />
-          <div className="flex items-center gap-2 border-t pt-2">
-            <button
+
+          {/* Controls row */}
+          <div className="flex flex-wrap items-center gap-2 border-t border-border-1 pt-2">
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => save.mutate()}
               disabled={!dirty || save.isPending}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 hover:bg-slate-800"
             >
               {save.isPending ? "Saving…" : dirty ? "Save" : "Saved"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => reocr.mutate()}
               disabled={reocr.isPending}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
             >
               {reocr.isPending ? "Re-OCR…" : "Re-OCR this page"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
               onClick={() => triggerDeleteWithUndo(Array.from(selectedWordIds))}
               disabled={selectedWordIds.size === 0 || deleteWords.isPending}
-              className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent"
               title="Delete the words highlighted in red on the source image"
             >
               {deleteWords.isPending
@@ -602,18 +619,19 @@ export function TextReviewPage() {
                 : selectedWordIds.size === 0
                   ? "Delete words"
                   : `Delete ${selectedWordIds.size} word${selectedWordIds.size === 1 ? "" : "s"}`}
-            </button>
+            </Button>
             {selectedWordIds.size > 0 && (
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setSelectedWordIds(new Set());
                   setLiveMessage("Cleared selection");
                 }}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
                 title="Clear the current word selection (Esc)"
               >
                 Clear selection
-              </button>
+              </Button>
             )}
             <FormErrorBanner
               prefix="save failed"
@@ -628,23 +646,28 @@ export function TextReviewPage() {
               error={deleteWords.isError ? (deleteWords.error as Error) : null}
             />
             {priorText !== null && (
-              <>
-                <button
-                  onClick={() => setShowDiff((v) => !v)}
-                  className="ml-auto rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+              <div className="ml-auto flex items-center gap-2">
+                {/* §4.4 diff toggle → ToggleGroup */}
+                <ToggleGroup
+                  type="single"
+                  value={viewMode}
+                  onValueChange={(v) => v && setViewMode(v as "text" | "diff")}
                 >
-                  {showDiff ? "Hide diff" : "Show diff"}
-                </button>
-                <button
+                  <ToggleGroupItem value="text">Text</ToggleGroupItem>
+                  <ToggleGroupItem value="diff">Diff</ToggleGroupItem>
+                </ToggleGroup>
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => setPriorText(null)}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
                   title="Dismiss the diff and accept the new OCR text"
                 >
                   Accept
-                </button>
-              </>
+                </Button>
+              </div>
             )}
           </div>
+
           {/* Tick 24 a11y: screen-reader narration for selection /
               delete state. Visually hidden (sr-only). `role="status"`
               + `aria-live="polite"` lets AT announce without
@@ -657,9 +680,10 @@ export function TextReviewPage() {
           >
             {liveMessage}
           </div>
-          {priorText !== null && showDiff && (
-            <div className="mt-2">
-              <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+
+          {priorText !== null && viewMode === "diff" && (
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs text-ink-3">
                 <span>Re-OCR diff (prior → new)</span>
                 {!diffHasChanges && (
                   <span className="italic">
@@ -670,7 +694,22 @@ export function TextReviewPage() {
               {diffHasChanges && <LineDiffView diff={diff} />}
             </div>
           )}
-        </div>
+
+          {/* §4.4 KeyCap hotkey hints row */}
+          <div data-testid="hotkey-hints" className="flex flex-wrap gap-3 px-1">
+            {HOTKEY_MAP.filter((h) => h.section === "Editing").map((h) => (
+              <span
+                key={h.keys.join("+")}
+                className="flex items-center gap-1 text-xs text-ink-3"
+              >
+                {h.keys.map((k) => (
+                  <KeyCap key={k}>{k}</KeyCap>
+                ))}
+                <span>{h.description}</span>
+              </span>
+            ))}
+          </div>
+        </Card>
       </div>
     </section>
   );

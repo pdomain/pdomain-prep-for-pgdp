@@ -906,3 +906,70 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await screen.findByTestId("undo-banner");
   });
 });
+
+describe("TextReviewPage P2-6 hi-fi layout", () => {
+  it("renders PageHeader with page number", async () => {
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "hello world\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [],
+        }),
+      ),
+    );
+
+    renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
+
+    // PageHeader renders an h1 with the page number. idx0=0 → "Page 1".
+    const header = await screen.findByTestId("page-header");
+    expect(header).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /Page 1/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("hotkey hints row renders KeyCap elements", async () => {
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params.projectId),
+            idx0: Number(params.idx0),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "hello world\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [],
+        }),
+      ),
+    );
+
+    renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
+
+    // Wait for the page to load.
+    await waitFor(() => {
+      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      expect(el).not.toBeNull();
+    });
+
+    // The hotkey hints container is rendered.
+    const hintsRow = screen.getByTestId("hotkey-hints");
+    expect(hintsRow).toBeInTheDocument();
+
+    // KeyCap renders as <kbd> elements; there should be at least one.
+    const kbdElements = hintsRow.querySelectorAll("kbd");
+    expect(kbdElements.length).toBeGreaterThan(0);
+  });
+});
