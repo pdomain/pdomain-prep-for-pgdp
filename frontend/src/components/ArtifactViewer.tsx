@@ -19,6 +19,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 import { Card } from "./ui/Card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/Select";
 
 type PageStageState = components["schemas"]["PageStageState"];
 
@@ -186,35 +193,57 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2">
           <span className="text-slate-600">Stage:</span>
-          <select
-            data-testid="artifact-primary-select"
+          <Select
             value={primaryId ?? ""}
-            onChange={(e) => setPrimaryId(e.target.value || undefined)}
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            onValueChange={(value) => setPrimaryId(value || undefined)}
           >
-            <option value="">— select —</option>
-            {available.map((s) => (
-              <option key={s.stage_id} value={s.stage_id}>
-                {s.stage_id}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              data-testid="artifact-primary-select"
+              className="rounded border border-slate-300 px-2 py-1 text-sm"
+            >
+              <SelectValue placeholder="— select —" />
+            </SelectTrigger>
+            <SelectContent>
+              {available.length > 0 ? (
+                available.map((s) => (
+                  <SelectItem key={s.stage_id} value={s.stage_id}>
+                    {s.stage_id}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="px-2 py-1 text-xs text-slate-400">
+                  No stages available
+                </div>
+              )}
+            </SelectContent>
+          </Select>
         </label>
         <label className="flex items-center gap-2">
           <span className="text-slate-600">Compare with:</span>
-          <select
-            data-testid="artifact-compare-select"
+          <Select
             value={compareIdResolved ?? ""}
-            onChange={(e) => setCompareId(e.target.value || undefined)}
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            onValueChange={(value) => setCompareId(value || undefined)}
           >
-            <option value="">— none —</option>
-            {available.map((s) => (
-              <option key={s.stage_id} value={s.stage_id}>
-                {s.stage_id}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              data-testid="artifact-compare-select"
+              className="rounded border border-slate-300 px-2 py-1 text-sm"
+            >
+              <SelectValue placeholder="— none —" />
+            </SelectTrigger>
+            <SelectContent>
+              {available.length > 0 ? (
+                available.map((s) => (
+                  <SelectItem key={s.stage_id} value={s.stage_id}>
+                    {s.stage_id}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="px-2 py-1 text-xs text-slate-400">
+                  No stages available
+                </div>
+              )}
+            </SelectContent>
+          </Select>
         </label>
       </div>
 
