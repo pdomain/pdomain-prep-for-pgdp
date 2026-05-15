@@ -68,3 +68,4 @@ docs/spec-chain-report.md
 
 # AI=1 make output capture log
 .ci-ai.log
+.worktrees/
