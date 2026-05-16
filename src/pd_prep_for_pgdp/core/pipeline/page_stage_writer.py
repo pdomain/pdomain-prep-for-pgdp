@@ -46,6 +46,21 @@ from .stage_dag import STAGE_DAG, get_stage
 
 log = logging.getLogger(__name__)
 
+
+def _safe_rollback(paths_to_unlink: list[Path], context: str) -> None:
+    """Attempt to unlink each path; log ERROR for any failure (never raises).
+
+    Used in exception handlers where the primary error has already been
+    captured — rollback failures must not shadow it, but they must not
+    vanish silently either.
+    """
+    for p in paths_to_unlink:
+        try:
+            p.unlink(missing_ok=True)
+        except OSError as exc:
+            log.error("rollback unlink failed for %s (%s): %s", p, context, exc)
+
+
 # ─── Output extension mapping ────────────────────────────────────────────────
 
 # Maps the stage's `output_type` string (per `Stage.output_type`) to the
@@ -178,16 +193,12 @@ def write_artifact_file_sync(
 
     try:
         fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-        try:
-            with os.fdopen(fd, "wb") as fp:
-                fp.write(artifact_bytes)
-                fp.flush()
-                os.fsync(fp.fileno())
-        except BaseException:
-            raise
+        with os.fdopen(fd, "wb") as fp:
+            fp.write(artifact_bytes)
+            fp.flush()
+            os.fsync(fp.fileno())
     except BaseException as exc:
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+        _safe_rollback([tmp_path], context=f"tmp write for {target_path.name!r}")
         raise StageArtifactWriteError(
             f"deferred write failed (tmp write to {target_path.name!r}): {exc!r}"
         ) from exc
@@ -195,8 +206,7 @@ def write_artifact_file_sync(
     try:
         os.replace(str(tmp_path), str(target_path))
     except OSError as exc:
-        with contextlib.suppress(OSError):
-            tmp_path.unlink(missing_ok=True)
+        _safe_rollback([tmp_path], context=f"rename to {target_path.name!r}")
         raise StageArtifactWriteError(
             f"deferred write failed (rename to {target_path.name!r}): {exc!r}"
         ) from exc
@@ -343,20 +353,15 @@ async def commit_stage_artifact(
 
     # Step 2-3: write tmp + fsync. Failures here leave nothing behind that
     # we need to clean up beyond the (possibly partial) tmp file.
+    # fdopen takes ownership of fd; no separate close needed on exception.
     try:
         fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-        try:
-            with os.fdopen(fd, "wb") as fp:
-                fp.write(artifact_bytes)
-                fp.flush()
-                os.fsync(fp.fileno())
-        except BaseException:
-            # fdopen took ownership of fd already; nothing extra to close.
-            raise
+        with os.fdopen(fd, "wb") as fp:
+            fp.write(artifact_bytes)
+            fp.flush()
+            os.fsync(fp.fileno())
     except BaseException as exc:
-        if tmp_path.exists():
-            with contextlib.suppress(OSError):
-                tmp_path.unlink()
+        _safe_rollback([tmp_path], context=f"tmp write for stage {stage_id!r}")
         raise StageArtifactWriteError(f"failed to write tmp artifact for {stage_id!r}: {exc!r}") from exc
 
     # Step 4: snapshot prior file (if any) so we can roll back on DB failure.
@@ -373,11 +378,18 @@ async def commit_stage_artifact(
     try:
         os.replace(str(tmp_path), str(target_path))
     except OSError as exc:
-        if tmp_path.exists():
-            tmp_path.unlink()
+        _safe_rollback([tmp_path], context=f"rename to {target_path.name!r} for stage {stage_id!r}")
         if prior_snapshot is not None and prior_snapshot.exists():
-            with contextlib.suppress(OSError):
+            try:
                 os.replace(str(prior_snapshot), str(target_path))
+            except OSError as rollback_exc:
+                log.error(
+                    "rollback failed restoring snapshot after rename error for %s/%s/%s: %s",
+                    project_id,
+                    page_id,
+                    stage_id,
+                    rollback_exc,
+                )
         raise StageArtifactWriteError(
             f"failed to rename tmp artifact to {target_path.name!r}: {exc!r}"
         ) from exc
@@ -401,14 +413,22 @@ async def commit_stage_artifact(
     except BaseException as exc:
         # File rollback: replace canonical with the snapshot, or delete it
         # if no prior file existed.
-        with contextlib.suppress(OSError):
+        try:
             if prior_snapshot is not None and prior_snapshot.exists():
                 os.replace(str(prior_snapshot), str(target_path))
             elif target_path.exists():
-                target_path.unlink()
+                target_path.unlink(missing_ok=True)
+        except OSError as rollback_exc:
+            log.error(
+                "rollback failed after DB upsert error for %s/%s/%s: %s",
+                project_id,
+                page_id,
+                stage_id,
+                rollback_exc,
+            )
         raise StageArtifactWriteError(f"DB upsert failed for {stage_id!r}: {exc!r}") from exc
 
-    # Cleanup: prior snapshot is no longer needed.
+    # Cleanup: prior snapshot is no longer needed (best-effort; orphan is benign).
     if prior_snapshot is not None and prior_snapshot.exists():
         with contextlib.suppress(OSError):
             prior_snapshot.unlink()
@@ -486,6 +506,7 @@ async def commit_stage_artifacts_multi(
     snapshots: dict[Path, Path] = {}
 
     # Step 2-3: write all tmps + fsync.
+    # fdopen takes ownership of fd; no separate close needed on exception.
     try:
         for filename, data in files.items():
             target = stage_dir / filename
@@ -493,26 +514,21 @@ async def commit_stage_artifacts_multi(
             tmp_paths[target] = tmp
             try:
                 fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-                try:
-                    with os.fdopen(fd, "wb") as fp:
-                        fp.write(data)
-                        fp.flush()
-                        os.fsync(fp.fileno())
-                except BaseException:
-                    raise
+                with os.fdopen(fd, "wb") as fp:
+                    fp.write(data)
+                    fp.flush()
+                    os.fsync(fp.fileno())
             except BaseException as exc:
-                if tmp.exists():
-                    with contextlib.suppress(OSError):
-                        tmp.unlink()
+                _safe_rollback([tmp], context=f"tmp write for {filename!r} in stage {stage_id!r}")
                 raise StageArtifactWriteError(
                     f"failed to write tmp artifact {filename!r} for stage {stage_id!r}: {exc!r}"
                 ) from exc
     except StageArtifactWriteError:
         # Clean up any tmps already written before the failure.
-        for t in tmp_paths.values():
-            if t.exists():
-                with contextlib.suppress(OSError):
-                    t.unlink()
+        _safe_rollback(
+            [t for t in tmp_paths.values() if t.exists()],
+            context=f"batch tmp cleanup for stage {stage_id!r}",
+        )
         raise
 
     # Step 4: snapshot pre-existing files.
@@ -525,15 +541,23 @@ async def commit_stage_artifacts_multi(
                     snapshots[target] = snap
                 except OSError as exc:
                     # Roll back tmps already written.
-                    for t in tmp_paths.values():
-                        if t.exists():
-                            with contextlib.suppress(OSError):
-                                t.unlink()
+                    _safe_rollback(
+                        [t for t in tmp_paths.values() if t.exists()],
+                        context=f"tmp cleanup after snapshot failure for stage {stage_id!r}",
+                    )
                     # Restore any snapshots already moved.
                     for canon, snap2 in snapshots.items():
                         if snap2.exists():
-                            with contextlib.suppress(OSError):
+                            try:
                                 os.replace(str(snap2), str(canon))
+                            except OSError as restore_exc:
+                                log.error(
+                                    "rollback failed restoring snapshot %s -> %s for stage %s: %s",
+                                    snap2,
+                                    canon,
+                                    stage_id,
+                                    restore_exc,
+                                )
                     raise StageArtifactWriteError(
                         f"failed to snapshot prior {target.name!r} for stage {stage_id!r}: {exc!r}"
                     ) from exc
@@ -548,19 +572,30 @@ async def commit_stage_artifacts_multi(
             except OSError as exc:
                 # Roll back: remove any canonical files already placed, restore
                 # snapshots, remove remaining tmps.
-                for _t2, canon2 in {v: k for k, v in tmp_paths.items()}.items():
+                canon_by_tmp = {v: k for k, v in tmp_paths.items()}
+                for _t2, canon2 in canon_by_tmp.items():
                     # Remove already-placed canonical files (except those with snapshot).
                     if canon2.exists() and canon2 not in snapshots:
-                        with contextlib.suppress(OSError):
-                            canon2.unlink()
+                        _safe_rollback(
+                            [canon2],
+                            context=f"placed-canonical cleanup after rename failure for stage {stage_id!r}",
+                        )
                 for canon, snap in snapshots.items():
                     if snap.exists():
-                        with contextlib.suppress(OSError):
+                        try:
                             os.replace(str(snap), str(canon))
-                for t in tmp_paths.values():
-                    if t.exists():
-                        with contextlib.suppress(OSError):
-                            t.unlink()
+                        except OSError as restore_exc:
+                            log.error(
+                                "rollback failed restoring snapshot %s -> %s for stage %s: %s",
+                                snap,
+                                canon,
+                                stage_id,
+                                restore_exc,
+                            )
+                _safe_rollback(
+                    [t for t in tmp_paths.values() if t.exists()],
+                    context=f"tmp cleanup after rename failure for stage {stage_id!r}",
+                )
                 raise StageArtifactWriteError(
                     f"failed to rename tmp {target.name!r} for stage {stage_id!r}: {exc!r}"
                 ) from exc
@@ -590,14 +625,28 @@ async def commit_stage_artifacts_multi(
         for target in tmp_paths:
             snap = snapshots.get(target)
             if snap is not None and snap.exists():
-                with contextlib.suppress(OSError):
+                try:
                     os.replace(str(snap), str(target))
+                except OSError as rollback_exc:
+                    log.error(
+                        "rollback failed restoring snapshot %s -> %s after DB upsert error for %s/%s/%s: %s",
+                        snap,
+                        target,
+                        project_id,
+                        page_id,
+                        stage_id,
+                        rollback_exc,
+                    )
             elif target.exists():
-                with contextlib.suppress(OSError):
-                    target.unlink()
+                _safe_rollback(
+                    [target],
+                    context=(
+                        f"placed-file cleanup after DB upsert error for {project_id}/{page_id}/{stage_id}"
+                    ),
+                )
         raise StageArtifactWriteError(f"DB upsert failed for {stage_id!r}: {exc!r}") from exc
 
-    # Cleanup: remove snapshots.
+    # Cleanup: remove snapshots (best-effort; orphan snapshots are benign).
     for snap in snapshots.values():
         if snap.exists():
             with contextlib.suppress(OSError):

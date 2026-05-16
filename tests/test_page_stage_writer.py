@@ -494,3 +494,56 @@ async def test_commit_stage_artifacts_multi_replaces_prior_files(
 
     assert (stage_dir / "words.json").read_bytes() == b'[{"text":"new"}]'
     assert (stage_dir / "raw.txt").read_bytes() == b"new"
+
+
+# ─── _safe_rollback logging behaviour ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_rollback_ioerror_is_logged_not_suppressed(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An OSError during rollback unlink must appear in ERROR logs, not be silently suppressed."""
+    import logging
+
+    # Arrange: make DB.put_page_stage fail to trigger the rollback path.
+    # Use monkeypatch-style AsyncMock so the DB write succeeds on first
+    # (snapshot) call but fails on the upsert that follows.
+    from unittest.mock import AsyncMock
+
+    mock_db = AsyncMock()
+    mock_db.get_page_stage.return_value = None
+    mock_db.put_page_stage.side_effect = RuntimeError("injected DB failure")
+
+    # Patch Path.unlink to raise OSError on the first call (the rollback
+    # unlink of the canonical target_path after DB failure when there is
+    # no prior snapshot to restore).
+    original_unlink = Path.unlink
+    call_count = 0
+
+    def flaky_unlink(self: Path, missing_ok: bool = False) -> None:  # type: ignore[override]
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise OSError("permission denied (injected)")
+        return original_unlink(self, missing_ok=missing_ok)
+
+    # Capture at WARNING level so ERROR records are included.
+    with caplog.at_level(logging.WARNING), pytest.MonkeyPatch.context() as mp:
+        mp.setattr(Path, "unlink", flaky_unlink)
+        with pytest.raises(StageArtifactWriteError):
+            await commit_stage_artifact(
+                data_root=tmp_path,
+                database=mock_db,
+                project_id="p1",
+                page_id="pg1",
+                stage_id="decode_source",
+                artifact_bytes=b"test",
+                stage_version=1,
+            )
+
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert any("rollback" in r.message.lower() for r in error_records), (
+        f"Expected rollback ERROR log entry, got: {[r.message for r in error_records]}"
+    )
