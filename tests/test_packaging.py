@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+import pd_prep_for_pgdp.core.packaging as packaging_mod
 from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pd_prep_for_pgdp.core.models import (
     IllustrationRegion,
@@ -192,3 +193,47 @@ async def test_build_package_collects_illustrations(tmp_path) -> None:
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         assert "images/p007_01.jpg" in zf.namelist()
         assert "images/p007_02.png" in zf.namelist()
+
+
+@pytest.mark.asyncio
+async def test_oxipng_skip_counted_in_result(monkeypatch, tmp_path) -> None:
+    """When oxipng fails, PackagingResult.oxipng_skipped_pages is incremented
+    and the page is still written (original bytes used)."""
+    monkeypatch.setattr(
+        packaging_mod.oxipng,
+        "optimize_from_memory",
+        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("corrupt PNG")),
+    )
+
+    storage = FilesystemStorage(root=tmp_path)
+    project = _project("p5")
+    pages = [
+        _page("p5", idx0=0, prefix="p001"),
+        _page("p5", idx0=1, prefix="p002"),
+    ]
+    for page in pages:
+        for output in page.outputs:
+            await storage.put_bytes(output.for_zip_image_key, b"\x89PNG-fake")
+            await storage.put_bytes(output.for_zip_text_key, b"text")
+
+    result = await build_package(project=project, pages=pages, storage=storage, optimize_png=True)
+
+    # Both pages still written — skips must never drop pages.
+    assert result.page_count == 2
+    # Both oxipng calls failed, so both pages counted as skipped.
+    assert result.oxipng_skipped_pages == 2
+
+
+@pytest.mark.asyncio
+async def test_oxipng_skip_zero_when_optimize_disabled(tmp_path) -> None:
+    """When optimize_png=False, oxipng is never called and the skip counter stays 0."""
+    storage = FilesystemStorage(root=tmp_path)
+    project = _project("p6")
+    pages = [_page("p6", idx0=0, prefix="p001")]
+    for output in pages[0].outputs:
+        await storage.put_bytes(output.for_zip_image_key, b"\x89PNG-fake")
+        await storage.put_bytes(output.for_zip_text_key, b"text")
+
+    result = await build_package(project=project, pages=pages, storage=storage, optimize_png=False)
+
+    assert result.oxipng_skipped_pages == 0

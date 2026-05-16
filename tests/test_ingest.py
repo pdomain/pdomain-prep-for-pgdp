@@ -262,3 +262,39 @@ async def test_thumbnails_records_corrupt_entries_as_errors(
     # Healthy page got a thumbnail; corrupt one is recorded.
     assert result.page_count == 1
     assert any("page_2" in e for e in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_source_read_error_appears_in_ingest_errors(
+    db: SqliteDatabase, storage: FilesystemStorage, monkeypatch
+) -> None:
+    """When storage.get_bytes raises while reading source data for thumbnailing,
+    the failure must appear in IngestResult.errors (not swallowed silently)."""
+    from unittest.mock import patch
+
+    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+
+    project = _project()
+    await db.put_project(project)
+    zip_bytes = _make_zip([("page_1.png", _png(50, 50))])
+    src_key = f"projects/{project.id}/source.zip"
+    await storage.put_bytes(src_key, zip_bytes)
+    await unzip_source(project=project, source_type="zip", source_key=src_key, storage=storage, database=db)
+
+    refreshed = await db.get_project(project.id)
+    assert refreshed is not None
+
+    # Wrap storage.get_bytes so that reads on source keys raise, simulating a
+    # missing or corrupt object-store entry.
+    original_get_bytes = storage.get_bytes
+
+    async def _failing_get_bytes(key: str) -> bytes:
+        if "/source/" in key:
+            raise OSError(f"simulated storage failure: {key}")
+        return await original_get_bytes(key)
+
+    with patch.object(storage, "get_bytes", side_effect=_failing_get_bytes):
+        result = await generate_thumbnails(project=refreshed, storage=storage, database=db)
+
+    assert result.errors, "expected at least one error in IngestResult.errors"
+    assert any("page_1" in e for e in result.errors)

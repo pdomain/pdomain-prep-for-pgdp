@@ -28,16 +28,22 @@ log = logging.getLogger(__name__)
 _OXIPNG_LEVEL = 4
 
 
-def _optimize_png(data: bytes) -> bytes:
+def _optimize_png(data: bytes, *, skip_counter: list[int] | None = None) -> bytes:
     """Return losslessly optimised PNG bytes (oxipng level 4).
 
     Falls back to the original bytes on any error — a failed optimisation
     must never drop a page from the package.
+
+    When *skip_counter* is provided (a single-element ``list[int]``), its
+    first element is incremented each time the fallback path is taken, allowing
+    callers to accumulate a page-level skip count without changing the return type.
     """
     try:
         return oxipng.optimize_from_memory(data, level=_OXIPNG_LEVEL)
     except Exception:
         log.warning("oxipng optimisation failed; using original bytes", exc_info=True)
+        if skip_counter is not None:
+            skip_counter[0] += 1
         return data
 
 
@@ -47,6 +53,7 @@ class PackagingResult:
     page_count: int
     illustration_count: int
     bytes_written: int
+    oxipng_skipped_pages: int = 0
 
 
 async def build_package(
@@ -66,6 +73,7 @@ async def build_package(
     buf = io.BytesIO()
     page_count = 0
     illustration_count = 0
+    _skip_counter: list[int] = [0]
     cover_prefix: str | None = None
     title_prefix: str | None = None
 
@@ -81,7 +89,7 @@ async def build_package(
                 if output.for_zip_image_key and await storage.exists(output.for_zip_image_key):
                     img_bytes = await storage.get_bytes(output.for_zip_image_key)
                     if run_optimize:
-                        img_bytes = _optimize_png(img_bytes)
+                        img_bytes = _optimize_png(img_bytes, skip_counter=_skip_counter)
                     zf.writestr(f"{output.full_prefix}.png", img_bytes)
                     page_count += 1
 
@@ -145,4 +153,5 @@ async def build_package(
         page_count=page_count,
         illustration_count=illustration_count,
         bytes_written=len(package_bytes),
+        oxipng_skipped_pages=_skip_counter[0],
     )

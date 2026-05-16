@@ -173,6 +173,7 @@ async def generate_thumbnails(
 
     # Read source bytes for every page that still needs a thumbnail. We
     # gather all bytes first so the threadpool task only does CPU work.
+    source_read_errors: list[str] = []
     todo: list[tuple[int, str, bytes]] = []
     for page in pages_in:
         if page.thumbnail_key:
@@ -182,14 +183,15 @@ async def generate_thumbnails(
         try:
             data = await storage.get_bytes(page.source_key)
         except Exception as e:
-            log.warning("thumbnail: source missing for %s: %s", page.source_stem, e)
+            log.warning("thumbnail failed for %s: %s", page.source_stem, e, exc_info=True)
+            source_read_errors.append(f"thumbnail:{page.source_stem}: {e!r}")
             continue
         todo.append((page.idx0, page.source_stem, data))
 
     total = len(todo)
     if total == 0:
         await _mark_step_complete(project, database, step_id=2)
-        return IngestResult(page_count=0, errors=[])
+        return IngestResult(page_count=0, errors=source_read_errors)
 
     workers = _resolve_thumbnail_workers(override=thumbnail_workers)
 
@@ -198,7 +200,7 @@ async def generate_thumbnails(
     # all results are in, in idx0 order, so the on-disk file order matches
     # source order regardless of completion order.
     jpgs_by_idx: dict[int, bytes] = {}
-    errors: list[str] = []
+    errors: list[str] = list(source_read_errors)
 
     if workers <= 1:
         # ── Single-thread path ────────────────────────────────────────────
