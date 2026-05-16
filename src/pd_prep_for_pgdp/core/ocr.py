@@ -342,33 +342,30 @@ def _ocr_page_tesseract(
 
 
 def _to_ocr_word(w: Any, split_suffix: str | None = None) -> OcrWord:
-    """Adapt a `pd_book_tools.ocr.word.Word` into our wire-shape `OcrWord`."""
-    bbox = getattr(w, "bounding_box", None) or getattr(w, "bbox", None)
-    if bbox is None:
-        # Fall back to attributes named L/R/T/B (the layout convention).
-        L = int(getattr(w, "L", 0) or 0)
-        T = int(getattr(w, "T", 0) or 0)
-        R = int(getattr(w, "R", 0) or 0)
-        B = int(getattr(w, "B", 0) or 0)
-    else:
-        L = int(getattr(bbox, "left", getattr(bbox, "L", 0)) or 0)
-        T = int(getattr(bbox, "top", getattr(bbox, "T", 0)) or 0)
-        R = int(
-            getattr(bbox, "right", L + getattr(bbox, "width", 0))
-            if hasattr(bbox, "width")
-            else getattr(bbox, "R", L)
-        )
-        B = int(
-            getattr(bbox, "bottom", T + getattr(bbox, "height", 0))
-            if hasattr(bbox, "height")
-            else getattr(bbox, "B", T)
-        )
+    """Adapt a ``pd_book_tools.ocr.word.Word`` into our wire-shape ``OcrWord``.
+
+    Raises ``TypeError`` if ``w`` is not the expected type — silent zeros
+    from a renamed API are worse than a loud crash at the boundary.
+    """
+    try:
+        from pd_book_tools.ocr.word import Word as PdWord
+    except ImportError as exc:
+        raise RuntimeError("pd_book_tools is not installed") from exc
+
+    if not isinstance(w, PdWord):
+        raise TypeError(f"expected pd_book_tools.ocr.word.Word, got {type(w).__qualname__!r}")
+
+    bb = w.bounding_box
+    L = int(bb.minX)
+    T = int(bb.minY)
+    R = int(bb.maxX)
+    B = int(bb.maxY)
     width = max(0, R - L)
     height = max(0, B - T)
     return OcrWord(
-        id=str(getattr(w, "id", None) or uuid.uuid4().hex),
-        text=str(getattr(w, "text", "") or ""),
-        confidence=float(getattr(w, "confidence", 0.0) or 0.0),
+        id=uuid.uuid4().hex,
+        text=w.text,
+        confidence=float(w.ocr_confidence or 0.0),
         bounding_box=BoundingBox(left=L, top=T, width=width, height=height),
         split_suffix=split_suffix,
     )
