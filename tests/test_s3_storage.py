@@ -186,8 +186,8 @@ async def test_exists_returns_false_on_no_such_key(fake_boto3: _FakeS3Client) ->
 
 
 @pytest.mark.asyncio
-async def test_exists_returns_false_on_arbitrary_error(fake_boto3: _FakeS3Client) -> None:
-    """Other errors (network, ClientError, etc.) are also 'not present'."""
+async def test_exists_reraises_non_nosuchkey_errors(fake_boto3: _FakeS3Client) -> None:
+    """Credentials/throttling errors must propagate from exists(), not return False."""
     from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
@@ -196,7 +196,8 @@ async def test_exists_returns_false_on_arbitrary_error(fake_boto3: _FakeS3Client
         raise RuntimeError("network blip")
 
     fake_boto3.head_object = _boom  # type: ignore[method-assign]
-    assert await s.exists("k") is False
+    with pytest.raises(RuntimeError, match="network blip"):
+        await s.exists("k")
 
 
 @pytest.mark.asyncio

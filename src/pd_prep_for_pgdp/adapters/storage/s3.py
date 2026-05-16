@@ -52,8 +52,7 @@ class S3Storage(IStorage):
                 return True
             except self._client.exceptions.NoSuchKey:
                 return False
-            except Exception:
-                return False
+            # All other exceptions propagate — credentials, throttling, etc.
 
         return await anyio.to_thread.run_sync(_head)
 
