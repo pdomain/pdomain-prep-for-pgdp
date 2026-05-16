@@ -6,9 +6,13 @@ Lazy-imports `pyjwt`. OIDC discovery + JWKS fetch is deferred until
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException
 
 from .base import UserContext
+
+log = logging.getLogger(__name__)
 
 
 class JwtAuth:
@@ -55,8 +59,13 @@ class JwtAuth:
                 audience=self._audience,
                 issuer=self._issuer,
             )
-        except Exception as e:
+        except pyjwt.exceptions.PyJWTError as e:
             raise HTTPException(status_code=401, detail=f"invalid token: {e}") from e
+        except (ConnectionError, TimeoutError, OSError) as e:
+            raise HTTPException(status_code=503, detail="authentication service unavailable") from e
+        except Exception as e:
+            log.exception("unexpected error during JWT verification")
+            raise HTTPException(status_code=500, detail="unexpected auth error") from e
 
         user_id = claims.get("sub")
         if not user_id:

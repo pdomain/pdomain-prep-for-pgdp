@@ -111,6 +111,50 @@ async def test_verify_returns_user_context_on_success(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
+async def test_connection_error_during_jwt_verify_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A network failure during JWKS fetch must return 503, not 401."""
+    pytest.importorskip("jwt")
+
+    auth = JwtAuth(issuer="https://issuer.example", audience="aud")
+
+    class _NetworkBoomClient:
+        def __init__(self, _url: str) -> None:
+            pass
+
+        def get_signing_key_from_jwt(self, _tok: str):
+            raise ConnectionError("JWKS endpoint unreachable")
+
+    monkeypatch.setattr("jwt.PyJWKClient", _NetworkBoomClient)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth.verify("any.jwt.token")
+    assert exc.value.status_code == 503
+    assert "authentication service unavailable" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_error_during_jwt_verify_returns_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unexpected (non-JWT, non-network) error must return 500, not 401."""
+    pytest.importorskip("jwt")
+
+    auth = JwtAuth(issuer="https://issuer.example", audience="aud")
+
+    class _UnexpectedBoomClient:
+        def __init__(self, _url: str) -> None:
+            pass
+
+        def get_signing_key_from_jwt(self, _tok: str):
+            raise ValueError("something completely unexpected")
+
+    monkeypatch.setattr("jwt.PyJWKClient", _UnexpectedBoomClient)
+
+    with pytest.raises(HTTPException) as exc:
+        await auth.verify("any.jwt.token")
+    assert exc.value.status_code == 500
+    assert "unexpected auth error" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_load_jwks_caches_after_first_call(monkeypatch: pytest.MonkeyPatch) -> None:
     """`_load_jwks` should hit the issuer's discovery endpoint once and
     cache the resulting key map. The second call returns the same dict
