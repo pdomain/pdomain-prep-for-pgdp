@@ -14,7 +14,8 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
-    "openapi:gen": "openapi-typescript ../openapi.json -o src/api/types.gen.ts"
+    "openapi:gen": "openapi-typescript ../openapi.json -o src/api/types.gen.ts",
+    "knip": "knip"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -64,6 +65,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^15.15.0",
     "jsdom": "^25.0.1",
+    "knip": "^6.14.1",
     "msw": "^2.7.0",
     "openapi-typescript": "^7.4.0",
     "postcss": "^8.4.49",

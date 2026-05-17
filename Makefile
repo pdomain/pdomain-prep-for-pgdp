@@ -15,7 +15,7 @@ else
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
         typecheck pre-commit-check test e2e build clean ci local-setup dev-local install-local \
         uninstall-local check-local-editable run run-cpu run-local frontend-install \
-        frontend-build frontend-dev frontend-test openapi-export upgrade-pd-book-tools \
+        frontend-build frontend-dev frontend-test frontend-knip openapi-export upgrade-pd-book-tools \
         release-patch release-minor release-major _do-release docker-build docker-run \
         mise-download mise-setup mise-doctor upgrade-deps
 
@@ -221,6 +221,11 @@ frontend-lint: ## Run ESLint on the SPA
 	@$(call _npm,install)
 	@$(call _npm,run lint)
 
+frontend-knip: ## Run knip dead-export detector (non-blocking; advisory only)
+	@echo "🔍 Running knip dead-export scan..."
+	@$(call _npm,install)
+	@$(call _npm,run knip) || true
+
 frontend-format-check: ## Check SPA formatting with Prettier
 	@echo "🎨 Checking frontend formatting (Prettier)..."
 	@$(call _npm,install)
@@ -288,7 +293,7 @@ clean: ## Clean cache + build artifacts
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf dist/ src/pd_prep_for_pgdp/static/ frontend/dist/ 2>/dev/null || true
 
-ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test ## Full CI pipeline
+ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip ## Full CI pipeline
 
 # ---------------------------------------------------------------------------
 # Local editable workflow (requires ../pd-book-tools sibling checkout)
