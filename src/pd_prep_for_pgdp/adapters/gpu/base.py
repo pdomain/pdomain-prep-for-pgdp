@@ -61,6 +61,7 @@ class BatchJobResult(ApiModel):
     idx0: int
     ok: bool
     error: str | None = None
+    error_type: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

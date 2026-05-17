@@ -7,6 +7,8 @@ tests can override individual dependencies via FastAPI's standard mechanism.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -16,6 +18,8 @@ from ..adapters.gpu import GPUBackend
 from ..adapters.storage import IStorage
 from ..dispatcher import IDispatcher
 from ..settings import Settings
+
+log = logging.getLogger(__name__)
 
 _security = HTTPBearer(auto_error=False)
 
@@ -68,5 +72,10 @@ async def get_user(
         return await auth.verify(creds.credentials if creds else None)
     except HTTPException:
         raise
+    except (ConnectionError, TimeoutError, OSError) as e:
+        raise HTTPException(status_code=503, detail="auth service unavailable") from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=f"malformed credential: {e}") from e
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e)) from e
+        log.exception("unexpected error in auth dependency")
+        raise HTTPException(status_code=500, detail="unexpected authentication error") from e

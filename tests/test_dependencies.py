@@ -4,10 +4,11 @@ Locks in:
   - `get_storage` / `get_database` / `get_auth` / `get_gpu_backend` /
     `get_dispatcher` / `get_job_events` all return the instances stashed
     on `app.state`,
-  - `get_user` re-raises HTTPException untouched (preserves 401 detail
+  - `get_user` re-raises HTTPException untouched (preserves detail
     from the auth adapter),
-  - `get_user` wraps any other exception as a 401 (auth adapters that
-    raise unexpected errors don't leak into 500s).
+  - `get_user` maps ConnectionError/TimeoutError/OSError → 503,
+  - `get_user` maps ValueError → 422,
+  - `get_user` maps unexpected exceptions → 500.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ def test_get_job_events_returns_app_state_job_events() -> None:
 
 
 class _RaisingAuth:
-    """Auth that raises a non-HTTPException — `get_user` should map to 401."""
+    """Auth that raises a non-HTTPException — `get_user` should map to 500."""
 
     async def verify(self, _creds):
         raise RuntimeError("auth subsystem on fire")
@@ -83,19 +84,49 @@ class _HTTPAuth:
         raise HTTPException(status_code=403, detail="custom-detail")
 
 
+class _ConnectionErrorAuth:
+    async def verify(self, _creds):
+        raise ConnectionError("TCP connection refused")
+
+
+class _ValueErrorAuth:
+    async def verify(self, _creds):
+        raise ValueError("bad jwt segment")
+
+
 @pytest.mark.asyncio
-async def test_get_user_wraps_unknown_exception_as_401() -> None:
+async def test_get_user_wraps_unknown_exception_as_500() -> None:
     with pytest.raises(HTTPException) as exc:
         await get_user(creds=None, auth=_RaisingAuth())  # type: ignore[arg-type]
-    assert exc.value.status_code == 401
-    assert "auth subsystem on fire" in str(exc.value.detail)
+    assert exc.value.status_code == 500
+    assert "unexpected authentication error" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
 async def test_get_user_passes_through_http_exception() -> None:
     """A 403 from the auth adapter must reach the client untouched
-    (not get re-wrapped as 401)."""
+    (not get re-wrapped)."""
     with pytest.raises(HTTPException) as exc:
         await get_user(creds=None, auth=_HTTPAuth())  # type: ignore[arg-type]
     assert exc.value.status_code == 403
     assert exc.value.detail == "custom-detail"
+
+
+@pytest.mark.asyncio
+async def test_connection_error_in_auth_dependency_returns_503() -> None:
+    """ConnectionError (and TimeoutError/OSError) from an auth adapter must
+    become 503 Service Unavailable, not 500."""
+    with pytest.raises(HTTPException) as exc:
+        await get_user(creds=None, auth=_ConnectionErrorAuth())  # type: ignore[arg-type]
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "auth service unavailable"
+
+
+@pytest.mark.asyncio
+async def test_value_error_in_auth_dependency_returns_422() -> None:
+    """ValueError from an auth adapter (malformed token format) must become
+    422 Unprocessable Entity."""
+    with pytest.raises(HTTPException) as exc:
+        await get_user(creds=None, auth=_ValueErrorAuth())  # type: ignore[arg-type]
+    assert exc.value.status_code == 422
+    assert "malformed credential" in str(exc.value.detail)

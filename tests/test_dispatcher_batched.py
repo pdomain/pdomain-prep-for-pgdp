@@ -104,8 +104,30 @@ async def test_backend_failure_marks_every_item_failed() -> None:
     assert len(out) == 2
     for r in out:
         assert r.ok is False
-        assert r.error and "run_batch" in r.error
+        assert r.error and "RuntimeError" in r.error
     assert {r.idx0 for r in received} == {0, 1}
+
+
+@pytest.mark.asyncio
+async def test_batch_job_result_error_type_set_on_backend_failure() -> None:
+    """When backend.run_batch raises, every failed BatchJobResult must have
+    error_type set to the exception class name (for structured error handling
+    downstream)."""
+    d = BatchDispatcher(_BoomBackend(), interval_seconds=0)
+    received: list[BatchJobResult] = []
+
+    async def on_complete(job_id: str, results: list[BatchJobResult]) -> None:
+        received.extend(results)
+
+    d.add_completion_callback(on_complete)
+    await d.submit(_item(0), job_id="J")
+    out = await d.flush()
+
+    assert len(out) == 1
+    r = out[0]
+    assert r.ok is False
+    assert r.error_type == "RuntimeError"
+    assert r.error is not None and "RuntimeError" in r.error
 
 
 @pytest.mark.asyncio

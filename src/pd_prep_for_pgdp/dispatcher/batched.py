@@ -64,7 +64,7 @@ class BatchDispatcher:
 
         try:
             results = await self._backend.run_batch([item for _, item in all_items])
-        except Exception:
+        except Exception as exc:
             log.exception("BatchDispatcher.flush: backend.run_batch failed")
             results = [
                 BatchJobResult(
@@ -72,7 +72,8 @@ class BatchDispatcher:
                     project_id=item.project_id,
                     idx0=item.idx0,
                     ok=False,
-                    error="backend.run_batch raised",
+                    error=f"{type(exc).__name__}: {exc}",
+                    error_type=type(exc).__name__,
                 )
                 for _, item in all_items
             ]
