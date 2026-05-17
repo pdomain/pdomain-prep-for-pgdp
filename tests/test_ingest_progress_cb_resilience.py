@@ -178,6 +178,79 @@ async def test_thumbnails_skips_missing_source_on_storage(db, storage) -> None:
 
 
 @pytest.mark.asyncio
+async def test_unzip_circuit_breaker_uses_consecutive_semantics(db, storage) -> None:
+    """unzip_source circuit breaker must count *consecutive* failures, not cumulative.
+
+    A callback that fails twice, succeeds once, then fails twice more should NOT
+    trip the breaker (only 2 consecutive at most). Three consecutive failures in
+    a row SHOULD trip it and disable the callback.
+    """
+    pytest.importorskip("cv2")
+    project = _project()
+    await db.put_project(project)
+    src_key = "projects/ip1/source.zip"
+    # Need enough pages to exercise: fail, fail, ok, fail, fail (5 pages min)
+    pages_data = [(f"p{i}.png", _png(50, 50)) for i in range(5)]
+    await storage.put_bytes(src_key, _zip(pages_data))
+
+    call_count = 0
+    fail_pattern = [True, True, False, True, True]  # fail=True, succeed=False
+
+    async def intermittent_cb(_c, _t, _s):
+        nonlocal call_count
+        idx = call_count
+        call_count += 1
+        if idx < len(fail_pattern) and fail_pattern[idx]:
+            raise RuntimeError(f"cb failure at call {idx}")
+
+    result = await unzip_source(
+        project=project,
+        source_type="zip",
+        source_key=src_key,
+        storage=storage,
+        database=db,
+        progress_cb=intermittent_cb,
+    )
+    # Despite failures, all 5 pages must be ingested.
+    assert result.page_count == 5
+    # The breaker should NOT have tripped (max consecutive = 2 < threshold of 3),
+    # so the callback must have been invoked for all 5 pages.
+    assert call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_unzip_circuit_breaker_trips_on_three_consecutive(db, storage) -> None:
+    """Three consecutive unzip progress_cb failures MUST disable the callback."""
+    pytest.importorskip("cv2")
+    project = _project()
+    await db.put_project(project)
+    src_key = "projects/ip1/source.zip"
+    pages_data = [(f"p{i}.png", _png(50, 50)) for i in range(5)]
+    await storage.put_bytes(src_key, _zip(pages_data))
+
+    call_count = 0
+
+    async def always_fail(_c, _t, _s):
+        nonlocal call_count
+        call_count += 1
+        raise RuntimeError("always fails")
+
+    result = await unzip_source(
+        project=project,
+        source_type="zip",
+        source_key=src_key,
+        storage=storage,
+        database=db,
+        progress_cb=always_fail,
+    )
+    # All 5 pages must still be ingested despite cb failures.
+    assert result.page_count == 5
+    # Circuit breaker fires after 3 consecutive failures — callback must NOT be
+    # called for pages 4 and 5.
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
 async def test_progress_cb_disabled_after_max_failures(db, storage) -> None:
     """After 3 consecutive failures, progress_cb must be disabled (not called further).
 

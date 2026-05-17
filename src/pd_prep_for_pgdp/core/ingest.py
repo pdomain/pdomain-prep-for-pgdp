@@ -103,6 +103,7 @@ async def unzip_source(
         if progress_cb is not None:
             try:
                 await progress_cb(valid_idx0 + 1, total, entry.stem)
+                _unzip_cb_failures = 0  # reset on success — "consecutive" semantics
             except Exception:
                 _unzip_cb_failures += 1
                 if _unzip_cb_failures >= _progress_cb_max_failures:

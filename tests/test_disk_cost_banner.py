@@ -87,6 +87,48 @@ def test_full_dag_ratio_constant() -> None:
     assert FULL_DAG_RATIO == 12
 
 
+def test_stage_artifacts_bytes_oserror_returns_partial_sum(tmp_path: Path, caplog) -> None:
+    """When Path.stat() raises OSError on one file, the function returns a partial
+    sum (not zero, not raising), and logs exactly one warning for the first failure.
+    """
+    import logging
+    from unittest.mock import patch
+
+    data_root = tmp_path / "data"
+    # Create two files: the first will stat fine (100 bytes), the second will fail.
+    stage_dir = data_root / "projects" / "proj1" / "pages" / "0000" / "stages" / "grayscale"
+    stage_dir.mkdir(parents=True)
+    good_file = stage_dir / "good.png"
+    good_file.write_bytes(b"g" * 100)
+    bad_file = stage_dir / "bad.png"
+    bad_file.write_bytes(b"b" * 50)
+
+    _real_stat = Path.stat
+    # Track how many times stat has been called for bad_file.
+    # is_file() internally calls stat() too, so we only raise on the *second*
+    # call for bad_file (the explicit .stat().st_size call inside the try block).
+    _bad_file_stat_calls = 0
+
+    def _mock_stat(self, *args, **kwargs):
+        nonlocal _bad_file_stat_calls
+        if self == bad_file:
+            _bad_file_stat_calls += 1
+            if _bad_file_stat_calls >= 2:
+                # Raise on the explicit stat() inside the try block (not is_file).
+                raise OSError("permission denied")
+        return _real_stat(self, *args, **kwargs)
+
+    with caplog.at_level(logging.WARNING, logger="pd_prep_for_pgdp"), patch.object(Path, "stat", _mock_stat):
+        result = _compute_stage_artifacts_bytes(data_root, "proj1")
+
+    # Function must not raise; returns partial sum (100 bytes from good file only).
+    assert result == 100
+
+    # Exactly one WARNING must be logged for the first OSError (not one per file).
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING and "disk cost scan" in r.message]
+    assert len(warnings) == 1
+
+
 # ─── Integration tests via TestClient ────────────────────────────────────────
 
 

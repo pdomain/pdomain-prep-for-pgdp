@@ -1,6 +1,6 @@
 # Code-Quality Audit — pd-prep-for-pgdp backend (2026-05-16)
 
-> **Status: FULLY RESOLVED** — All 42 findings addressed. Plan: `docs/superpowers/plans/2026-05-16-backend-quality-hardening.md`
+> **Status: FULLY RESOLVED** — All 42 findings addressed across 21 tasks (Tasks 1–17 shipped before 2026-05-16; Tasks 18–21 shipped 2026-05-16). Plan: `docs/superpowers/plans/2026-05-16-backend-quality-hardening.md`
 
 Auditor: agent (research-only — no code changes).
 Scope: every `.py` file under `src/pd_prep_for_pgdp/` (~12,800 LOC across 74 files).
