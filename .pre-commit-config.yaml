@@ -41,6 +41,11 @@ repos:
         alias: markdownlint-cli2-fix
         args: [--fix]
         stages: [manual]
+-   repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+    -   id: gitlint
+        stages: [commit-msg]
 -   repo: local
     hooks:
     -   id: uv-lock-check
