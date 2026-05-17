@@ -8,10 +8,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from pd_prep_for_pgdp.api.dependencies import get_gpu_backend
+from pd_prep_for_pgdp.core.models import IllustrationRegion, PageSplit
 
 if TYPE_CHECKING:
     from pd_prep_for_pgdp.adapters.gpu import GPUBackend
-    from pd_prep_for_pgdp.core.models import IllustrationRegion, PageSplit
 
 router = APIRouter(tags=["gpu"])
 

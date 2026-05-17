@@ -60,6 +60,7 @@ dev = [
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6.2.1",
     "ruff>=0.15.13",
     "httpx>=0.28",
 ]
@@ -203,36 +204,41 @@ convention = "google"
 # `core/pipeline/*` use coord names (E741/N806) and have annotation/docstring debt.
 # S101 asserts used as guard preconditions inside the runner (not test asserts).
 "src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
-"src/pd_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D"]
-"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY"]
+# TC is suppressed globally on Pydantic-model-defining files because ruff's
+# TC auto-fix moves runtime imports into TYPE_CHECKING, which breaks Pydantic
+# model validation when from __future__ import annotations is active (Pydantic
+# needs the actual class, not a forward reference string). Add TC back
+# incrementally to files that use model_rebuild() or have no Pydantic models.
+"src/pd_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pd-book-tools.
-"src/pd_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # Lazy imports inside functions (cycle-breaking + optional-dep patterns).
-"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402", "ANN", "D"]
-"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401"]
+"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402", "ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
 # Core modules with annotation/docstring debt: add individually as each gets a focused pass.
-"src/pd_prep_for_pgdp/core/ingest.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
-"src/pd_prep_for_pgdp/core/auto_detect.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
-"src/pd_prep_for_pgdp/bootstrap.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
-"src/pd_prep_for_pgdp/adapters/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/core/ingest.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101", "TC"]
+"src/pd_prep_for_pgdp/core/auto_detect.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pd_prep_for_pgdp/bootstrap.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pd_prep_for_pgdp/adapters/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # sqlite.py: S101 assert used as precondition guard (not test); S608 SQL is
 # parameterised with an enum value (not user input — initial_status comes from
 # PageStageStatus literal, never from a request body).
 "src/pd_prep_for_pgdp/adapters/database/sqlite.py" = ["S101", "S608"]
-"src/pd_prep_for_pgdp/api/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
-"src/pd_prep_for_pgdp/core/config_resolver.py" = ["ANN", "D"]
-"src/pd_prep_for_pgdp/core/text_postprocess.py" = ["ANN", "D", "G003", "G004"]
+"src/pd_prep_for_pgdp/api/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pd_prep_for_pgdp/core/config_resolver.py" = ["ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/core/text_postprocess.py" = ["ANN", "D", "G003", "G004", "TC"]
 # Dispatcher: small protocol-like classes with no docstrings yet.
-"src/pd_prep_for_pgdp/dispatcher/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401"]
+"src/pd_prep_for_pgdp/dispatcher/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
 # Core event/queue/logging modules with docstring debt.
-"src/pd_prep_for_pgdp/core/job_events.py" = ["ANN", "D"]
-"src/pd_prep_for_pgdp/core/logging_config.py" = ["ANN", "D"]
-"src/pd_prep_for_pgdp/core/packaging.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
-"src/pd_prep_for_pgdp/core/queue/single_executor.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
-"src/pd_prep_for_pgdp/core/stage_events.py" = ["ANN", "D"]
-"src/pd_prep_for_pgdp/settings.py" = ["ANN", "D"]
+"src/pd_prep_for_pgdp/core/job_events.py" = ["ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/core/logging_config.py" = ["ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/core/packaging.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pd_prep_for_pgdp/core/queue/single_executor.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pd_prep_for_pgdp/core/stage_events.py" = ["ANN", "D", "TC"]
+"src/pd_prep_for_pgdp/settings.py" = ["ANN", "D", "TC"]
 # CLI subcommands use docstrings as help text, not Google-style; ANN backlog.
-"src/pd_prep_for_pgdp/cli/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/cli/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 
 [tool.basedpyright]
 include = ["src", "tests", "scripts"]
@@ -248,5 +254,28 @@ root = "tests"
 root = "scripts"
 
 [tool.pytest.ini_options]
+addopts = [
+    "-ra",                       # show short summary of all non-pass outcomes
+    "--strict-markers",          # fail on unknown markers
+    "--strict-config",           # fail on unknown pytest config keys
+    "--cov=pd_prep_for_pgdp",
+    "--cov-branch",              # measure branch coverage (gates except-path testing)
+    "--cov-report=term-missing:skip-covered",
+]
 testpaths = ["tests"]
+pythonpath = ["src"]
 asyncio_mode = "auto"
+filterwarnings = [
+    # Treat all warnings as errors — surfaces deprecation issues at LLM-iteration time.
+    "error",
+    # Pre-existing ignores: third-party noise that isn't actionable here.
+    # Add new ignores below as new warnings surface — each one with a comment
+    # explaining the package and why we tolerate it.
+    #
+    # coverage/pytest-cov: the coverage collector leaves sqlite3 connections open
+    # when GC runs during test teardown. This is a coverage library bug (not our
+    # code), surfaced as PytestUnraisableExceptionWarning wrapping ResourceWarning.
+    # The ResourceWarning originates from coverage.collector and coverage.bytecode.
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+    "ignore::ResourceWarning:coverage.*",
+]

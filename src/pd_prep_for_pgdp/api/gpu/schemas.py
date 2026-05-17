@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from pd_prep_for_pgdp.core.models import JobStatus
+from pd_prep_for_pgdp.core.models import JobStatus
 
 __all__ = [
     "BatchJobResponse",
