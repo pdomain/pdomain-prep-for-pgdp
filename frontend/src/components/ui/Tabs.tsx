@@ -31,9 +31,9 @@ export function Tabs({
 }: TabsProps) {
   return (
     <RadixTabs.Root
-      value={value}
-      defaultValue={defaultValue}
-      onValueChange={onValueChange}
+      {...(value !== undefined && { value })}
+      {...(defaultValue !== undefined && { defaultValue })}
+      {...(onValueChange !== undefined && { onValueChange })}
       className={className}
     >
       {children}

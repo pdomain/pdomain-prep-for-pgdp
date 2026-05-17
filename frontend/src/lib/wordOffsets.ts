@@ -76,7 +76,8 @@ export function buildWordOffsetIndex(
   let cursor = 0;
 
   for (let i = 0; i < words.length; i++) {
-    const w = words[i];
+    // noUncheckedIndexedAccess: i < words.length guarantees defined
+    const w = words[i]!;
     const wt = w.text;
     if (!wt || wt.trim() === "") {
       ranges[i] = null;
@@ -86,7 +87,7 @@ export function buildWordOffsetIndex(
     // Skip whitespace from the cursor, but stop as soon as we hit a
     // non-ws char so we anchor at the next "real" token start.
     let probe = cursor;
-    while (probe < text.length && /\s/.test(text[probe])) probe++;
+    while (probe < text.length && /\s/.test(text[probe] ?? "")) probe++;
 
     if (text.startsWith(wt, probe)) {
       ranges[i] = { start: probe, end: probe + wt.length };
@@ -130,7 +131,8 @@ export function wordToRange(
   wordIndex: number,
 ): CharRange | null {
   if (wordIndex < 0 || wordIndex >= index.ranges.length) return null;
-  return index.ranges[wordIndex];
+  // noUncheckedIndexedAccess: bounds checked above
+  return index.ranges[wordIndex] ?? null;
 }
 
 /**
@@ -155,7 +157,8 @@ export function offsetToWord(
   let hi = arr.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    const r = arr[mid];
+    // noUncheckedIndexedAccess: lo..hi stay within arr.length bounds
+    const r = arr[mid]!;
     if (offset < r.start) hi = mid - 1;
     else if (offset >= r.end) lo = mid + 1;
     else

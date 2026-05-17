@@ -40,12 +40,12 @@ export function Select({
 }: SelectProps) {
   return (
     <RadixSelect.Root
-      value={value}
-      defaultValue={defaultValue}
-      onValueChange={onValueChange}
-      open={open}
-      onOpenChange={onOpenChange}
-      disabled={disabled}
+      {...(value !== undefined && { value })}
+      {...(defaultValue !== undefined && { defaultValue })}
+      {...(onValueChange !== undefined && { onValueChange })}
+      {...(open !== undefined && { open })}
+      {...(onOpenChange !== undefined && { onOpenChange })}
+      {...(disabled !== undefined && { disabled })}
     >
       {children}
     </RadixSelect.Root>
@@ -112,7 +112,11 @@ export function SelectItem({
   disabled,
 }: SelectItemProps) {
   return (
-    <RadixSelect.Item value={value} className={className} disabled={disabled}>
+    <RadixSelect.Item
+      value={value}
+      className={className}
+      {...(disabled !== undefined && { disabled })}
+    >
       <RadixSelect.ItemText>{children}</RadixSelect.ItemText>
     </RadixSelect.Item>
   );

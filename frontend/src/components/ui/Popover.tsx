@@ -22,7 +22,10 @@ export interface PopoverProps {
 
 export function Popover({ open, onOpenChange, children }: PopoverProps) {
   return (
-    <RadixPopover.Root open={open} onOpenChange={onOpenChange}>
+    <RadixPopover.Root
+      {...(open !== undefined && { open })}
+      {...(onOpenChange !== undefined && { onOpenChange })}
+    >
       {children}
     </RadixPopover.Root>
   );
@@ -40,7 +43,10 @@ export function PopoverTrigger({
   asChild,
 }: PopoverTriggerProps) {
   return (
-    <RadixPopover.Trigger asChild={asChild} className={className}>
+    <RadixPopover.Trigger
+      {...(asChild !== undefined && { asChild })}
+      className={className}
+    >
       {children}
     </RadixPopover.Trigger>
   );

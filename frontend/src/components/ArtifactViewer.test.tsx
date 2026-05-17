@@ -325,7 +325,7 @@ describe("ArtifactViewer: hidden when no chip selected", () => {
       ),
     );
 
-    renderViewer({ selectedStageId: undefined });
+    renderViewer({});
 
     // Wait for data to load, then confirm pane is absent
     await waitFor(() => {
@@ -340,7 +340,7 @@ describe("ArtifactViewer: hidden when no chip selected", () => {
       ),
     );
 
-    renderViewer({ selectedStageId: undefined });
+    renderViewer({});
 
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-viewer")).not.toBeInTheDocument();

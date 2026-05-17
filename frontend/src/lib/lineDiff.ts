@@ -62,10 +62,10 @@ export function diffLines(prior: string, next: string): DiffLine[] {
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
       if (a[i] === b[j]) {
-        dp[i * w + j] = dp[(i + 1) * w + (j + 1)] + 1;
+        dp[i * w + j] = (dp[(i + 1) * w + (j + 1)] ?? 0) + 1;
       } else {
-        const down = dp[(i + 1) * w + j];
-        const right = dp[i * w + (j + 1)];
+        const down = dp[(i + 1) * w + j] ?? 0;
+        const right = dp[i * w + (j + 1)] ?? 0;
         dp[i * w + j] = down >= right ? down : right;
       }
     }
@@ -78,21 +78,24 @@ export function diffLines(prior: string, next: string): DiffLine[] {
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
-    if (a[i] === b[j]) {
+    // noUncheckedIndexedAccess: loop bounds guarantee i < n and j < m
+    const ai = a[i]!;
+    const bj = b[j]!;
+    if (ai === bj) {
       out.push({
         kind: "equal",
         priorLineNo: i + 1,
         nextLineNo: j + 1,
-        text: a[i],
+        text: ai,
       });
       i++;
       j++;
-    } else if (dp[(i + 1) * w + j] >= dp[i * w + (j + 1)]) {
+    } else if ((dp[(i + 1) * w + j] ?? 0) >= (dp[i * w + (j + 1)] ?? 0)) {
       out.push({
         kind: "delete",
         priorLineNo: i + 1,
         nextLineNo: null,
-        text: a[i],
+        text: ai,
       });
       i++;
     } else {
@@ -100,26 +103,28 @@ export function diffLines(prior: string, next: string): DiffLine[] {
         kind: "insert",
         priorLineNo: null,
         nextLineNo: j + 1,
-        text: b[j],
+        text: bj,
       });
       j++;
     }
   }
   while (i < n) {
+    // noUncheckedIndexedAccess: i < n guarantees a[i] is defined
     out.push({
       kind: "delete",
       priorLineNo: i + 1,
       nextLineNo: null,
-      text: a[i],
+      text: a[i]!,
     });
     i++;
   }
   while (j < m) {
+    // noUncheckedIndexedAccess: j < m guarantees b[j] is defined
     out.push({
       kind: "insert",
       priorLineNo: null,
       nextLineNo: j + 1,
-      text: b[j],
+      text: b[j]!,
     });
     j++;
   }

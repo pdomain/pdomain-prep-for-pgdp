@@ -145,7 +145,7 @@ export function StageControlsPanel({
                 <NumField
                   key={f}
                   field={f}
-                  step={NUM_FIELDS[f]}
+                  {...(NUM_FIELDS[f] !== undefined && { step: NUM_FIELDS[f] })}
                   value={
                     (localOverrides[f] as number | null | undefined) ?? null
                   }

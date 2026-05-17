@@ -41,12 +41,13 @@ interface Row {
 function buildRows(diff: ReadonlyArray<DiffLine>): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < diff.length; i++) {
-    const d = diff[i];
+    // noUncheckedIndexedAccess: i < diff.length guarantees defined
+    const d = diff[i]!;
     if (d.kind === "equal") {
       rows.push({ left: d, right: d });
     } else if (d.kind === "delete") {
       const peek = diff[i + 1];
-      if (peek && peek.kind === "insert") {
+      if (peek !== undefined && peek.kind === "insert") {
         rows.push({ left: d, right: peek });
         i++;
       } else {

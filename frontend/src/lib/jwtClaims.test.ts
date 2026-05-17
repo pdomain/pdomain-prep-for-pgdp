@@ -59,7 +59,7 @@ describe("decodeJwtClaims", () => {
     const t = makeToken({ sub: "subject?with?punctuation>>>" });
     const claims = decodeJwtClaims(t);
     expect(claims).not.toBeNull();
-    expect((claims as Record<string, unknown>).sub).toBe(
+    expect((claims as Record<string, unknown>)["sub"]).toBe(
       "subject?with?punctuation>>>",
     );
   });

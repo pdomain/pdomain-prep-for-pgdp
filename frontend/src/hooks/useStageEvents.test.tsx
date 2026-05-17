@@ -97,7 +97,7 @@ describe("useStageEvents connection", () => {
   it("opens an EventSource to the correct URL", () => {
     renderHook(() => useStageEvents("p1", 0), { wrapper });
     expect(MockEventSource.instances.length).toBe(1);
-    expect(MockEventSource.instances[0].url).toBe(
+    expect(MockEventSource.instances[0]!.url).toBe(
       "/api/data/projects/p1/pages/0/events",
     );
   });
@@ -109,7 +109,7 @@ describe("useStageEvents connection", () => {
 
   it("closes the EventSource on unmount", () => {
     const { unmount } = renderHook(() => useStageEvents("p1", 0), { wrapper });
-    const es = MockEventSource.instances[0];
+    const es = MockEventSource.instances[0]!;
     unmount();
     expect(es.readyState).toBe(2);
   });
@@ -120,7 +120,7 @@ describe("useStageEvents connection", () => {
 describe("useStageEvents snapshot", () => {
   it("seeds the query cache with stage rows from the snapshot", () => {
     renderHook(() => useStageEvents("p1", 0), { wrapper });
-    const es = MockEventSource.instances[0];
+    const es = MockEventSource.instances[0]!;
 
     act(() => {
       es.emit("snapshot", {
@@ -143,7 +143,7 @@ describe("useStageEvents snapshot", () => {
 describe("useStageEvents stage-status", () => {
   it("updates the cached stage row on stage-status event", () => {
     renderHook(() => useStageEvents("p1", 0), { wrapper });
-    const es = MockEventSource.instances[0];
+    const es = MockEventSource.instances[0]!;
 
     act(() => {
       es.emit("snapshot", {
@@ -175,7 +175,7 @@ describe("useStageEvents stage-status", () => {
 
   it("also handles stage-progress events the same way", () => {
     renderHook(() => useStageEvents("p1", 0), { wrapper });
-    const es = MockEventSource.instances[0];
+    const es = MockEventSource.instances[0]!;
 
     act(() => {
       es.emit("snapshot", {

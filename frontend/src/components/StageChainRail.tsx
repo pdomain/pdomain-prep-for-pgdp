@@ -231,11 +231,9 @@ export function StageChainRail({
                     <StageCell
                       stage={row.stage_id}
                       status={toStageCellStatus(row.status)}
-                      className={
-                        selected
-                          ? "ring-2 ring-offset-1 ring-blue-500"
-                          : undefined
-                      }
+                      {...(selected && {
+                        className: "ring-2 ring-offset-1 ring-blue-500",
+                      })}
                     />
                   </button>
                 </TooltipTrigger>

@@ -91,8 +91,9 @@ describe("api.post against /api/data/projects (msw)", () => {
     );
 
     expect(seenRequests).toHaveLength(1);
-    expect(seenRequests[0].contentType).toBe("application/json");
-    expect(seenRequests[0].body).toEqual(requestBody);
+    // noUncheckedIndexedAccess: length checked above
+    expect(seenRequests[0]!.contentType).toBe("application/json");
+    expect(seenRequests[0]!.body).toEqual(requestBody);
 
     expect(result.project.id).toBe("prj_abc123");
     expect(result.project.status).toBe("ingesting");

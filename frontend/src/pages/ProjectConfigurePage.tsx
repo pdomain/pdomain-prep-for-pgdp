@@ -365,7 +365,9 @@ export function ProjectConfigurePage() {
                       // Build the reordered list optimistically.
                       const reordered = displayedPages.slice();
                       const [moved] = reordered.splice(srcIdx, 1);
-                      reordered.splice(listIndex, 0, moved);
+                      // noUncheckedIndexedAccess: splice(srcIdx,1) always
+                      // returns one element since srcIdx is a valid list index
+                      reordered.splice(listIndex, 0, moved!);
                       setLocalPageOrder(reordered);
                       dragSrcIndex.current = null;
 
@@ -453,8 +455,8 @@ function BookSettingsAccordion({
   });
 
   const layoutConf =
-    typeof draft.default_overrides.layout_detector_confidence === "number"
-      ? (draft.default_overrides.layout_detector_confidence as number)
+    typeof draft.default_overrides["layout_detector_confidence"] === "number"
+      ? (draft.default_overrides["layout_detector_confidence"] as number)
       : null;
 
   return (
@@ -542,7 +544,7 @@ function BookSettingsAccordion({
                   onClick={() =>
                     setDraft((d) => {
                       const o = { ...d.default_overrides };
-                      delete o.layout_detector_confidence;
+                      delete o["layout_detector_confidence"];
                       return { ...d, default_overrides: o };
                     })
                   }
@@ -836,11 +838,9 @@ function RunPipelinePanel({
                 {active[step.type] && (
                   <JobProgressInline
                     jobId={active[step.type]!}
-                    onComplete={
-                      step.type === "build_package"
-                        ? () => setCompletedJobId(active[step.type])
-                        : undefined
-                    }
+                    {...(step.type === "build_package" && {
+                      onComplete: () => setCompletedJobId(active[step.type]),
+                    })}
                   />
                 )}
                 {step.type === "build_package" &&

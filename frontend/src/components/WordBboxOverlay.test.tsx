@@ -210,22 +210,25 @@ describe("WordBboxOverlay", () => {
 
     const rects = screen.getAllByTestId("konva-rect");
     expect(rects).toHaveLength(2);
+    // noUncheckedIndexedAccess: length checked above
+    const rect0 = rects[0]!;
+    const rect1 = rects[1]!;
 
-    expect(rects[0].dataset.x).toBe("100");
-    expect(rects[0].dataset.y).toBe("300");
-    expect(rects[0].dataset.width).toBe("50");
-    expect(rects[0].dataset.height).toBe("20");
+    expect(rect0.dataset["x"]).toBe("100");
+    expect(rect0.dataset["y"]).toBe("300");
+    expect(rect0.dataset["width"]).toBe("50");
+    expect(rect0.dataset["height"]).toBe("20");
 
-    expect(rects[1].dataset.x).toBe("200");
-    expect(rects[1].dataset.y).toBe("450");
-    expect(rects[1].dataset.width).toBe("30");
-    expect(rects[1].dataset.height).toBe("15");
+    expect(rect1.dataset["x"]).toBe("200");
+    expect(rect1.dataset["y"]).toBe("450");
+    expect(rect1.dataset["width"]).toBe("30");
+    expect(rect1.dataset["height"]).toBe("15");
 
     // Active highlight wired through to stroke colour (the only
     // styling assertion — proves the `activeWordIndex` prop reaches
     // the right rect).
-    expect(rects[1].dataset.stroke).toBe("#2563eb");
-    expect(rects[0].dataset.stroke).toBe("#94a3b8");
+    expect(rect1.dataset["stroke"]).toBe("#2563eb");
+    expect(rect0.dataset["stroke"]).toBe("#94a3b8");
   });
 
   it("invokes onWordClick with the rect's word index when a rect is clicked", async () => {
@@ -249,7 +252,8 @@ describe("WordBboxOverlay", () => {
 
     const user = userEvent.setup();
     const rects = screen.getAllByTestId("konva-rect");
-    await user.click(rects[1]);
+    // noUncheckedIndexedAccess: getAllByTestId guarantees non-empty
+    await user.click(rects[1]!);
 
     expect(onWordClick).toHaveBeenCalledTimes(1);
     expect(onWordClick).toHaveBeenCalledWith(1);

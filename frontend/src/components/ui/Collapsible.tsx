@@ -49,7 +49,10 @@ export function CollapsibleTrigger({
   asChild,
 }: CollapsibleTriggerProps) {
   return (
-    <RadixCollapsible.Trigger asChild={asChild} className={className}>
+    <RadixCollapsible.Trigger
+      {...(asChild !== undefined && { asChild })}
+      className={className}
+    >
       {children}
     </RadixCollapsible.Trigger>
   );

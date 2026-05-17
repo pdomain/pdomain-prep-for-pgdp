@@ -67,8 +67,9 @@ describe("diffLines", () => {
     const delIdx = kinds.indexOf("delete");
     const insIdx = kinds.indexOf("insert");
     expect(insIdx).toBe(delIdx + 1);
-    expect(out[delIdx].text).toBe("It was the best of tirnes,");
-    expect(out[insIdx].text).toBe("It was the best of times,");
+    // noUncheckedIndexedAccess: delIdx/insIdx are valid indices (indexOf found them)
+    expect(out[delIdx]!.text).toBe("It was the best of tirnes,");
+    expect(out[insIdx]!.text).toBe("It was the best of times,");
   });
 
   it("trailingNewlineParity: trailing \\n does not produce a phantom blank line", () => {

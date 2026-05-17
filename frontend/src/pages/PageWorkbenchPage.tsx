@@ -372,7 +372,7 @@ export function PageWorkbenchPage() {
         <StageChainRail
           projectId={projectId}
           idx0={idx0}
-          selectedStageId={selectedStageId}
+          {...(selectedStageId !== undefined && { selectedStageId })}
           onStageSelect={setSelectedStageId}
           onStageRun={(stageId) => runStage.mutate(stageId)}
         />
@@ -381,7 +381,7 @@ export function PageWorkbenchPage() {
         <ArtifactViewer
           projectId={projectId}
           idx0={idx0}
-          selectedStageId={selectedStageId}
+          {...(selectedStageId !== undefined && { selectedStageId })}
         />
 
         {/* M3 — stage-controls panel: filtered config fields + Apply + Run. */}

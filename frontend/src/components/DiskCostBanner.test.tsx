@@ -96,7 +96,8 @@ describe("DiskCostBanner", () => {
     // Click the "Close" text button (not the X icon button which is "Close" via aria-label)
     const buttons = screen.getAllByRole("button", { name: /close/i });
     // The last "close" button is the text "Close" inside the dialog footer
-    await userEvent.click(buttons[buttons.length - 1]);
+    // noUncheckedIndexedAccess: getAllByRole guarantees non-empty
+    await userEvent.click(buttons[buttons.length - 1]!);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

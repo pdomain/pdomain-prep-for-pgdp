@@ -38,7 +38,7 @@ export function TooltipProvider({
   return (
     <RadixTooltip.Provider
       delayDuration={delayDuration}
-      skipDelayDuration={skipDelayDuration}
+      {...(skipDelayDuration !== undefined && { skipDelayDuration })}
     >
       {children}
     </RadixTooltip.Provider>
@@ -63,10 +63,10 @@ export function Tooltip({
 }: TooltipProps) {
   return (
     <RadixTooltip.Root
-      open={open}
-      defaultOpen={defaultOpen}
-      onOpenChange={onOpenChange}
-      delayDuration={delayDuration}
+      {...(open !== undefined && { open })}
+      {...(defaultOpen !== undefined && { defaultOpen })}
+      {...(onOpenChange !== undefined && { onOpenChange })}
+      {...(delayDuration !== undefined && { delayDuration })}
     >
       {children}
     </RadixTooltip.Root>
@@ -85,7 +85,10 @@ export function TooltipTrigger({
   asChild,
 }: TooltipTriggerProps) {
   return (
-    <RadixTooltip.Trigger asChild={asChild} className={className}>
+    <RadixTooltip.Trigger
+      {...(asChild !== undefined && { asChild })}
+      className={className}
+    >
       {children}
     </RadixTooltip.Trigger>
   );

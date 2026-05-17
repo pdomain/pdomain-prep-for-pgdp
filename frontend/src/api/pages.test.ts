@@ -113,8 +113,9 @@ describe("api.get against /api/data/projects/{id}/pages (msw)", () => {
 
     expect(result.total).toBe(3);
     expect(result.pages).toHaveLength(3);
-    expect(result.pages[1].page_type).toBe("blank");
-    expect(result.pages[2].page_type).toBe("plate_p");
+    // noUncheckedIndexedAccess: length checked above
+    expect(result.pages[1]!.page_type).toBe("blank");
+    expect(result.pages[2]!.page_type).toBe("plate_p");
     expect(result.next_cursor).toBeNull();
   });
 
@@ -168,8 +169,9 @@ describe("api.patch against /api/data/projects/{id}/pages/{idx0} (msw)", () => {
     );
 
     expect(seenRequests).toHaveLength(1);
-    expect(seenRequests[0].contentType).toBe("application/json");
-    expect(seenRequests[0].body).toEqual(requestBody);
+    // noUncheckedIndexedAccess: length checked above
+    expect(seenRequests[0]!.contentType).toBe("application/json");
+    expect(seenRequests[0]!.body).toEqual(requestBody);
     expect(result.idx0).toBe(4);
     expect(result.page_type).toBe("blank");
   });

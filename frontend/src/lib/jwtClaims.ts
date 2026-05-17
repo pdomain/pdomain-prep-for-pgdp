@@ -42,14 +42,14 @@ export function decodeJwtClaims(token: string): Record<string, unknown> | null {
 export function decodeJwtSub(token: string): string | null {
   const claims = decodeJwtClaims(token);
   if (!claims) return null;
-  return typeof claims.sub === "string" ? claims.sub : null;
+  return typeof claims["sub"] === "string" ? claims["sub"] : null;
 }
 
 /** Convenience: return the `email` claim if it's a string, else `null`. */
 export function decodeJwtEmail(token: string): string | null {
   const claims = decodeJwtClaims(token);
   if (!claims) return null;
-  return typeof claims.email === "string" ? claims.email : null;
+  return typeof claims["email"] === "string" ? claims["email"] : null;
 }
 
 /** Convenience: return the `exp` claim (NumericDate, seconds-since-epoch)
@@ -57,7 +57,7 @@ export function decodeJwtEmail(token: string): string | null {
 export function decodeJwtExp(token: string): number | null {
   const claims = decodeJwtClaims(token);
   if (!claims) return null;
-  return typeof claims.exp === "number" && Number.isFinite(claims.exp)
-    ? claims.exp
+  return typeof claims["exp"] === "number" && Number.isFinite(claims["exp"])
+    ? claims["exp"]
     : null;
 }

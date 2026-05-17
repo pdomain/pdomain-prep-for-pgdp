@@ -231,7 +231,7 @@ describe("StageControlsPanel Apply button", () => {
     const body = seenBody as unknown as {
       config_overrides: Record<string, unknown>;
     };
-    expect(body.config_overrides?.threshold_level).toBe(160);
+    expect(body.config_overrides?.["threshold_level"]).toBe(160);
   });
 });
 

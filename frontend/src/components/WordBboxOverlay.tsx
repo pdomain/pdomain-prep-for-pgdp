@@ -299,7 +299,7 @@ export function WordBboxOverlay({
               height={bb.height * sy}
               stroke={stroke}
               strokeWidth={strokeWidth}
-              fill={fill}
+              {...(fill !== undefined && { fill })}
               listening
               onClick={handleHit}
               onTap={handleHit}

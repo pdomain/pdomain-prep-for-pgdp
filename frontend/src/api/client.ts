@@ -52,7 +52,7 @@ async function request<T>(
   }
 
   const headers = new Headers(opts.headers ?? {});
-  let body: BodyInit | undefined;
+  let body: BodyInit | null = null;
   if (opts.body !== undefined) {
     body = JSON.stringify(opts.body);
     headers.set("Content-Type", "application/json");

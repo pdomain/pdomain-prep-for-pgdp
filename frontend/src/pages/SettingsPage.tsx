@@ -272,7 +272,8 @@ function parseScannos(text: string): Record<string, string> {
     // Accept either tab- or whitespace-separated.
     const m = line.match(/^(\S+)\s+(.+)$/);
     if (!m) continue;
-    out[m[1]] = m[2].trim();
+    // noUncheckedIndexedAccess: groups 1 and 2 are defined when regex matches
+    out[m[1]!] = m[2]!.trim();
   }
   return out;
 }

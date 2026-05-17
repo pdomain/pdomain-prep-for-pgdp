@@ -816,8 +816,9 @@ describe("ProjectConfigurePage — RunPipelinePanel P0.2 (Download package)", ()
 
     // Dispatch a "complete" progress event from the job's SSE stream
     await act(async () => {
+      // noUncheckedIndexedAccess: instances is non-empty at this point
       const es =
-        MockEventSource.instances[MockEventSource.instances.length - 1];
+        MockEventSource.instances[MockEventSource.instances.length - 1]!;
       es.emit({
         type: "progress",
         status: "complete",

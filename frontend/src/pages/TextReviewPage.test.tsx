@@ -140,8 +140,8 @@ describe("TextReviewPage save lifecycle", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -208,10 +208,11 @@ describe("TextReviewPage save lifecycle", () => {
     await waitFor(() => {
       expect(patchCalls).toHaveLength(1);
     });
-    expect(patchCalls[0].url).toMatch(
+    // noUncheckedIndexedAccess: patchCalls length checked above
+    expect(patchCalls[0]!.url).toMatch(
       /\/api\/data\/projects\/prj_abc\/pages\/0\/text$/,
     );
-    expect(patchCalls[0].body).toEqual({
+    expect(patchCalls[0]!.body).toEqual({
       split_suffix: null,
       text: "first line\nsecond line\n extra",
     });
@@ -232,8 +233,8 @@ describe("TextReviewPage save lifecycle", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -287,7 +288,8 @@ describe("TextReviewPage save lifecycle", () => {
     await waitFor(() => {
       expect(stageCalls).toHaveLength(1);
     });
-    expect(stageCalls[0].url).toMatch(/\/stages\/ocr_page\/run$/);
+    // noUncheckedIndexedAccess: stageCalls length checked above
+    expect(stageCalls[0]!.url).toMatch(/\/stages\/ocr_page\/run$/);
 
     // (b) Textarea content is updated from the refetched GET /text response.
     await waitFor(() => {
@@ -386,8 +388,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -437,8 +439,9 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
     const user = userEvent.setup();
     // Toggle-select the first two words.
-    await user.click(rects[0]);
-    await user.click(rects[1]);
+    // noUncheckedIndexedAccess: rects length checked above
+    await user.click(rects[0]!);
+    await user.click(rects[1]!);
 
     // The delete button label reflects selection size.
     await screen.findByRole("button", { name: /^Delete 2 words$/i });
@@ -450,10 +453,11 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await waitFor(() => {
       expect(deleteCalls).toHaveLength(1);
     });
-    expect(deleteCalls[0].url).toMatch(
+    // noUncheckedIndexedAccess: length checked above
+    expect(deleteCalls[0]!.url).toMatch(
       /\/api\/data\/projects\/prj_abc\/pages\/0\/words$/,
     );
-    expect(deleteCalls[0].body).toEqual({
+    expect(deleteCalls[0]!.body).toEqual({
       word_ids: ["w_alpha", "w_beta"],
       split_suffix: null,
     });
@@ -487,8 +491,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -540,7 +544,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     fireImgLoad({ w: 1000, h: 100 });
 
     const rects = await screen.findAllByTestId("konva-rect");
-    await user.click(rects[0]); // select w_alpha
+    await user.click(rects[0]!); // noUncheckedIndexedAccess // select w_alpha
 
     await screen.findByRole("button", { name: /^Delete 1 word$/i });
     fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
@@ -564,10 +568,11 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await waitFor(() => {
       expect(restoreCalls).toHaveLength(1);
     });
-    expect(restoreCalls[0].url).toMatch(
+    // noUncheckedIndexedAccess: restoreCalls length checked above
+    expect(restoreCalls[0]!.url).toMatch(
       /\/api\/data\/projects\/prj_abc\/pages\/0\/words\/restore$/,
     );
-    expect(restoreCalls[0].body).toEqual({
+    expect(restoreCalls[0]!.body).toEqual({
       word_ids: ["w_alpha"],
       split_suffix: null,
     });
@@ -578,8 +583,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -609,8 +614,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
     expect(rects).toHaveLength(3);
 
     const user = userEvent.setup();
-    await user.click(rects[0]);
-    await user.click(rects[1]);
+    await user.click(rects[0]!); // noUncheckedIndexedAccess
+    await user.click(rects[1]!); // noUncheckedIndexedAccess
 
     // Selection of two words → Delete button reflects size; Clear
     // button is now visible alongside it.
@@ -639,8 +644,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -670,8 +675,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
     expect(rects).toHaveLength(3);
 
     const user = userEvent.setup();
-    await user.click(rects[0]);
-    await user.click(rects[1]);
+    await user.click(rects[0]!); // noUncheckedIndexedAccess
+    await user.click(rects[1]!); // noUncheckedIndexedAccess
 
     const clearBtn = await screen.findByRole("button", {
       name: /^Clear selection$/i,
@@ -696,8 +701,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -752,8 +757,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -792,7 +797,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     fireImgLoad({ w: 1000, h: 100 });
 
     const rects = await screen.findAllByTestId("konva-rect");
-    await user.click(rects[0]); // select w_alpha
+    await user.click(rects[0]!); // noUncheckedIndexedAccess // select w_alpha
 
     await screen.findByRole("button", { name: /^Delete 1 word$/i });
     fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
@@ -825,8 +830,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -872,7 +877,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     fireImgLoad({ w: 1000, h: 100 });
 
     const rects = await screen.findAllByTestId("konva-rect");
-    await user.click(rects[0]); // select w_alpha
+    await user.click(rects[0]!); // noUncheckedIndexedAccess // select w_alpha
 
     await screen.findByRole("button", { name: /^Delete 1 word$/i });
     fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
@@ -881,7 +886,8 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await waitFor(() => {
       expect(deleteCalls).toHaveLength(1);
     });
-    expect(deleteCalls[0].body).toEqual({
+    // noUncheckedIndexedAccess: length checked above
+    expect(deleteCalls[0]!.body).toEqual({
       word_ids: ["w_alpha"],
       split_suffix: null,
     });
@@ -890,14 +896,15 @@ describe("TextReviewPage §9a delete-words flow", () => {
     await screen.findByTestId("undo-banner");
 
     // Select second word and trigger delete again while first window is open.
-    await user.click(rects[1]); // select w_beta (adds to selection)
+    await user.click(rects[1]!); // noUncheckedIndexedAccess // select w_beta (adds to selection)
     fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
 
     // Second DELETE fires immediately too.
     await waitFor(() => {
       expect(deleteCalls).toHaveLength(2);
     });
-    expect(deleteCalls[1].body).toEqual({
+    // noUncheckedIndexedAccess: length checked above
+    expect(deleteCalls[1]!.body).toEqual({
       word_ids: ["w_beta"],
       split_suffix: null,
     });
@@ -913,8 +920,8 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -942,8 +949,8 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
           }),
         ),
       ),
@@ -978,8 +985,8 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
             splits: [
               { suffix: "_a", reading_order: 0 },
               { suffix: "_b", reading_order: 1 },
@@ -1014,8 +1021,8 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
       http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
         HttpResponse.json(
           makePage({
-            project_id: String(params.projectId),
-            idx0: Number(params.idx0),
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
             splits: [{ suffix: "_a", reading_order: 0 }] as any,
           }),
         ),
