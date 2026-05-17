@@ -37,6 +37,7 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
   const env = (window as any).__ENV__ ?? {};
   const authMode: string = env.AUTH_MODE ?? "none";
 

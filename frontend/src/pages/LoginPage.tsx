@@ -28,6 +28,7 @@ interface EnvShape {
 }
 
 function env(): EnvShape {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
   return ((window as any).__ENV__ ?? {}) as EnvShape;
 }
 

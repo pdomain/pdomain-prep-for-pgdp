@@ -157,6 +157,7 @@ function AuthGuard() {
 
   // Eager redirect: direct nav to a protected route with no token.
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
     const env = (window as any).__ENV__ ?? {};
     if (env.AUTH_MODE !== "jwt") return;
     if (location.pathname === "/login") return;
@@ -165,11 +166,13 @@ function AuthGuard() {
 
   // Reactive redirect: any cached query that 401s.
   useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
     const env = (window as any).__ENV__ ?? {};
     if (env.AUTH_MODE !== "jwt") return;
     if (location.pathname === "/login") return;
 
     const cache = queryClient.getQueryCache();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- QueryCacheNotifyEvent type not exported from @tanstack/react-query
     const unsub = cache.subscribe((event: any) => {
       const status = event?.query?.state?.error?.status;
       if (status === 401) void navigate("/login", { replace: true });

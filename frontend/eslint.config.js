@@ -84,13 +84,11 @@ export default tseslint.config(
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      // The SPA uses `any` in a small number of places where wire
-      // shapes from third-party APIs (Konva pointer events, msw
-      // request bodies, jsdom XHR shims) make a tighter type more
-      // noise than signal. Treat `any` as a warning, not an error,
-      // so it surfaces in review without blocking lint.
-      // NOTE: flipped to "error" in src/ scope in TS-3.
-      "@typescript-eslint/no-explicit-any": "warn",
+      // no-explicit-any: `any` must be explicit and justified. Using
+      // `unknown` + narrowing is almost always possible; allow `any` only
+      // with an inline suppression and a comment explaining why.
+      // NOTE: was "warn" pre-TS-3; promoted to "error" in TS-3.
+      "@typescript-eslint/no-explicit-any": "error",
       // restrict-template-expressions fires on legitimate string
       // coercions in JSX (e.g. `${someNumber}`). Allow number|boolean.
       "@typescript-eslint/restrict-template-expressions": [

@@ -7,6 +7,7 @@
 // Use `globalThis` rather than `window` so this module can be imported
 // in Node/jsdom test environments where `window` is not available at
 // module-load time. At runtime in the browser, `globalThis === window`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
 const API_BASE: string = (globalThis as any).__ENV__?.API_BASE ?? "";
 const TOKEN_STORAGE_KEY = "pgdp.api_token";
 
@@ -18,6 +19,7 @@ export function getAuthToken(): string | null {
   } catch {
     /* private mode / SSR */
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
   return (globalThis as any).__ENV__?.API_TOKEN ?? null;
 }
 
