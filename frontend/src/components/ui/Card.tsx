@@ -35,6 +35,7 @@ export function CardTitle({
   ...props
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
+    // eslint-disable-next-line jsx-a11y/heading-has-content -- content provided by caller via {...props}; this is a forwarding component
     <h3
       className={cn(
         "font-semibold leading-none tracking-tight text-ink-1",

@@ -919,6 +919,7 @@ function RotateToolbar({
   const displayAngle = Number(draftAngle.toFixed(1));
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- rotate widget captures arrow-key events; tabIndex=-1 means programmatically focusable only; full ARIA role would be redundant here
     <div
       className="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
       onKeyDown={handleKeyDown}

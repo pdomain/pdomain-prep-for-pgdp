@@ -75,6 +75,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
       </div>
 
       {dialogOpen && (
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-close; role=dialog is set; keyboard close handled by Escape elsewhere
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
           onClick={() => setDialogOpen(false)}
@@ -82,6 +83,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
           aria-modal="true"
           aria-label="Reclaim space"
         >
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- stopPropagation on inner panel; keyboard events handled by outer dialog */}
           <div
             className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-lg space-y-4"
             onClick={(e) => e.stopPropagation()}

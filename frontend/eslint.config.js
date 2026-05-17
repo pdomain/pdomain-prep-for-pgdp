@@ -17,6 +17,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import eslintConfigPrettier from "eslint-config-prettier";
 import globals from "globals";
 
@@ -45,6 +46,12 @@ export default tseslint.config(
     ...c,
     files: ["src/**/*.{ts,tsx}"],
   })),
+  // jsx-a11y: accessibility lint for JSX. Scoped to src/**/*.tsx only
+  // (non-TSX files have no JSX).
+  {
+    ...jsxA11y.flatConfigs.recommended,
+    files: ["src/**/*.tsx"],
+  },
   {
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
@@ -161,6 +168,14 @@ export default tseslint.config(
     rules: {
       // Tests routinely cast around to satisfy mocks; loosen these
       // so the lint pass doesn't punish the test scaffolding.
+      // jsx-a11y: test fixtures use minimal HTML without full ARIA wiring;
+      // these rules fire on click handlers in mock components that aren't
+      // real UI. Turn off for the whole test block.
+      "jsx-a11y/click-events-have-key-events": "off",
+      "jsx-a11y/no-static-element-interactions": "off",
+      "jsx-a11y/no-noninteractive-element-interactions": "off",
+      "jsx-a11y/label-has-associated-control": "off",
+      "jsx-a11y/heading-has-content": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
       // non-nullable-type-assertion-style fires when `as T` could be

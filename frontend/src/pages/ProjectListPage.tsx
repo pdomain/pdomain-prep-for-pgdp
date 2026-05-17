@@ -301,6 +301,7 @@ function CreateProjectModal({
 
         {step.kind === "form" && (
           <>
+            {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Input wraps a native <input>; jsx-a11y cannot see through the component boundary */}
             <label className="block">
               <span className="text-sm text-ink-2">Book name</span>
               <Input

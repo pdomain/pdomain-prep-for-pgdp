@@ -191,6 +191,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
     >
       {/* Selectors row */}
       <div className="flex flex-wrap gap-4 text-sm">
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Radix Select wraps a button, not a native input; association via wrapping */}
         <label className="flex items-center gap-2">
           <span className="text-slate-600">Stage:</span>
           <Select
@@ -219,6 +220,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
             </SelectContent>
           </Select>
         </label>
+        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Radix Select wraps a button, not a native input; association via wrapping */}
         <label className="flex items-center gap-2">
           <span className="text-slate-600">Compare with:</span>
           <Select
