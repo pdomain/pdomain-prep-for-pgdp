@@ -79,7 +79,8 @@ def test_run_dirty_returns_202_with_job_id(tmp_path) -> None:
     assert r.status_code == 202, r.text
     body = r.json()
     assert "job_id" in body
-    assert isinstance(body["job_id"], str) and body["job_id"]
+    assert isinstance(body["job_id"], str)
+    assert body["job_id"]
 
 
 def test_run_dirty_submits_project_run_dirty_job_type(tmp_path) -> None:
@@ -139,7 +140,8 @@ def test_build_package_returns_202_with_job_id(tmp_path) -> None:
     assert r.status_code == 202, r.text
     body = r.json()
     assert "job_id" in body
-    assert isinstance(body["job_id"], str) and body["job_id"]
+    assert isinstance(body["job_id"], str)
+    assert body["job_id"]
 
 
 def test_build_package_submits_build_package_job_type(tmp_path) -> None:

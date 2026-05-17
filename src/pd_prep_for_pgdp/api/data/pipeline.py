@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ...core.models import PAGE_STAGE_IDS
-from ...core.pipeline.stage_runner import STAGE_CONFIG_FIELDS
+from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+from pd_prep_for_pgdp.core.pipeline.stage_runner import STAGE_CONFIG_FIELDS
 
 router = APIRouter(tags=["pipeline"])
 

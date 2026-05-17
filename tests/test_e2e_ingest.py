@@ -5,10 +5,13 @@ from __future__ import annotations
 import io
 import time
 import zipfile
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def _png(h: int, w: int) -> bytes:
@@ -40,7 +43,8 @@ def test_create_project_upload_zip_ingest_lists_pages(client: TestClient) -> Non
     project_id = body["project"]["id"]
     upload_url = body["upload_url"]
     upload_key = body["upload_key"]
-    assert upload_url and upload_key
+    assert upload_url
+    assert upload_key
 
     # 2. PUT the zip bytes to the upload URL.
     zip_bytes = _zip([("p1.png", _png(50, 50)), ("p2.png", _png(50, 50)), ("p3.png", _png(50, 50))])

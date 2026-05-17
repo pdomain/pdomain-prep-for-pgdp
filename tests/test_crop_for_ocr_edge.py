@@ -60,13 +60,13 @@ def _cfg(top: int = 0, bottom: int = 0, left: int = 0, right: int = 0) -> Resolv
 
 
 def _page(**kw) -> PageRecord:
-    base = dict(
-        project_id="p",
-        idx0=0,
-        prefix="",
-        source_stem="s",
-        page_type=PageType.normal,
-    )
+    base = {
+        "project_id": "p",
+        "idx0": 0,
+        "prefix": "",
+        "source_stem": "s",
+        "page_type": PageType.normal,
+    }
     base.update(kw)
     return PageRecord(**base)
 

@@ -26,9 +26,8 @@ Issue #87:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -57,6 +56,10 @@ from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     run_stage,
 )
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 # ─── Fixtures / helpers ───────────────────────────────────────────────────────
 
@@ -182,8 +185,10 @@ async def test_cascade_dirty_for_config_change_dirties_threshold_not_grayscale(
 
     g_before = await db.get_page_stage(project_id, page_id, "grayscale")
     t_before = await db.get_page_stage(project_id, page_id, "threshold")
-    assert g_before is not None and g_before.status == PageStageStatus.clean
-    assert t_before is not None and t_before.status == PageStageStatus.clean
+    assert g_before is not None
+    assert g_before.status == PageStageStatus.clean
+    assert t_before is not None
+    assert t_before.status == PageStageStatus.clean
 
     await cascade_dirty_for_config_change(
         database=db,

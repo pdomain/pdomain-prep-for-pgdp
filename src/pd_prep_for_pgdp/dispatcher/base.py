@@ -7,9 +7,10 @@ starts across many pages.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from ..adapters.gpu import BatchJobItem, BatchJobResult
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.gpu import BatchJobItem, BatchJobResult
 
 
 class IDispatcher(Protocol):

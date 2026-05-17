@@ -23,8 +23,7 @@ import logging
 import threading
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pd_book_tools.hf import (
     resolve_layout_source,
@@ -35,6 +34,9 @@ from pd_book_tools.hf import (
 )
 
 from .models import BoundingBox, OcrWord, ResolvedPageConfig, SystemDefaults
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 log = logging.getLogger(__name__)
 

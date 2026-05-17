@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
-from ...adapters.auth import UserContext
-from ...adapters.database import IDatabase
-from ...core.models import SystemDefaults
-from ..dependencies import get_database, get_user
+from pd_prep_for_pgdp.api.dependencies import get_database, get_user
+from pd_prep_for_pgdp.core.models import SystemDefaults
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.auth import UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
 
 router = APIRouter(tags=["system"])
 

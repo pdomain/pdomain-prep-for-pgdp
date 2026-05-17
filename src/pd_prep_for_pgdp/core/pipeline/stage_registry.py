@@ -43,10 +43,12 @@ from __future__ import annotations
 
 import contextlib
 import logging
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..models import PAGE_STAGE_IDS
+from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 
@@ -378,7 +380,7 @@ def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
     """
     import cv2  # pyright: ignore[reportMissingImports]
 
-    from ...core.auto_detect import detect_page_attributes
+    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     # Re-encode the ndarray to PNG bytes so detect_page_attributes can parse.
     ok, buf = cv2.imencode(".png", image)
@@ -536,7 +538,7 @@ def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
         tmp_path = Path(tmp.name)
 
     try:
-        from ...core.illustrations import auto_detect_illustrations
+        from pd_prep_for_pgdp.core.illustrations import auto_detect_illustrations
 
         regions = auto_detect_illustrations(
             tmp_path,
@@ -570,7 +572,7 @@ def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
     Returns a str; the runner's `text` output-type path encodes it to UTF-8
     and writes `output.txt`.
     """
-    from ...core.text_postprocess import normalize_curly_quotes, normalize_em_dash
+    from pd_prep_for_pgdp.core.text_postprocess import normalize_curly_quotes, normalize_em_dash
 
     if isinstance(text_bytes, (bytes, bytearray)):
         text = text_bytes.decode(errors="replace")
@@ -578,8 +580,7 @@ def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
         text = str(text_bytes)
 
     text = normalize_curly_quotes(text)
-    text = normalize_em_dash(text)
-    return text
+    return normalize_em_dash(text)
 
 
 # ─── Real implementations: ocr + text_review (Slice 14) ─────────────────────
@@ -604,7 +605,7 @@ def _default_resolved_page_config() -> Any:
     Used by stage impls that haven't yet received ResolvedPageConfig plumbing
     (M3 work). Callers must not assume any per-page override fields are set.
     """
-    from ...core.models import AlignmentOverride, PageType, ResolvedPageConfig
+    from pd_prep_for_pgdp.core.models import AlignmentOverride, PageType, ResolvedPageConfig
 
     return ResolvedPageConfig(
         text_threshold=140,
@@ -655,8 +656,8 @@ def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
 
     import cv2  # pyright: ignore[reportMissingImports]
 
-    from ...core.models import SystemDefaults
-    from ...core.ocr import ocr_page
+    from pd_prep_for_pgdp.core.models import SystemDefaults
+    from pd_prep_for_pgdp.core.ocr import ocr_page
 
     if cfg is None:
         cfg = _default_resolved_page_config()

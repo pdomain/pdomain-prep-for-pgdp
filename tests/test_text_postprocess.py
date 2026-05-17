@@ -55,8 +55,11 @@ def test_postprocess_text_orchestrator() -> None:
     )
     src = "He “said” foo and bar good-\nbye — yes !"
     out = postprocess_text(src, system=sd, project=pc)
-    assert "“" not in out and "”" not in out
-    assert "—" not in out and "--" in out
-    assert "FOO" in out and "BAR" in out
+    assert "“" not in out
+    assert "”" not in out
+    assert "—" not in out
+    assert "--" in out
+    assert "FOO" in out
+    assert "BAR" in out
     assert "goodbye" in out
     assert "yes!" in out  # regex pass collapsed " !" to "!"

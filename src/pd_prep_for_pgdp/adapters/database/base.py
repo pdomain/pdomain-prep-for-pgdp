@@ -9,16 +9,17 @@ JSON files are not written and the DB is authoritative.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from ...core.models import (
-    Job,
-    PageRecord,
-    PageStageState,
-    PageStageStatus,
-    Project,
-    SystemDefaults,
-)
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.core.models import (
+        Job,
+        PageRecord,
+        PageStageState,
+        PageStageStatus,
+        Project,
+        SystemDefaults,
+    )
 
 # ── Search results (M5) ──────────────────────────────────────────────────────
 

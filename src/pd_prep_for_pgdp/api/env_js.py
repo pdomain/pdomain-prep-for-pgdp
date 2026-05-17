@@ -8,10 +8,12 @@ loads before its bundle. Cheap to regenerate, never cached.
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request, Response
 
-from ..settings import Settings
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.settings import Settings
 
 router = APIRouter()
 

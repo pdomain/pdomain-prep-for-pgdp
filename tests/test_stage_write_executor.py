@@ -24,7 +24,7 @@ import asyncio
 import contextlib
 import threading
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -39,6 +39,9 @@ from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
 from pd_prep_for_pgdp.core.pipeline.stage_runner import run_stage
 from pd_prep_for_pgdp.core.pipeline.stage_write_executor import StageWriteExecutor
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -162,14 +165,14 @@ def test_back_pressure_blocks_when_queue_full() -> None:
     try:
         with StageWriteExecutor(pool_size=1, queue_cap=1) as executor:
             # Submit first write — it starts immediately and holds the semaphore.
-            executor.submit_write(lambda: slow_write(), on_failure=noop_failure, loop=loop)
+            executor.submit_write(slow_write, on_failure=noop_failure, loop=loop)
             assert write_running.wait(timeout=2), "first write should start"
 
             # Now queue is full (1 in-flight). Second submit must block.
             second_submitted = threading.Event()
 
             def try_second_submit() -> None:
-                executor.submit_write(lambda: slow_write(), on_failure=noop_failure, loop=loop)
+                executor.submit_write(slow_write, on_failure=noop_failure, loop=loop)
                 second_submitted.set()
 
             t = threading.Thread(target=try_second_submit, daemon=True)
@@ -202,7 +205,7 @@ async def test_on_failure_callback_fires_on_write_error() -> None:
 
     loop = asyncio.get_running_loop()
     executor = StageWriteExecutor(pool_size=1, queue_cap=4)
-    executor.submit_write(lambda: always_fails(), on_failure=on_failure, loop=loop)
+    executor.submit_write(always_fails, on_failure=on_failure, loop=loop)
 
     # Wait for the callback to fire. Avoid blocking the event loop with
     # shutdown(wait=True); use wait_for so the loop stays free to process the

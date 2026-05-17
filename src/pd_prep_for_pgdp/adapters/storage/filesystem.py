@@ -7,12 +7,15 @@ serves them.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import anyio
 
 from .base import IStorage, ObjectInfo
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class FilesystemStorage(IStorage):

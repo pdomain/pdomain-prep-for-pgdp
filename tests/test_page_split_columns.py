@@ -48,30 +48,30 @@ async def db(tmp_path) -> SqliteDatabase:
 
 def _root_page(**overrides) -> PageRecord:
     """Build a minimal root (non-split) PageRecord."""
-    base = dict(
-        project_id="p1",
-        idx0=0,
-        prefix="f001",
-        source_stem="img_0001",
-    )
+    base = {
+        "project_id": "p1",
+        "idx0": 0,
+        "prefix": "f001",
+        "source_stem": "img_0001",
+    }
     base.update(overrides)
     return PageRecord(**base)
 
 
 def _split_child_kwargs() -> dict:
     """Full-valid split-child PageRecord kwargs (every split field set)."""
-    return dict(
-        project_id="p1",
-        idx0=1,
-        prefix="f001a",
-        source_stem="img_0001",
-        parent_page_id="0000",
-        source_crop_bbox=(10, 20, 300, 400),
-        split_index=1,
-        split_at_stage="auto_detect_attrs",
-        split_suffix="a",
-        reading_order=1,
-    )
+    return {
+        "project_id": "p1",
+        "idx0": 1,
+        "prefix": "f001a",
+        "source_stem": "img_0001",
+        "parent_page_id": "0000",
+        "source_crop_bbox": (10, 20, 300, 400),
+        "split_index": 1,
+        "split_at_stage": "auto_detect_attrs",
+        "split_suffix": "a",
+        "reading_order": 1,
+    }
 
 
 # ─── Defaults / backward compat ──────────────────────────────────────────────

@@ -16,13 +16,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pd_prep_for_pgdp.api.data.projects import (
     FULL_DAG_RATIO,
     _compute_source_zip_bytes,
     _compute_stage_artifacts_bytes,
 )
-from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.settings import Settings
 
 # ─── Unit tests for filesystem helpers ──────────────────────────────────────
 

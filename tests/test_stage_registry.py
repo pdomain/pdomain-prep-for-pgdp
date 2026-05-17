@@ -137,7 +137,7 @@ def test_threshold_cpu_returns_2d_binary() -> None:
     assert out.ndim == 2
     assert out.dtype == np.uint8
     # Otsu binarisation produces only 0 or 255 values.
-    unique_vals = set(int(v) for v in np.unique(out))
+    unique_vals = {int(v) for v in np.unique(out)}
     assert unique_vals.issubset({0, 255}), f"got values {unique_vals!r}"
 
 
@@ -370,7 +370,8 @@ def test_auto_deskew_cpu_shape_reasonable() -> None:
     img = _binary_with_content(h=80, w=100)
     out = fn(img)
     h, w = out.shape[:2]
-    assert h > 0 and w > 0
+    assert h > 0
+    assert w > 0
 
 
 # ─── Real impl: morph_fill (Slice 10) ──────────────────────────────────────

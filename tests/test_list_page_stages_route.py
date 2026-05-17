@@ -11,9 +11,8 @@ PK), so concurrent first-touches converge to exactly 22 rows, not 44.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,6 +33,10 @@ from pd_prep_for_pgdp.core.models import (
 )
 from pd_prep_for_pgdp.core.pipeline.stage_dag import topological_order
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -153,7 +156,8 @@ def test_list_page_stages_second_call_no_duplicates(
     client, _ = seeded_client
     r1 = client.get("/api/data/projects/m1c/pages/0/stages")
     r2 = client.get("/api/data/projects/m1c/pages/0/stages")
-    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.status_code == 200
+    assert r2.status_code == 200
     assert len(r1.json()) == 22
     assert len(r2.json()) == 22
     # Row identities (project, page, stage) match across both responses.
@@ -210,7 +214,8 @@ def test_list_page_stages_concurrent_first_touch_is_idempotent(
     with TestClient(app):
         s1, s2, lengths, ids = asyncio.run(hit_twice())
 
-    assert s1 == 200 and s2 == 200
+    assert s1 == 200
+    assert s2 == 200
     assert lengths == [22, 22], f"expected each parallel response to have 22 rows, got {lengths}"
     assert ids[0] == ids[1], "concurrent first-touch produced different row sets"
 
@@ -528,7 +533,8 @@ def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
         r1 = client.get("/api/data/projects/legacy/pages/0/stages")
         r2 = client.get("/api/data/projects/legacy/pages/0/stages")
 
-    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.status_code == 200
+    assert r2.status_code == 200
     rows1 = r1.json()
     rows2 = r2.json()
 

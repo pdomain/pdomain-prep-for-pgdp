@@ -54,8 +54,10 @@ def test_synthesise_plate_region_for_plate_p_page() -> None:
     region = synthesise_plate_region(page, source_dimensions=(2000, 1500))
     assert region.index == 1
     assert region.type == "plate"
-    assert region.L == 0 and region.T == 0
-    assert region.R == 1500 and region.B == 2000  # full-page extent
+    assert region.L == 0
+    assert region.T == 0
+    assert region.R == 1500
+    assert region.B == 2000
     assert region.output_format == "jpg"
 
 

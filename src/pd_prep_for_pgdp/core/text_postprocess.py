@@ -12,9 +12,12 @@ The order of operations matches what the notebook + pd-ocr-cli do today.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
-from .models import ProjectConfig, SystemDefaults
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from .models import ProjectConfig, SystemDefaults
 
 # --- Quote / dash normalisation (lifted from pd-ocr-cli/_text_normalize.py) --
 
@@ -125,5 +128,4 @@ def postprocess_text(
     out = join_hyphenated_lines(out, system.hyphenation_join_list)
     out = apply_scannos(out, system.standard_scannos)
     out = apply_scannos(out, project.custom_scannos)
-    out = apply_custom_regex_passes(out, project.custom_regex_passes)
-    return out
+    return apply_custom_regex_passes(out, project.custom_regex_passes)

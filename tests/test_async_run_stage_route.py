@@ -18,9 +18,8 @@ hermetic (no background thread or asyncio event-loop gymnastics).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -42,6 +41,10 @@ from pd_prep_for_pgdp.core.models import (
 )
 from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 # ─── Fixtures ───────────────────────────────────────────────────────────────
 

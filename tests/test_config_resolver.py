@@ -131,9 +131,11 @@ def test_compute_prefix_with_plate_suffix() -> None:
     }
     # Plate pages get a suffix and are not numbered.
     p1 = compute_prefix(1, proj, pages_by_idx)
-    assert p1 is not None and p1.endswith("p")
+    assert p1 is not None
+    assert p1.endswith("p")
     p4 = compute_prefix(4, proj, pages_by_idx)
-    assert p4 is not None and p4.endswith("b")
+    assert p4 is not None
+    assert p4.endswith("b")
 
 
 def test_alignment_default_resolves() -> None:

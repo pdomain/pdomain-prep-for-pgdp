@@ -7,10 +7,14 @@ In S3 mode this router isn't installed; presigned PUTs go directly to S3.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from ..adapters.storage import IStorage
 from .dependencies import get_storage
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.storage import IStorage
 
 router = APIRouter()
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import socket
 from contextlib import closing
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -31,6 +31,9 @@ from pd_prep_for_pgdp.__main__ import (
     _read_last_port,
     _write_last_port,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _bind_blocker(port: int = 0) -> socket.socket:

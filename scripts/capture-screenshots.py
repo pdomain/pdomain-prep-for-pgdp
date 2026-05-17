@@ -15,7 +15,7 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 VIEWPORT = {"width": 1440, "height": 900}
 
 
-async def capture(playwright, url_path: str, filename: str, *, wait_ms: int = 1500, setup=None):
+async def capture(playwright, url_path: str, filename: str, *, wait_ms: int = 1500, setup=None) -> None:
     browser = await playwright.chromium.launch()
     page = await browser.new_page(viewport=VIEWPORT)
     await page.goto(f"{BASE_URL}{url_path}")
@@ -29,7 +29,7 @@ async def capture(playwright, url_path: str, filename: str, *, wait_ms: int = 15
     await browser.close()
 
 
-async def main():
+async def main() -> None:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as pw:
@@ -39,7 +39,7 @@ async def main():
         await capture(pw, "/", "00-project-list.png")
 
         # 01 — CreateProjectModal (trigger by clicking "+ New Project")
-        async def open_create_modal(page):
+        async def open_create_modal(page) -> None:
             btn = page.get_by_role("button", name="New Project")
             if await btn.count():
                 await btn.click()

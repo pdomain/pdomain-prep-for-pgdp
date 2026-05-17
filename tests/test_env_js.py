@@ -10,17 +10,17 @@ from pd_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path, **kw) -> Settings:
-    base = dict(
-        host="127.0.0.1",
-        port=8765,
-        data_root=tmp_path / "data",
-        config_dir=tmp_path / "config",
-        storage_backend="filesystem",
-        database_url=f"sqlite:///{(tmp_path / 's.db').as_posix()}",
-        gpu_backend="cpu",
-        dispatch_interval_seconds=0,
-        auth_mode="none",
-    )
+    base = {
+        "host": "127.0.0.1",
+        "port": 8765,
+        "data_root": tmp_path / "data",
+        "config_dir": tmp_path / "config",
+        "storage_backend": "filesystem",
+        "database_url": f"sqlite:///{(tmp_path / 's.db').as_posix()}",
+        "gpu_backend": "cpu",
+        "dispatch_interval_seconds": 0,
+        "auth_mode": "none",
+    }
     base.update(kw)
     return Settings(**base)
 

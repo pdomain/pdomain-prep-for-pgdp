@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -33,6 +33,9 @@ from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     run_stage,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

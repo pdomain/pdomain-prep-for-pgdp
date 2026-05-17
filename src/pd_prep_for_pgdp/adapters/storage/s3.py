@@ -6,11 +6,14 @@ needs it).
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 import anyio.to_thread
 
 from .base import IStorage, ObjectInfo
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 
 class S3Storage(IStorage):

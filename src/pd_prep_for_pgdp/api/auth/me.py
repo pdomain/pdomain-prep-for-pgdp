@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from ...adapters.auth import UserContext
-from ..dependencies import get_user
+from pd_prep_for_pgdp.adapters.auth import UserContext
+from pd_prep_for_pgdp.api.dependencies import get_user
 
 router = APIRouter(tags=["auth"])
 

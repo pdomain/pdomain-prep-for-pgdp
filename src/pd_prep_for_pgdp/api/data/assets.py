@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ...adapters.auth import UserContext
-from ...adapters.database import IDatabase
-from ...adapters.storage import IStorage
-from ..dependencies import get_database, get_storage, get_user
+from pd_prep_for_pgdp.api.dependencies import get_database, get_storage, get_user
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.auth import UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.storage import IStorage
 
 router = APIRouter(tags=["assets"])
 

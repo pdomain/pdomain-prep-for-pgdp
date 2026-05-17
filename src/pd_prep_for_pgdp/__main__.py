@@ -9,11 +9,14 @@ import os
 import socket
 import sys
 import webbrowser
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import uvicorn
 
 from .settings import Settings
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 LAST_PORT_FILENAME = "last-port"
 
@@ -76,11 +79,12 @@ def _try_bind(host: str, port: int) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.bind((host, port))
-        return True
     except OSError as e:
         if e.errno == errno.EADDRINUSE:
             return False
         raise
+    else:
+        return True
 
 
 def _pick_port(

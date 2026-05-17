@@ -28,11 +28,10 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import anyio.to_thread
 
-from ..adapters.database import IDatabase
-from ..adapters.storage import IStorage
 from .models import (
     PageRecord,
     PipelineState,
@@ -41,6 +40,10 @@ from .models import (
     StepState,
     StepStatus,
 )
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.storage import IStorage
 
 log = logging.getLogger(__name__)
 
@@ -399,8 +402,7 @@ def peek_zip_image_names(raw: bytes, limit: int) -> tuple[list[str], int]:
         ``total_image_count`` is the count of all image entries in the zip,
         useful for showing "showing 5 of 12".
     """
-    if limit < 0:
-        limit = 0
+    limit = max(limit, 0)
     image_names: list[str] = []
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         for info in zf.infolist():

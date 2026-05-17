@@ -57,17 +57,15 @@ import asyncio
 import hashlib
 import json
 import logging
-from pathlib import Path
 from time import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cv2  # pyright: ignore[reportMissingImports]
 import numpy as np
 
-from ...adapters.database.base import IDatabase
-from ...adapters.storage.base import IStorage
-from ..models import PageRecord, PageStageState, PageStageStatus, ResolvedPageConfig
-from ..stage_events import StageEventBroker, stage_events_key
+from pd_prep_for_pgdp.core.models import PageRecord, PageStageState, PageStageStatus, ResolvedPageConfig
+from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+
 from . import stage_dag as _stage_dag_module
 from .page_stage_writer import (
     COMPOUND_OUTPUT_TYPES,
@@ -84,6 +82,12 @@ from .page_stage_writer import (
 from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
 from .stage_registry import StageNotImplemented, get_stage_impl
 from .stage_write_executor import StageWriteExecutor, _write_artifact_file_async
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pd_prep_for_pgdp.adapters.database.base import IDatabase
+    from pd_prep_for_pgdp.adapters.storage.base import IStorage
 
 # output_type values that are serialised as JSON rather than PNG.
 _JSON_OUTPUT_TYPES: frozenset[str] = frozenset({"bbox", "page_attrs", "illustration_regions"})
@@ -230,7 +234,8 @@ async def _resolve_config(
     any DB lookup returns ``None`` — this keeps existing tests that don't seed
     project/page records working without modification.
     """
-    from ..config_resolver import resolve_page_config
+    from pd_prep_for_pgdp.core.config_resolver import resolve_page_config
+
     from .stage_registry import _default_resolved_page_config
 
     project = await database.get_project(project_id)
@@ -809,7 +814,8 @@ async def run_stage(
             # cascade below (spec §"Cross-page dirty propagation: split children").
             _parent_pid = _child_decode_page.parent_page_id
             _bbox = _child_decode_page.source_crop_bbox  # (x, y, w, h)
-            assert _parent_pid is not None and _bbox is not None  # enforced by validator
+            assert _parent_pid is not None
+            assert _bbox is not None
 
             parent_img = await _load_parent_artifact(
                 data_root=data_root,

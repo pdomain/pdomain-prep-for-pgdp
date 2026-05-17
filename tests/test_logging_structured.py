@@ -23,7 +23,7 @@ import io
 import json
 import logging
 import sys
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi import FastAPI
@@ -36,6 +36,9 @@ from pd_prep_for_pgdp.core.logging_config import (
     configure_logging,
     request_id_var,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @pytest.fixture(autouse=True)

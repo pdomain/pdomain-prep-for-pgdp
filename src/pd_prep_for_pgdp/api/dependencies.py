@@ -8,16 +8,18 @@ tests can override individual dependencies via FastAPI's standard mechanism.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ..adapters.auth import IAuth, UserContext
-from ..adapters.database import IDatabase
-from ..adapters.gpu import GPUBackend
-from ..adapters.storage import IStorage
-from ..dispatcher import IDispatcher
-from ..settings import Settings
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.auth import IAuth, UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.gpu import GPUBackend
+    from pd_prep_for_pgdp.adapters.storage import IStorage
+    from pd_prep_for_pgdp.dispatcher import IDispatcher
+    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 

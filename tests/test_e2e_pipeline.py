@@ -10,10 +10,13 @@ from __future__ import annotations
 import io
 import time
 import zipfile
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def _png(h: int, w: int) -> bytes:

@@ -20,17 +20,23 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..adapters.database import IDatabase
-from ..adapters.gpu import BatchJobResult, GPUBackend
-from ..adapters.storage import IStorage
-from ..dispatcher.base import IDispatcher
-from ..dispatcher.batched import BatchDispatcher
+from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
+
 from .ingest import generate_thumbnails, unzip_source
-from .job_events import JobEventBroker
 from .models import Job, JobStatus, JobType, PageStageStatus
 from .packaging import build_package
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.gpu import BatchJobResult, GPUBackend
+    from pd_prep_for_pgdp.adapters.storage import IStorage
+    from pd_prep_for_pgdp.dispatcher.base import IDispatcher
+
+    from .job_events import JobEventBroker
 
 log = logging.getLogger(__name__)
 

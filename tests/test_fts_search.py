@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -31,6 +31,9 @@ from pd_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -290,7 +293,7 @@ async def test_search_pagination(tmp_path: Path, db: SqliteDatabase) -> None:
     page2, _ = await db.search("p1", "keyword", limit=2, offset=2)
     assert len(page1) == 2
     assert len(page2) == 2
-    assert set(r.page_id for r in page1).isdisjoint(set(r.page_id for r in page2))
+    assert {r.page_id for r in page1}.isdisjoint({r.page_id for r in page2})
 
 
 @pytest.mark.asyncio

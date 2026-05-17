@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 import json
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -35,6 +35,9 @@ from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _project(project_id: str = "proj1") -> Project:
@@ -266,7 +269,8 @@ async def test_reindex_heal_cascades_descendants_dirty(tmp_path: Path) -> None:
     await db2.initialize()
     threshold = await db2.get_page_stage("proj1", "0000", "threshold")
     invert = await db2.get_page_stage("proj1", "0000", "invert")
-    assert threshold is not None and threshold.status == PageStageStatus.failed
+    assert threshold is not None
+    assert threshold.status == PageStageStatus.failed
     assert invert is not None and invert.status == PageStageStatus.dirty, (
         f"expected invert to cascade to dirty, got {invert.status}"
     )
@@ -491,7 +495,8 @@ async def test_reindex_heal_marks_stale_version_rows_dirty(
     db, data_root = await _prep_clean_state(tmp_path)
     # _prep_clean_state seeds "threshold" as clean at stage_version=1.
     row = await db.get_page_stage("proj1", "0000", "threshold")
-    assert row is not None and row.status == PageStageStatus.clean
+    assert row is not None
+    assert row.status == PageStageStatus.clean
     assert row.stage_version == 1
     await db.close()
 

@@ -60,7 +60,7 @@ dev = [
     "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
-    "ruff>=0.7",
+    "ruff>=0.15.13",
     "httpx>=0.28",
 ]
 e2e = [
@@ -97,7 +97,35 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "B", "SIM", "UP", "RUF", "ERA", "T20"]
+select = [
+    # Current baseline
+    "E", "W",       # pycodestyle errors/warnings
+    "F",            # pyflakes
+    "I",            # isort (replaces standalone isort)
+    "N",            # pep8-naming
+    "B",            # flake8-bugbear — mutable defaults, broad excepts, etc.
+    "SIM",          # flake8-simplify
+    "UP",           # pyupgrade
+    "RUF",          # ruff-specific rules
+    "ERA",          # eradicate — commented-out code
+    "T20",          # flake8-print
+    # Added per 2026-05-17 strict-linting decisions
+    "ANN",          # flake8-annotations — force type hints on all sigs
+    "S",            # flake8-bandit — security rules
+    "C4",           # flake8-comprehensions
+    "PERF",         # perflint — performance anti-patterns
+    "TC",           # flake8-type-checking — move type-only imports to TYPE_CHECKING
+    "TID",          # flake8-tidy-imports
+    "PT",           # flake8-pytest-style
+    "RET",          # flake8-return
+    "PL",           # pylint subset (PLC + PLE + PLR + PLW)
+    "D",            # pydocstyle
+    # Added per 2026-05-17 guidelines audit (BLE/TRY/LOG/G)
+    "BLE",          # flake8-blind-except
+    "TRY",          # tryceratops — TRY400 enforces log.exception over log.error in except
+    "LOG",          # flake8-logging — proper log.* usage
+    "G",            # flake8-logging-format — lazy formatting in log calls
+]
 ignore = [
     # FastAPI's canonical pattern for dependency injection puts Depends()
     # in default arguments. Ignoring this rule across the whole repo.
@@ -105,26 +133,106 @@ ignore = [
     # `Foo(str, Enum)` — spec-08 + Pydantic patterns use this idiom widely;
     # `StrEnum` is the newer alternative but doesn't change semantics.
     "UP042",
+    # Line length: many long docstrings, error messages, and URLs; enforcing
+    # 88-char wrapping everywhere adds noise without improving readability.
+    "E501",
+    # Docstring style: D203 (1-blank-before-class-docstring) conflicts with
+    # D211 (no-blank-before-class-docstring); D212 (multi-line-summary-first-line)
+    # conflicts with D213 (multi-line-summary-second-line). Pick one of each pair.
+    "D203",
+    "D212",
+    # Missing docstrings on public modules/packages/magic-methods: large
+    # existing codebase; add incrementally, not in a single lint sweep.
+    "D100",
+    "D104",
+    "D107",
+    # PLR0913 (too-many-arguments): FastAPI/pipeline functions legitimately need
+    # many params; enforcing here would require invasive config-object refactors.
+    "PLR0913",
+    # PLR2004 (magic-value-comparison): common in OCR geometry/threshold code.
+    "PLR2004",
+    # TRY003 (long-message-outside-exception-class): too noisy for a service
+    # that uses f-string error messages everywhere.
+    "TRY003",
+    # COM812 (missing-trailing-comma): conflicts with ruff formatter auto-style.
+    "COM812",
+    # PLC0415 (import-not-at-top-level): deferred imports are a legitimate
+    # pattern here — used to break circular deps and to avoid loading
+    # optional-heavy modules (cv2, torch, cupy) until needed.
+    "PLC0415",
+    # PLR complexity rules: pipeline functions legitimately have high
+    # branch/return counts.
+    "PLR0912",  # too-many-branches
+    "PLR0911",  # too-many-return-statements
+    "PLR0915",  # too-many-statements
+    # ANN401 (dynamically-typed-expressions): some functions legitimately
+    # accept/return Any (e.g. JSON deserialisers, generic dispatch helpers).
+    "ANN401",
+    # D205 (1-blank-line-required-between-summary-and-description): too noisy.
+    "D205",
+    # D105 (missing-docstring-in-magic-method): __repr__, __eq__, etc. are
+    # self-documenting; require incrementally on new code only.
+    "D105",
 ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 # Spec-aligned coordinate names (L/R/T/B, minX/maxX/minY/maxY) trigger E741 in tests
 # and N806 wherever they appear as local variables — the uppercase form is intentional.
-"tests/*" = ["E741", "N806"]
-# `core/illustrations.py` and `core/pipeline/*` use the same coord names.
-"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741", "N806"]
-"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806"]
-"src/pd_prep_for_pgdp/core/models.py" = ["E741"]
-"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741"]
-# `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pd-book-tools.
-"src/pd_prep_for_pgdp/core/ocr.py" = ["N806"]
+# Tests: assert is the idiom (S101/S104); magic numbers common (PLR2004); no
+# annotations required (ANN); no docstrings required (D); security rules
+# relaxed; pytest.raises match= not required (PT011); /tmp paths fine (S108);
+# loop-var reassignment (PLW2901); list-building in tests fine (PERF401/PERF402);
+# PT018 multi-condition asserts common in parametrized tests; S301 pickle in fixtures;
+# S603 subprocess in test helpers; TRY rules in test conftest; BLE001 in e2e.
+"tests/*" = ["E741", "N806", "S101", "S104", "S105", "S106", "S301", "S311", "S603", "T201", "ANN", "D", "PLR2004", "PT011", "PT018", "S108", "PLR0133", "PLW2901", "PLW1510", "PERF401", "PERF402", "TRY", "BLE001"]
 # Mock class mimics boto3's uppercase keyword argument names (Params, ExpiresIn).
 "tests/test_s3_storage.py" = ["N803", "N805"]
+# Scripts: print() is the output mechanism; no docstrings required; S603/S607/ANN
+# are fine for developer-only helper scripts.
+"scripts/*.py" = ["T201", "D", "ANN", "S603", "S607", "PLW1510"]
+# __init__.py: re-exports without docstrings; F401 used for public API surface.
+"**/__init__.py" = ["D104", "F401", "TC"]
+# Private modules: internal convention, no docstrings required.
+"**/_*.py" = ["D"]
+# `core/illustrations.py` uses coord names (E741/N806) and has annotation/docstring debt.
+# PLW0603 global lazy-cache pattern — intentional memoisation, not a state mutation.
+"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PLW0603"]
+# `core/pipeline/*` use coord names (E741/N806) and have annotation/docstring debt.
+# S101 asserts used as guard preconditions inside the runner (not test asserts).
+"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
+"src/pd_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D"]
+"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY"]
+# `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pd-book-tools.
+"src/pd_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY"]
 # Lazy imports inside functions (cycle-breaking + optional-dep patterns).
-"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402"]
-"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402"]
-# CLI scripts and fixture scripts — print() is the output mechanism
-"scripts/*.py" = ["T201"]
+"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402", "ANN", "D"]
+"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401"]
+# Core modules with annotation/docstring debt: add individually as each gets a focused pass.
+"src/pd_prep_for_pgdp/core/ingest.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
+"src/pd_prep_for_pgdp/core/auto_detect.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/bootstrap.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/adapters/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+# sqlite.py: S101 assert used as precondition guard (not test); S608 SQL is
+# parameterised with an enum value (not user input — initial_status comes from
+# PageStageStatus literal, never from a request body).
+"src/pd_prep_for_pgdp/adapters/database/sqlite.py" = ["S101", "S608"]
+"src/pd_prep_for_pgdp/api/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/core/config_resolver.py" = ["ANN", "D"]
+"src/pd_prep_for_pgdp/core/text_postprocess.py" = ["ANN", "D", "G003", "G004"]
+# Dispatcher: small protocol-like classes with no docstrings yet.
+"src/pd_prep_for_pgdp/dispatcher/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401"]
+# Core event/queue/logging modules with docstring debt.
+"src/pd_prep_for_pgdp/core/job_events.py" = ["ANN", "D"]
+"src/pd_prep_for_pgdp/core/logging_config.py" = ["ANN", "D"]
+"src/pd_prep_for_pgdp/core/packaging.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/core/queue/single_executor.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
+"src/pd_prep_for_pgdp/core/stage_events.py" = ["ANN", "D"]
+"src/pd_prep_for_pgdp/settings.py" = ["ANN", "D"]
+# CLI subcommands use docstrings as help text, not Google-style; ANN backlog.
+"src/pd_prep_for_pgdp/cli/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY"]
 
 [tool.basedpyright]
 include = ["src", "tests", "scripts"]

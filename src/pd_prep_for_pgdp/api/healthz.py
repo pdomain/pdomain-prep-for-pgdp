@@ -30,7 +30,7 @@ import logging
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from ..dispatcher.batched import BatchDispatcher
+from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 log = logging.getLogger(__name__)
 

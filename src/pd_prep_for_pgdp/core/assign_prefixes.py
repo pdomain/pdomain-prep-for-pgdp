@@ -7,9 +7,14 @@ logic the pipeline uses is the one persisted to disk.
 
 from __future__ import annotations
 
-from ..adapters.database import IDatabase
-from .models import PageRecord, Project
+from typing import TYPE_CHECKING
+
 from .prefix import compute_prefix
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+
+    from .models import PageRecord, Project
 
 
 async def assign_prefixes(*, project: Project, database: IDatabase) -> int:

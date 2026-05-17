@@ -113,10 +113,13 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(
     await assign_prefixes(project=project, database=db)
     pages, _, _ = await db.list_pages(project.id, None, 100)
     by_idx = {p.idx0: p for p in pages}
-    assert by_idx[0].ignore is True and by_idx[0].prefix == ""
+    assert by_idx[0].ignore is True
+    assert by_idx[0].prefix == ""
     assert by_idx[1].ignore is True
-    assert by_idx[2].ignore is False and by_idx[2].prefix.startswith("f")
-    assert by_idx[3].ignore is False and by_idx[3].prefix.startswith("p")
+    assert by_idx[2].ignore is False
+    assert by_idx[2].prefix.startswith("f")
+    assert by_idx[3].ignore is False
+    assert by_idx[3].prefix.startswith("p")
     assert by_idx[4].ignore is True
 
 
@@ -148,8 +151,10 @@ async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
     # plate_p gets a "p" suffix and doesn't consume a body number.
     assert by_idx[2].prefix.endswith("p")
     # Numbering continues past the plate.
-    assert by_idx[1].prefix.startswith("p") and not by_idx[1].prefix.endswith("p")
-    assert by_idx[3].prefix.startswith("p") and not by_idx[3].prefix.endswith("p")
+    assert by_idx[1].prefix.startswith("p")
+    assert not by_idx[1].prefix.endswith("p")
+    assert by_idx[3].prefix.startswith("p")
+    assert not by_idx[3].prefix.endswith("p")
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,7 @@ Acceptance (from issue #66):
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -21,6 +21,9 @@ from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pd_prep_for_pgdp.core.pipeline.stage_runner import run_stage
 from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

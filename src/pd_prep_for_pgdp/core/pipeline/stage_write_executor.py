@@ -33,13 +33,14 @@ import asyncio
 import logging
 import os
 import threading
-from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ...settings import Settings
+    from collections.abc import Callable, Coroutine
+    from pathlib import Path
+
+    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class StageWriteExecutor:
         try:
             asyncio.run(coro_factory())
         except Exception as exc:
-            log.error("deferred stage write failed: %s", exc, exc_info=True)
+            log.exception("deferred stage write failed: %s", exc)
             asyncio.run_coroutine_threadsafe(on_failure(exc), loop)
         finally:
             self._semaphore.release()

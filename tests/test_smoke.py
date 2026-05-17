@@ -8,7 +8,10 @@ Asserts the wiring of:
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def test_list_projects_empty(client: TestClient) -> None:

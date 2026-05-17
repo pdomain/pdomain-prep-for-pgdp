@@ -17,11 +17,14 @@ import logging
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import oxipng
 
-from ..adapters.storage import IStorage
-from .models import PageRecord, Project
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.storage import IStorage
+
+    from .models import PageRecord, Project
 
 log = logging.getLogger(__name__)
 

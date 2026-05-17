@@ -156,7 +156,7 @@ async def test_commit_stage_artifact_db_failure_rolls_back_file(
     assert not expected.exists(), "file should have been rolled back on DB failure"
     # No tmp files left.
     if expected.parent.exists():
-        leftovers = [p for p in expected.parent.iterdir()]
+        leftovers = list(expected.parent.iterdir())
         assert leftovers == [], f"unexpected leftover files: {leftovers}"
 
 
@@ -358,7 +358,8 @@ async def test_reconcile_page_does_not_mutate(tmp_path: Path, db: SqliteDatabase
     post_row = await db.get_page_stage("p1", "0000", "threshold")
     post_bytes = expected.read_bytes()
     # Row unchanged.
-    assert pre_row is not None and post_row is not None
+    assert pre_row is not None
+    assert post_row is not None
     assert pre_row.input_hash == post_row.input_hash
     assert pre_row.status == post_row.status
     # File unchanged.

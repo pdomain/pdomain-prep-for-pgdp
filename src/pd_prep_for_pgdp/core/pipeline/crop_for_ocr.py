@@ -8,10 +8,13 @@ lives in canonical canvas space.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..models import PageRecord, PageSplit, ResolvedPageConfig
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from pd_prep_for_pgdp.core.models import PageRecord, PageSplit, ResolvedPageConfig
 
 
 @dataclass

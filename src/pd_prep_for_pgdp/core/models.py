@@ -290,11 +290,10 @@ class PageRecord(ApiModel):
                     f"split-child PageRecord (parent_page_id={self.parent_page_id!r}) "
                     f"requires all split fields; missing: {missing}"
                 )
-        else:
-            if present:
-                raise ValueError(
-                    f"root PageRecord (parent_page_id=None) must not set split fields; got: {present}"
-                )
+        elif present:
+            raise ValueError(
+                f"root PageRecord (parent_page_id=None) must not set split fields; got: {present}"
+            )
         return self
 
 

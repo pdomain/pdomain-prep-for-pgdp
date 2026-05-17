@@ -5,16 +5,20 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from ...adapters.auth import UserContext
-from ...adapters.database import IDatabase
-from ...core.job_events import JobEventBroker
-from ...core.models import Job, JobStatus
-from ..dependencies import get_database, get_job_events, get_user
+from pd_prep_for_pgdp.api.dependencies import get_database, get_job_events, get_user
+from pd_prep_for_pgdp.core.models import Job, JobStatus
+
 from .schemas import BatchJobResponse, RetryJobRequest
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.auth import UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.core.job_events import JobEventBroker
 
 router = APIRouter(tags=["gpu"])
 
@@ -79,7 +83,7 @@ async def retry_job(
     if job.status not in {JobStatus.error, JobStatus.cancelled}:
         raise HTTPException(409, f"only error/cancelled jobs are retryable; this is {job.status.value}")
 
-    from ...settings import Settings
+    from pd_prep_for_pgdp.settings import Settings
 
     settings = Settings()
     interval = settings.dispatch_interval_seconds

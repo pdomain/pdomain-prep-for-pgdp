@@ -104,7 +104,8 @@ async def test_backend_failure_marks_every_item_failed() -> None:
     assert len(out) == 2
     for r in out:
         assert r.ok is False
-        assert r.error and "RuntimeError" in r.error
+        assert r.error
+        assert "RuntimeError" in r.error
     assert {r.idx0 for r in received} == {0, 1}
 
 
@@ -127,7 +128,8 @@ async def test_batch_job_result_error_type_set_on_backend_failure() -> None:
     r = out[0]
     assert r.ok is False
     assert r.error_type == "RuntimeError"
-    assert r.error is not None and "RuntimeError" in r.error
+    assert r.error is not None
+    assert "RuntimeError" in r.error
 
 
 @pytest.mark.asyncio

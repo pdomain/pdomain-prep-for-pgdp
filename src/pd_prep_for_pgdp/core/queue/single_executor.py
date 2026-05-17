@@ -16,10 +16,12 @@ import asyncio
 import contextlib
 import logging
 import threading
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 log = logging.getLogger(__name__)
 

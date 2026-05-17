@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
 
@@ -28,6 +27,10 @@ from pd_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
 
 def _settings(tmp_path: Path) -> Settings:

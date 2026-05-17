@@ -35,16 +35,14 @@ import json
 import shutil
 import sys
 import time
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import TYPE_CHECKING, TextIO
 
-from ..adapters.database.base import IDatabase
-from ..adapters.database.sqlite import SqliteDatabase
-from ..core.models import PageStageState, PageStageStatus, Project
-from ..core.pipeline import stage_dag as _stage_dag
-from ..core.pipeline.page_stage_writer import (
+from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pd_prep_for_pgdp.core.models import PageStageState, PageStageStatus, Project
+from pd_prep_for_pgdp.core.pipeline import stage_dag as _stage_dag
+from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
     HashMismatch,
     MissingFile,
     OrphanFile,
@@ -53,8 +51,13 @@ from ..core.pipeline.page_stage_writer import (
     reconcile_page,
     stage_artifact_path,
 )
-from ..core.pipeline.stage_dag import compute_dirty_descendants
-from ..settings import Settings
+from pd_prep_for_pgdp.core.pipeline.stage_dag import compute_dirty_descendants
+from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from pd_prep_for_pgdp.adapters.database.base import IDatabase
 
 
 @dataclass(frozen=True, slots=True)

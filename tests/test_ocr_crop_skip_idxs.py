@@ -27,13 +27,13 @@ from pd_prep_for_pgdp.core.models import (
 
 
 def _page(idx0: int, **overrides) -> PageRecord:
-    base = dict(
-        project_id="p",
-        idx0=idx0,
-        prefix="",
-        source_stem=f"s{idx0}",
-        page_type=PageType.normal,
-    )
+    base = {
+        "project_id": "p",
+        "idx0": idx0,
+        "prefix": "",
+        "source_stem": f"s{idx0}",
+        "page_type": PageType.normal,
+    }
     base.update(overrides)
     return PageRecord(**base)
 

@@ -14,9 +14,9 @@ from __future__ import annotations
 import socket
 import threading
 import time
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -24,6 +24,9 @@ import uvicorn
 
 from pd_prep_for_pgdp.bootstrap import build_app
 from pd_prep_for_pgdp.settings import Settings
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @dataclass

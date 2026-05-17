@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import io
 import zipfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from PIL import Image
@@ -21,6 +21,9 @@ from tests.fixtures.three_page_book import (
     build_three_page_book_zip,
     page_filenames,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_helper_produces_three_image_entries(tmp_path: Path) -> None:

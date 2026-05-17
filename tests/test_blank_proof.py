@@ -17,7 +17,8 @@ def test_blank_proof_decodes_to_canonical_aspect() -> None:
     assert w == 600
     assert h == int(600 * 1.65)
     # all-white
-    assert int(decoded.min()) == 255 and int(decoded.max()) == 255
+    assert int(decoded.min()) == 255
+    assert int(decoded.max()) == 255
 
 
 def test_blank_proof_landscape() -> None:

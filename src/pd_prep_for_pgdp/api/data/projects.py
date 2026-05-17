@@ -5,21 +5,15 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from ...adapters.auth import UserContext
-from ...adapters.database import IDatabase
-from ...adapters.storage import IStorage
-from ...core.ingest import (
-    extract_zip_image_thumbnail,
-    peek_zip_image_names,
-)
-from ...core.models import (
+from pd_prep_for_pgdp.api.dependencies import get_database, get_settings, get_storage, get_user
+from pd_prep_for_pgdp.core.ingest import extract_zip_image_thumbnail, peek_zip_image_names
+from pd_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -29,8 +23,14 @@ from ...core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from ...settings import Settings
-from ..dependencies import get_database, get_settings, get_storage, get_user
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pd_prep_for_pgdp.adapters.auth import UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.storage import IStorage
+    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -174,13 +174,12 @@ async def get_project(
         raise HTTPException(403, "not authorised")
     # Compute disk-cost fields on-demand (M4 spec §Disk-cost banner).
     # These are read-only annotations — never persisted to the DB.
-    project = project.model_copy(
+    return project.model_copy(
         update={
             "stage_artifacts_bytes": _compute_stage_artifacts_bytes(settings.data_root, project_id),
             "source_zip_bytes": _compute_source_zip_bytes(settings.data_root, project_id),
         }
     )
-    return project
 
 
 @router.patch(
@@ -213,7 +212,7 @@ async def update_project_config(
     project.updated_at = datetime.now(UTC)
     await db.put_project(project)
     # Re-derive prefixes whenever ranges change. Cheap (in-memory walk).
-    from ...core.assign_prefixes import assign_prefixes
+    from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     await assign_prefixes(project=project, database=db)
     return UpdateConfigResponse(
@@ -325,7 +324,7 @@ async def source_preview_thumbnail(
     becomes a 500 today, since that indicates a broken upload rather than
     a routine missing entry — let the SPA surface it.
     """
-    from ...core.ingest import ZipImageEntryNotFound
+    from pd_prep_for_pgdp.core.ingest import ZipImageEntryNotFound
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:

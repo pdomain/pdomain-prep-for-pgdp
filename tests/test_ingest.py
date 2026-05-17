@@ -114,7 +114,8 @@ async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage:
     assert [p.source_stem for p in pages] == ["page_001", "page_002", "page_003"]
     # Source extracted; thumbnails NOT yet created (separate stage).
     for p in pages:
-        assert p.source_key and await storage.exists(p.source_key)
+        assert p.source_key
+        assert await storage.exists(p.source_key)
         assert p.thumbnail_key is None
 
 
@@ -215,7 +216,8 @@ async def test_thumbnails_generates_jpgs_for_every_page(
 
     pages, _, _ = await db.list_pages(project.id, None, 100)
     for p in pages:
-        assert p.thumbnail_key and await storage.exists(p.thumbnail_key)
+        assert p.thumbnail_key
+        assert await storage.exists(p.thumbnail_key)
 
 
 @pytest.mark.asyncio

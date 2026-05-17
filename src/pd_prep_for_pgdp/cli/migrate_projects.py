@@ -23,8 +23,8 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from ..adapters.database.sqlite import SqliteDatabase
-from ..core.models import (
+from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pd_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
     PageProcessingStatus,
     PageRecord,
@@ -32,8 +32,8 @@ from ..core.models import (
     PageStageStatus,
     Project,
 )
-from ..core.pipeline.stage_dag import STAGE_VERSIONS
-from ..settings import Settings
+from pd_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
+from pd_prep_for_pgdp.settings import Settings
 
 LEGACY_STATUSES: frozenset[PageProcessingStatus] = frozenset(
     {PageProcessingStatus.complete, PageProcessingStatus.error, PageProcessingStatus.processing}

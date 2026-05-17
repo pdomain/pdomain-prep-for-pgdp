@@ -31,7 +31,7 @@ a placeholder until the illustration-crop logic lands.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -52,6 +52,9 @@ from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     _call_impl,
     run_stage,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ─── Unit tests ─────────────────────────────────────────────────────────────
 
@@ -1615,7 +1618,8 @@ async def test_cross_page_cascade_dirties_split_children_when_stage_upstream(
     # Confirm children's decode_source is clean before the run.
     for child_idx0 in (1, 2):
         row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "decode_source")
-        assert row is not None and row.status == PageStageStatus.clean
+        assert row is not None
+        assert row.status == PageStageStatus.clean
 
     # Run grayscale on the parent — grayscale is upstream of threshold.
     await run_stage(

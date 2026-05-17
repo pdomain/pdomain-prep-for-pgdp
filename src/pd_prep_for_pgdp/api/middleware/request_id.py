@@ -21,13 +21,17 @@ and the SPA fallback — to have the id.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
 
-from ...core.logging_config import request_id_var
+from pd_prep_for_pgdp.core.logging_config import request_id_var
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from starlette.requests import Request
+    from starlette.responses import Response
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):

@@ -24,9 +24,12 @@ from __future__ import annotations
 
 import io
 import zipfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # Roughly an 8x11" page at 150 DPI, but kept smaller than typical fixtures
 # so the resulting zip stays compact (a few KB per page).

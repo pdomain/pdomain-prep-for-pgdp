@@ -63,8 +63,10 @@ def test_filters_by_type_and_confidence(tmp_path: Path) -> None:
     out = auto_detect_illustrations(tmp_path / "img.png", layout_detector=detector, confidence_threshold=0.5)
 
     assert [r.index for r in out] == [1, 2]
-    assert out[0].L == 10 and out[0].R == 110
-    assert out[1].L == 0 and out[1].R == 5
+    assert out[0].L == 10
+    assert out[0].R == 110
+    assert out[1].L == 0
+    assert out[1].R == 5
 
 
 def test_raises_runtime_error_if_pd_book_tools_missing(

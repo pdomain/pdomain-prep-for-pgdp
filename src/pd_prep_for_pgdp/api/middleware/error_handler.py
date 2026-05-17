@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI, Request
 
 log = logging.getLogger(__name__)
 

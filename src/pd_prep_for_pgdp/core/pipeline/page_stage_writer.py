@@ -36,13 +36,17 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from time import time
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from ...adapters.database import IDatabase
-from ...core.models import PageStageState, PageStageStatus
+from pd_prep_for_pgdp.core.models import PageStageState, PageStageStatus
+
 from .stage_dag import STAGE_DAG, get_stage
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pd_prep_for_pgdp.adapters.database import IDatabase
 
 log = logging.getLogger(__name__)
 
@@ -535,7 +539,7 @@ async def commit_stage_artifacts_multi(
 
     # Step 4: snapshot pre-existing files.
     try:
-        for target, _tmp in tmp_paths.items():
+        for target in tmp_paths:
             if target.exists():
                 snap = target.with_name(f"{target.name}.tmp-prior-{tmp_uuid}")
                 try:
@@ -575,7 +579,7 @@ async def commit_stage_artifacts_multi(
                 # Roll back: remove any canonical files already placed, restore
                 # snapshots, remove remaining tmps.
                 canon_by_tmp = {v: k for k, v in tmp_paths.items()}
-                for _t2, canon2 in canon_by_tmp.items():
+                for canon2 in canon_by_tmp.values():
                     # Remove already-placed canonical files (except those with snapshot).
                     if canon2.exists() and canon2 not in snapshots:
                         _safe_rollback(

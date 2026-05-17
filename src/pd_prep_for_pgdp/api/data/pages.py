@@ -5,17 +5,21 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag
-
-from ...adapters.auth import UserContext
-from ...adapters.database import IDatabase
-from ...adapters.gpu.base import load_words_from_storage, words_key_for
-from ...adapters.storage import IStorage
-from ...core.models import (
+from pd_prep_for_pgdp.adapters.gpu.base import load_words_from_storage, words_key_for
+from pd_prep_for_pgdp.api.dependencies import (
+    get_database,
+    get_settings,
+    get_stage_events,
+    get_storage,
+    get_user,
+)
+from pd_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
     AlignmentOverride,
     IllustrationRegion,
@@ -31,22 +35,26 @@ from ...core.models import (
     PageStageStatus,
     PageType,
 )
-from ...core.pipeline.page_stage_writer import (
+from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
     StageArtifactWriteError,
     stage_artifact_path,
     stage_thumbnail_path,
 )
-from ...core.pipeline.stage_dag import get_stage, topological_order
-from ...core.pipeline.stage_runner import (
+from pd_prep_for_pgdp.core.pipeline.stage_dag import get_stage, topological_order
+from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageOutputUnsupported,
     StageRunFailed,
     cascade_dirty_for_config_change,
     run_stage,
 )
-from ...core.prefix import compute_prefix
-from ...settings import Settings
-from ..dependencies import get_database, get_settings, get_stage_events, get_storage, get_user
+from pd_prep_for_pgdp.core.prefix import compute_prefix
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.auth import UserContext
+    from pd_prep_for_pgdp.adapters.database import IDatabase
+    from pd_prep_for_pgdp.adapters.storage import IStorage
+    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -916,7 +924,7 @@ async def run_page_stage(
     # run_stage. The async path intentionally skips this — the job handler
     # will call run_stage itself and must re-resolve at execution time so any
     # config changes that arrived while the job was queued are picked up.
-    from ...core.config_resolver import resolve_page_config
+    from pd_prep_for_pgdp.core.config_resolver import resolve_page_config
 
     _system = await db.get_system_defaults(project.owner_id)
     _resolved_config = resolve_page_config(_system, project.config, page)
@@ -1155,7 +1163,7 @@ async def stream_page_stage_events(
     """
     from sse_starlette.sse import EventSourceResponse
 
-    from ...core.stage_events import stage_events_key
+    from pd_prep_for_pgdp.core.stage_events import stage_events_key
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:

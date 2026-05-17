@@ -51,19 +51,19 @@ def _settings(tmp_path) -> Settings:
 
 def _make_project(pid: str, *, owner_id: str = "default", archived: bool = False) -> Project:
     now = datetime.now(UTC)
-    data: dict = dict(
-        id=pid,
-        owner_id=owner_id,
-        name=pid,
-        created_at=now,
-        updated_at=now,
-        status=ProjectStatus.complete,
-        page_count=0,
-        proof_page_count=0,
-        config=ProjectConfig(book_name=pid, source_uri=""),
-        pipeline_state=PipelineState(),
-        storage_prefix=f"projects/{pid}/",
-    )
+    data: dict = {
+        "id": pid,
+        "owner_id": owner_id,
+        "name": pid,
+        "created_at": now,
+        "updated_at": now,
+        "status": ProjectStatus.complete,
+        "page_count": 0,
+        "proof_page_count": 0,
+        "config": ProjectConfig(book_name=pid, source_uri=""),
+        "pipeline_state": PipelineState(),
+        "storage_prefix": f"projects/{pid}/",
+    }
     if archived:
         data["archived"] = True
     return Project(**data)

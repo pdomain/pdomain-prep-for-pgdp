@@ -6,9 +6,12 @@ records. Mirrors the implementation in spec 01.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from .models import PageRecord, PageType, ProjectConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _PLATE_SUFFIX = {
     PageType.plate_b: "b",
@@ -23,7 +26,6 @@ def compute_prefix(
     pages_by_idx: Mapping[int, PageRecord],
 ) -> str | None:
     """Return e.g. "f003", "p045", "p045b" — or None if outside the proof range."""
-
     if idx0 < project.proof_start_idx0 or idx0 > project.proof_end_idx0:
         return None
 

@@ -9,8 +9,7 @@ Resolution rule: page override > project default override > system default.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import (
     PageRecord,
@@ -19,6 +18,9 @@ from .models import (
     ResolvedPageConfig,
     SystemDefaults,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 def _pick(field: str, page_value: Any, project_overrides: Mapping[str, Any], fallback: Any) -> Any:

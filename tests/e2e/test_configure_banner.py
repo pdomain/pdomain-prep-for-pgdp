@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from playwright.sync_api import Page, expect
 
@@ -29,7 +30,8 @@ from pd_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 
-from .conftest import LiveServer
+if TYPE_CHECKING:
+    from .conftest import LiveServer
 
 
 def _seed(db_url: str, project_id: str, job_type: JobType) -> None:

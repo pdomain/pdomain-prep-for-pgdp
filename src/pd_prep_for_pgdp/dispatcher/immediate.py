@@ -7,8 +7,10 @@ is a no-op since there is no scheduled flush.
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
-from ..adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
 
 class ImmediateDispatcher:

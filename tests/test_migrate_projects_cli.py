@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -30,6 +30,9 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _project(project_id: str = "proj1") -> Project:

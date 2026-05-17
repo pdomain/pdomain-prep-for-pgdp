@@ -106,7 +106,7 @@ def test_median_aspect_across_pages() -> None:
     from pd_prep_for_pgdp.core.auto_detect import median_aspect_ratio
 
     # Three images: aspect ratios 1.5, 1.65, 2.0.
-    pngs = [_pn for _pn in [_png_at_aspect(1.5), _png_at_aspect(1.65), _png_at_aspect(2.0)]]
+    pngs = [_png_at_aspect(1.5), _png_at_aspect(1.65), _png_at_aspect(2.0)]
     median = median_aspect_ratio(pngs)
     # Median of {1.5, 1.65, 2.0} = 1.65.
     assert abs(median - 1.65) < 0.01

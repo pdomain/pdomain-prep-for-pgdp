@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ...adapters.gpu import GPUBackend
-from ...core.models import IllustrationRegion, PageSplit
-from ..dependencies import get_gpu_backend
+from pd_prep_for_pgdp.api.dependencies import get_gpu_backend
+
+if TYPE_CHECKING:
+    from pd_prep_for_pgdp.adapters.gpu import GPUBackend
+    from pd_prep_for_pgdp.core.models import IllustrationRegion, PageSplit
 
 router = APIRouter(tags=["gpu"])
 

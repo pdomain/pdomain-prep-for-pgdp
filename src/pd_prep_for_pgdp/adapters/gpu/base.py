@@ -12,7 +12,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import Field
 
-from ...core.models import ApiModel, OcrWord, PageConfigOverrides
+from pd_prep_for_pgdp.core.models import ApiModel, OcrWord, PageConfigOverrides
 
 # ─── Wire shapes (also reused by /api/gpu route schemas) ─────────────────────
 

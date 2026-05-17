@@ -10,12 +10,14 @@ from __future__ import annotations
 import io
 import re
 import zipfile
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 from playwright.sync_api import Page, expect
 
-from .conftest import LiveServer
+if TYPE_CHECKING:
+    from .conftest import LiveServer
 
 
 def _png(h: int = 60, w: int = 60) -> bytes:

@@ -91,7 +91,8 @@ def test_retry_creates_new_queued_job_with_same_payload(tmp_path) -> None:
         assert r.status_code == 202, r.text
         body = r.json()
         new_id = body["job_id"]
-        assert new_id and new_id != old_id
+        assert new_id
+        assert new_id != old_id
 
         new_job = client.get(f"/api/data/jobs/{new_id}").json()
         # Accept "running" — the background runner may have picked up the job

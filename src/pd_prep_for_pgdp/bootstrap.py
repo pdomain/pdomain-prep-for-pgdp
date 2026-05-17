@@ -11,22 +11,18 @@ import logging
 import platform
 from contextlib import asynccontextmanager
 from importlib import resources
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .adapters.auth.apikey import ApiKeyAuth
-from .adapters.auth.base import IAuth
 from .adapters.auth.jwt_ import JwtAuth
 from .adapters.auth.none_ import NoneAuth
-from .adapters.database.base import IDatabase
 from .adapters.database.sqlite import SqliteDatabase
-from .adapters.gpu.base import GPUBackend
 from .adapters.gpu.modal_backend import ModalBackend
 from .adapters.gpu.shared_container import SharedContainerBackend
-from .adapters.storage.base import IStorage
 from .adapters.storage.filesystem import FilesystemStorage
 from .api.auth import install_auth_routes
 from .api.data import install_data_routes
@@ -34,10 +30,16 @@ from .api.gpu import install_gpu_routes
 from .api.middleware.error_handler import install_error_handlers
 from .api.middleware.request_id import RequestIdMiddleware
 from .core.logging_config import configure_logging
-from .dispatcher.base import IDispatcher
 from .dispatcher.batched import BatchDispatcher
 from .dispatcher.immediate import ImmediateDispatcher
 from .settings import Settings
+
+if TYPE_CHECKING:
+    from .adapters.auth.base import IAuth
+    from .adapters.database.base import IDatabase
+    from .adapters.gpu.base import GPUBackend
+    from .adapters.storage.base import IStorage
+    from .dispatcher.base import IDispatcher
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ def _autodetect_gpu_backend() -> str:
     except ImportError:
         pass
     except Exception:
-        log.error("unexpected error checking for CUDA (cupy import failed unexpectedly)", exc_info=True)
+        log.exception("unexpected error checking for CUDA (cupy import failed unexpectedly)")
     if platform.system() == "Darwin" and platform.machine() == "arm64":
         return "mps"
     return "cpu"

@@ -15,13 +15,17 @@ fails, so this module is safe to import lazily.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 # Eager imports — the [postgres] extra is required to construct this class.
 # Bootstrap wraps the resulting ImportError into a friendly RuntimeError
 # pointing the user at the extra; no module-level fallback shim here.
 from psycopg import AsyncConnection  # pyright: ignore[reportMissingImports]
 
-from ...core.models import Job, PageRecord, Project, SystemDefaults
-from .base import SearchResult
+from pd_prep_for_pgdp.core.models import Job, PageRecord, Project, SystemDefaults
+
+if TYPE_CHECKING:
+    from .base import SearchResult
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS system_defaults (

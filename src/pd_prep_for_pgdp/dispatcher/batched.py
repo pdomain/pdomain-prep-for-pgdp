@@ -17,7 +17,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
-from ..adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
+from pd_prep_for_pgdp.adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
 log = logging.getLogger(__name__)
 

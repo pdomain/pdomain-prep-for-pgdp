@@ -12,7 +12,10 @@ Locks in:
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 
 def test_cdn_put_writes_to_storage(client: TestClient) -> None:
