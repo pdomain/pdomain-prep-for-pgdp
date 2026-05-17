@@ -61,7 +61,7 @@ export function SearchPanel({ projectId }: Props) {
     enabled: committed.trim().length > 0,
   });
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     setOffset(0);
     setCommitted(query.trim());

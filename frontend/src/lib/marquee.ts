@@ -91,7 +91,7 @@ function rectsOverlap(
  * "N selected" count and for tests).
  */
 export function computeMarqueeSelection(
-  words: ReadonlyArray<OcrWord>,
+  words: readonly OcrWord[],
   rect: MarqueeRect,
 ): string[] {
   const out: string[] = [];

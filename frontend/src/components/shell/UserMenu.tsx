@@ -67,7 +67,7 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
     setAuthToken(null);
     setToken(null);
     queryClient.clear();
-    navigate("/login");
+    void navigate("/login");
   }
 
   // "none" mode: nothing to show.

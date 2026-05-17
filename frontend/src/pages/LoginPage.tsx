@@ -62,14 +62,18 @@ export function LoginPage() {
           sessionStorage.removeItem(PKCE_VERIFIER_KEY);
           const ret = sessionStorage.getItem(PKCE_RETURN_TO_KEY) ?? "/";
           sessionStorage.removeItem(PKCE_RETURN_TO_KEY);
-          navigate(ret, { replace: true });
+          void navigate(ret, { replace: true });
         })
-        .catch((err) => setError((err as Error).message));
+        .catch((err: unknown) =>
+          setError(err instanceof Error ? err.message : String(err)),
+        );
       return;
     }
 
     // Step 1: kick off the PKCE flow.
-    void startPkce(e).catch((err) => setError((err as Error).message));
+    void startPkce(e).catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
   }, [navigate]);
 
   return (

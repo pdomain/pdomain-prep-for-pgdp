@@ -70,7 +70,9 @@ export function ProjectReviewQueuePage() {
   // queue when a batch starts/stops so they don't have to reload manually.
   const activeBatch = useActiveBatchJob(projectId || null);
   useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ["review-queue", projectId] });
+    void queryClient.invalidateQueries({
+      queryKey: ["review-queue", projectId],
+    });
   }, [activeBatch.jobId, queryClient, projectId]);
 
   if (queue.isLoading) return <p className="text-ink-3">Loading…</p>;

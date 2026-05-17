@@ -165,9 +165,7 @@ export function JobsPage() {
 
         {jobs.isLoading && <p className="text-ink-3">Loading…</p>}
         {jobs.error && (
-          <p className="text-status-error">
-            Error: {(jobs.error as Error).message}
-          </p>
+          <p className="text-status-error">Error: {jobs.error.message}</p>
         )}
 
         {jobs.data && filteredJobs.length === 0 && (

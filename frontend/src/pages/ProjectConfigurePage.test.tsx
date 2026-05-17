@@ -398,9 +398,9 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     // Find the Build package step, then click its Run button
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
-    const runBtn = buildListItem?.querySelector(
+    const runBtn = buildListItem!.querySelector(
       'button[class*="hover:bg-slate-50"]',
-    ) as HTMLButtonElement;
+    )!;
 
     await userEvent.click(runBtn);
 
@@ -430,9 +430,9 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     // Find the Build package step
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
-    const runBtn = buildListItem?.querySelector(
+    const runBtn = buildListItem!.querySelector(
       'button[class*="hover:bg-slate-50"]',
-    ) as HTMLButtonElement;
+    )!;
 
     // The build_package button should be disabled while the job is active
     // (because useActiveBatchJob should detect the running job)
@@ -491,9 +491,9 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     // Find the Build package button
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
-    const runBtn = buildListItem?.querySelector(
+    const runBtn = buildListItem!.querySelector(
       'button[class*="hover:bg-slate-50"]',
-    ) as HTMLButtonElement;
+    )!;
 
     // Button should be enabled initially (no active job)
     await waitFor(() => {
@@ -805,7 +805,7 @@ describe("ProjectConfigurePage — RunPipelinePanel P0.2 (Download package)", ()
     const buildListItem = buildLabel.closest("li")!;
     const runBtn = buildListItem.querySelector(
       'button[class*="hover:bg-slate-50"]',
-    ) as HTMLButtonElement;
+    )!;
 
     await userEvent.click(runBtn);
 

@@ -28,6 +28,7 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 // dispatch should override globalThis.EventSource with their own mock via
 // vi.stubGlobal (as useStageEvents.test.tsx does).
 class EventSourceStub {
+  // eslint-disable-next-line @typescript-eslint/no-useless-constructor
   constructor(_url: string) {}
   addEventListener(_type: string, _fn: unknown): void {}
   removeEventListener(_type: string, _fn: unknown): void {}

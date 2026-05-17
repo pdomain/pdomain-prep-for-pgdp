@@ -142,9 +142,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
     await waitFor(() => {
       // Find by aria-label which is set on the SelectTrigger
-      const trigger = document.querySelector(
-        'button[aria-label="Engine"]',
-      ) as HTMLButtonElement;
+      const trigger = document.querySelector('button[aria-label="Engine"]')!;
       expect(trigger).toBeInTheDocument();
     });
   });
@@ -158,9 +156,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
     await waitFor(() => {
       // Find the button with aria-label "Engine"
-      const trigger = document.querySelector(
-        'button[aria-label="Engine"]',
-      ) as HTMLButtonElement;
+      const trigger = document.querySelector('button[aria-label="Engine"]')!;
       expect(trigger).toBeInTheDocument();
       // The trigger should display the current value (doctr)
       expect(trigger.textContent).toContain("doctr");
@@ -176,9 +172,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
     await waitFor(() => {
       // Find by aria-label which is set on the SelectTrigger
-      const trigger = document.querySelector(
-        'button[aria-label="Detector"]',
-      ) as HTMLButtonElement;
+      const trigger = document.querySelector('button[aria-label="Detector"]')!;
       expect(trigger).toBeInTheDocument();
     });
   });
@@ -192,9 +186,7 @@ describe("SettingsPage", () => {
     renderWithProviders(<SettingsPage />);
     await waitFor(() => {
       // Find the button with aria-label "Detector"
-      const trigger = document.querySelector(
-        'button[aria-label="Detector"]',
-      ) as HTMLButtonElement;
+      const trigger = document.querySelector('button[aria-label="Detector"]')!;
       expect(trigger).toBeInTheDocument();
       expect(trigger.textContent).toContain("pp-doclayout-plus-l");
     });

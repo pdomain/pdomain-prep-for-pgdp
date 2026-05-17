@@ -1,22 +1,18 @@
 // Flat ESLint config for the SPA.
 //
-// Keep the rule set deliberately conservative: this is the first lint
-// pass that's ever run on the SPA, and we want `npm run lint` to be
-// green on the existing tree without sweeping refactors. The TS
-// project itself already enforces `strict`, `noUnusedLocals`, and
-// `noUnusedParameters` (see frontend/tsconfig.app.json), so ESLint
-// here is a thin layer on top focused on:
-//
-//   - typescript-eslint recommended (no type-checking variant — keeps
-//     lint independent of `tsc -b` so it's still useful when the
-//     project tree isn't fully built)
+// Canonical workspace config (2026-05-17):
+//   - typescript-eslint strictTypeChecked + stylisticTypeChecked
+//     (type-aware rules; requires parserOptions.projectService = true)
 //   - react-hooks recommended (rules-of-hooks + exhaustive-deps)
 //   - react-refresh (only-export-components warning for HMR sanity)
 //   - eslint-config-prettier last, to disable any rules that would
 //     fight Prettier's formatting decisions
 //
-// Stylistic rules are owned by Prettier (see .prettierrc.json),
-// not ESLint.
+// NOTE: failOnWarnings (--max-warnings 0) is left for TS-3 after all
+// existing warnings are resolved. pre-commit runs eslint --max-warnings 0
+// already via the hook; this config file governs rule severity only.
+//
+// Stylistic rules are owned by Prettier (see .prettierrc.json), not ESLint.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -35,12 +31,30 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommended,
+  // strictTypeChecked supersedes recommended and adds type-aware rules.
+  // stylisticTypeChecked adds stylistic type-aware rules (consistent-type-
+  // imports, etc.) that Prettier doesn't cover.
+  // Scoped to src/**/*.{ts,tsx} so type-aware rules don't fire on
+  // postcss.config.js / vite.config.ts / other tooling JS files that are
+  // not included in tsconfig.app.json.
+  ...tseslint.configs.strictTypeChecked.map((c) => ({
+    ...c,
+    files: ["src/**/*.{ts,tsx}"],
+  })),
+  ...tseslint.configs.stylisticTypeChecked.map((c) => ({
+    ...c,
+    files: ["src/**/*.{ts,tsx}"],
+  })),
   {
     files: ["src/**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
+      parserOptions: {
+        // Type-aware linting: resolve types from the project's tsconfig.
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
       globals: {
         ...globals.browser,
         // `process` shows up only in vite.config.ts / vitest.config.ts
@@ -75,7 +89,55 @@ export default tseslint.config(
       // request bodies, jsdom XHR shims) make a tighter type more
       // noise than signal. Treat `any` as a warning, not an error,
       // so it surfaces in review without blocking lint.
+      // NOTE: flipped to "error" in src/ scope in TS-3.
       "@typescript-eslint/no-explicit-any": "warn",
+      // restrict-template-expressions fires on legitimate string
+      // coercions in JSX (e.g. `${someNumber}`). Allow number|boolean.
+      "@typescript-eslint/restrict-template-expressions": [
+        "error",
+        { allowNumber: true, allowBoolean: true },
+      ],
+      // no-confusing-void-expression: too noisy with void-typed callbacks
+      // passed inline (e.g. onClick={() => void someAsyncFn()}).
+      "@typescript-eslint/no-confusing-void-expression": "off",
+      // prefer-nullish-coalescing is stylistic; Prettier / existing
+      // patterns already prefer || in guards; turn off to avoid churn.
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
+      // consistent-type-assertions: "as" is the project convention.
+      "@typescript-eslint/consistent-type-assertions": [
+        "error",
+        { assertionStyle: "as" },
+      ],
+      // no-unnecessary-condition: after strict tsconfig flags, many
+      // defensive patterns (optional chaining, nullish coalescing) are
+      // flagged because TypeScript narrows types more aggressively.
+      // Keep the rule but downgrade to warn so CI stays green while the
+      // team works through them incrementally.
+      "@typescript-eslint/no-unnecessary-condition": "warn",
+      // no-non-null-assertion: needed post-noUncheckedIndexedAccess where
+      // bounds are proven by loop/length checks. Warn rather than error in
+      // src/ so CI catches new introductions without blocking fixes.
+      "@typescript-eslint/no-non-null-assertion": "warn",
+      // no-empty-function: empty stubs in test scaffolding are intentional.
+      // Configured to "warn" to surface real empty functions in review.
+      "@typescript-eslint/no-empty-function": "warn",
+      // require-await: async functions without await exist as API-shape
+      // adapters (satisfies an interface that requires async). Warn only.
+      "@typescript-eslint/require-await": "warn",
+      // no-misused-promises: event handlers often accept async callbacks.
+      // Disable for JSX event handlers to allow the common pattern.
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        { checksVoidReturn: { attributes: false } },
+      ],
+      // no-unsafe-*: window.__ENV__ is an untyped runtime injection; the
+      // pattern is intentional. Disable at src/ level; re-enable after a
+      // proper Vite `define` or `import.meta.env` migration (roadmap §18).
+      "@typescript-eslint/no-unsafe-assignment": "warn",
+      "@typescript-eslint/no-unsafe-member-access": "warn",
+      "@typescript-eslint/no-unsafe-argument": "warn",
+      "@typescript-eslint/no-unsafe-call": "warn",
+      "@typescript-eslint/no-unsafe-return": "warn",
     },
   },
   {
@@ -103,6 +165,19 @@ export default tseslint.config(
       // so the lint pass doesn't punish the test scaffolding.
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
+      // non-nullable-type-assertion-style fires when `as T` could be
+      // replaced by `!`, but test files often cast to a specific subtype
+      // (e.g. `as HTMLInputElement`) that also removes null — keep `as`.
+      "@typescript-eslint/non-nullable-type-assertion-style": "off",
+      // Tests legitimately grab prototype methods for monkey-patching
+      // (e.g. beforeAll(() => { orig = HTMLElement.prototype.method })).
+      "@typescript-eslint/unbound-method": "off",
+      // Test files use `as` casts heavily for mock typing — allow.
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
     },
   },
   // Must come last: turns off any stylistic ESLint rule that would

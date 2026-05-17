@@ -320,13 +320,13 @@ describe("ProjectListPage folder-upload mode", () => {
     // In default ZIP mode the zip input is present
     const zipInput = document.querySelector(
       'input[type="file"][accept*=".zip"]',
-    ) as HTMLInputElement | null;
+    );
     expect(zipInput).not.toBeNull();
 
     // The folder (webkitdirectory) input must NOT be present
     const folderInput = document.querySelector(
       'input[type="file"][multiple][data-folder-input="true"]',
-    ) as HTMLInputElement | null;
+    );
     expect(folderInput).toBeNull();
   });
 
@@ -346,13 +346,13 @@ describe("ProjectListPage folder-upload mode", () => {
     // Folder input is now present (data-folder-input is the testable marker)
     const folderInput = document.querySelector(
       'input[type="file"][multiple][data-folder-input="true"]',
-    ) as HTMLInputElement | null;
+    );
     expect(folderInput).not.toBeNull();
 
     // The ZIP-only input must NOT be present any more
     const zipInput = document.querySelector(
       'input[type="file"][accept*=".zip"]',
-    ) as HTMLInputElement | null;
+    );
     expect(zipInput).toBeNull();
   });
 

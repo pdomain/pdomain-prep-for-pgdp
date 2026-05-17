@@ -21,7 +21,7 @@
 import type { DiffLine } from "./lineDiff";
 
 interface Props {
-  diff: ReadonlyArray<DiffLine>;
+  diff: readonly DiffLine[];
   /** Optional class on the outer wrapper. */
   className?: string;
 }
@@ -38,7 +38,7 @@ interface Row {
  *   - lone delete -> row with empty right
  *   - lone insert -> row with empty left
  */
-function buildRows(diff: ReadonlyArray<DiffLine>): Row[] {
+function buildRows(diff: readonly DiffLine[]): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < diff.length; i++) {
     // noUncheckedIndexedAccess: i < diff.length guarantees defined
@@ -47,7 +47,7 @@ function buildRows(diff: ReadonlyArray<DiffLine>): Row[] {
       rows.push({ left: d, right: d });
     } else if (d.kind === "delete") {
       const peek = diff[i + 1];
-      if (peek !== undefined && peek.kind === "insert") {
+      if (peek?.kind === "insert") {
         rows.push({ left: d, right: peek });
         i++;
       } else {
@@ -88,7 +88,7 @@ function Column({
   label,
 }: {
   side: "left" | "right";
-  rows: ReadonlyArray<Row>;
+  rows: readonly Row[];
   label: string;
 }) {
   return (

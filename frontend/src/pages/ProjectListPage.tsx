@@ -78,11 +78,11 @@ export function ProjectListPage() {
         {projects.isLoading && <p className="text-ink-3">Loading…</p>}
         {projects.error && (
           <p className="text-status-error">
-            Error loading projects: {(projects.error as Error).message}
+            Error loading projects: {projects.error.message}
           </p>
         )}
 
-        {projects.data && projects.data.length === 0 && (
+        {projects.data?.length === 0 && (
           <Card
             data-testid="empty-state"
             className="flex flex-col items-center gap-4 border-dashed border-border-2 p-12 text-center"
@@ -128,7 +128,7 @@ function ProjectCard({
   const del = useMutation({
     mutationFn: () => api.delete(`/api/data/projects/${project.id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 
@@ -142,7 +142,7 @@ function ProjectCard({
               {project.page_count} pages · {formattedDate(project.updated_at)}
             </p>
           </div>
-          <Badge status={toBadgeStatus(project.status as ProjectStatus)} />
+          <Badge status={toBadgeStatus(project.status)} />
         </div>
         <div className="flex items-center justify-between">
           <button
@@ -276,7 +276,7 @@ function CreateProjectModal({
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
       // Take the user to the JobsPage filtered to this project — they'll
       // watch unzip then thumbnails progress side-by-side.
-      navigate(`/jobs?project_id=${encodeURIComponent(project.id)}`);
+      void navigate(`/jobs?project_id=${encodeURIComponent(project.id)}`);
     },
     onError: () => {
       // Surface via the global sonner toast (FormErrorBanner below);
@@ -410,7 +410,7 @@ function CreateProjectModal({
 
         <FormErrorBanner
           prefix="create project failed"
-          error={createMut.isError ? (createMut.error as Error) : null}
+          error={createMut.isError ? createMut.error : null}
         />
       </DialogContent>
     </Dialog>

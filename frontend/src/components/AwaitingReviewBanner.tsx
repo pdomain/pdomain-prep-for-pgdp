@@ -43,8 +43,8 @@ export function AwaitingReviewBanner({
   if (
     !projectId ||
     dismissed ||
-    !status.data ||
-    status.data.awaiting_review_job_id === null
+    status.data?.awaiting_review_job_id === null ||
+    !status.data
   ) {
     return null;
   }

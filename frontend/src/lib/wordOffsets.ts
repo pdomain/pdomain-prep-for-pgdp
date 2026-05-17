@@ -43,13 +43,13 @@ export interface CharRange {
  */
 export interface WordOffsetIndex {
   text: string;
-  words: ReadonlyArray<OcrWord>;
-  ranges: ReadonlyArray<CharRange | null>;
+  words: readonly OcrWord[];
+  ranges: readonly (CharRange | null)[];
   /**
    * Resolved ranges sorted by `start`, paired with the original
    * word index. Used by `offsetToWord` for O(log n) lookup.
    */
-  sorted: ReadonlyArray<{ start: number; end: number; wordIndex: number }>;
+  sorted: readonly { start: number; end: number; wordIndex: number }[];
 }
 
 /**
@@ -70,9 +70,9 @@ export interface WordOffsetIndex {
  */
 export function buildWordOffsetIndex(
   text: string,
-  words: ReadonlyArray<OcrWord>,
+  words: readonly OcrWord[],
 ): WordOffsetIndex {
-  const ranges: Array<CharRange | null> = new Array(words.length).fill(null);
+  const ranges: (CharRange | null)[] = new Array(words.length).fill(null);
   let cursor = 0;
 
   for (let i = 0; i < words.length; i++) {

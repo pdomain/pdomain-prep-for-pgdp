@@ -37,7 +37,7 @@ interface Props {
   /** Pixel height of the underlying image at OCR time. */
   naturalHeight: number;
   /** Word list from the OCR endpoint (may be empty for legacy pages). */
-  words: ReadonlyArray<OcrWord>;
+  words: readonly OcrWord[];
   /** Currently active word index (highlighted), or `null` for none. */
   activeWordIndex: number | null;
   /** Click handler for any word rect. */
@@ -181,7 +181,7 @@ export function WordBboxOverlay({
     const container = stage.container();
     if (!container) return;
     const pt = stagePointToNatural(ev.evt.clientX, ev.evt.clientY, container);
-    setMarqueeAnchor({ x: pt.x, y: pt.y, additive: !!ev.evt.shiftKey });
+    setMarqueeAnchor({ x: pt.x, y: pt.y, additive: ev.evt.shiftKey });
     setMarqueeCurrent({ x: pt.x, y: pt.y });
   };
 

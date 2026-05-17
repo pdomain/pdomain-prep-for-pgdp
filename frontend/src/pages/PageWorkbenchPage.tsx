@@ -94,8 +94,10 @@ export function PageWorkbenchPage() {
   // manual reload.
   useEffect(() => {
     if (jobProgress.isTerminal && liveBatchJobId) {
-      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
-      queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
     }
   }, [jobProgress.isTerminal, liveBatchJobId, queryClient, projectId, idx0]);
 
@@ -107,7 +109,9 @@ export function PageWorkbenchPage() {
       jobProgress.currentPage > idx0 &&
       liveBatchJobId
     ) {
-      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
     }
   }, [jobProgress.currentPage, idx0, liveBatchJobId, queryClient, projectId]);
 
@@ -139,9 +143,9 @@ export function PageWorkbenchPage() {
         body,
       ),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
       const first = data.children[0];
-      if (first) navigate(`/projects/${projectId}/pages/${first.idx0}`);
+      if (first) void navigate(`/projects/${projectId}/pages/${first.idx0}`);
     },
   });
 
@@ -156,8 +160,10 @@ export function PageWorkbenchPage() {
         patch,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
     },
   });
 
@@ -176,7 +182,7 @@ export function PageWorkbenchPage() {
       return api.post(url, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-stages", projectId, idx0],
       });
     },
@@ -191,7 +197,7 @@ export function PageWorkbenchPage() {
         {},
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-stages", projectId, idx0],
       });
       setEditMode("view");
@@ -205,8 +211,10 @@ export function PageWorkbenchPage() {
         config_overrides: { ...overrides, manual_deskew_angle: angle },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
       runDeskewStage.mutate();
     },
   });
@@ -247,7 +255,7 @@ export function PageWorkbenchPage() {
     T: number;
     B: number;
   }) => {
-    const splits = (page.data!.splits as PageSplit[]) ?? [];
+    const splits = (page.data.splits as PageSplit[]) ?? [];
     const next: PageSplit = {
       suffix: nextSplitSuffix(splits),
       reading_order: splits.length,
@@ -259,7 +267,7 @@ export function PageWorkbenchPage() {
       alignment: null,
       ocr_engine: null,
     };
-    commitOverrides.mutate({ splits: [...splits, next] as any });
+    commitOverrides.mutate({ splits: [...splits, next] });
   };
 
   const handleAddRegion = (rect: {
@@ -269,7 +277,7 @@ export function PageWorkbenchPage() {
     B: number;
   }) => {
     const regions =
-      (page.data!.illustration_regions as IllustrationRegion[]) ?? [];
+      (page.data.illustration_regions as IllustrationRegion[]) ?? [];
     const next: IllustrationRegion = {
       index: regions.length + 1,
       label: "",
@@ -283,22 +291,22 @@ export function PageWorkbenchPage() {
       convert_to_grayscale: false,
     };
     commitOverrides.mutate({
-      illustration_regions: [...regions, next] as any,
+      illustration_regions: [...regions, next],
     });
   };
 
   const handleDeleteSplit = (suffix: string) => {
-    const splits = (page.data!.splits as PageSplit[]) ?? [];
+    const splits = (page.data.splits as PageSplit[]) ?? [];
     commitOverrides.mutate({
-      splits: splits.filter((s) => s.suffix !== suffix) as any,
+      splits: splits.filter((s) => s.suffix !== suffix),
     });
   };
 
   const handleDeleteRegion = (index: number) => {
     const regions =
-      (page.data!.illustration_regions as IllustrationRegion[]) ?? [];
+      (page.data.illustration_regions as IllustrationRegion[]) ?? [];
     commitOverrides.mutate({
-      illustration_regions: regions.filter((r) => r.index !== index) as any,
+      illustration_regions: regions.filter((r) => r.index !== index),
     });
   };
 
@@ -306,11 +314,11 @@ export function PageWorkbenchPage() {
     suffix: string,
     rect: { L: number; R: number; T: number; B: number },
   ) => {
-    const splits = (page.data!.splits as PageSplit[]) ?? [];
+    const splits = (page.data.splits as PageSplit[]) ?? [];
     const updated = splits.map((s) =>
       s.suffix === suffix ? { ...s, ...rect } : s,
     );
-    commitOverrides.mutate({ splits: updated as any });
+    commitOverrides.mutate({ splits: updated });
   };
 
   const handleUpdateRegion = (
@@ -318,11 +326,11 @@ export function PageWorkbenchPage() {
     rect: { L: number; R: number; T: number; B: number },
   ) => {
     const regions =
-      (page.data!.illustration_regions as IllustrationRegion[]) ?? [];
+      (page.data.illustration_regions as IllustrationRegion[]) ?? [];
     const updated = regions.map((r) =>
       r.index === index ? { ...r, ...rect } : r,
     );
-    commitOverrides.mutate({ illustration_regions: updated as any });
+    commitOverrides.mutate({ illustration_regions: updated });
   };
 
   return (
@@ -454,7 +462,7 @@ export function PageWorkbenchPage() {
           onChange={(patch) => commitOverrides.mutate(patch)}
         />
         <SplitsPanel
-          splits={(page.data.splits as PageSplit[]) ?? []}
+          splits={page.data.splits ?? []}
           onDelete={handleDeleteSplit}
         />
         <CreateSiblingPanel
@@ -484,9 +492,7 @@ export function PageWorkbenchPage() {
           isPending={createSiblings.isPending}
         />
         <RegionsPanel
-          regions={
-            (page.data.illustration_regions as IllustrationRegion[]) ?? []
-          }
+          regions={page.data.illustration_regions ?? []}
           onDelete={handleDeleteRegion}
         />
         <ConfigOverridesPanel

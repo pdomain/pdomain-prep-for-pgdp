@@ -160,7 +160,7 @@ function AuthGuard() {
     const env = (window as any).__ENV__ ?? {};
     if (env.AUTH_MODE !== "jwt") return;
     if (location.pathname === "/login") return;
-    if (!getAuthToken()) navigate("/login", { replace: true });
+    if (!getAuthToken()) void navigate("/login", { replace: true });
   }, [navigate, location.pathname]);
 
   // Reactive redirect: any cached query that 401s.
@@ -172,7 +172,7 @@ function AuthGuard() {
     const cache = queryClient.getQueryCache();
     const unsub = cache.subscribe((event: any) => {
       const status = event?.query?.state?.error?.status;
-      if (status === 401) navigate("/login", { replace: true });
+      if (status === 401) void navigate("/login", { replace: true });
     });
     return () => unsub();
   }, [queryClient, navigate, location.pathname]);

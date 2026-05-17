@@ -91,7 +91,7 @@ export function ProjectConfigurePage() {
     queryFn: ({ pageParam }) =>
       api.get<ListPagesResponse>(
         `/api/data/projects/${projectId}/pages?limit=${pageSize}` +
-          (pageParam ? `&cursor=${encodeURIComponent(String(pageParam))}` : ""),
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""),
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
@@ -154,7 +154,7 @@ export function ProjectConfigurePage() {
     onSuccess: () => {
       // Clear local optimistic order so the invalidated server data takes over.
       setLocalPageOrder(null);
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
     },
     onError: () => {
       // Revert to the snapshot captured at drag-start.
@@ -449,14 +449,14 @@ function BookSettingsAccordion({
         },
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
     },
   });
 
   const layoutConf =
     typeof draft.default_overrides["layout_detector_confidence"] === "number"
-      ? (draft.default_overrides["layout_detector_confidence"] as number)
+      ? draft.default_overrides["layout_detector_confidence"]
       : null;
 
   return (
@@ -629,7 +629,7 @@ function BulkActions({
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
       onClear();
     },
   });
@@ -791,7 +791,7 @@ function RunPipelinePanel({
       // right away, closing the gap between mutation completion and the next
       // 3-second poll cycle. This keeps the button disabled immediately after
       // clicking, preventing a brief flash of the enabled state.
-      queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["jobs", projectId] });
     },
   });
 
@@ -1007,7 +1007,7 @@ function ProjectJobsFeed({ projectId }: { projectId: string }) {
       {jobs.isLoading && (
         <div className="px-4 pb-3 text-xs text-slate-500">Loading…</div>
       )}
-      {jobs.data && jobs.data.length === 0 && (
+      {jobs.data?.length === 0 && (
         <div className="px-4 pb-3 text-xs text-slate-500">
           No jobs run yet for this project.
         </div>

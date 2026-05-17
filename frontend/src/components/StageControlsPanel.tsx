@@ -77,7 +77,9 @@ export function StageControlsPanel({
         config_overrides: localOverrides,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["page", projectId, idx0] });
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
       onApplied?.();
     },
   });
@@ -92,7 +94,7 @@ export function StageControlsPanel({
       return api.post<PageStageState>(url, {});
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-stages", projectId, idx0],
       });
       onRunComplete?.();

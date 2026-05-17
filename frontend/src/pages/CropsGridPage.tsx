@@ -28,7 +28,7 @@ export function CropsGridPage() {
     queryFn: ({ pageParam }) =>
       api.get<ListPagesResponse>(
         `/api/data/projects/${projectId}/pages?limit=200` +
-          (pageParam ? `&cursor=${encodeURIComponent(String(pageParam))}` : ""),
+          (pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""),
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor ?? undefined,

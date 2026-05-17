@@ -17,7 +17,7 @@ import { useStageEvents } from "./useStageEvents";
 
 type PageStageState = components["schemas"]["PageStageState"];
 
-function makeRow(stage_id: string, status: string = "not-run"): PageStageState {
+function makeRow(stage_id: string, status = "not-run"): PageStageState {
   return {
     project_id: "p1",
     page_id: "0000",

@@ -131,18 +131,17 @@ function makeWord(overrides: Partial<OcrWord> & { id: string }): OcrWord {
  */
 function makeTrackElement(width: number, height: number): HTMLElement {
   const el = document.createElement("div");
-  el.getBoundingClientRect = () =>
-    ({
-      width,
-      height,
-      top: 0,
-      left: 0,
-      right: width,
-      bottom: height,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    }) as DOMRect;
+  el.getBoundingClientRect = () => ({
+    width,
+    height,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: height,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
   document.body.appendChild(el);
   return el;
 }
@@ -301,18 +300,17 @@ describe("WordBboxOverlay", () => {
     // Stub the stage's getBoundingClientRect so client→natural math
     // is deterministic. Stage container at origin, 500×750 (matches
     // the rendered size that the natural→DOM scaling assumes).
-    stage.getBoundingClientRect = () =>
-      ({
-        width: 500,
-        height: 750,
-        top: 0,
-        left: 0,
-        right: 500,
-        bottom: 750,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      }) as DOMRect;
+    stage.getBoundingClientRect = () => ({
+      width: 500,
+      height: 750,
+      top: 0,
+      left: 0,
+      right: 500,
+      bottom: 750,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
 
     // sx=sy=0.5 → DOM (25, 25) → natural (50, 50); DOM (150, 80) →
     // natural (300, 160). That marquee fully covers w0 (100,100→180,130)
@@ -347,18 +345,17 @@ describe("WordBboxOverlay", () => {
     );
 
     const stage = screen.getByTestId("konva-stage");
-    stage.getBoundingClientRect = () =>
-      ({
-        width: 500,
-        height: 750,
-        top: 0,
-        left: 0,
-        right: 500,
-        bottom: 750,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      }) as DOMRect;
+    stage.getBoundingClientRect = () => ({
+      width: 500,
+      height: 750,
+      top: 0,
+      left: 0,
+      right: 500,
+      bottom: 750,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
 
     fireEvent.mouseDown(stage, { clientX: 25, clientY: 25, shiftKey: true });
     fireEvent.mouseMove(stage, { clientX: 150, clientY: 80 });

@@ -163,7 +163,7 @@ describe("StageChainRail status colors", () => {
       server.use(
         http.get("/api/data/projects/p1/pages/0/stages", () =>
           HttpResponse.json([
-            makeRow("grayscale", incoming as PageStageStatus),
+            makeRow("grayscale", incoming),
             ...STAGE_IDS.filter((s) => s !== "grayscale").map((s) =>
               makeRow(s),
             ),

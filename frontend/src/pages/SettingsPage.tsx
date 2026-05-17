@@ -52,7 +52,7 @@ export function SettingsPage() {
     mutationFn: (next: SystemDefaults) =>
       api.put<SystemDefaults>("/api/data/system/defaults", next),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
+      void queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
     },
   });
 
@@ -66,7 +66,7 @@ export function SettingsPage() {
           .join("\n"),
       );
       setHyphenText(d.hyphenation_join_list.join("\n"));
-      queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
+      void queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
     },
   });
 
@@ -76,7 +76,7 @@ export function SettingsPage() {
   if (defaults.error) {
     return (
       <p className="text-status-error">
-        Couldn't load defaults: {(defaults.error as Error).message}
+        Couldn't load defaults: {defaults.error.message}
       </p>
     );
   }
@@ -140,7 +140,7 @@ export function SettingsPage() {
         <SelectField
           label="Engine"
           value={draft.ocr_engine}
-          options={OCR_ENGINES as readonly string[]}
+          options={OCR_ENGINES}
           onChange={(v) =>
             patch("ocr_engine", v as SystemDefaults["ocr_engine"])
           }
@@ -167,7 +167,7 @@ export function SettingsPage() {
         <SelectField
           label="Detector"
           value={draft.layout_detector}
-          options={LAYOUT_DETECTORS as readonly string[]}
+          options={LAYOUT_DETECTORS}
           onChange={(v) =>
             patch("layout_detector", v as SystemDefaults["layout_detector"])
           }
@@ -239,7 +239,9 @@ export function SettingsPage() {
                 .join("\n"),
             );
             setHyphenText(d.hyphenation_join_list.join("\n"));
-            queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
+            void queryClient.invalidateQueries({
+              queryKey: ["system-defaults"],
+            });
           }}
         />
         <Button
@@ -256,7 +258,7 @@ export function SettingsPage() {
         {save.isSuccess && <span className="text-sm text-ink-2">Saved.</span>}
         {save.isError && (
           <span className="text-sm text-status-error">
-            {(save.error as Error).message}
+            {save.error.message}
           </span>
         )}
       </div>
@@ -270,7 +272,7 @@ function parseScannos(text: string): Record<string, string> {
     const line = raw.trim();
     if (!line) continue;
     // Accept either tab- or whitespace-separated.
-    const m = line.match(/^(\S+)\s+(.+)$/);
+    const m = /^(\S+)\s+(.+)$/.exec(line);
     if (!m) continue;
     // noUncheckedIndexedAccess: groups 1 and 2 are defined when regex matches
     out[m[1]!] = m[2]!.trim();

@@ -75,7 +75,9 @@ export function useJobProgress(jobId: string | null): {
             error: j.error_message,
           }),
         )
-        .catch((e) => setError((e as Error).message));
+        .catch((e: unknown) =>
+          setError(e instanceof Error ? e.message : String(e)),
+        );
     };
     return () => {
       es.close();

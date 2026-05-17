@@ -234,7 +234,7 @@ describe("api.patch against /api/data/projects/{id}/pages/{idx0} (msw)", () => {
         "/api/data/projects/prj_abc123/pages/0",
         // Cast — we want msw to see a deliberately invalid payload so
         // the test mirrors what FastAPI would actually reject.
-        { page_type: "not_a_real_type" } as unknown as UpdatePageRequest,
+        { page_type: "not_a_real_type" },
       ),
     ).rejects.toMatchObject({
       message: "HTTP 422",

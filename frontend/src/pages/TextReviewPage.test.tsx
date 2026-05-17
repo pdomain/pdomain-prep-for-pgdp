@@ -182,7 +182,7 @@ describe("TextReviewPage save lifecycle", () => {
     // The textarea is the single <textarea> on the page. Wait until
     // its value matches the loaded text — proves both queries resolved.
     const ta = await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el).not.toBeNull();
       expect(el.value).toBe("first line\nsecond line\n");
       return el;
@@ -273,7 +273,7 @@ describe("TextReviewPage save lifecycle", () => {
 
     // Wait for the textarea to populate from the first GET /text response.
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el).not.toBeNull();
       expect(el.value).toBe("alpha\nbeta\ngamma\n");
     });
@@ -293,7 +293,7 @@ describe("TextReviewPage save lifecycle", () => {
 
     // (b) Textarea content is updated from the refetched GET /text response.
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha\nBETA\ngamma\n");
     });
 
@@ -341,7 +341,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
         x: 0,
         y: 0,
         toJSON: () => ({}),
-      } as DOMRect;
+      };
     };
   });
   afterAll(() => {
@@ -356,7 +356,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
   // calls. Tests that don't need fake timers use real timers.
 
   function fireImgLoad(natural: { w: number; h: number }) {
-    const img = document.querySelector("img") as HTMLImageElement;
+    const img = document.querySelector("img")!;
     expect(img).not.toBeNull();
     Object.defineProperty(img, "naturalWidth", {
       configurable: true,
@@ -426,7 +426,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
     // Wait for the page text + words to populate.
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta gamma\n");
     });
 
@@ -467,7 +467,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
     // Textarea reflects the rebuilt text from the server.
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("gamma\n");
     });
 
@@ -538,7 +538,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta\n");
     });
     fireImgLoad({ w: 1000, h: 100 });
@@ -604,7 +604,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta gamma\n");
     });
 
@@ -665,7 +665,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta gamma\n");
     });
 
@@ -731,7 +731,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta\n");
     });
 
@@ -791,7 +791,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     );
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta\n");
     });
     fireImgLoad({ w: 1000, h: 100 });
@@ -871,7 +871,7 @@ describe("TextReviewPage §9a delete-words flow", () => {
     renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
 
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el.value).toBe("alpha beta gamma\n");
     });
     fireImgLoad({ w: 1000, h: 100 });
@@ -967,7 +967,7 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
 
     // Wait for the page to load.
     await waitFor(() => {
-      const el = document.querySelector("textarea") as HTMLTextAreaElement;
+      const el = document.querySelector("textarea")!;
       expect(el).not.toBeNull();
     });
 
@@ -1011,7 +1011,7 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
       // Look for a button with aria-label "Split selection"
       const splitTrigger = document.querySelector(
         'button[aria-label="Split selection"]',
-      ) as HTMLButtonElement;
+      )!;
       expect(splitTrigger).toBeInTheDocument();
     });
   });
@@ -1042,7 +1042,7 @@ describe("TextReviewPage P2-6 hi-fi layout", () => {
     await waitFor(() => {
       const splitTrigger = document.querySelector(
         'button[aria-label="Split selection"]',
-      ) as HTMLButtonElement;
+      )!;
       expect(splitTrigger).toBeInTheDocument();
       // The trigger should display "(whole page)" as the selected value
       expect(splitTrigger.textContent).toContain("(whole page)");

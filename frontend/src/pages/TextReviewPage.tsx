@@ -173,7 +173,7 @@ export function TextReviewPage() {
       // Persisting the user's edits ends the "compare against
       // prior re-OCR" workflow — the new content is now canonical.
       setPriorText(null);
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
     },
@@ -212,7 +212,7 @@ export function TextReviewPage() {
       // The diff snapshot (re-OCR comparison) is a separate flow; do
       // not clear `priorText` — the user may still want to see the
       // pre-re-OCR diff after a delete.
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
       // Open the undo window after the server-confirmed delete. onCommit
@@ -227,7 +227,7 @@ export function TextReviewPage() {
       pendingDeleteRef.current = null;
       // Soft-delete didn't happen on the server — re-fetch canonical state
       // so the optimistically-removed words reappear on the canvas.
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
     },
@@ -257,7 +257,7 @@ export function TextReviewPage() {
       setWords((prev) => prev.filter((w) => !ids.includes(w.id)));
       setLiveMessage("Restore failed — please try again");
       // Re-sync with server to ensure UI matches actual state.
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
     },
@@ -361,7 +361,7 @@ export function TextReviewPage() {
     onSuccess: () => {
       // Invalidate the text query; the useEffect on text$.data updates
       // text / words / dirty / activeWordIndex when the refetch completes.
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
     },
@@ -387,10 +387,10 @@ export function TextReviewPage() {
   if (page.isLoading) return <p className="text-ink-3">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
-  const splits = page.data.splits as Array<{
+  const splits = page.data.splits as {
     suffix: string;
     reading_order: number;
-  }>;
+  }[];
   const imageKey = page.data.processed_image_key || page.data.thumbnail_key;
 
   const handleTextareaSelect = () => {
@@ -460,7 +460,7 @@ export function TextReviewPage() {
                     .sort((a, b) => a.reading_order - b.reading_order)
                     .map((s) => (
                       <SelectItem key={s.suffix} value={s.suffix}>
-                        {page.data!.prefix}
+                        {page.data.prefix}
                         {s.suffix}
                       </SelectItem>
                     ))}
@@ -657,15 +657,15 @@ export function TextReviewPage() {
             )}
             <FormErrorBanner
               prefix="save failed"
-              error={save.isError ? (save.error as Error) : null}
+              error={save.isError ? save.error : null}
             />
             <FormErrorBanner
               prefix="ocr failed"
-              error={reocr.isError ? (reocr.error as Error) : null}
+              error={reocr.isError ? reocr.error : null}
             />
             <FormErrorBanner
               prefix="delete failed"
-              error={deleteWords.isError ? (deleteWords.error as Error) : null}
+              error={deleteWords.isError ? deleteWords.error : null}
             />
             {priorText !== null && (
               <div className="ml-auto flex items-center gap-2">
