@@ -272,7 +272,7 @@ pre-commit-check: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
 
 test: ## Run pytest (excludes e2e/)
-	uv run pytest tests/ -v --ignore=tests/e2e
+	uv run pytest tests/ -v --ignore=tests/e2e -n auto
 
 e2e: frontend-build ## Run Playwright E2E tests (requires `playwright install chromium`)
 	uv run --group e2e pytest tests/e2e -v
