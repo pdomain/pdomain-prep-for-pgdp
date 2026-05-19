@@ -63,8 +63,6 @@ state.db*
 # ship-issue bot temp cache (issue JSON written by ship-issue-pick.py)
 .ship-issue-tmp/
 
-# Hourly-regenerated spec-chain dashboard — workspace-only artifact, not source.
-docs/spec-chain-report.md
 
 # AI=1 make output capture log
 .ci-ai.log
