@@ -14,6 +14,7 @@ license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "pd-book-tools",
+    "pd-ocr-ops>=0.2,<0.3",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
@@ -69,7 +70,8 @@ e2e = [
 ]
 
 [tool.uv.sources]
-pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.9.0" }
+pd-book-tools = { path = "../pd-book-tools", editable = true }
+pd-ocr-ops = { path = "../pd-ocr-ops", editable = true }
 
 [tool.hatch.version]
 source = "vcs"

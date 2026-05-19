@@ -16,13 +16,13 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pd_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
+from pd_ocr_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
 
 from .adapters.auth.apikey import ApiKeyAuth
 from .adapters.auth.jwt_ import JwtAuth
 from .adapters.auth.none_ import NoneAuth
 from .adapters.database.sqlite import SqliteDatabase
-from .adapters.gpu.modal_backend import ModalBackend
-from .adapters.gpu.shared_container import SharedContainerBackend
 from .adapters.storage.filesystem import FilesystemStorage
 from .api.auth import install_auth_routes
 from .api.data import install_data_routes
@@ -35,9 +35,10 @@ from .dispatcher.immediate import ImmediateDispatcher
 from .settings import Settings
 
 if TYPE_CHECKING:
+    from pd_ocr_ops.gpu import GPUBackend
+
     from .adapters.auth.base import IAuth
     from .adapters.database.base import IDatabase
-    from .adapters.gpu.base import GPUBackend
     from .adapters.storage.base import IStorage
     from .dispatcher.base import IDispatcher
 
@@ -146,7 +147,7 @@ def build_gpu_backend(
     if chosen == "modal":
         if not (settings.modal_token_id and settings.modal_token_secret):
             raise RuntimeError("MODAL_TOKEN_ID + MODAL_TOKEN_SECRET required when gpu_backend=modal")
-        return ModalBackend(settings.modal_token_id, settings.modal_token_secret)
+        return ModalBackend(settings.modal_token_id, settings.modal_token_secret, app_name="pgdp-prep")
     if chosen == "shared_container":
         if not settings.shared_gpu_url:
             raise RuntimeError("SHARED_GPU_URL required when gpu_backend=shared_container")

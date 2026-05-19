@@ -14,9 +14,10 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 if TYPE_CHECKING:
+    from pd_ocr_ops.gpu import GPUBackend
+
     from pd_prep_for_pgdp.adapters.auth import IAuth, UserContext
     from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.gpu import GPUBackend
     from pd_prep_for_pgdp.adapters.storage import IStorage
     from pd_prep_for_pgdp.dispatcher import IDispatcher
     from pd_prep_for_pgdp.settings import Settings

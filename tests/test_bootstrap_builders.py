@@ -193,8 +193,8 @@ def test_build_storage_s3_returns_s3storage(tmp_path, monkeypatch: pytest.Monkey
 
 
 def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
-    """`gpu_backend=modal` with both tokens returns a ModalBackend."""
-    from pd_prep_for_pgdp.adapters.gpu.modal_backend import ModalBackend
+    """`gpu_backend=modal` with both tokens returns a ModalStageDispatcher."""
+    from pd_ocr_ops.gpu import ModalStageDispatcher
 
     settings = _settings(
         tmp_path,
@@ -203,11 +203,11 @@ def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
         modal_token_secret="tok-secret",
     )
     backend = build_gpu_backend(settings)
-    assert isinstance(backend, ModalBackend)
+    assert isinstance(backend, ModalStageDispatcher)
 
 
 def test_build_gpu_shared_container_returns_shared_backend(tmp_path) -> None:
-    from pd_prep_for_pgdp.adapters.gpu.shared_container import SharedContainerBackend
+    from pd_ocr_ops.gpu import SharedContainerStageDispatcher
 
     settings = _settings(
         tmp_path,
@@ -216,7 +216,7 @@ def test_build_gpu_shared_container_returns_shared_backend(tmp_path) -> None:
         shared_gpu_api_key="key",
     )
     backend = build_gpu_backend(settings)
-    assert isinstance(backend, SharedContainerBackend)
+    assert isinstance(backend, SharedContainerStageDispatcher)
 
 
 def test_build_gpu_backend_cpu_returns_noop(tmp_path) -> None:

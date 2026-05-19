@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import json
 
-from pd_prep_for_pgdp.adapters.gpu.base import load_words_from_storage, words_key_for
 from pd_prep_for_pgdp.core.models import (
     BoundingBox,
     OcrWord,
 )
+from pd_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
 
 
 def test_words_key_for_replaces_txt_suffix() -> None:

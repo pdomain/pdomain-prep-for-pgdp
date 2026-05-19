@@ -8,11 +8,12 @@ on pd-prep-for-pgdp's roadmap for the precipitating discovery.
 
 from __future__ import annotations
 
-from pd_prep_for_pgdp.adapters.gpu.base import (
+from pd_ocr_ops.gpu import (
     BatchJobItem,
     BatchJobResult,
     OcrPageResponse,
 )
+
 from pd_prep_for_pgdp.core.models import (
     Job,
     PageRecord,

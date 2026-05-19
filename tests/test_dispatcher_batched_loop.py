@@ -13,8 +13,8 @@ import asyncio
 import contextlib
 
 import pytest
+from pd_ocr_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
-from pd_prep_for_pgdp.adapters.gpu.base import BatchJobItem, BatchJobResult, GPUBackend
 from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 

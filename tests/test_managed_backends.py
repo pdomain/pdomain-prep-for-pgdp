@@ -18,15 +18,13 @@ Locks in:
 from __future__ import annotations
 
 import pytest
-
-from pd_prep_for_pgdp.adapters.gpu.base import (
+from pd_ocr_ops.gpu import (
     BatchJobItem,
     OcrPageRequest,
     ProcessPageRequest,
 )
-from pd_prep_for_pgdp.adapters.gpu.modal_backend import ModalBackend
-from pd_prep_for_pgdp.adapters.gpu.shared_container import SharedContainerBackend
-from pd_prep_for_pgdp.core.models import PageConfigOverrides
+from pd_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
+from pd_ocr_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
 
 # ── ModalBackend ───────────────────────────────────────────────────────────
 
@@ -81,7 +79,7 @@ async def test_shared_container_methods_are_not_yet_wired() -> None:
             ProcessPageRequest(
                 project_id="p",
                 idx0=0,
-                config_overrides=PageConfigOverrides(),
+                config_overrides={},
                 output_context="commit",
             )
         )

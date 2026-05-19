@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag
-from pd_prep_for_pgdp.adapters.gpu.base import load_words_from_storage, words_key_for
 from pd_prep_for_pgdp.api.dependencies import (
     get_database,
     get_settings,
@@ -35,6 +34,7 @@ from pd_prep_for_pgdp.core.models import (
     PageStageStatus,
     PageType,
 )
+from pd_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
 from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
     StageArtifactWriteError,
     stage_artifact_path,

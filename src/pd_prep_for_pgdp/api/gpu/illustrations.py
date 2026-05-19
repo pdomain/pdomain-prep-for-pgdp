@@ -11,7 +11,7 @@ from pd_prep_for_pgdp.api.dependencies import get_gpu_backend
 from pd_prep_for_pgdp.core.models import IllustrationRegion, PageSplit
 
 if TYPE_CHECKING:
-    from pd_prep_for_pgdp.adapters.gpu import GPUBackend
+    from pd_ocr_ops.gpu import GPUBackend
 
 router = APIRouter(tags=["gpu"])
 

@@ -20,12 +20,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-
-from pd_prep_for_pgdp.adapters.gpu.base import (
+from pd_ocr_ops.gpu import (
     BatchJobItem,
     OcrPageRequest,
     ProcessPageRequest,
 )
+
 from pd_prep_for_pgdp.core.models import PageConfigOverrides
 
 
@@ -64,7 +64,7 @@ def modal_module(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_process_page_serialises_request_and_validates_response(modal_module) -> None:
-    from pd_prep_for_pgdp.adapters.gpu.modal_backend import ModalBackend
+    from pd_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
 
     expected_response = {
         "processed_image_key": "projects/p/processed/x.png",
@@ -77,11 +77,11 @@ async def test_process_page_serialises_request_and_validates_response(modal_modu
     fn = FakeFunction(return_value=expected_response)
     modal_module[("pgdp-prep", "process_page")] = fn
 
-    backend = ModalBackend(token_id="x", token_secret="y")
+    backend = ModalBackend(token_id="x", token_secret="y", app_name="pgdp-prep")
     req = ProcessPageRequest(
         project_id="p",
         idx0=42,
-        config_overrides=PageConfigOverrides(threshold_level=200),
+        config_overrides=PageConfigOverrides(threshold_level=200).model_dump(mode="json"),
         output_context="commit",
     )
     resp = await backend.process_page(req)
@@ -98,7 +98,7 @@ async def test_process_page_serialises_request_and_validates_response(modal_modu
 
 @pytest.mark.asyncio
 async def test_run_ocr_round_trip(modal_module) -> None:
-    from pd_prep_for_pgdp.adapters.gpu.modal_backend import ModalBackend
+    from pd_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
 
     fn = FakeFunction(
         return_value={
@@ -109,7 +109,7 @@ async def test_run_ocr_round_trip(modal_module) -> None:
     )
     modal_module[("pgdp-prep", "run_ocr")] = fn
 
-    backend = ModalBackend(token_id="x", token_secret="y")
+    backend = ModalBackend(token_id="x", token_secret="y", app_name="pgdp-prep")
     resp = await backend.run_ocr(OcrPageRequest(project_id="p", idx0=7))
     assert resp.text == "hello world"
     assert resp.text_key == "projects/p/ocr_text/x.txt"
@@ -118,7 +118,7 @@ async def test_run_ocr_round_trip(modal_module) -> None:
 
 @pytest.mark.asyncio
 async def test_run_batch_sends_list_of_dicts(modal_module) -> None:
-    from pd_prep_for_pgdp.adapters.gpu.modal_backend import ModalBackend
+    from pd_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
 
     def echo(payload: list[dict]) -> list[dict]:
         return [
@@ -135,7 +135,7 @@ async def test_run_batch_sends_list_of_dicts(modal_module) -> None:
     fn = FakeFunction(return_value=echo)
     modal_module[("pgdp-prep", "run_batch")] = fn
 
-    backend = ModalBackend(token_id="x", token_secret="y")
+    backend = ModalBackend(token_id="x", token_secret="y", app_name="pgdp-prep")
     items = [
         BatchJobItem(job_type="batch_process_pages", project_id="p", idx0=0),
         BatchJobItem(job_type="batch_process_pages", project_id="p", idx0=1),

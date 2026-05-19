@@ -31,8 +31,9 @@ from .packaging import build_package
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pd_ocr_ops.gpu import BatchJobResult, GPUBackend
+
     from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.gpu import BatchJobResult, GPUBackend
     from pd_prep_for_pgdp.adapters.storage import IStorage
     from pd_prep_for_pgdp.dispatcher.base import IDispatcher
 
