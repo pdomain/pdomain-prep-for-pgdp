@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import warnings
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 StorageBackend = Literal["filesystem", "s3"]
@@ -23,6 +25,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # ── Server ───────────────────────────────────────────────────────────────
@@ -52,8 +55,16 @@ class Settings(BaseSettings):
     jwt_audience: str | None = None
 
     # ── GPU backend ──────────────────────────────────────────────────────────
-    gpu_backend: GpuBackend | None = None
-    """When None, auto-detect at startup (CUDA → local, mac arm64 → mps, else cpu)."""
+    gpu_backend: GpuBackend | None = Field(
+        default=None,
+        validation_alias=AliasChoices("PD_GPU_BACKEND", "PGDP_GPU_BACKEND"),
+    )
+    """When None, auto-detect at startup (CUDA → local, mac arm64 → mps, else cpu).
+
+    Env var: ``PD_GPU_BACKEND``. The legacy ``PGDP_GPU_BACKEND`` is still
+    honored for one release cycle and emits a DeprecationWarning; if both are
+    set, ``PD_GPU_BACKEND`` wins.
+    """
 
     modal_token_id: str | None = None
     modal_token_secret: str | None = None
@@ -105,6 +116,17 @@ class Settings(BaseSettings):
     correlation id. Standard names in the wild are `X-Request-ID`
     (most ALBs/Sentry) and `X-Correlation-ID`; allow override for sites
     that already standardised."""
+
+    @model_validator(mode="after")
+    def _warn_on_legacy_gpu_backend_env(self) -> Settings:
+        if "PGDP_GPU_BACKEND" in os.environ and "PD_GPU_BACKEND" not in os.environ:
+            warnings.warn(
+                "PGDP_GPU_BACKEND is deprecated; rename to PD_GPU_BACKEND "
+                "(this alias will be removed in a future pd-prep-for-pgdp release).",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self
 
     @property
     def derived_database_url(self) -> str:
