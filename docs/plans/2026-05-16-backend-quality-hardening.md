@@ -2380,7 +2380,7 @@ In `docs/audit/code-quality-audit-2026-05-16.md`, add a header:
 ```markdown
 ## Resolution status (2026-05-16 plan fully implemented)
 
-All 42 findings addressed. See plan: `docs/superpowers/plans/2026-05-16-backend-quality-hardening.md`.
+All 42 findings addressed. See plan: `docs/plans/2026-05-16-backend-quality-hardening.md`.
 ```
 
 - [ ] **Step 5: Commit**
