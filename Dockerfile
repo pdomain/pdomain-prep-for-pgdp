@@ -6,10 +6,12 @@
 # ──────────────────────────── Stage 1: build frontend ───────────────────────
 FROM node:24-slim AS frontend-build
 WORKDIR /app
-COPY frontend/package*.json ./
-RUN npm install --include=dev
+# Enable corepack so pnpm is available without a separate install step.
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/.npmrc ./
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
-RUN npm run build
+RUN pnpm run build
 
 # ──────────────────────────── Stage 2: install Python ───────────────────────
 FROM python:3.13-slim AS runtime
