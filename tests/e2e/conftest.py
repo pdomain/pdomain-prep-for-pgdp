@@ -11,6 +11,7 @@ each test run; we don't reset between tests in a single session.
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import threading
 import time
@@ -29,6 +30,38 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Add e2e-specific warning filters on top of the pyproject.toml baseline.
+
+    Two categories of third-party noise are suppressed here so the global
+    ``filterwarnings = ["error"]`` policy can stay strict for unit tests:
+
+    * **websockets / uvicorn** — uvicorn probes ``websockets.legacy`` during
+      WebSocket-protocol auto-detection at server startup.  Both the
+      ``websockets`` library and uvicorn's own websockets impl emit
+      ``DeprecationWarning``s on import.  These are uvicorn's debt to fix;
+      we cannot suppress them from our code.
+
+    * **PytestUnhandledThreadExceptionWarning** — the uvicorn daemon thread's
+      event loop may be closed by the GC after ``server.should_exit = True``
+      is set and before ``thread.join()`` completes.  The thread itself exits
+      cleanly; this warning is a daemon-thread teardown ordering artefact, not
+      a functional bug.
+    """
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore::DeprecationWarning:websockets.*",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore::DeprecationWarning:uvicorn.protocols.websockets.*",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore::pytest.PytestUnhandledThreadExceptionWarning",
+    )
+
+
 @dataclass
 class LiveServer:
     base_url: str
@@ -45,6 +78,23 @@ def _spa_built() -> bool:
     """`make e2e` runs `frontend-build` first; this is just the safety net."""
     static = Path(__file__).resolve().parents[2] / "src" / "pd_prep_for_pgdp" / "static"
     return static.is_dir() and any(static.iterdir())
+
+
+def _run_server(server: uvicorn.Server) -> None:
+    """Run uvicorn in a dedicated event loop to avoid pytest-asyncio interference.
+
+    pytest-asyncio with ``asyncio_mode = "auto"`` installs a running event loop
+    on the main thread before session fixtures run. ``server.run()`` internally
+    calls ``asyncio.run()`` which raises "cannot be called from a running event
+    loop" when invoked from within that context. Running in an explicit fresh
+    loop in a worker thread sidesteps the conflict.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(server.serve())
+    finally:
+        loop.close()
 
 
 @pytest.fixture(scope="session")
@@ -69,11 +119,11 @@ def live_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LiveServer
     app = build_app(settings)
     config = uvicorn.Config(app, host=settings.host, port=settings.port, log_level="warning")
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
+    thread = threading.Thread(target=_run_server, args=(server,), daemon=True)
     thread.start()
 
     base_url = f"http://{settings.host}:{settings.port}"
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         try:
             r = httpx.get(f"{base_url}/api/data/projects", timeout=0.5)

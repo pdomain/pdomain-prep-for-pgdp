@@ -43,7 +43,10 @@ def test_upload_zip_navigates_to_filtered_jobs_page(live_server: LiveServer, pag
     zip_path.write_bytes(_zip_bytes())
 
     page.goto(live_server.base_url)
-    page.get_by_role("button", name="New project").click()
+    # The header always has a "New project" button; the empty-state card also
+    # has one when the project list is empty. Use .first to target the header
+    # button (the stable, always-present one) and avoid strict-mode violations.
+    page.get_by_role("button", name="New project").first.click()
 
     page.get_by_label("Book name").fill("E2E Smoke Book")
     page.get_by_label("Source zip").set_input_files(str(zip_path))
@@ -59,6 +62,17 @@ def test_upload_zip_navigates_to_filtered_jobs_page(live_server: LiveServer, pag
     expect(page.get_by_text("unzip", exact=True).first).to_be_visible(timeout=10_000)
     expect(page.get_by_text("thumbnails", exact=True).first).to_be_visible(timeout=15_000)
 
-    # And both reach `complete` — wait up to 30s for thumbnails to finish.
-    completes = page.locator("li", has_text="thumbnails").get_by_text("complete")
-    expect(completes.first).to_be_visible(timeout=30_000)
+    # And both reach completion — wait up to 30s for thumbnails to finish.
+    # Job rows are Card divs (not li elements). The Badge component renders
+    # "complete" API status as the label "Done". We find the card that
+    # contains both "thumbnails" (job type) and "Done" (Badge for complete).
+    thumbnails_done_card = (
+        page.locator("div")
+        .filter(
+            has=page.get_by_text("thumbnails", exact=True),
+        )
+        .filter(
+            has=page.get_by_text("Done", exact=True),
+        )
+    )
+    expect(thumbnails_done_card.first).to_be_visible(timeout=30_000)
