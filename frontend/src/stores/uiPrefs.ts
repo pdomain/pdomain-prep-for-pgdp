@@ -31,7 +31,7 @@
 import { createStore } from "zustand/vanilla";
 import { useSyncExternalStore } from "react";
 
-export type Theme = "light" | "dark" | "system";
+type Theme = "light" | "dark" | "system";
 
 /** localStorage key for theme persistence. Matches the persist key used pre-Phase 2.5. */
 export const THEME_STORAGE_KEY = "pgdp.uiPrefs";
@@ -64,7 +64,7 @@ function writePersistedTheme(theme: Theme): void {
  * Resolve the effective (dark|light) theme by applying prefers-color-scheme
  * when theme is 'system'.
  */
-export function resolveTheme(theme: Theme): "dark" | "light" {
+function resolveTheme(theme: Theme): "dark" | "light" {
   if (theme === "system") {
     try {
       return window.matchMedia("(prefers-color-scheme: dark)").matches
