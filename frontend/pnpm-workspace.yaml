@@ -1,0 +1,6 @@
+# pnpm 11 build-script allowlist (moved from package.json "pnpm" field)
+# esbuild: needs postinstall to download the platform-specific native binary
+# msw: needs init script to generate the service worker
+allowBuilds:
+  esbuild: true
+  msw: true
