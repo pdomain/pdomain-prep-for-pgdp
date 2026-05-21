@@ -4,7 +4,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Download, Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle } from "@concavetrillion/pd-ui/icons";
+import { Download } from "@/icons/local-shims";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";

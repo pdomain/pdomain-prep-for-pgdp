@@ -7,7 +7,8 @@
  * Supports HTML5 native drag-and-drop for page reordering when drag event
  * handlers are provided by the parent.
  */
-import { ChevronRight, GripVertical } from "lucide-react";
+import { ChevronRight } from "@concavetrillion/pd-ui/icons";
+import { GripVertical } from "@/icons/local-shims";
 import type { DragEventHandler } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";

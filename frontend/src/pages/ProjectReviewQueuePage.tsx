@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "@/icons/local-shims";
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";

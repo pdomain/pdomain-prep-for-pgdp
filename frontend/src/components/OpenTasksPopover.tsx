@@ -9,7 +9,7 @@
  * Uses the `<Popover>` Radix wrapper from `ui/Popover` so focus-trapping,
  * Escape-to-close, and click-outside dismiss are all handled by Radix.
  */
-import { Bell, CheckCircle } from "lucide-react";
+import { Bell, CheckCircle } from "@/icons/local-shims";
 import { Link } from "react-router-dom";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/Popover";
 

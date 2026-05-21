@@ -10,7 +10,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { FileText, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "@concavetrillion/pd-ui/icons";
+import { FileText } from "@/icons/local-shims";
 import { api } from "../api/client";
 import { isLiveStatus } from "../lib/jobStatus";
 import { Badge } from "../components/ui/Badge";

@@ -143,6 +143,24 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-argument": "warn",
       "@typescript-eslint/no-unsafe-call": "warn",
       "@typescript-eslint/no-unsafe-return": "warn",
+
+      // Icon import policy (Phase 2.5b): all icon imports must go through
+      // @concavetrillion/pd-ui/icons (for icons in pd-ui) or
+      // @/icons/local-shims (for icons not yet upstreamed to pd-ui).
+      // Direct lucide-react imports in SPA component code are banned.
+      // lucide-react is a peer dep of pd-ui/icons and must remain in package.json.
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "lucide-react",
+              message:
+                "Import icons from '@concavetrillion/pd-ui/icons' or '@/icons/local-shims' instead of lucide-react directly.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

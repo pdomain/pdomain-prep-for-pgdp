@@ -13,7 +13,8 @@
  *     while the job is still parked).
  */
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, X } from "lucide-react";
+import { X } from "@concavetrillion/pd-ui/icons";
+import { AlertTriangle, ArrowRight } from "@/icons/local-shims";
 import { useState } from "react";
 import { Link, useMatch } from "react-router-dom";
 import { api } from "../api/client";
