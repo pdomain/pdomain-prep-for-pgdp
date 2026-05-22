@@ -553,8 +553,10 @@ describe("TextReviewPage §9a delete-words flow", () => {
       expect(el.value).toBe("gamma\n");
     });
 
-    // Click ✕ — closes the undo window (no additional DELETE fired).
-    const confirmBtn = screen.getByRole("button", { name: /Confirm delete/i });
+    // Click ✕ — dismisses the restore banner (no additional DELETE fired).
+    const confirmBtn = screen.getByRole("button", {
+      name: /Dismiss restore banner/i,
+    });
     await user.click(confirmBtn);
 
     // Banner dismissed, still only one DELETE total.
@@ -638,8 +640,10 @@ describe("TextReviewPage §9a delete-words flow", () => {
     // Banner appears after server confirms the delete.
     await screen.findByTestId("undo-banner");
 
-    // Click the "Undo (Ctrl+Z)" button — fires restore POST, banner closes.
-    const undoBtn = screen.getByRole("button", { name: /Undo/i });
+    // Click the "Restore last delete" button — fires restore POST, banner closes.
+    const undoBtn = screen.getByRole("button", {
+      name: /Restore last delete/i,
+    });
     await user.click(undoBtn);
 
     // Banner is dismissed immediately (optimistic restore in local state).
@@ -983,6 +987,74 @@ describe("TextReviewPage §9a delete-words flow", () => {
 
     // New undo window should be open for the second batch.
     await screen.findByTestId("undo-banner");
+  });
+
+  it("restore banner persists — it does not auto-dismiss after 5 seconds", async () => {
+    // §9a-followup strategy (a): the "Restore last delete" banner is driven
+    // by the server-side soft-delete and stays open until the proofer
+    // restores or dismisses it. It must NOT auto-expire on a timer.
+    const deleteCalls: { body: unknown }[] = [];
+
+    server.use(
+      http.get("/api/data/projects/:projectId/pages/:idx0", ({ params }) =>
+        HttpResponse.json(
+          makePage({
+            project_id: String(params["projectId"]),
+            idx0: Number(params["idx0"]),
+          }),
+        ),
+      ),
+      http.get("/api/data/projects/:projectId/pages/:idx0/text/_", () =>
+        HttpResponse.json({
+          text: "alpha beta\n",
+          text_key: "projects/prj_abc/text/0001.txt",
+          words: [makeWordRow("w_alpha", 0), makeWordRow("w_beta", 60)],
+        }),
+      ),
+      http.delete(
+        "/api/data/projects/:projectId/pages/:idx0/words",
+        async ({ request }) => {
+          deleteCalls.push({ body: await request.json() });
+          return HttpResponse.json({
+            text_key: "k",
+            words_key: "k.words.json",
+            deleted_count: 1,
+            text: "beta\n",
+            remaining_words: [makeWordRow("w_beta", 60)],
+          });
+        },
+      ),
+    );
+
+    renderAtRoute(<TextReviewPage />, "/projects/prj_abc/pages/0/review");
+
+    await waitFor(() => {
+      const el = document.querySelector("textarea")!;
+      expect(el.value).toBe("alpha beta\n");
+    });
+
+    const overlay = await waitForOverlay();
+    await clickWordInOverlay(overlay, 25, 10); // select w_alpha
+
+    await screen.findByRole("button", { name: /^Delete 1 word$/i });
+    fireEvent.keyDown(document.body, { key: "Delete", code: "Delete" });
+
+    await waitFor(() => {
+      expect(deleteCalls).toHaveLength(1);
+    });
+
+    // Banner appears after server confirms.
+    await screen.findByTestId("undo-banner");
+
+    // Wait well past the old 5-second window — the banner must still be there.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByTestId("undo-banner")).not.toBeNull();
+    // Still exactly one DELETE — no expiry-driven commit ever happened.
+    expect(deleteCalls).toHaveLength(1);
+    // Banner offers the "Restore last delete" affordance, not a countdown.
+    expect(
+      screen.getByRole("button", { name: /Restore last delete/i }),
+    ).toBeInTheDocument();
   });
 });
 

@@ -15,6 +15,8 @@ under "Deferred — remote / cloud mode" at the bottom.
   `docs/archive/plans/roadmap-shipped.md` §P0.5).
 - §13a Radix primitives — fully shipped.
 - §9a soft-delete / restore — shipped.
+- §9a-followup Word-delete Undo UI — shipped (2026-05-22, server-side
+  "Restore last delete" banner; strategy (a)).
 - §13 search across pages — shipped (#76).
 - §10 Konva rotate — shipped (#100); flip is **blocked on CT design**
   (see P2 below).
@@ -40,24 +42,8 @@ Items that prevent a user from completing a real book end-to-end in
 
 ## P1 — UX completeness
 
-### 9a-followup. Word-delete editor — undo / soft-delete schema
-
-§9a hard-delete shipped (`DELETE /api/data/projects/{id}/pages/{idx0}/words`
-rewrites `<root>.words.json` + `<root>.txt`). §9a soft-delete +
-restore shipped (`OcrWord.deleted` flag, restore endpoint,
-get_page_text overlay filter, 14 tests).
-
-**BLOCKED: needs CT decision** — which Undo strategy to ship to the
-TextReviewPage UI:
-
-- (a) wire the existing server-side `deleted: bool` flag into the
-  TextReviewPage with a "Restore last delete" / banner-style Undo,
-- (b) layer a client-side debounced commit window (5 s Undo banner)
-  that delays the DELETE,
-- or (c) leave the v1 hard-delete as-is.
-
-Either (a) or (b) layers cleanly onto the existing wire contract —
-`remaining_words` already lets the client be agnostic.
+> All P1 items shipped. See "Reference for finished work" above and
+> `docs/archive/plans/roadmap-shipped.md`.
 
 ---
 

@@ -73,7 +73,7 @@ export function TextReviewPage() {
   // delete completions. Empty string = nothing to announce.
   const [liveMessage, setLiveMessage] = useState<string>("");
 
-  // §undo: 5-second debounced undo window for word deletes.
+  // §9a-followup: persistent "Restore last delete" banner for word deletes.
   const undoWindow = useUndoWindow();
 
   // §9a: snapshot of words being deleted, held between deleteWords.mutate()
@@ -142,12 +142,10 @@ export function TextReviewPage() {
     setPriorText(null);
   }, [projectId, idx0, splitSuffix]);
 
-  // §undo: navigate-away while undo window is open — fire DELETE immediately
-  // so the deletion is not silently dropped on unmount. The useUndoWindow
-  // hook already calls commitNow in its own cleanup effect; this effect
-  // additionally handles the Prev/Next navigation case where :idx0 changes
-  // while this component instance stays mounted (the component is remounted
-  // by the route, so cleanup fires on idx0 change too).
+  // §9a-followup: close the restore banner on navigate-away so it does not
+  // leak across pages. The delete is already persisted server-side (soft
+  // delete), so this only dismisses the banner — nothing is lost. Covers the
+  // Prev/Next case where :idx0 changes while this component stays mounted.
   useEffect(() => {
     return () => {
       undoWindow.commitNow();
@@ -206,8 +204,9 @@ export function TextReviewPage() {
   // in the response is the updated list. We mirror the canonical state
   // into local `text` / `words` so the textarea and overlay refresh.
   //
-  // §undo: DELETE fires immediately. The undo window is opened after the
-  // server confirms. If the user undoes, `restoreWords` flips them back.
+  // §9a-followup: DELETE is persisted immediately. The "Restore last
+  // delete" banner is opened after the server confirms and stays open
+  // until the proofer restores, dismisses, or supersedes it.
   const deleteWords = useMutation({
     mutationFn: (ids: string[]) => {
       const suffix = splitSuffix === WHOLE_PAGE_VALUE ? null : splitSuffix;
@@ -230,19 +229,22 @@ export function TextReviewPage() {
       setActiveWordIndex(null);
       setSelectedWordIds(new Set());
       const n = resp.deleted_count ?? 0;
-      setLiveMessage(`Deleted ${n} word${n === 1 ? "" : "s"} — Undo available`);
+      setLiveMessage(
+        `Deleted ${n} word${n === 1 ? "" : "s"} — Restore last delete available`,
+      );
       // The diff snapshot (re-OCR comparison) is a separate flow; do
       // not clear `priorText` — the user may still want to see the
       // pre-re-OCR diff after a delete.
       void queryClient.invalidateQueries({
         queryKey: ["page-text", projectId, idx0, splitSuffix],
       });
-      // Open the undo window after the server-confirmed delete. onCommit
-      // is a no-op — the deletion is already persisted.
+      // Open the "Restore last delete" banner after the server-confirmed
+      // delete. The deletion is already persisted (soft-delete); the banner
+      // only offers a restore until dismissed or superseded.
       if (pendingDeleteRef.current) {
         const { ids: pendingIds, words: snapshot } = pendingDeleteRef.current;
         pendingDeleteRef.current = null;
-        undoWindow.openWindow(pendingIds, snapshot, () => {});
+        undoWindow.openWindow(pendingIds, snapshot);
       }
     },
     onError: () => {
@@ -285,22 +287,24 @@ export function TextReviewPage() {
     },
   });
 
-  // §undo: shared undo handler — called from the Ctrl+Z hotkey and the banner
-  // button. Extracted to avoid copy-pasting the same three-line pattern.
+  // §9a-followup: shared restore handler — called from the Ctrl+Z hotkey and
+  // the banner's "Restore last delete" button. Closes the banner, re-inserts
+  // the words optimistically, and POSTs to the restore endpoint to clear the
+  // server-side `deleted` flag.
   const handleUndo = useCallback(() => {
     const restored = undoWindow.undo();
     if (!restored) return;
     const ids = (restored as OcrWord[]).map((w) => w.id);
     setWords((prev) => [...prev, ...(restored as OcrWord[])]);
-    setLiveMessage("Undo: words restored");
+    setLiveMessage("Restored last delete");
     restoreWords.mutate(ids);
   }, [undoWindow, restoreWords]);
 
-  // §undo: trigger word delete with undo window.
+  // §9a-followup: trigger a word delete.
   // 1. Optimistically remove the selected words from the canvas.
   // 2. Fire DELETE immediately (soft-delete on server).
-  // 3. On server success, open the 5-second undo window (onCommit is a no-op).
-  // 4. If the user undoes, call restoreWords to flip them back server-side.
+  // 3. On server success, open the persistent "Restore last delete" banner.
+  // 4. If the user restores, call restoreWords to flip the `deleted` flag.
   const triggerDeleteWithUndo = (ids: string[]) => {
     if (ids.length === 0) return;
 
@@ -339,8 +343,8 @@ export function TextReviewPage() {
     [selectedWordIds],
   );
 
-  // §undo: Ctrl+Z / Cmd+Z restores deleted words during the undo window.
-  // Calls restoreWords to flip them back server-side.
+  // §9a-followup: Ctrl+Z / Cmd+Z restores deleted words while the "Restore
+  // last delete" banner is open. Calls restoreWords to flip them back.
   // Scope: body only (react-hotkeys-hook ignores INPUT/TEXTAREA by default).
   useHotkeys(
     "mod+z",
@@ -505,7 +509,10 @@ export function TextReviewPage() {
         }
       />
 
-      {/* §undo: Undo banner — visible for 5 seconds after a delete. */}
+      {/* §9a-followup: persistent "Restore last delete" banner. Stays open
+          after a delete until the proofer restores, dismisses, or supersedes
+          it with another delete. The delete itself is already persisted
+          server-side (soft-delete) — this only offers the restore. */}
       {undoWindow.window && (
         <div
           data-testid="undo-banner"
@@ -516,23 +523,20 @@ export function TextReviewPage() {
             Deleted {undoWindow.window.wordIds.length} word
             {undoWindow.window.wordIds.length === 1 ? "" : "s"}.
           </span>
-          <span className="text-xs text-amber-600">
-            {Math.ceil(undoWindow.window.remainingMs / 1000)}s
-          </span>
           <Button
             variant="outline"
             size="xs"
             onClick={handleUndo}
             className="border-amber-400 bg-white hover:bg-amber-100"
           >
-            Undo (Ctrl+Z)
+            Restore last delete (Ctrl+Z)
           </Button>
           <Button
             variant="ghost"
             size="xs"
             onClick={() => undoWindow.confirm()}
             className="ml-auto hover:bg-amber-100"
-            aria-label="Confirm delete"
+            aria-label="Dismiss restore banner"
           >
             ✕
           </Button>

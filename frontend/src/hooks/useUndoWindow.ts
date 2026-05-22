@@ -1,39 +1,39 @@
 /**
- * useUndoWindow — manages the 5-second countdown UI for word-delete undo.
+ * useUndoWindow — tracks the most-recent word-delete batch so the UI can
+ * offer a persistent "Restore last delete" banner.
  *
  * Spec: docs/specs/2026-05-13-word-delete-undo-design.md
  *
+ * Strategy (a) — server-side restore banner. The word delete is persisted
+ * immediately via the soft-delete endpoint (`OcrWord.deleted = True`). This
+ * hook does NOT delay or debounce the DELETE; it only remembers which words
+ * were deleted so a "Restore last delete" banner can flip them back via the
+ * restore endpoint.
+ *
+ * There is NO countdown and NO expiry timer. The banner stays open until the
+ * proofer:
+ *   - restores the words (`undo`),
+ *   - dismisses the banner (`confirm`),
+ *   - navigates away (`commitNow`, fired by the caller's unmount cleanup), or
+ *   - supersedes it with another delete (`openWindow` again).
+ *
  * State machine:
  *   null → open  (openWindow)
- *   open → null  (undo, confirm, commitNow, or 5 s expiry)
- *
- * Current contract (§9a — immediate-delete model):
- *   DELETE fires immediately when the user confirms the delete action.
- *   This hook is responsible only for the countdown UI and undo-window
- *   state; `onCommit` is always passed as a no-op (`() => {}`) because
- *   there is nothing left to commit after the server has already persisted
- *   the deletion.
+ *   open → null  (undo, confirm, commitNow, or a superseding openWindow)
  *
  * The hook returns:
- *   - `window`: the current undo window state, or null if no window is open.
- *   - `openWindow(wordIds, words, onCommit)`: open a new undo window. If one
- *     is already open, it fires onCommit for the first batch immediately
- *     (double-delete policy), then opens a new window for the new batch.
- *     Returns an `AbortController` signal (legacy; callers pass `() => {}`
- *     for onCommit in the immediate-delete model).
- *   - `undo()`: abort the saved AbortController signal, close the window,
- *     and return the saved words so the caller can call `restoreWords`.
- *     Returns null if no window is open.
- *   - `confirm()`: fire onCommit (no-op in §9a) and close the window.
- *     Equivalent to the ✕ / Confirm button.
- *   - `commitNow()`: same as confirm() — fires onCommit (no-op in §9a) and
- *     closes the window without aborting. Used for navigate-away cleanup.
+ *   - `window`: the current restore-banner state, or null if none is open.
+ *   - `openWindow(wordIds, words)`: open a new restore banner. If one is
+ *     already open, it is silently replaced (the prior delete is already
+ *     persisted server-side; only the most recent batch is restorable).
+ *   - `undo()`: close the banner and return the saved words so the caller
+ *     can call the restore endpoint. Returns null if no banner is open.
+ *   - `confirm()`: close the banner without restoring. The ✕ / dismiss button.
+ *   - `commitNow()`: same as confirm — close the banner. Used for
+ *     navigate-away cleanup so the banner does not leak across pages.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-
-const UNDO_WINDOW_MS = 5_000;
-const TICK_MS = 100; // countdown granularity
+import { useCallback, useRef, useState } from "react";
 
 interface OcrWordLike {
   id: string;
@@ -47,24 +47,11 @@ interface UndoWindowState {
   wordIds: string[];
   /** Full word objects saved for restoration. */
   words: OcrWordLike[];
-  /** Milliseconds remaining in the undo window. */
-  remainingMs: number;
-}
-
-interface InternalWindow extends UndoWindowState {
-  controller: AbortController;
-  onCommit: () => void;
-  expiryTimer: ReturnType<typeof setTimeout>;
-  tickTimer: ReturnType<typeof setInterval>;
 }
 
 export interface UndoWindowHook {
   window: UndoWindowState | null;
-  openWindow: (
-    wordIds: string[],
-    words: OcrWordLike[],
-    onCommit: () => void,
-  ) => { signal: AbortSignal };
+  openWindow: (wordIds: string[], words: OcrWordLike[]) => void;
   undo: () => OcrWordLike[] | null;
   confirm: () => void;
   commitNow: () => void;
@@ -72,107 +59,38 @@ export interface UndoWindowHook {
 
 export function useUndoWindow(): UndoWindowHook {
   const [windowState, setWindowState] = useState<UndoWindowState | null>(null);
-  // Keep the full internal state in a ref so callbacks never capture stale
-  // closures; the ref is the single source of truth for the timers /
-  // AbortController. The React state (windowState) is derived from it for
-  // re-render purposes.
-  const internalRef = useRef<InternalWindow | null>(null);
-
-  const _clearInternal = useCallback(() => {
-    if (internalRef.current) {
-      clearTimeout(internalRef.current.expiryTimer);
-      clearInterval(internalRef.current.tickTimer);
-      internalRef.current = null;
-    }
-    setWindowState(null);
-  }, []);
-
-  // Commit the current batch (fire onCommit, do NOT abort the signal).
-  const _commit = useCallback(() => {
-    if (!internalRef.current) return;
-    internalRef.current.onCommit();
-    _clearInternal();
-  }, [_clearInternal]);
+  // Mirror of `windowState` kept in a ref so `undo()` can read the current
+  // batch synchronously and return it in the same tick — `useState` updater
+  // functions do not run synchronously inside the setter call.
+  const stateRef = useRef<UndoWindowState | null>(null);
 
   const openWindow = useCallback(
-    (
-      wordIds: string[],
-      words: OcrWordLike[],
-      onCommit: () => void,
-    ): { signal: AbortSignal } => {
-      // Double-delete: commit any existing window immediately.
-      if (internalRef.current) {
-        internalRef.current.onCommit();
-        clearTimeout(internalRef.current.expiryTimer);
-        clearInterval(internalRef.current.tickTimer);
-        internalRef.current = null;
-      }
-
-      const controller = new AbortController();
-
-      const expiryTimer = setTimeout(() => {
-        onCommit();
-        _clearInternal();
-      }, UNDO_WINDOW_MS);
-
-      let remaining = UNDO_WINDOW_MS;
-      const tickTimer = setInterval(() => {
-        remaining -= TICK_MS;
-        const clamped = Math.max(0, remaining);
-        if (internalRef.current) {
-          internalRef.current.remainingMs = clamped;
-        }
-        setWindowState((prev) =>
-          prev ? { ...prev, remainingMs: clamped } : prev,
-        );
-      }, TICK_MS);
-
-      const internal: InternalWindow = {
-        wordIds,
-        words,
-        remainingMs: UNDO_WINDOW_MS,
-        controller,
-        onCommit,
-        expiryTimer,
-        tickTimer,
-      };
-      internalRef.current = internal;
-      setWindowState({ wordIds, words, remainingMs: UNDO_WINDOW_MS });
-
-      return { signal: controller.signal };
+    (wordIds: string[], words: OcrWordLike[]): void => {
+      // A second delete simply replaces the banner — the prior delete is
+      // already persisted server-side, and only the most recent batch is
+      // offered for restore.
+      const next = { wordIds, words };
+      stateRef.current = next;
+      setWindowState(next);
     },
-    [_clearInternal],
+    [],
   );
 
   const undo = useCallback((): OcrWordLike[] | null => {
-    if (!internalRef.current) return null;
-    const { words, controller } = internalRef.current;
-    controller.abort();
-    _clearInternal();
-    return words;
-  }, [_clearInternal]);
+    const saved = stateRef.current ? stateRef.current.words : null;
+    stateRef.current = null;
+    setWindowState(null);
+    return saved;
+  }, []);
 
   const confirm = useCallback(() => {
-    if (!internalRef.current) return;
-    _commit();
-  }, [_commit]);
-
-  const commitNow = useCallback(() => {
-    if (!internalRef.current) return;
-    _commit();
-  }, [_commit]);
-
-  // Cleanup on unmount — commits any pending window so words aren't lost.
-  useEffect(() => {
-    return () => {
-      if (internalRef.current) {
-        internalRef.current.onCommit();
-        clearTimeout(internalRef.current.expiryTimer);
-        clearInterval(internalRef.current.tickTimer);
-        internalRef.current = null;
-      }
-    };
+    stateRef.current = null;
+    setWindowState(null);
   }, []);
+
+  // commitNow is identical to confirm in the server-side-restore model —
+  // the DELETE is already persisted, so navigate-away just closes the banner.
+  const commitNow = confirm;
 
   return { window: windowState, openWindow, undo, confirm, commitNow };
 }

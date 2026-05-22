@@ -31,7 +31,7 @@ export const HOTKEY_MAP: HotkeyEntry[] = [
   },
   {
     keys: ["Mod", "Z"],
-    description: "Undo word delete",
+    description: "Restore last word delete",
     section: "Editing",
   },
   {

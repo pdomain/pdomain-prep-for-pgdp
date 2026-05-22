@@ -585,6 +585,34 @@ Open follow-ups (still tracked elsewhere; not on the active roadmap):
   frontend/src/pages/TextReviewPage.tsx
   frontend/src/pages/TextReviewPage.test.tsx` for the audit trail.
 
+## §9a-followup — Word-delete Undo UI: server-side restore banner (2026-05-22)
+
+CT picked **strategy (a)** — wire the already-shipped server-side
+`OcrWord.deleted` soft-delete flag and its restore endpoint into the
+`TextReviewPage` UI with a persistent **"Restore last delete"** banner.
+This supersedes the draft spec's Option B (5-second debounced commit
+window): the soft-delete backend already existed, so the timed window
+was redundant complexity.
+
+- **Behaviour:** a word delete is persisted immediately via
+  `DELETE .../words` (soft-delete — `deleted=True`). On server success a
+  banner mounts at the top of `TextReviewPage` reading "Deleted N
+  word(s). Restore last delete". The banner has **no countdown** and
+  **no expiry timer** — it stays open until the proofer restores
+  (button or Ctrl+Z → `POST .../words/restore`), dismisses it (✕), or
+  supersedes it with another delete. Navigating away dismisses the
+  banner (the delete is already persisted, so nothing is lost).
+- **`useUndoWindow` rewrite:** the hook lost its `UNDO_WINDOW_MS` /
+  `TICK_MS` timers, `remainingMs` countdown, `AbortController`, and
+  `onCommit` callback. It now just tracks the most-recent delete batch
+  (`{wordIds, words}`) so the banner can offer a restore. A second
+  delete silently replaces the batch.
+- **Coverage:** `useUndoWindow.test.ts` (9 tests, incl. a 60-second
+  fake-timer advance proving no auto-expiry) +
+  `TextReviewPage.test.tsx` (a dedicated banner-persistence test plus
+  the existing delete/restore flow tests retargeted to the new copy).
+- Branch: `feat/word-delete-restore-banner`. `make ci AI=1` passes.
+
 ## §28 — Guard `upgrade-deps` against silent dev-local revert
 
 `scripts/detect_dev_local.py` exits 0 when an editable `pd-book-tools`

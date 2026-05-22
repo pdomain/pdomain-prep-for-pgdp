@@ -1,14 +1,26 @@
 # Word-delete editor: undo strategy
 
-> **Status**: Draft
-> **Last updated**: 2026-05-13
+> **Status**: Shipped — but as **Option A**, not the Option B drafted below.
+> **Last updated**: 2026-05-22
 > **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#12
 
 ## TL;DR
 
-Use a **client-side 5-second debounced commit window** (Option B). An "Undo"
-banner appears after each delete; if dismissed or after 5 s the DELETE fires.
-No server schema change; `remaining_words` wire contract is already agnostic.
+> **Superseded by the as-shipped decision (2026-05-22).** This draft picked
+> Option B (a client-side 5-second debounced commit window). It was written
+> before the server-side `OcrWord.deleted` soft-delete flag + restore
+> endpoint shipped under §9a. With that backend already in place, CT chose
+> **Option A** instead: a persistent **"Restore last delete"** banner wired
+> to the soft-delete flag, with **no countdown and no expiry timer**. The
+> banner stays open until the proofer restores, dismisses, or supersedes it.
+> See `docs/archive/plans/roadmap-shipped.md` §9a-followup for the
+> as-shipped behaviour. The Option B design below is retained as historical
+> context only.
+
+Original draft TL;DR: use a **client-side 5-second debounced commit window**
+(Option B). An "Undo" banner appears after each delete; if dismissed or after
+5 s the DELETE fires. No server schema change; `remaining_words` wire contract
+is already agnostic.
 
 ## Context
 
