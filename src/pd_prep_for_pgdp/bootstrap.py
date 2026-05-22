@@ -285,6 +285,48 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     install_server_info(app)
 
+    # Phase 2.7b: mount pd-ocr-ops suite routes so the frontend AppShell
+    # SuiteSiblingsProvider can call real endpoints instead of GAP-4 shims.
+    # Routes: GET /api/suite/installed, POST /api/suite/launch,
+    #         GET /api/suite/prefs, PUT /api/suite/prefs/common,
+    #         PUT /api/suite/prefs/apps/{app_id}, GET /api/icons/{size}.
+    #
+    # Post-mount patches:
+    # 1. pd-prep-for-pgdp requires explicit operation_id on every schema-visible
+    #    route (test_operation_ids_explicit.py). pd-ocr-ops uses auto-generated
+    #    ids; we patch them after mounting.
+    # 2. pd-ocr-ops mount_routes() also registers GET /healthz. pd-prep-for-pgdp
+    #    has its own richer /healthz (registered above via install_healthz) which
+    #    wins on routing (FastAPI serves the first match), but the pd-ocr-ops
+    #    /healthz still appears in the OpenAPI schema. We hide it via
+    #    include_in_schema=False so the schema stays clean.
+    from fastapi.routing import APIRoute
+    from pd_ocr_ops import SuiteAdapters, mount_routes
+
+    mount_routes(app, SuiteAdapters.local())
+
+    # Explicit operation_id map for suite routes (snake_case, globally unique).
+    suite_op_ids: dict[tuple[str, str], str] = {
+        ("GET", "/api/suite/installed"): "suite_list_installed",
+        ("POST", "/api/suite/launch"): "suite_launch_app",
+        ("GET", "/api/suite/prefs"): "suite_get_prefs",
+        ("PUT", "/api/suite/prefs/common"): "suite_put_prefs_common",
+        ("PUT", "/api/suite/prefs/apps/{app_id}"): "suite_put_prefs_app",
+        ("GET", "/api/icons/{size}"): "suite_get_icon",
+    }
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        if route.path == "/healthz" and route.include_in_schema:
+            # Hide the pd-ocr-ops /healthz from the schema; pd-prep-for-pgdp's
+            # own /healthz (include_in_schema=False) is already registered above.
+            route.include_in_schema = False
+            continue
+        for method in route.methods or []:
+            key = (method.upper(), route.path)
+            if key in suite_op_ids and route.operation_id is None:
+                route.operation_id = suite_op_ids[key]
+
     if settings.mode != "gpu_worker_only":
         from .api.env_js import install_env_js
 

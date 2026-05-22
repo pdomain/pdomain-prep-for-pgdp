@@ -1,6 +1,10 @@
 // App.tsx — SPA root: router, QueryClient provider, and route table.
 //
 // Phase 2.4: replaced local AppShell wrapper with pd-ui AppShell (#266).
+// Phase 2.7b: wired real pd-ocr-ops suite routes (#329). GAP-2/GAP-3/GAP-4
+//              resolved; /api/suite/* is now mounted by bootstrap.py via
+//              pd_ocr_ops.mount_routes(). UIPrefsConfig load/persist uses
+//              GET/PUT /api/suite/prefs with localStorage fallback.
 //
 // Slot mapping vs former local layout (components/shell/AppShell.tsx):
 //   header   ← TopNav (was header slot of custom AppShell)
@@ -13,18 +17,9 @@
 //         kept app-local: rendered as a flex-col sibling of the routes div
 //         inside the `main` slot. Resolve if pd-ui adds a footer zone.
 //
-// GAP-2: GET /api/ui-prefs backend endpoint not yet implemented — uiPrefsConfig
-//         load() returns localStorage-seeded defaults; persist callbacks write to
-//         localStorage as a stopgap. Full server-side persistence deferred to
-//         when pd-ocr-ops mounts /api/ui-prefs in the FastAPI app.
-//         Phase 2.5: shim reconciled — reads/writes bare string (not JSON envelope).
-//
-// GAP-3: POST /api/ui-prefs backend endpoint not yet implemented — same as GAP-2.
-//
-// GAP-4: GET /api/suite/installed + POST /api/suite/launch backend endpoints not
-//         yet implemented. SuiteSiblingsProvider fetchInstalled returns [] (no-op);
-//         postLaunch returns requires-host-config. Real wiring blocked on pd-ocr-ops
-//         mounting /api/suite/* routes in the FastAPI app.
+// GAP-5 (from uiPrefs.ts): pd-ui's UIPrefs.theme is 'dark' | 'light' (no
+//         'system'). The local store supports 'system'; when theme is 'system'
+//         the pd-ui AppShell receives the resolved effective value.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -66,48 +61,86 @@ import { ProjectReviewQueuePage } from "./pages/ProjectReviewQueuePage";
 import { TextReviewPage } from "./pages/TextReviewPage";
 import { CropsGridPage } from "./pages/CropsGridPage";
 
-// ── Phase 2.5: UIPrefsConfig shim (GAP-2, GAP-3 reconciled) ────────────────
+// ── Phase 2.7b: UIPrefsConfig — real pd-ocr-ops wiring (resolves GAP-2/GAP-3) ─
 //
-// The backend does not yet expose GET/POST /api/ui-prefs endpoints.
-// Phase 2.5 reconciliation: the local uiPrefs.ts store now writes theme as
-// a bare string to THEME_STORAGE_KEY ("pgdp.uiPrefs"). The load() and
-// persistCommon() shims read/write the same bare-string format so both
-// stores stay in sync via localStorage.
-//
-// GAP-2: GET /api/ui-prefs not yet implemented — load() seeds from localStorage.
-// GAP-3: POST /api/ui-prefs not yet implemented — persistCommon writes to localStorage.
-// Full server-side persistence is deferred until pd-ocr-ops mounts /api/ui-prefs.
+// pd-ocr-ops mounts GET /api/suite/prefs and PUT /api/suite/prefs/common.
+// load() calls the backend first; falls back to localStorage on error.
+// persistCommon() writes to the backend and mirrors theme to localStorage
+// so the local uiPrefs.ts store stays in sync.
 //
 // GAP-5 (from uiPrefs.ts): pd-ui's UIPrefs.theme is 'dark' | 'light' (no
 // 'system'). The local store supports 'system'; when theme is 'system' the
 // pd-ui AppShell receives the resolved effective value ('dark' or 'light').
+
+/** Resolve 'system' theme preference to an effective 'dark' | 'light' value. */
+function resolveTheme(): "dark" | "light" {
+  try {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  } catch {
+    return "light";
+  }
+}
+
 const UI_PREFS_CONFIG: UIPrefsConfig = {
   load: async () => {
-    // Seed theme from localStorage bare string (Phase 2.5 format).
-    // Fall back to effective resolved value if theme is 'system'.
+    // Try real backend first (pd-ocr-ops GET /api/suite/prefs).
+    try {
+      const res = await fetch("/api/suite/prefs");
+      if (res.ok) {
+        // pd-ocr-ops returns: {"common": {"theme": "dark", "density": "normal",
+        //   "font_scale": 1.0, ...}, "apps": {...}}
+        const body = (await res.json()) as {
+          common?: { theme?: string; density?: string; font_scale?: number };
+        };
+        const common = body.common ?? {};
+        const rawTheme = common.theme;
+        const theme: "dark" | "light" =
+          rawTheme === "dark" || rawTheme === "light" ? rawTheme : "light";
+        const rawDensity = common.density;
+        const density: "compact" | "normal" | "comfortable" =
+          rawDensity === "compact" || rawDensity === "comfortable"
+            ? rawDensity
+            : "normal";
+        return {
+          theme,
+          density,
+          fontScale: common.font_scale ?? 1.0,
+        };
+      }
+    } catch {
+      // Network error or backend unavailable — fall through to localStorage.
+    }
+    // Fallback: seed from localStorage bare string (Phase 2.5 format).
     let theme: "dark" | "light" = "light";
     try {
       const raw = localStorage.getItem(THEME_STORAGE_KEY);
       if (raw === "dark") theme = "dark";
       else if (raw === "light") theme = "light";
-      else if (raw === "system") {
-        // Resolve 'system' to effective value for pd-ui's factory (no 'system' in UIPrefs).
-        try {
-          theme = window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
-        } catch {
-          theme = "light";
-        }
-      }
+      else if (raw === "system") theme = resolveTheme();
     } catch {
       // localStorage unavailable or unexpected error
     }
     return { theme, density: "normal", fontScale: 1.0 };
   },
   persistCommon: async (prefs) => {
-    // GAP-2: no backend — write theme back to localStorage as bare string.
-    // Only writes 'dark' or 'light'; 'system' is the local store's concern.
+    // Write to backend (pd-ocr-ops PUT /api/suite/prefs/common).
+    try {
+      await fetch("/api/suite/prefs/common", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // pd-ocr-ops CommonUIPrefs uses snake_case: font_scale.
+        body: JSON.stringify({
+          theme: prefs.theme,
+          density: prefs.density,
+          font_scale: prefs.fontScale,
+        }),
+      });
+    } catch {
+      // Backend unreachable — fall through to localStorage mirror.
+    }
+    // Mirror theme to localStorage so the local uiPrefs.ts store stays in sync.
     try {
       const current = localStorage.getItem(THEME_STORAGE_KEY);
       // Don't overwrite 'system' with its resolved value — let the local store own that.
@@ -118,32 +151,72 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
       // ignore
     }
   },
-  persistApp: async (_appPrefs) => {
-    // GAP-3: no backend — no-op until pd-ocr-ops mounts /api/ui-prefs.
+  persistApp: async (appPrefs) => {
+    // Write app-specific prefs to backend (pd-ocr-ops PUT /api/suite/prefs/apps/{id}).
+    try {
+      await fetch("/api/suite/prefs/apps/pd-prep-for-pgdp", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(appPrefs),
+      });
+    } catch {
+      // Backend unreachable — no localStorage mirror for app prefs.
+    }
   },
 };
 
-// ── Phase 2.4: SuiteSiblings fetch/launch shims (GAP-4) ─────────────────────
+// ── Phase 2.7b: SuiteSiblings — real pd-ocr-ops wiring (resolves GAP-4) ──────
 //
-// The backend does not yet expose /api/suite/installed or /api/suite/launch.
-// fetchInstalled returns an empty list (no siblings shown in launcher).
-// postLaunch returns requires-host-config.
+// pd-ocr-ops mounts GET /api/suite/installed and POST /api/suite/launch.
+// Adapter maps pd-ocr-ops InstalledApp shape (snake_case) to pd-ui shape.
+//
+// pd-ocr-ops shape:  { app_id, display_name, default_port, icon, enabled, ... }
+// pd-ui shape:       { id, displayName, launchUrl, iconUrl?, url?, pid? }
+//
+// launchUrl: http://localhost:{default_port} (local mode).
+// iconUrl: /api/icons/32?app_id={app_id} (served by pd-ocr-ops icons router).
+
+interface OcrOpsInstalledApp {
+  app_id: string;
+  display_name: string;
+  default_port: number;
+  icon: string;
+  enabled: boolean;
+}
+
+function adaptInstalledApp(raw: OcrOpsInstalledApp): InstalledApp {
+  return {
+    id: raw.app_id,
+    displayName: raw.display_name,
+    launchUrl: `http://localhost:${raw.default_port.toString()}`,
+    iconUrl: `/api/icons/32?app_id=${encodeURIComponent(raw.app_id)}`,
+  };
+}
+
 async function fetchInstalled(): Promise<InstalledApp[]> {
-  // GAP-4: when pd-ocr-ops mounts /api/suite/* in FastAPI, replace with:
-  //   const res = await fetch("/api/suite/installed");
-  //   if (!res.ok) return [];
-  //   return (await res.json()) as InstalledApp[];
-  return [];
+  try {
+    const res = await fetch("/api/suite/installed");
+    if (!res.ok) return [];
+    const apps = (await res.json()) as OcrOpsInstalledApp[];
+    return apps.filter((a) => a.enabled).map(adaptInstalledApp);
+  } catch {
+    return [];
+  }
 }
 
 async function postLaunch(id: string): Promise<LaunchResult> {
-  // GAP-4: when pd-ocr-ops mounts /api/suite/* in FastAPI, replace with:
-  //   const res = await fetch(`/api/suite/launch`, {
-  //     method: "POST", body: JSON.stringify({ id }),
-  //     headers: { "Content-Type": "application/json" },
-  //   });
-  //   return (await res.json()) as LaunchResult;
-  return { kind: "requires-host-config", siblingId: id };
+  try {
+    const res = await fetch(
+      `/api/suite/launch?app_id=${encodeURIComponent(id)}`,
+      {
+        method: "POST",
+      },
+    );
+    if (!res.ok) return { kind: "requires-host-config", siblingId: id };
+    return (await res.json()) as LaunchResult;
+  } catch {
+    return { kind: "requires-host-config", siblingId: id };
+  }
 }
 
 export default function App() {
