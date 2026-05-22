@@ -252,12 +252,10 @@ exclude = ["**/__pycache__", "**/.venv", "**/node_modules"]
 # Catches unannotated functions, inferred-Any propagation, untyped decorators,
 # and missing return types that "standard" mode skips.
 typeCheckingMode = "recommended"
-# NOTE: failOnWarnings deferred — recommended mode surfaces reportUnknownMemberType/
-# reportUnknownVariableType/reportUnknownArgumentType warnings from cv2/numpy/cupy/
-# DocTR/modal stubs that lag the runtime, plus 49 pyright:ignore[reportMissingImports]
-# for optional extras not installed in the dev venv. Enable incrementally as stub
-# coverage improves and optional extras are added to the dev install.
-# failOnWarnings = true
+# Warnings are baselined in .basedpyright/baseline.json — new code must be clean.
+# The baseline captures 1323 warnings from recommended mode (unknown types from
+# cv2/numpy/DocTR stubs, explicit Any, unannotated class attributes, etc.).
+failOnWarnings = true
 
 # Import cycles are structural (FastAPI dependencies, bootstrap↔adapters, etc.)
 # and resolved via TYPE_CHECKING guards. Suppress the per-file error here;
