@@ -86,7 +86,7 @@ versioned via `stage_version` (Q4). Two scopes of task — **project-level** (`p
 - **Milestone gates:** M1 shipped (page_stages schema, DAG enumeration, reindex CLI). M2 in flight
   (per-page runner, eager dirty, chip rail, async run route, multi-artifact writer — see commits
   `25d92cd`, `2341fa1`, `50105af`, `e7f391d`, `8af4f15`, `66f32af`, `5abc7c9`, `a55d93e`). M3–M6
-  acceptance lives in `docs/08-roadmap.md` per-milestone smoke tests.
+  acceptance lives in `docs/plans/roadmap.md` per-milestone smoke tests.
 
 ## Trade-offs considered
 
@@ -149,8 +149,8 @@ re-evaluation rather than silently flipping.
 ## References
 
 - Long-form design: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md`
-- Roadmap: `pd-prep-for-pgdp/docs/08-roadmap.md` §P0.5, §M1–§M6
-- Shipped log: `pd-prep-for-pgdp/docs/08-roadmap-shipped.md`
+- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §P0.5, §M1–§M6
+- Shipped log: `pd-prep-for-pgdp/docs/archive/plans/roadmap-shipped.md`
 - Repo orientation: `pd-prep-for-pgdp/CLAUDE.md`
 - M1/M2 commits anchoring the design in code: `128ead9`, `2341fa1`, `c46eaea`, `6d335e6`, `e126c20`,
   `d836619`, `8af4f15`, `c42bc85`, `55dbc9d`, `02f7ad7`, `2a62346`, `39d2288`, `7246199`, `66f32af`,

@@ -2,7 +2,7 @@
 
 This file collects pipeline / topology / data-model decisions that are
 **already locked** and are not actionable implementation items. Moved out
-of `08-roadmap.md` so the roadmap can stay focused on open work.
+of `docs/plans/roadmap.md` so the roadmap can stay focused on open work.
 
 Each entry names the decision, when it was locked, and where the
 authoritative spec lives. Treat these as binding — if you think one
@@ -79,7 +79,7 @@ model validator on `PageRecord`.
 The active target is the **SQLite + filesystem + CPU** deployment
 shape. Cloud / remote (Modal/S3, Postgres live tests, install.sh net
 exercise, registry push) is parked under "Deferred — remote / cloud
-mode" in `08-roadmap.md`.
+mode" in `docs/plans/roadmap.md`.
 
 Implications for new code:
 
@@ -90,18 +90,12 @@ Implications for new code:
   with class-direct tests behind `importorskip("psycopg")`; revive
   by wiring a Postgres service into the dev container.
 
-## AD-5. `compute_prefix` first-frontmatter-page returns `f000` (known)
+## AD-5. `compute_prefix` first-frontmatter-page returns `f001` (shipped 2026-05-16)
 
-The spec's loop `range(start, min(idx0, end+1))` is empty when
-`idx0 == start`, so the first frontmatter page resolves to `f000`
-instead of `f001` despite `frontmatter_page_nbr_start=1`.
-
-Implementation matches the spec verbatim;
-`test_compute_prefix_basic_numbering` asserts the current `f000`
-behavior. This is **not a latent bug** — it is locked behavior. A
-future change to `f001` would be an intentional spec rewrite plus a
-deliberate test update; it is tracked as an open question (P3 #17)
-in `08-roadmap.md` pending a CT decision.
+P3 open question resolved: the first frontmatter page now returns `f001`
+(not `f000`). Shipped as `feat(p3): fix compute_prefix frontmatter numbering
+to start at f001` (commits `02478ee`, `6922ce9`). `test_compute_prefix_basic_numbering`
+asserts `f001`. This is locked — do not revert to `f000`.
 
 ## AD-6. Memory-resident execution model + bounded deferred-write executor
 
@@ -165,4 +159,4 @@ shape we're going with, full stop,"** write it here in the same
 voice as the entries above (1–2 paragraphs, link to the spec,
 state any consequent constraints). Do not duplicate the spec — link
 to it. Do not put implementation status here — that belongs in
-`08-roadmap.md` or `08-roadmap-shipped.md`.
+`docs/plans/roadmap.md` or `docs/archive/plans/roadmap-shipped.md`.

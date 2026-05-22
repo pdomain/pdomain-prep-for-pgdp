@@ -19,7 +19,7 @@ as one action; M5 keeps that affordance but layers it over the new model. Separa
 `docs/specs/pipeline-task-model.md` made `text_review` a gate stage with an `awaiting_review`
 parked-job state when `build_package` runs against unreviewed pages — M5 is where that gate ships.
 
-Parent (retro-demoted on 2026-05-11): #11. Roadmap section: `docs/08-roadmap.md` §M5 (lines
+Parent (retro-demoted on 2026-05-11): #11. Roadmap section: `docs/plans/roadmap.md` §M5 (lines
 ~431–493).
 
 ## Constraints
@@ -95,7 +95,7 @@ Parent (retro-demoted on 2026-05-11): #11. Roadmap section: `docs/08-roadmap.md`
   reviewed" action distinct from `text_review.clean`. Decided: trigger on `text_review.clean`
   writes.
 - **Legacy shim retention.** A shim that lives forever invites callers that never migrate. Decided:
-  shim is in M5, deletion is in M6 (explicitly tracked in `docs/08-roadmap.md` §M6).
+  shim is in M5, deletion is in M6 (explicitly tracked in `docs/plans/roadmap.md` §M6).
 - **Job-state persistence across restarts.** Could use an in-memory parked-jobs queue + on-restart
   scan of `jobs` table; or rely purely on the DB row's `status='awaiting_review'`. Decided: latter —
   DB row IS the queue, server reads it at startup like any other job state.
@@ -141,7 +141,7 @@ Parent (retro-demoted on 2026-05-11): #11. Roadmap section: `docs/08-roadmap.md`
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/08-roadmap.md` §M5 (lines 431–493)
+- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §M5 (lines 431–493)
 - Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_review` as
   gate stage, §Two scopes of task
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`

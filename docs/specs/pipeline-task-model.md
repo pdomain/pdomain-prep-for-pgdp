@@ -1,7 +1,7 @@
 # Pipeline Task Model — granular per-page stages with dirty propagation
 
 > **Status:** locked (2026-05-07). Spec-only — implementation lands in M1–M6
-> per `docs/08-roadmap.md` §P0.5.
+> per `docs/plans/roadmap.md` §P0.5.
 >
 > **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#17
 >
@@ -13,7 +13,7 @@
 
 This spec is the **single source of truth** for the pipeline task-model.
 The rest of the spec set (`specs/00`–`specs/09`, `docs/architecture/02-backend.md`,
-`docs/architecture/03-pipeline.md`, `docs/architecture/06-deployment.md`, `docs/08-roadmap.md`)
+`docs/architecture/03-pipeline.md`, `docs/architecture/06-deployment.md`, `docs/plans/roadmap.md`)
 links here for the canonical model rather than restating it.
 
 ---
@@ -982,7 +982,7 @@ surface it for re-evaluation rather than silently flipping.
 
 ---
 
-## Migration order (cross-reference with `docs/08-roadmap.md` §P0.5)
+## Migration order (cross-reference with `docs/plans/roadmap.md` §P0.5)
 
 + **M1** — schema + DAG enumeration. `page_stages` table; split-related
   page columns; `core/pipeline/dag.py` with stage list + descendants();

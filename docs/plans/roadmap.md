@@ -1,6 +1,6 @@
 # 08 — Roadmap
 
-> Shipped items live in `08-roadmap-shipped.md`. Locked architecture
+> Shipped items live in `docs/archive/plans/roadmap-shipped.md`. Locked architecture
 > decisions live in `architecture/architecture-decisions.md`. This file is the
 > **forward** view of open work.
 
@@ -12,7 +12,7 @@ under "Deferred — remote / cloud mode" at the bottom.
 **Reference for finished work:**
 
 - Pipeline task-model M1–M6 — fully shipped (see
-  `08-roadmap-shipped.md` §P0.5).
+  `docs/archive/plans/roadmap-shipped.md` §P0.5).
 - §13a Radix primitives — fully shipped.
 - §9a soft-delete / restore — shipped.
 - §13 search across pages — shipped (#76).
@@ -20,6 +20,12 @@ under "Deferred — remote / cloud mode" at the bottom.
   (see P2 below).
 - §P0.1 stale Re-process button — removed (#110, 2026-05-15).
 - §P0.2 Download Package UI — shipped (#111, 2026-05-15).
+- §P0.3 Folder upload — shipped (2026-05-16, client-side JSZip in create-project modal).
+- §P1.1 Page reorder UI — shipped (2026-05-16, drag-and-drop in Pages tab).
+- §P1.2 Crop/rotate review pass — shipped (2026-05-16, CropsGridPage canvas_map grid).
+- §P3.1 compute_prefix frontmatter numbering — shipped (f001 start; 2026-05-16).
+- Backend quality hardening (42 findings) — fully shipped (2026-05-16);
+  see `docs/archive/plans/2026-05-16-backend-quality-hardening.md`.
 
 ---
 
@@ -28,47 +34,11 @@ under "Deferred — remote / cloud mode" at the bottom.
 Items that prevent a user from completing a real book end-to-end in
 `make run` today.
 
-### P0.3. Folder upload (zip-only ingest blocks Internet Archive workflow)
-
-`ProjectListPage` create-project modal only accepts `.zip` /
-`application/zip`. Many proofers work from a folder of PNGs (the
-typical Internet Archive download is a folder of `.jp2` or `.png`,
-not a zip). Today the user has to zip the folder client-side first.
-
-The backend ingest jobs handle `source_type: "zip"` exclusively; a
-folder upload requires either client-side zipping in the browser, or
-a new `source_type: "folder"` path that accepts multipart-uploaded
-files.
-
-**Pass criterion:** in `make run`, the user can drop a folder of
-PNGs / JPGs onto the create-project modal and the project ingests.
+> All P0 items shipped. See "Reference for finished work" above.
 
 ---
 
 ## P1 — UX completeness
-
-### P1.1. Page reorder UI + endpoint
-
-There is no way to fix page-order mistakes (e.g. a scan came in
-out-of-order, or the user wants to insert / remove a page between
-ingest and build_package). No backend endpoint, no UI.
-
-Sketch: `PATCH /api/data/projects/{id}/pages/{idx0}` already exists
-for per-page metadata; add a `move_to_idx0` or `reading_order`
-mutation, and a drag-handle in the Pages tab `PageRow`. Splits
-already have a `reading_order` column — extend it project-wide.
-
-### P1.2. Crop / rotate review pass before OCR
-
-The auto-deskew + initial_crop stages don't always get it right. The
-workbench shows the artifact viewer per-stage, but there's no
-batch-level "review every page's `canvas_map` artifact" affordance
-short of clicking through every page individually.
-
-Sketch: a "Review crops" project-level page that grids the
-`canvas_map` thumbnails for every page, lets the user click into the
-ones that look wrong, and surfaces the per-page workbench Konva
-rotate handle (already shipped §10).
 
 ### 9a-followup. Word-delete editor — undo / soft-delete schema
 
@@ -107,18 +77,8 @@ client-side flip applied to the proof PNG.)
 
 ## P3 — Pipeline depth
 
-### P3.1. `compute_prefix` first-frontmatter-page numbering (f000 vs f001)
-
-**BLOCKED: needs CT decision** — is the current `f000` behavior
-intentional zero-based numbering (the field name
-`frontmatter_page_nbr_start=1` should be clarified to mean "start
-at offset 1 within zero-based numbering"), or is it a latent
-spec bug and the first frontmatter page should be `f001`?
-
-Current behavior is documented as locked in
-`architecture/architecture-decisions.md` §AD-5. `test_compute_prefix_basic_numbering`
-asserts `f000`. Either path is a one-line code or spec edit plus a
-deliberate test update.
+> P3.1 (compute_prefix frontmatter) shipped — moved to "Reference for finished work".
+> No remaining open P3 items.
 
 ---
 
@@ -211,4 +171,4 @@ CPU path dominates after storage I/O.
    "Deferred" section unless the user explicitly revives it.
 4. TDD-first when possible; the test recipe is in `docs/architecture/07-testing.md`.
 5. When you finish an item, **move it out** of this file into
-   `08-roadmap-shipped.md` with a condensed summary + commit SHAs.
+   `docs/archive/plans/roadmap-shipped.md` with a condensed summary + commit SHAs.

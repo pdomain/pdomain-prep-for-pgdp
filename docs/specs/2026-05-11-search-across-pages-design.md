@@ -22,7 +22,7 @@ OCR text becomes available after the `text_postprocess` stage writes its clean a
 is the natural index trigger. SQLite FTS5 ships with the Python `sqlite3` standard library; in a
 future managed/Postgres backend the equivalent is Postgres `tsvector`.
 
-Parent (retro-demoted on 2026-05-11): #14. Roadmap section: `docs/08-roadmap.md` §P2 #13 (lines
+Parent (retro-demoted on 2026-05-11): #14. Roadmap section: `docs/plans/roadmap.md` §P2 #13 (lines
 ~591–595).
 
 ## Constraints
@@ -149,7 +149,7 @@ index. Idempotent.
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/08-roadmap.md` §P2 #13 (lines 591–595)
+- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §P2 #13 (lines 591–595)
 - Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_postprocess`
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`
 - Adapter pattern reference: `pd-prep-for-pgdp/src/pd_prep_for_pgdp/adapters/`

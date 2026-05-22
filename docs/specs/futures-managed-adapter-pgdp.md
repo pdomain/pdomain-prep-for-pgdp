@@ -3,7 +3,7 @@
 **Status:** Design note, not a current milestone. Captured 2026-05-06 to
 keep the eventual managed deployment shape coherent with decisions being
 made today (storage layout, GPU dispatcher, adapter boundaries). Nothing
-in the current roadmap (`docs/08-roadmap.md`) depends on this; do not
+in the current roadmap (`docs/plans/roadmap.md`) depends on this; do not
 treat it as a spec.
 
 This document is intentionally narrow: it describes how the **managed**
@@ -228,7 +228,7 @@ this audience.
 
 - Not a spec. The current spec set (`specs/00`–`specs/09`) is the
   source of truth for design decisions on current milestones.
-- Not a near-term work item. Nothing in `docs/08-roadmap.md` depends
+- Not a near-term work item. Nothing in `docs/plans/roadmap.md` depends
   on this.
 - Not a commitment to Modal, R2, Cloud Run, or any specific vendor —
   but the *shape* (free-tier coordinator + free-egress object store

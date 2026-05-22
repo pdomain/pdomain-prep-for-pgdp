@@ -78,7 +78,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
   `parent_page_id` / `source_crop_bbox` / `split_index` / `split_at_stage`.
   Not config on `ocr_crop`.
 - **Local-first:** active work = SQLite + filesystem + CPU. Cloud/remote
-  items parked in `docs/08-roadmap.md §Deferred`.
+  items parked in `docs/plans/roadmap.md §Deferred`.
 - `pd-book-tools` pinned to `v0.9.0`. Upgrade: `make upgrade-pd-book-tools`.
 - `gpu_backend="cpu"` is the test default. `LocalBackend` subclasses
   `CpuBackend`; Modal/SharedContainer require real config.

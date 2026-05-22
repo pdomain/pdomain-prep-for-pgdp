@@ -129,8 +129,8 @@ None.
 
 ## References
 
-- `docs/08-roadmap.md` §P1 "9a-followup" — undo/soft-delete context
-- `docs/08-roadmap-shipped.md` §9a — v1 DELETE endpoint and marquee-select
+- `docs/plans/roadmap.md` §P1 "9a-followup" — undo/soft-delete context
+- `docs/archive/plans/roadmap-shipped.md` §9a — v1 DELETE endpoint and marquee-select
   implementation
 - `frontend/src/pages/TextReviewPage.tsx` — current delete mutation call site
 - `frontend/src/components/WordBboxOverlay.tsx` — word selection state

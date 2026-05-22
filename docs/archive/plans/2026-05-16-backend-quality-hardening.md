@@ -1,6 +1,10 @@
 # Backend Quality Hardening Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
+
+> **STATUS: FULLY SHIPPED** — All 21 tasks and 42 findings resolved by 2026-05-16. Archived 2026-05-22.
+> See git log for commit evidence; each task maps to a  commit on .
+
 
 **Goal:** Eliminate all 42 silent-failure, bad-propagation, and type-safety findings from the 2026-05-16 audit, bringing the backend up to "errors surface loudly and predictably" standard.
 
@@ -26,7 +30,7 @@
 - Modify: `src/pd_prep_for_pgdp/core/ocr.py:344-374`
 - Test: `tests/test_ocr_word_adapter.py` (create new)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_ocr_word_adapter.py
@@ -88,7 +92,7 @@ def test_adapter_split_suffix_propagated():
     assert result.split_suffix == "a"
 ```
 
-- [ ] **Step 2: Run to confirm they fail**
+- [x] **Step 2: Run to confirm they fail**
 
 ```
 uv run pytest tests/test_ocr_word_adapter.py -v
@@ -96,7 +100,7 @@ uv run pytest tests/test_ocr_word_adapter.py -v
 
 Expected: `test_adapter_raises_on_wrong_type` fails (no TypeError today); `test_adapter_extracts_correct_bbox` may fail due to wrong property names.
 
-- [ ] **Step 3: Replace the `_to_ocr_word` implementation**
+- [x] **Step 3: Replace the `_to_ocr_word` implementation**
 
 Replace `src/pd_prep_for_pgdp/core/ocr.py:344-374` with:
 
@@ -133,7 +137,7 @@ def _to_ocr_word(w: Any, split_suffix: str | None = None) -> OcrWord:
     )
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```
 uv run pytest tests/test_ocr_word_adapter.py -v
@@ -141,7 +145,7 @@ uv run pytest tests/test_ocr_word_adapter.py -v
 
 Expected: all 5 tests PASS.
 
-- [ ] **Step 5: Run full CI to check for regressions**
+- [x] **Step 5: Run full CI to check for regressions**
 
 ```
 make ci AI=1
@@ -149,7 +153,7 @@ make ci AI=1
 
 Expected: green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add tests/test_ocr_word_adapter.py src/pd_prep_for_pgdp/core/ocr.py
@@ -168,7 +172,7 @@ git commit -m "fix(ocr): replace getattr cascade in _to_ocr_word with direct typ
 - Modify: `src/pd_prep_for_pgdp/core/illustrations.py:44-80`
 - Test: `tests/test_illustrations_auto_detect.py` (add cases)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/test_illustrations_auto_detect.py` (after existing tests):
 
@@ -212,7 +216,7 @@ def test_auto_detect_uses_isinstance_not_getattr():
         )
 ```
 
-- [ ] **Step 2: Run to confirm they fail**
+- [x] **Step 2: Run to confirm they fail**
 
 ```
 uv run pytest tests/test_illustrations_auto_detect.py -v -k "test_map_region_type or test_auto_detect_uses_isinstance"
@@ -220,7 +224,7 @@ uv run pytest tests/test_illustrations_auto_detect.py -v -k "test_map_region_typ
 
 Expected: both FAIL (no raises today, wrong behavior).
 
-- [ ] **Step 3: Replace `_map_region_type` and region access in `auto_detect_illustrations`**
+- [x] **Step 3: Replace `_map_region_type` and region access in `auto_detect_illustrations`**
 
 Replace `src/pd_prep_for_pgdp/core/illustrations.py:44-80` with:
 
@@ -343,7 +347,7 @@ def _map_region_type(rt: Any) -> str:
 
 > **Note:** The `_REGION_TYPE_MAP` lazy init keeps the module importable without pd-book-tools for unit tests that mock the detector. The `auto_detect_illustrations` function itself will raise `RuntimeError` on import failure, which is the right behaviour for a real run.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```
 uv run pytest tests/test_illustrations_auto_detect.py tests/test_illustrations.py -v
@@ -351,7 +355,7 @@ uv run pytest tests/test_illustrations_auto_detect.py tests/test_illustrations.p
 
 Expected: all PASS.
 
-- [ ] **Step 5: Full CI**
+- [x] **Step 5: Full CI**
 
 ```
 make ci AI=1
@@ -359,7 +363,7 @@ make ci AI=1
 
 Expected: green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/illustrations.py tests/test_illustrations_auto_detect.py
@@ -376,7 +380,7 @@ git commit -m "fix(illustrations): replace getattr cascade with isinstance check
 - Modify: `src/pd_prep_for_pgdp/core/job_runner.py:510-543`
 - Test: `tests/test_job_handler_errors.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_job_handler_errors.py`:
 
@@ -450,7 +454,7 @@ async def test_project_run_dirty_error_message_lists_failed_pages(
 
 > **Note:** If the project doesn't expose a `/run-dirty` HTTP route, test `_handle_project_run_dirty` directly via `tests/test_job_runner_internals.py` using an in-process `InProcessJobRunner`. Adapt the approach to match what `tests/test_project_fanout.py` does for similar fan-out jobs.
 
-- [ ] **Step 2: Run to confirm failures**
+- [x] **Step 2: Run to confirm failures**
 
 ```
 uv run pytest tests/test_job_handler_errors.py -v -k "partial_failure or lists_failed"
@@ -458,7 +462,7 @@ uv run pytest tests/test_job_handler_errors.py -v -k "partial_failure or lists_f
 
 Expected: both FAIL (job ends `complete` today).
 
-- [ ] **Step 3: Update `_handle_project_run_dirty`**
+- [x] **Step 3: Update `_handle_project_run_dirty`**
 
 In `src/pd_prep_for_pgdp/core/job_runner.py`, replace the inner loop at lines 510-543:
 
@@ -529,7 +533,7 @@ After the outer page loop, update the parent job:
 
 > The parent job's final `status` is set by `_run_job` using the child results; the `error_message` added here propagates to the API response.
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 ```
 uv run pytest tests/test_job_handler_errors.py tests/test_job_runner.py tests/test_project_fanout.py -v
@@ -537,7 +541,7 @@ uv run pytest tests/test_job_handler_errors.py tests/test_job_runner.py tests/te
 
 Expected: new tests PASS; no regressions.
 
-- [ ] **Step 5: Full CI**
+- [x] **Step 5: Full CI**
 
 ```
 make ci AI=1
@@ -545,7 +549,7 @@ make ci AI=1
 
 Expected: green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/job_runner.py tests/test_job_handler_errors.py
@@ -563,7 +567,7 @@ git commit -m "fix(job_runner): surface per-page failures in _handle_project_run
 - Modify: `src/pd_prep_for_pgdp/api/middleware/error_handler.py`
 - Test: `tests/test_error_handler.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_error_handler.py`:
 
@@ -593,7 +597,7 @@ def test_500_includes_traceback_with_debug_flag(app_client_debug):
 >
 > The `/__test_500__` route is a 1-line addition to the test app only (not the real app): register it in conftest via `app.add_api_route("/__test_500__", lambda: 1/0)` before the test client is constructed.
 
-- [ ] **Step 2: Run to confirm failures**
+- [x] **Step 2: Run to confirm failures**
 
 ```
 uv run pytest tests/test_error_handler.py -v -k "traceback"
@@ -601,7 +605,7 @@ uv run pytest tests/test_error_handler.py -v -k "traceback"
 
 Expected: `test_500_does_not_leak_traceback_by_default` FAILS (details present today).
 
-- [ ] **Step 3: Add `debug` to Settings**
+- [x] **Step 3: Add `debug` to Settings**
 
 In `src/pd_prep_for_pgdp/settings.py`, add after `auth_mode`:
 
@@ -612,7 +616,7 @@ In `src/pd_prep_for_pgdp/settings.py`, add after `auth_mode`:
     Never enable in production / managed mode."""
 ```
 
-- [ ] **Step 4: Gate traceback in the error handler**
+- [x] **Step 4: Gate traceback in the error handler**
 
 Replace `src/pd_prep_for_pgdp/api/middleware/error_handler.py:24-56` with:
 
@@ -659,7 +663,7 @@ Find where `install_error_handlers` is called in `bootstrap.py` (or `main.py`) a
 install_error_handlers(app, debug=settings.debug)
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 ```
 uv run pytest tests/test_error_handler.py -v
@@ -667,7 +671,7 @@ uv run pytest tests/test_error_handler.py -v
 
 Expected: all PASS including the two new cases.
 
-- [ ] **Step 6: Full CI**
+- [x] **Step 6: Full CI**
 
 ```
 make ci AI=1
@@ -675,7 +679,7 @@ make ci AI=1
 
 Expected: green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/settings.py \
@@ -697,7 +701,7 @@ git commit -m "fix(error_handler): gate traceback in 500 responses behind PGDP_D
 - Modify: `src/pd_prep_for_pgdp/core/ocr.py:68-79` and `core/ocr.py:320-340`
 - Test: `tests/test_ocr_engine_override.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_ocr_engine_override.py`:
 
@@ -724,7 +728,7 @@ def test_detect_torch_device_propagates_non_import_errors(monkeypatch):
 
 > **Note:** If module-level mocking is too brittle, test the narrowing behaviour with a simpler approach: confirm the exception type caught in production code. The key assertion is that `RuntimeError` is NOT silently swallowed.
 
-- [ ] **Step 2: Run to confirm failure**
+- [x] **Step 2: Run to confirm failure**
 
 ```
 uv run pytest tests/test_ocr_engine_override.py -v -k "non_import_errors"
@@ -732,7 +736,7 @@ uv run pytest tests/test_ocr_engine_override.py -v -k "non_import_errors"
 
 Expected: FAIL (RuntimeError silently swallowed today → returns "cpu").
 
-- [ ] **Step 3: Narrow exception types in `_detect_torch_device`**
+- [x] **Step 3: Narrow exception types in `_detect_torch_device`**
 
 Replace `src/pd_prep_for_pgdp/core/ocr.py:68-79`:
 
@@ -761,7 +765,7 @@ def _detect_torch_device() -> str:
     return "cpu"
 ```
 
-- [ ] **Step 4: Add `words_error` field to `OcrPageResult` and surface Tesseract failures**
+- [x] **Step 4: Add `words_error` field to `OcrPageResult` and surface Tesseract failures**
 
 Locate the `OcrPageResult` dataclass (or Pydantic model) in `src/pd_prep_for_pgdp/core/models.py` or `core/ocr.py`. Add:
 
@@ -786,7 +790,7 @@ In `core/ocr.py` around line 327, replace the broad `except Exception` on the Te
 
 > If `OcrPageResult` is defined in `core/models.py`, add `words_error: str | None = None` there. If it's a dataclass in `ocr.py`, add the field there. Check which file defines it with `grep -n "class OcrPageResult" src/pd_prep_for_pgdp/core/`.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 ```
 uv run pytest tests/test_ocr_engine_override.py -v
@@ -794,13 +798,13 @@ uv run pytest tests/test_ocr_engine_override.py -v
 
 Expected: all PASS.
 
-- [ ] **Step 6: Full CI**
+- [x] **Step 6: Full CI**
 
 ```
 make ci AI=1
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/ocr.py src/pd_prep_for_pgdp/core/models.py
@@ -817,7 +821,7 @@ git commit -m "fix(ocr): narrow broad except in device detection and Tesseract b
 - Modify: `src/pd_prep_for_pgdp/core/pipeline/page_stage_writer.py`
 - Test: `tests/test_page_stage_writer.py` (add injection tests)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_page_stage_writer.py`:
 
@@ -865,7 +869,7 @@ def test_rollback_osError_is_logged_not_swallowed(tmp_path, caplog):
         f"Expected rollback error in logs, got: {error_messages}"
 ```
 
-- [ ] **Step 2: Run to confirm failure**
+- [x] **Step 2: Run to confirm failure**
 
 ```
 uv run pytest tests/test_page_stage_writer.py -v -k "rollback_osError"
@@ -873,7 +877,7 @@ uv run pytest tests/test_page_stage_writer.py -v -k "rollback_osError"
 
 Expected: FAIL (OSError is suppressed, no log entry).
 
-- [ ] **Step 3: Add `_safe_rollback` helper**
+- [x] **Step 3: Add `_safe_rollback` helper**
 
 In `src/pd_prep_for_pgdp/core/pipeline/page_stage_writer.py`, add after the imports:
 
@@ -892,7 +896,7 @@ def _safe_rollback(paths_to_unlink: list[Path], context: str) -> None:
             log.error("rollback unlink failed for %s (%s): %s", p, context, exc)
 ```
 
-- [ ] **Step 4: Replace `contextlib.suppress(OSError)` in all rollback sites**
+- [x] **Step 4: Replace `contextlib.suppress(OSError)` in all rollback sites**
 
 Search for every `contextlib.suppress(OSError)` in `page_stage_writer.py`:
 
@@ -942,7 +946,7 @@ except OSError as rollback_exc:
 >
 > The FTS upsert `contextlib.suppress`-equivalent (line 424) is handled in Task 7.
 
-- [ ] **Step 5: Also remove the redundant `except BaseException: raise` (finding #11)**
+- [x] **Step 5: Also remove the redundant `except BaseException: raise` (finding #11)**
 
 In `write_artifact_file_sync` (lines 186-187):
 
@@ -969,7 +973,7 @@ This inner `try/except BaseException: raise` is a no-op — the outer handler on
 
 Same cleanup for the matching pattern inside `commit_stage_artifacts_multi` (lines 494-503).
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 ```
 uv run pytest tests/test_page_stage_writer.py -v
@@ -977,13 +981,13 @@ uv run pytest tests/test_page_stage_writer.py -v
 
 Expected: all PASS including the new rollback test.
 
-- [ ] **Step 7: Full CI**
+- [x] **Step 7: Full CI**
 
 ```
 make ci AI=1
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/pipeline/page_stage_writer.py tests/test_page_stage_writer.py
@@ -999,7 +1003,7 @@ git commit -m "fix(writer): introduce _safe_rollback; log rollback OSErrors inst
 **Files:**
 - Modify: `src/pd_prep_for_pgdp/core/pipeline/page_stage_writer.py:117-142` (thumbnail), `420-430` (FTS)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_page_stage_writer.py`:
 
@@ -1020,7 +1024,7 @@ def test_thumbnail_generation_narrow_except(monkeypatch):
 
 > **Note:** If `_generate_thumbnail` is a private helper, check if it's accessible from outside the module; if not, test via the public `commit_stage_artifact` path with a mocked cv2.
 
-- [ ] **Step 2: Narrow thumbnail generation**
+- [x] **Step 2: Narrow thumbnail generation**
 
 In `page_stage_writer.py` around line 140, replace:
 
@@ -1038,7 +1042,7 @@ with:
         return None
 ```
 
-- [ ] **Step 3: Narrow FTS upsert exception**
+- [x] **Step 3: Narrow FTS upsert exception**
 
 In `page_stage_writer.py` around line 424, replace:
 
@@ -1064,14 +1068,14 @@ with:
 
 The change from `BaseException` to `Exception` prevents swallowing `KeyboardInterrupt`/`SystemExit`.
 
-- [ ] **Step 4: Run tests + CI**
+- [x] **Step 4: Run tests + CI**
 
 ```
 uv run pytest tests/test_page_stage_writer.py tests/test_stage_thumbnail.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/pipeline/page_stage_writer.py
@@ -1088,7 +1092,7 @@ git commit -m "fix(writer): narrow thumbnail and FTS exception handlers"
 - Modify: `src/pd_prep_for_pgdp/core/pipeline/stage_runner.py:175-183`
 - Test: `tests/test_stage_runner.py` or `tests/test_stage_config_fields.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_stage_config_fields.py`:
 
@@ -1116,7 +1120,7 @@ def test_compute_config_hash_raises_on_typo_in_stage_config_fields():
         sr.STAGE_CONFIG_FIELDS.update(original)
 ```
 
-- [ ] **Step 2: Run to confirm failure**
+- [x] **Step 2: Run to confirm failure**
 
 ```
 uv run pytest tests/test_stage_config_fields.py -v -k "typo"
@@ -1124,7 +1128,7 @@ uv run pytest tests/test_stage_config_fields.py -v -k "typo"
 
 Expected: FAIL (returns a hash of `{field: None}` today, no AttributeError).
 
-- [ ] **Step 3: Replace `getattr` in `_compute_config_hash`**
+- [x] **Step 3: Replace `getattr` in `_compute_config_hash`**
 
 In `stage_runner.py:175-183`, replace:
 
@@ -1148,14 +1152,14 @@ def _compute_config_hash(cfg: ResolvedPageConfig, stage_id: str) -> str | None:
 
 (Replace `cfg: Any`.)
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 ```
 uv run pytest tests/test_stage_config_fields.py tests/test_stage_runner.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/pipeline/stage_runner.py tests/test_stage_config_fields.py
@@ -1173,7 +1177,7 @@ git commit -m "fix(stage_runner): _compute_config_hash raises AttributeError on 
 - Modify: `src/pd_prep_for_pgdp/core/job_runner.py:140-141`
 - Test: `tests/test_stage_runner.py`, `tests/test_job_runner_internals.py`
 
-- [ ] **Step 1: Write failing test for layout import narrowing**
+- [x] **Step 1: Write failing test for layout import narrowing**
 
 Add to `tests/test_stage_runner.py`:
 
@@ -1194,7 +1198,7 @@ def test_layout_import_failure_raises_stage_run_failed():
 
 > **Note:** The exact test depends on how `_auto_detect_illustrations_cpu` is invoked. Consult `tests/test_auto_detect.py` for the established pattern and add a case where the import raises `RuntimeError` instead of `ImportError`.
 
-- [ ] **Step 2: Narrow `except Exception` to `except ImportError` in stage_runner**
+- [x] **Step 2: Narrow `except Exception` to `except ImportError` in stage_runner**
 
 In `stage_runner.py` around line 512-515:
 
@@ -1208,7 +1212,7 @@ In `stage_runner.py` around line 512-515:
 
 Any non-`ImportError` (e.g. `RuntimeError` from a broken CUDA driver) now propagates, marking the stage `failed` per Q9.
 
-- [ ] **Step 3: Write failing test for job runner circuit breaker**
+- [x] **Step 3: Write failing test for job runner circuit breaker**
 
 Add to `tests/test_job_runner_internals.py`:
 
@@ -1230,7 +1234,7 @@ async def test_job_runner_poll_loop_circuit_breaker():
         await asyncio.wait_for(runner.run_pending(), timeout=2.0)
 ```
 
-- [ ] **Step 4: Add a circuit breaker to `InProcessJobRunner.run_pending`**
+- [x] **Step 4: Add a circuit breaker to `InProcessJobRunner.run_pending`**
 
 In `core/job_runner.py`, modify the outer poll loop (around line 140):
 
@@ -1257,14 +1261,14 @@ In `core/job_runner.py`, modify the outer poll loop (around line 140):
 
 > Adjust the method and attribute names to match the actual implementation. The key addition is `consecutive_failures` tracking that re-raises after `_CIRCUIT_BREAKER_MAX` hits.
 
-- [ ] **Step 5: Run tests + CI**
+- [x] **Step 5: Run tests + CI**
 
 ```
 uv run pytest tests/test_stage_runner.py tests/test_job_runner_internals.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/pipeline/stage_runner.py \
@@ -1282,7 +1286,7 @@ git commit -m "fix: narrow layout import to ImportError; add circuit breaker to 
 - Modify: `src/pd_prep_for_pgdp/core/queue/single_executor.py:118-123`
 - Test: `tests/test_priority_queue.py` or `tests/test_single_executor_async_cm.py`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add to `tests/test_single_executor_async_cm.py`:
 
@@ -1312,7 +1316,7 @@ def test_keyboard_interrupt_propagates_through_executor():
         asyncio.run(run())
 ```
 
-- [ ] **Step 2: Narrow `BaseException` to `Exception`**
+- [x] **Step 2: Narrow `BaseException` to `Exception`**
 
 In `single_executor.py:118-123`, replace:
 
@@ -1334,14 +1338,14 @@ except BaseException:
     raise
 ```
 
-- [ ] **Step 3: Run tests + CI**
+- [x] **Step 3: Run tests + CI**
 
 ```
 uv run pytest tests/test_single_executor_async_cm.py tests/test_priority_queue.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/queue/single_executor.py tests/test_single_executor_async_cm.py
@@ -1358,7 +1362,7 @@ git commit -m "fix(executor): narrow BaseException; let KeyboardInterrupt propag
 - Modify: `src/pd_prep_for_pgdp/api/data/pages.py:399-409`
 - Test: `tests/test_page_text_route.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_page_text_route.py`:
 
@@ -1394,7 +1398,7 @@ def test_storage_error_on_words_returns_503_not_200(app_client, seeded_project, 
 
 > **Note:** The exact fixture shape depends on `tests/conftest.py`. Consult `tests/test_ocr_words_persistence.py` for the established "seed a page + set words blob" pattern and adapt.
 
-- [ ] **Step 2: Add `words_partial` and `words_error` to `GetPageTextResponse`**
+- [x] **Step 2: Add `words_partial` and `words_error` to `GetPageTextResponse`**
 
 In `core/models.py` (find `GetPageTextResponse`):
 
@@ -1407,7 +1411,7 @@ class GetPageTextResponse(ApiModel):
     words_error: str | None = None  # human-readable reason for partial/missing words
 ```
 
-- [ ] **Step 3: Update `get_page_text` to distinguish error types**
+- [x] **Step 3: Update `get_page_text` to distinguish error types**
 
 In `api/data/pages.py:399-409`, replace:
 
@@ -1452,7 +1456,7 @@ with:
     )
 ```
 
-- [ ] **Step 4: Fix 500 → 422 for blob-corrupt responses (finding #27)**
+- [x] **Step 4: Fix 500 → 422 for blob-corrupt responses (finding #27)**
 
 Search `api/data/pages.py` for lines 517-519 and 596-598 (two sites that return `HTTPException(500, "words blob is corrupt")`). Replace `500` with `422` and add an `error_code`:
 
@@ -1463,7 +1467,7 @@ raise HTTPException(
 )
 ```
 
-- [ ] **Step 5: Regenerate OpenAPI spec (required by `make ci`)**
+- [x] **Step 5: Regenerate OpenAPI spec (required by `make ci`)**
 
 ```
 make openapi AI=1
@@ -1471,14 +1475,14 @@ make openapi AI=1
 
 This regenerates `openapi.json`. Check it in.
 
-- [ ] **Step 6: Run tests + CI**
+- [x] **Step 6: Run tests + CI**
 
 ```
 uv run pytest tests/test_page_text_route.py tests/test_ocr_words_persistence.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/models.py \
@@ -1497,7 +1501,7 @@ git commit -m "fix(pages): distinguish storage errors from decode errors in word
 - Modify: `src/pd_prep_for_pgdp/adapters/storage/s3.py:48-57`
 - Test: `tests/test_s3_storage.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_s3_storage.py`:
 
@@ -1557,7 +1561,7 @@ def test_exists_returns_false_for_no_such_key():
     assert result is False
 ```
 
-- [ ] **Step 2: Run to confirm `test_exists_reraises` fails**
+- [x] **Step 2: Run to confirm `test_exists_reraises` fails**
 
 ```
 uv run pytest tests/test_s3_storage.py -v -k "credentials_error or no_such_key"
@@ -1565,7 +1569,7 @@ uv run pytest tests/test_s3_storage.py -v -k "credentials_error or no_such_key"
 
 Expected: credentials test FAILS (returns False today instead of raising).
 
-- [ ] **Step 3: Narrow `s3.exists()`**
+- [x] **Step 3: Narrow `s3.exists()`**
 
 Replace `src/pd_prep_for_pgdp/adapters/storage/s3.py:48-58`:
 
@@ -1582,14 +1586,14 @@ Replace `src/pd_prep_for_pgdp/adapters/storage/s3.py:48-58`:
         return await anyio.to_thread.run_sync(_head)
 ```
 
-- [ ] **Step 4: Run tests + CI**
+- [x] **Step 4: Run tests + CI**
 
 ```
 uv run pytest tests/test_s3_storage.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/adapters/storage/s3.py tests/test_s3_storage.py
@@ -1606,7 +1610,7 @@ git commit -m "fix(s3): exists() only catches NoSuchKey; all other errors propag
 - Modify: `src/pd_prep_for_pgdp/adapters/auth/jwt_.py:49-59`
 - Test: `tests/test_jwt_auth.py` (add cases)
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_jwt_auth.py`:
 
@@ -1651,7 +1655,7 @@ async def test_invalid_jwt_signature_returns_401():
     assert exc_info.value.status_code == 401
 ```
 
-- [ ] **Step 2: Narrow `except Exception` in `jwt_.py`**
+- [x] **Step 2: Narrow `except Exception` in `jwt_.py`**
 
 Replace `src/pd_prep_for_pgdp/adapters/auth/jwt_.py:49-59`:
 
@@ -1675,14 +1679,14 @@ Replace `src/pd_prep_for_pgdp/adapters/auth/jwt_.py:49-59`:
 
 Also update `_load_jwks` to let `httpx.ConnectError` (a subclass of `OSError` in newer httpx) propagate to the caller so the 503 branch in `verify` catches it.
 
-- [ ] **Step 3: Run tests + CI**
+- [x] **Step 3: Run tests + CI**
 
 ```
 uv run pytest tests/test_jwt_auth.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/adapters/auth/jwt_.py tests/test_jwt_auth.py
@@ -1700,7 +1704,7 @@ git commit -m "fix(jwt): 503 for JWKS network errors; 401 only for PyJWTError"
 - Modify: `src/pd_prep_for_pgdp/adapters/storage/filesystem.py:24-31`
 - Test: `tests/test_bootstrap_builders.py`, `tests/test_filesystem_storage.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add to `tests/test_bootstrap_builders.py`:
 
@@ -1750,7 +1754,7 @@ def test_rejects_windows_absolute_key(tmp_path):
         asyncio.get_event_loop().run_until_complete(storage.get_bytes("C:/etc/passwd"))
 ```
 
-- [ ] **Step 2: Narrow GPU autodetect**
+- [x] **Step 2: Narrow GPU autodetect**
 
 In `bootstrap.py:88-99`, replace:
 
@@ -1776,7 +1780,7 @@ def _autodetect_gpu_backend() -> str:
         log.error("unexpected error checking for CUDA (cupy import failed unexpectedly)", exc_info=True)
 ```
 
-- [ ] **Step 3: Add explicit absolute-path check to `FilesystemStorage._path`**
+- [x] **Step 3: Add explicit absolute-path check to `FilesystemStorage._path`**
 
 In `adapters/storage/filesystem.py:24-31`, add before the resolve:
 
@@ -1793,14 +1797,14 @@ In `adapters/storage/filesystem.py:24-31`, add before the resolve:
         return p
 ```
 
-- [ ] **Step 4: Run tests + CI**
+- [x] **Step 4: Run tests + CI**
 
 ```
 uv run pytest tests/test_bootstrap_builders.py tests/test_filesystem_storage.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/bootstrap.py \
@@ -1819,7 +1823,7 @@ git commit -m "fix: narrow GPU autodetect to ImportError; reject absolute storag
 - Modify: `src/pd_prep_for_pgdp/core/ingest.py:184-186`
 - Test: `tests/test_packaging.py`, `tests/test_ingest.py`
 
-- [ ] **Step 1: Add `oxipng_skipped_pages` to `PackagingResult`**
+- [x] **Step 1: Add `oxipng_skipped_pages` to `PackagingResult`**
 
 Locate `PackagingResult` in `core/models.py` or `core/packaging.py`. Add:
 
@@ -1827,7 +1831,7 @@ Locate `PackagingResult` in `core/models.py` or `core/packaging.py`. Add:
 oxipng_skipped_pages: int = 0
 ```
 
-- [ ] **Step 2: Update oxipng fallback to count skips**
+- [x] **Step 2: Update oxipng fallback to count skips**
 
 In `packaging.py:38-41`, replace:
 
@@ -1849,7 +1853,7 @@ Update callers to accumulate `oxipng_skipped_pages` in the `PackagingResult`.
 
 > **Simpler alternative if the above restructuring is too invasive:** Pass a mutable counter object into the function: `oxipng_skip_counter: list[int]` (a 1-element list used as a mutable int). The function does `oxipng_skip_counter[0] += 1` in the fallback. Callers read `oxipng_skip_counter[0]` after packaging is done.
 
-- [ ] **Step 3: Write test**
+- [x] **Step 3: Write test**
 
 Add to `tests/test_packaging.py`:
 
@@ -1867,7 +1871,7 @@ def test_oxipng_skip_is_counted_in_result(tmp_path, monkeypatch):
     ...
 ```
 
-- [ ] **Step 4: Fix `ingest.py:184-186` to append to error list**
+- [x] **Step 4: Fix `ingest.py:184-186` to append to error list**
 
 In `core/ingest.py` around line 184-186:
 
@@ -1888,7 +1892,7 @@ Replace with:
 
 (The `errors` list is already plumbed in `IngestResult`.)
 
-- [ ] **Step 5: Write test**
+- [x] **Step 5: Write test**
 
 Add to `tests/test_ingest.py`:
 
@@ -1900,14 +1904,14 @@ def test_thumbnail_storage_error_appears_in_ingest_errors(tmp_path, monkeypatch)
     # Patch storage.get_bytes to raise on thumbnail keys; assert result.errors is non-empty.
 ```
 
-- [ ] **Step 6: Run tests + CI**
+- [x] **Step 6: Run tests + CI**
 
 ```
 uv run pytest tests/test_packaging.py tests/test_ingest.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/packaging.py \
@@ -1930,7 +1934,7 @@ git commit -m "fix(packaging,ingest): count oxipng skips; surface thumbnail stor
 - Modify: `src/pd_prep_for_pgdp/core/pipeline/stage_runner.py` (the `_call_impl` function and numpy scalar heuristic)
 - Test: `tests/test_stage_runner.py`
 
-- [ ] **Step 1: Remove `cfg` parameter introspection from `_call_impl`**
+- [x] **Step 1: Remove `cfg` parameter introspection from `_call_impl`**
 
 Locate `_call_impl` (around line 605-619). Replace the `inspect.signature` introspection with a simple convention: every stage impl must accept a `cfg` keyword argument. Update all stage impls that don't currently accept `cfg=` to accept `**_kwargs` or an explicit `cfg` parameter.
 
@@ -1954,7 +1958,7 @@ def my_stage_impl(*artifacts, cfg: ResolvedPageConfig | None = None) -> ...:
     ...
 ```
 
-- [ ] **Step 2: Replace `hasattr(v, "item")` with `isinstance(v, np.generic)`**
+- [x] **Step 2: Replace `hasattr(v, "item")` with `isinstance(v, np.generic)`**
 
 Locate line ~938:
 
@@ -1971,14 +1975,14 @@ if isinstance(output, (tuple, list)):
     output = [int(v) if isinstance(v, np.generic) else v for v in output]
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 ```
 uv run pytest tests/test_stage_runner.py tests/test_stage_registry.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/pipeline/stage_runner.py
@@ -1996,7 +2000,7 @@ git commit -m "fix(stage_runner): remove cfg introspection; use isinstance for n
 - Modify: `src/pd_prep_for_pgdp/core/job_runner.py:580-583`
 - Test: `tests/test_sqlite_adapter.py` or `tests/test_search_adapter_contract.py`
 
-- [ ] **Step 1: Add `list_distinct_owner_ids` to IDatabase**
+- [x] **Step 1: Add `list_distinct_owner_ids` to IDatabase**
 
 Locate the `IDatabase` Protocol in `adapters/database/base.py`. Add:
 
@@ -2010,7 +2014,7 @@ Locate the `IDatabase` Protocol in `adapters/database/base.py`. Add:
         return ["default"]
 ```
 
-- [ ] **Step 2: Implement in SQLite adapter**
+- [x] **Step 2: Implement in SQLite adapter**
 
 In `adapters/database/sqlite.py`, add:
 
@@ -2023,7 +2027,7 @@ In `adapters/database/sqlite.py`, add:
         return [row[0] for row in rows] or ["default"]
 ```
 
-- [ ] **Step 3: Update `job_runner.py` to use the Protocol method directly**
+- [x] **Step 3: Update `job_runner.py` to use the Protocol method directly**
 
 Replace lines 580-583:
 
@@ -2038,14 +2042,14 @@ with:
 return list(await db.list_distinct_owner_ids())
 ```
 
-- [ ] **Step 4: Run tests + CI**
+- [x] **Step 4: Run tests + CI**
 
 ```
 uv run pytest tests/test_sqlite_adapter.py tests/test_job_runner.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/adapters/database/base.py \
@@ -2065,7 +2069,7 @@ git commit -m "fix(database): add list_distinct_owner_ids to IDatabase Protocol;
 - Modify: `src/pd_prep_for_pgdp/dispatcher/batched.py:67-100`
 - Test: `tests/test_dependencies.py`, `tests/test_dispatcher_batched.py`
 
-- [ ] **Step 1: Fix dependencies.py catch-all 401**
+- [x] **Step 1: Fix dependencies.py catch-all 401**
 
 In `api/dependencies.py:69-72`, replace:
 
@@ -2090,7 +2094,7 @@ except Exception as e:
     raise HTTPException(status_code=500, detail="authentication failed unexpectedly") from e
 ```
 
-- [ ] **Step 2: Add exception type to BatchJobResult**
+- [x] **Step 2: Add exception type to BatchJobResult**
 
 In `dispatcher/batched.py:67-78`, locate the `BatchJobResult` model. Add:
 
@@ -2114,14 +2118,14 @@ except Exception as exc:
     ]
 ```
 
-- [ ] **Step 3: Run tests + CI**
+- [x] **Step 3: Run tests + CI**
 
 ```
 uv run pytest tests/test_dependencies.py tests/test_dispatcher_batched.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/api/dependencies.py \
@@ -2140,7 +2144,7 @@ git commit -m "fix: differentiate auth dependency errors by type; add error_type
 - Modify: `src/pd_prep_for_pgdp/bootstrap.py:213-225`
 - Test: `tests/test_ingest_progress_cb_resilience.py` (already exists — add stricter assertions)
 
-- [ ] **Step 1: Add a progress_cb circuit breaker in `ingest.py`**
+- [x] **Step 1: Add a progress_cb circuit breaker in `ingest.py`**
 
 Locate each of the 5 `except Exception: log.exception("... progress_cb raised; continuing")` sites. Before the loop that calls `progress_cb`, add:
 
@@ -2165,7 +2169,7 @@ except Exception:
                       _progress_cb_failures, _PROGRESS_CB_CIRCUIT_BREAKER)
 ```
 
-- [ ] **Step 2: Add logging to lifespan shutdown suppressed exceptions**
+- [x] **Step 2: Add logging to lifespan shutdown suppressed exceptions**
 
 In `bootstrap.py:213-225`, replace:
 
@@ -2192,14 +2196,14 @@ for task in tasks:
         log.exception("error awaiting task %s during lifespan shutdown", task.get_name())
 ```
 
-- [ ] **Step 3: Run tests + CI**
+- [x] **Step 3: Run tests + CI**
 
 ```
 uv run pytest tests/test_ingest_progress_cb_resilience.py tests/test_bootstrap_builders.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/ingest.py src/pd_prep_for_pgdp/bootstrap.py
@@ -2219,7 +2223,7 @@ git commit -m "fix(ingest,bootstrap): progress_cb circuit breaker; log lifespan 
 - `src/pd_prep_for_pgdp/settings.py` (#39 — PGDP_THUMBNAIL_WORKERS warning)
 - `src/pd_prep_for_pgdp/core/models.py` (#40 — Optional[NonEmptyStr] for key fields)
 
-- [ ] **Step 1: Fix validate_word_preservation sentinel (#4)**
+- [x] **Step 1: Fix validate_word_preservation sentinel (#4)**
 
 In `core/ocr.py:272-273`, replace:
 
@@ -2238,7 +2242,7 @@ except Exception:
 
 Update callers that use `result.dropped_word_count == 0` to also check `!= -1`.
 
-- [ ] **Step 2: Fix lazy init in `single_executor.py` (#24)**
+- [x] **Step 2: Fix lazy init in `single_executor.py` (#24)**
 
 In `single_executor.py`, locate the `__init__` method. Change:
 
@@ -2266,7 +2270,7 @@ And in the `queue` property or first-use site:
 
 This is safe — `asyncio.PriorityQueue()` must be created inside the event loop, so None-init in `__init__` + lazy creation in the first async call is the correct pattern.
 
-- [ ] **Step 3: Emit startup warning for invalid env var (#39)**
+- [x] **Step 3: Emit startup warning for invalid env var (#39)**
 
 In `bootstrap.py` or `settings.py`, find the PGDP_THUMBNAIL_WORKERS resolver. After the `except ValueError: log.warning(...)` block, add:
 
@@ -2282,7 +2286,7 @@ In `bootstrap.py` or `settings.py`, find the PGDP_THUMBNAIL_WORKERS resolver. Af
 
 (Or use the existing `log.warning` if it's already emitted on startup. The key is that it must be visible before the first request, not only in the logs.)
 
-- [ ] **Step 4: Add `EmptyStringIsNone` validator to key-typed fields (#40)**
+- [x] **Step 4: Add `EmptyStringIsNone` validator to key-typed fields (#40)**
 
 In `core/models.py`, add an annotated type:
 
@@ -2307,14 +2311,14 @@ class PageOutput(ApiModel):
     # ... other key fields ...
 ```
 
-- [ ] **Step 5: Run tests + CI**
+- [x] **Step 5: Run tests + CI**
 
 ```
 uv run pytest tests/ -v -x
 make ci AI=1
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/core/ocr.py \
@@ -2333,7 +2337,7 @@ git commit -m "fix(medium): validate_word_preservation sentinel; executor init; 
 **Files:**
 - Modify: `src/pd_prep_for_pgdp/api/data/projects.py:55-58`
 
-- [ ] **Step 1: Log first OSError in disk-cost scan**
+- [x] **Step 1: Log first OSError in disk-cost scan**
 
 In `api/data/projects.py:55-58`, replace:
 
@@ -2358,14 +2362,14 @@ for f in stages_dir.rglob("*"):
                 _first_error_logged = True
 ```
 
-- [ ] **Step 2: Run tests + CI**
+- [x] **Step 2: Run tests + CI**
 
 ```
 uv run pytest tests/test_disk_cost_banner.py -v
 make ci AI=1
 ```
 
-- [ ] **Step 3: Final full CI run to confirm all 42 findings addressed**
+- [x] **Step 3: Final full CI run to confirm all 42 findings addressed**
 
 ```
 make ci AI=1
@@ -2373,7 +2377,7 @@ make ci AI=1
 
 Expected: green, all tests pass.
 
-- [ ] **Step 4: Update the audit document with resolution status**
+- [x] **Step 4: Update the audit document with resolution status**
 
 In `docs/audit/code-quality-audit-2026-05-16.md`, add a header:
 
@@ -2383,7 +2387,7 @@ In `docs/audit/code-quality-audit-2026-05-16.md`, add a header:
 All 42 findings addressed. See plan: `docs/plans/2026-05-16-backend-quality-hardening.md`.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pd_prep_for_pgdp/api/data/projects.py \

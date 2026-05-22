@@ -183,7 +183,7 @@ for the `processing_status` mapping, disk-cost estimation approach, and
 
 ## References
 
-- `docs/08-roadmap.md` §M4 — smoke test, pass criterion, likely failure modes
+- `docs/plans/roadmap.md` §M4 — smoke test, pass criterion, likely failure modes
 - `docs/specs/2026-05-11-pipeline-task-model-design.md` — canonical stage DAG,
   dual-write contract, `page_stages` schema
 - `src/pd_prep_for_pgdp/adapters/database/sqlite.py` — `SqliteDatabase` CRUD

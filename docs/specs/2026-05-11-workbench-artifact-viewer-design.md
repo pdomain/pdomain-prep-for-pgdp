@@ -19,7 +19,7 @@ thumbnails per stage, click-to-select navigation, an artifact viewer pane that c
 and a controls panel that filters `ResolvedPageConfig` to just the fields the selected stage reads.
 Live SSE makes the rail update across tabs without manual refresh.
 
-Parent (retro-demoted on 2026-05-11): #9. Roadmap section: `docs/08-roadmap.md` §M3 (lines
+Parent (retro-demoted on 2026-05-11): #9. Roadmap section: `docs/plans/roadmap.md` §M3 (lines
 ~312–367).
 
 ## Constraints
@@ -142,7 +142,7 @@ All open questions resolved 2026-05-13:
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/08-roadmap.md` §M3 (lines 312–367)
+- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §M3 (lines 312–367)
 - Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §Workbench UX
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`
 - M2 chip rail commit: `8af4f15` (StageChainRail in PageWorkbench)

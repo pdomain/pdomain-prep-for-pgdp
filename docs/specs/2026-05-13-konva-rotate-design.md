@@ -154,7 +154,7 @@ None — flip, undo, and snap-to-grid decisions all closed above.
 
 ## References
 
-- `docs/08-roadmap.md` §P2 "#10" — rotate/flip context
+- `docs/plans/roadmap.md` §P2 "#10" — rotate/flip context
 - `docs/specs/2026-05-13-m4-migration-disk-cost-design.md` §Decision — for
   contrast on how stage config writes are structured
 - `frontend/src/pages/PageWorkbenchPage.tsx` — existing Konva canvas and
