@@ -301,7 +301,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     #    /healthz still appears in the OpenAPI schema. We hide it via
     #    include_in_schema=False so the schema stays clean.
     from fastapi.routing import APIRoute
-    from pd_ocr_ops import SuiteAdapters, mount_routes
+    from pd_ocr_ops import SuiteAdapters, mount_routes  # pyright: ignore[reportMissingTypeStubs]
 
     mount_routes(app, SuiteAdapters.local())
 
