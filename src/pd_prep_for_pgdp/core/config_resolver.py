@@ -82,6 +82,8 @@ def resolve_page_config(
         use_ocr_bbox_edge=bool(o.use_ocr_bbox_edge),
         rotated_standard=bool(o.rotated_standard),
         single_dimension_rescale=bool(o.single_dimension_rescale),
+        flip_horizontal=bool(o.flip_horizontal),
+        flip_vertical=bool(o.flip_vertical),
     )
 
 

@@ -210,19 +210,34 @@ def _initial_crop_cpu(image: Any, cfg: Any = None) -> Any:
 
 
 def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
-    """Apply the optional pre-crop manual rotation, or pass through at default.
+    """Apply optional pre-crop flip and/or manual rotation, or pass through.
 
-    Rotation fires when ``cfg.deskew_before_crop`` is not ``None``. At default
-    (``None``) the image is forwarded unchanged.
+    Transform order: flip first (in source image space), then rotate.
+    This matches the UI preview where CSS applies transforms left-to-right
+    (``scaleX/scaleY`` before ``rotate``).
+
+    - ``cfg.flip_horizontal`` (truthy): mirror left-right (np.flip axis=1).
+    - ``cfg.flip_vertical`` (truthy): mirror top-bottom (np.flip axis=0).
+    - ``cfg.deskew_before_crop`` (float, not None): rotate by that angle.
     """
-    if cfg is None or cfg.deskew_before_crop is None:
-        return image
+    import numpy as np
 
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        rotate_image,
-    )
+    result = image
 
-    return rotate_image(image, cfg.deskew_before_crop)
+    if cfg is not None:
+        if getattr(cfg, "flip_horizontal", None):
+            result = np.flip(result, axis=1)
+        if getattr(cfg, "flip_vertical", None):
+            result = np.flip(result, axis=0)
+
+    if cfg is not None and getattr(cfg, "deskew_before_crop", None) is not None:
+        from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
+            rotate_image,
+        )
+
+        result = rotate_image(result, cfg.deskew_before_crop)
+
+    return result
 
 
 # ─── Real implementations: post-invert chain (Slice 9-11) ───────────────────
@@ -632,6 +647,8 @@ def _default_resolved_page_config() -> Any:
         use_ocr_bbox_edge=False,
         rotated_standard=False,
         single_dimension_rescale=False,
+        flip_horizontal=False,
+        flip_vertical=False,
     )
 
 

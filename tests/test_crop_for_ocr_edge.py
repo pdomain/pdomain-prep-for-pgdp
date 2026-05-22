@@ -56,6 +56,8 @@ def _cfg(top: int = 0, bottom: int = 0, left: int = 0, right: int = 0) -> Resolv
         use_ocr_bbox_edge=False,
         rotated_standard=False,
         single_dimension_rescale=False,
+        flip_horizontal=False,
+        flip_vertical=False,
     )
 
 

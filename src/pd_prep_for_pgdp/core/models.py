@@ -144,6 +144,8 @@ class PageConfigOverrides(ApiModel):
     rotated_standard: bool | None = None
     single_dimension_rescale: bool | None = None
     manual_deskew_angle: float | None = None
+    flip_horizontal: bool | None = None
+    flip_vertical: bool | None = None
 
 
 class PageSplit(ApiModel):
@@ -388,6 +390,8 @@ class ResolvedPageConfig(ApiModel):
     use_ocr_bbox_edge: bool
     rotated_standard: bool
     single_dimension_rescale: bool
+    flip_horizontal: bool
+    flip_vertical: bool
 
 
 # ─── Job ─────────────────────────────────────────────────────────────────────

@@ -31,6 +31,8 @@ const nullOverrides = {
   rotated_standard: null,
   single_dimension_rescale: null,
   manual_deskew_angle: null,
+  flip_horizontal: null,
+  flip_vertical: null,
 } satisfies PageRecord["config_overrides"];
 
 const basePage: PageRecord = {

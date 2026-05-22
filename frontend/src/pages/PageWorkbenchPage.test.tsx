@@ -141,6 +141,8 @@ function makePageRecord(overrides: Partial<PageRecord> = {}): PageRecord {
       rotated_standard: null,
       single_dimension_rescale: null,
       manual_deskew_angle: null,
+      flip_horizontal: null,
+      flip_vertical: null,
     },
     splits: [],
     illustration_regions: [],
@@ -183,12 +185,13 @@ describe("PageWorkbenchPage — rotate mode toolbar", () => {
     await screen.findByRole("button", { name: /^rotate$/i });
   });
 
-  it("does NOT render a Flip button (flip is out of scope)", async () => {
+  it("renders a Flip button alongside the Rotate button (P2.1 shipped)", async () => {
     setupBasicHandlers();
     renderWithProviders(<PageWorkbenchPage />);
 
     await screen.findByRole("button", { name: /^rotate$/i });
-    expect(screen.queryByRole("button", { name: /flip/i })).toBeNull();
+    // P2.1: Flip button is now present in ModeToolbar.
+    await screen.findByRole("button", { name: /^flip$/i });
   });
 
   it("clicking Rotate enters rotate mode and shows rotate controls", async () => {

@@ -292,6 +292,106 @@ def test_manual_deskew_pre_cpu_preserves_dimensions_at_default() -> None:
     assert out.shape == img.shape
 
 
+# ─── P2.1: manual_deskew_pre flip support ──────────────────────────────────
+#
+# Flip is applied in image space before rotation. Horizontal flip mirrors
+# left↔right (np.flip axis=1); vertical flip mirrors top↔bottom (axis=0).
+# Both compose with manual_deskew_angle rotation.
+
+
+class _FlipCfg:
+    """Minimal cfg stub for manual_deskew_pre flip tests."""
+
+    def __init__(
+        self,
+        deskew_before_crop: float | None = None,
+        flip_horizontal: bool | None = None,
+        flip_vertical: bool | None = None,
+    ) -> None:
+        self.deskew_before_crop = deskew_before_crop
+        self.flip_horizontal = flip_horizontal
+        self.flip_vertical = flip_vertical
+
+
+def _asymmetric_bgr(h: int = 10, w: int = 20) -> np.ndarray:
+    """BGR image whose left and right halves differ so flips are detectable."""
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    img[:, : w // 2] = [100, 0, 0]  # left half: blue
+    img[:, w // 2 :] = [0, 100, 0]  # right half: green
+    return img
+
+
+def test_manual_deskew_pre_cpu_flip_h_mirrors_left_right() -> None:
+    """flip_horizontal=True mirrors the image left-right."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _asymmetric_bgr(h=10, w=20)
+    cfg = _FlipCfg(flip_horizontal=True)
+    out = fn(img, cfg)
+    # After H-flip left half should be green (was right) and right half blue (was left).
+    assert np.array_equal(out[:, : 20 // 2], np.full((10, 10, 3), [0, 100, 0], dtype=np.uint8))
+    assert np.array_equal(out[:, 20 // 2 :], np.full((10, 10, 3), [100, 0, 0], dtype=np.uint8))
+
+
+def test_manual_deskew_pre_cpu_flip_v_mirrors_top_bottom() -> None:
+    """flip_vertical=True mirrors the image top-bottom."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    h, w = 20, 10
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    img[: h // 2, :] = [200, 0, 0]  # top half: blue
+    img[h // 2 :, :] = [0, 200, 0]  # bottom half: green
+    cfg = _FlipCfg(flip_vertical=True)
+    out = fn(img, cfg)
+    # After V-flip top half should be green (was bottom).
+    assert np.array_equal(out[: h // 2, :], np.full((h // 2, w, 3), [0, 200, 0], dtype=np.uint8))
+    assert np.array_equal(out[h // 2 :, :], np.full((h // 2, w, 3), [200, 0, 0], dtype=np.uint8))
+
+
+def test_manual_deskew_pre_cpu_flip_h_and_v_is_double_flip() -> None:
+    """flip_horizontal + flip_vertical compose correctly (both axes flipped)."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _asymmetric_bgr(h=10, w=20)
+    cfg = _FlipCfg(flip_horizontal=True, flip_vertical=True)
+    out = fn(img, cfg)
+    expected = np.flip(np.flip(img, axis=1), axis=0)
+    assert np.array_equal(out, expected)
+
+
+def test_manual_deskew_pre_cpu_no_flip_flags_is_passthrough() -> None:
+    """flip_horizontal=None, flip_vertical=None: no flip applied."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _asymmetric_bgr()
+    cfg = _FlipCfg(flip_horizontal=None, flip_vertical=None)
+    out = fn(img, cfg)
+    assert np.array_equal(out, img)
+
+
+def test_manual_deskew_pre_cpu_flip_false_is_passthrough() -> None:
+    """flip_horizontal=False, flip_vertical=False: no flip applied."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _asymmetric_bgr()
+    cfg = _FlipCfg(flip_horizontal=False, flip_vertical=False)
+    out = fn(img, cfg)
+    assert np.array_equal(out, img)
+
+
+def test_manual_deskew_pre_cpu_flip_h_preserves_shape() -> None:
+    """Horizontal flip preserves (h, w, c) shape."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _solid_color_bgr(h=30, w=60)
+    cfg = _FlipCfg(flip_horizontal=True)
+    out = fn(img, cfg)
+    assert out.shape == img.shape
+
+
+def test_manual_deskew_pre_cpu_flip_v_preserves_shape() -> None:
+    """Vertical flip preserves (h, w, c) shape."""
+    fn = get_stage_impl("manual_deskew_pre", "cpu")
+    img = _solid_color_bgr(h=30, w=60)
+    cfg = _FlipCfg(flip_vertical=True)
+    out = fn(img, cfg)
+    assert out.shape == img.shape
+
+
 # ─── Real impl: find_content_edges (Slice 9) ───────────────────────────────
 
 

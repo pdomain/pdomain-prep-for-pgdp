@@ -18,8 +18,10 @@ under "Deferred — remote / cloud mode" at the bottom.
 - §9a-followup Word-delete Undo UI — shipped (2026-05-22, server-side
   "Restore last delete" banner; strategy (a)).
 - §13 search across pages — shipped (#76).
-- §10 Konva rotate — shipped (#100); flip is **blocked on CT design**
-  (see P2 below).
+- §10 Konva rotate — shipped (#100).
+- §P2.1 Konva Transformer flip — shipped (2026-05-22, feat/konva-flip): H-flip + V-flip
+  in ModeToolbar "Flip" mode; PATCH `flip_horizontal`/`flip_vertical` + POST
+  `manual_deskew_pre/run`; compose with rotate in CSS preview and pipeline.
 - §P0.1 stale Re-process button — removed (#110, 2026-05-15).
 - §P0.2 Download Package UI — shipped (#111, 2026-05-15).
 - §P0.3 Folder upload — shipped (2026-05-16, client-side JSZip in create-project modal).
@@ -49,15 +51,7 @@ Items that prevent a user from completing a real book end-to-end in
 
 ## P2 — Polish / nice-to-have
 
-### P2.1. Konva Transformer flip
-
-`rotateEnabled` and Rotate toolbar shipped (#100, 2026-05-14).
-`flipEnabled=false` remains.
-
-**BLOCKED: needs CT decision** — is horizontal/vertical flip needed
-for any real proofing case, or skip it? (Rare; most flip errors
-should be handled by the user re-scanning, not by a destructive
-client-side flip applied to the proof PNG.)
+> All P2 items shipped. See "Reference for finished work" above.
 
 ---
 

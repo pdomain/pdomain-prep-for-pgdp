@@ -356,6 +356,8 @@ def _make_resolved_config(
         use_ocr_bbox_edge=False,
         rotated_standard=False,
         single_dimension_rescale=False,
+        flip_horizontal=False,
+        flip_vertical=False,
     )
 
 

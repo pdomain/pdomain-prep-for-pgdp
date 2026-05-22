@@ -53,7 +53,13 @@ interface IllustrationRegion {
   convert_to_grayscale: boolean;
 }
 
-type EditMode = "view" | "split" | "illustration" | "create-sibling" | "rotate";
+type EditMode =
+  | "view"
+  | "split"
+  | "illustration"
+  | "create-sibling"
+  | "rotate"
+  | "flip";
 
 const PAGE_TYPES: PageType[] = [
   "normal",
@@ -117,6 +123,10 @@ export function PageWorkbenchPage() {
   );
   // Rotate mode: draft angle in degrees (±180 range).
   const [draftAngle, setDraftAngle] = useState<number>(0);
+
+  // Flip mode: draft flip state (true = flip applied, false/null = no flip).
+  const [draftFlipH, setDraftFlipH] = useState<boolean>(false);
+  const [draftFlipV, setDraftFlipV] = useState<boolean>(false);
 
   // Create-sibling split state: bbox drawn by user + suffix list.
   const [siblingBbox, setSiblingBbox] = useState<{
@@ -217,7 +227,36 @@ export function PageWorkbenchPage() {
   // Round angle to one decimal place for display and storage (spec §Angle range and precision).
   const roundAngle = (a: number) => Number(a.toFixed(1));
 
+  // Flip apply: PATCH config_overrides with flip_horizontal/flip_vertical, then
+  // POST manual_deskew_pre/run to re-run the stage.
+  //
+  // null/null = Reset (clear stored flips).
+  const applyFlip = useMutation({
+    mutationFn: ({
+      flipH,
+      flipV,
+    }: {
+      flipH: boolean | null;
+      flipV: boolean | null;
+    }) =>
+      api.patch<PageRecord>(`/api/data/projects/${projectId}/pages/${idx0}`, {
+        config_overrides: {
+          ...overrides,
+          flip_horizontal: flipH,
+          flip_vertical: flipV,
+        },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["page", projectId, idx0],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["pages", projectId] });
+      runDeskewStage.mutate();
+    },
+  });
+
   // Pre-fill draftAngle when entering rotate mode if a stored angle exists.
+  // Pre-fill draftFlipH/draftFlipV when entering flip mode.
   const handleSetEditMode = (mode: EditMode) => {
     if (mode === "rotate" && page.data) {
       const stored = page.data.config_overrides.manual_deskew_angle;
@@ -225,12 +264,20 @@ export function PageWorkbenchPage() {
         stored !== null && stored !== undefined ? roundAngle(stored) : 0,
       );
     }
+    if (mode === "flip" && page.data) {
+      setDraftFlipH(
+        page.data.config_overrides.flip_horizontal === true ? true : false,
+      );
+      setDraftFlipV(
+        page.data.config_overrides.flip_vertical === true ? true : false,
+      );
+    }
     setEditMode(mode);
   };
 
-  // Global Escape handler: exits rotate mode without applying.
+  // Global Escape handler: exits rotate or flip mode without applying.
   useEffect(() => {
-    if (editMode !== "rotate") return;
+    if (editMode !== "rotate" && editMode !== "flip") return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -429,11 +476,42 @@ export function PageWorkbenchPage() {
           />
         )}
 
+        {editMode === "flip" && (
+          <FlipToolbar
+            flipH={draftFlipH}
+            flipV={draftFlipV}
+            onFlipH={() => {
+              const next = !draftFlipH;
+              setDraftFlipH(next);
+              applyFlip.mutate({ flipH: next, flipV: draftFlipV });
+            }}
+            onFlipV={() => {
+              const next = !draftFlipV;
+              setDraftFlipV(next);
+              applyFlip.mutate({ flipH: draftFlipH, flipV: next });
+            }}
+            onReset={() => {
+              const hasStoredFlip =
+                page.data?.config_overrides.flip_horizontal != null ||
+                page.data?.config_overrides.flip_vertical != null;
+              setDraftFlipH(false);
+              setDraftFlipV(false);
+              if (hasStoredFlip) {
+                applyFlip.mutate({ flipH: null, flipV: null });
+              }
+            }}
+            onCancel={() => setEditMode("view")}
+            isPending={applyFlip.isPending || runDeskewStage.isPending}
+          />
+        )}
+
         <CanvasViewer
           imageKey={`/cdn/${page.data.thumbnail_key ?? ""}`}
           page={page.data}
           editMode={editMode}
           draftAngle={draftAngle}
+          draftFlipH={draftFlipH}
+          draftFlipV={draftFlipV}
           onRotate={setDraftAngle}
           onDrawSplit={handleAddSplit}
           onDrawRegion={handleAddRegion}
@@ -539,6 +617,8 @@ function CanvasViewer({
   page,
   editMode,
   draftAngle,
+  draftFlipH,
+  draftFlipV,
   onRotate,
   onDrawSplit,
   onDrawRegion,
@@ -550,6 +630,8 @@ function CanvasViewer({
   page: PageRecord;
   editMode: EditMode;
   draftAngle: number;
+  draftFlipH: boolean;
+  draftFlipV: boolean;
   onRotate: (angle: number) => void;
   onDrawSplit: (r: { L: number; R: number; T: number; B: number }) => void;
   onDrawRegion: (r: { L: number; R: number; T: number; B: number }) => void;
@@ -595,17 +677,18 @@ function CanvasViewer({
     };
   }, [imageKey]);
 
-  // Drawing (drag-to-create) is disabled in view and rotate modes.
+  // Drawing (drag-to-create) is disabled in view, rotate, and flip modes.
   // GAP-1: rotate mode no longer drives a Transformer; the overlay
   // cursor still changes to indicate the mode, but drag does nothing.
-  const drawingEnabled = editMode !== "view" && editMode !== "rotate";
+  const drawingEnabled =
+    editMode !== "view" && editMode !== "rotate" && editMode !== "flip";
 
   // Attach the Transformer to the selected rect (split/illustration modes).
   // GAP-1: rotate mode Transformer-on-image removed (see file header).
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
-    if (editMode === "rotate") {
+    if (editMode === "rotate" || editMode === "flip") {
       // GAP-1: Cannot attach Transformer to pd-ui's internal image node.
       // Clear any previously attached rect so the transformer is idle.
       tr.nodes([]);
@@ -623,12 +706,27 @@ function CanvasViewer({
     }
   }, [editMode, selection, page.splits, page.illustration_regions]);
 
-  // GAP-1: draftAngle visual feedback via CSS transform on the container
-  // div (rotate mode). This preserves the visual preview without needing
-  // access to pd-ui's internal Konva image node.
+  // GAP-1: visual preview via CSS transform on the container div.
+  // Compose: flip first (scaleX/scaleY), then rotate — matching the pipeline
+  // transform order (flip in source space, then rotate).
+  // Active in rotate mode (angle preview) and flip mode (flip preview).
+  const previewTransformParts: string[] = [];
+  if (editMode === "rotate" || editMode === "flip") {
+    const scaleX = draftFlipH ? -1 : 1;
+    const scaleY = draftFlipV ? -1 : 1;
+    if (scaleX !== 1 || scaleY !== 1) {
+      previewTransformParts.push(`scaleX(${scaleX}) scaleY(${scaleY})`);
+    }
+    if (editMode === "rotate" && draftAngle !== 0) {
+      previewTransformParts.push(`rotate(${draftAngle}deg)`);
+    }
+  }
   const rotateStyle =
-    editMode === "rotate" && draftAngle !== 0
-      ? { transform: `rotate(${draftAngle}deg)`, transformOrigin: "center" }
+    previewTransformParts.length > 0
+      ? {
+          transform: previewTransformParts.join(" "),
+          transformOrigin: "center",
+        }
       : undefined;
 
   if (!naturalSize) {
@@ -902,6 +1000,7 @@ function ModeToolbar({
       {btn("illustration", "Add illustration", "bg-red-600")}
       {btn("create-sibling", "Draw split region", "bg-indigo-600")}
       {btn("rotate", "Rotate", "bg-amber-600")}
+      {btn("flip", "Flip", "bg-teal-600")}
     </div>
   );
 }
@@ -994,6 +1093,70 @@ function RotateToolbar({
         title="Rotate 180°"
       >
         180°
+      </button>
+    </div>
+  );
+}
+
+// ─── Flip toolbar ──────────────────────────────────────────────────────────
+
+function FlipToolbar({
+  flipH,
+  flipV,
+  onFlipH,
+  onFlipV,
+  onReset,
+  onCancel,
+  isPending,
+}: {
+  flipH: boolean;
+  flipV: boolean;
+  onFlipH: () => void;
+  onFlipV: () => void;
+  onReset: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded border border-teal-200 bg-teal-50 px-3 py-2 text-sm">
+      <span className="font-medium text-teal-800">Flip:</span>
+      <button
+        onClick={onFlipH}
+        disabled={isPending}
+        aria-pressed={flipH}
+        className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
+          flipH
+            ? "border-teal-600 bg-teal-600 text-white"
+            : "border-slate-300 bg-white hover:bg-slate-50"
+        }`}
+      >
+        Flip Horizontal
+      </button>
+      <button
+        onClick={onFlipV}
+        disabled={isPending}
+        aria-pressed={flipV}
+        className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
+          flipV
+            ? "border-teal-600 bg-teal-600 text-white"
+            : "border-slate-300 bg-white hover:bg-slate-50"
+        }`}
+      >
+        Flip Vertical
+      </button>
+      <span className="ml-2 text-slate-500">|</span>
+      <button
+        onClick={onReset}
+        disabled={isPending}
+        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+      >
+        Reset
+      </button>
+      <button
+        onClick={onCancel}
+        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+      >
+        Cancel
       </button>
     </div>
   );

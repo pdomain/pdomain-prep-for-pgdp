@@ -3741,6 +3741,28 @@
               }
             ],
             "title": "Manual Deskew Angle"
+          },
+          "flip_horizontal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Horizontal"
+          },
+          "flip_vertical": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Vertical"
           }
         },
         "type": "object",
@@ -3945,6 +3967,28 @@
               }
             ],
             "title": "Manual Deskew Angle"
+          },
+          "flip_horizontal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Horizontal"
+          },
+          "flip_vertical": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Vertical"
           }
         },
         "type": "object",
@@ -3963,7 +4007,9 @@
           "use_ocr_bbox_edge",
           "rotated_standard",
           "single_dimension_rescale",
-          "manual_deskew_angle"
+          "manual_deskew_angle",
+          "flip_horizontal",
+          "flip_vertical"
         ],
         "title": "PageConfigOverrides",
         "description": "Per-page processing overrides. Every field None = inherit."

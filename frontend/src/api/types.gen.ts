@@ -1334,6 +1334,10 @@ export interface components {
             single_dimension_rescale?: boolean | null;
             /** Manual Deskew Angle */
             manual_deskew_angle?: number | null;
+            /** Flip Horizontal */
+            flip_horizontal?: boolean | null;
+            /** Flip Vertical */
+            flip_vertical?: boolean | null;
         };
         /**
          * PageConfigOverrides
@@ -1380,6 +1384,10 @@ export interface components {
             single_dimension_rescale: boolean | null;
             /** Manual Deskew Angle */
             manual_deskew_angle: number | null;
+            /** Flip Horizontal */
+            flip_horizontal: boolean | null;
+            /** Flip Vertical */
+            flip_vertical: boolean | null;
         };
         /**
          * PageOutput

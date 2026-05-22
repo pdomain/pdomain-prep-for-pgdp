@@ -161,7 +161,7 @@ class StageRunFailed(RuntimeError):  # noqa: N818  # intentional: describes the 
 # Stages absent from this map read no per-page config fields.
 STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
     "initial_crop": frozenset({"initial_crop"}),
-    "manual_deskew_pre": frozenset({"deskew_before_crop"}),
+    "manual_deskew_pre": frozenset({"deskew_before_crop", "flip_horizontal", "flip_vertical"}),
     "threshold": frozenset({"threshold_level"}),
     "find_content_edges": frozenset({"fuzzy_pct", "pixel_count_columns", "pixel_count_rows"}),
     "crop_to_content": frozenset({"white_space_additional"}),
