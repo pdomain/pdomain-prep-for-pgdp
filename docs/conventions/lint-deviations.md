@@ -182,7 +182,7 @@ marker, not a runtime error). The names are more descriptive than the
 
 **Suppression form:** `# noqa: ERA001` inline.
 
-**Files:** `src/pd_prep_for_pgdp/core/models.py` (3 occurrences, lines 413–419)
+**Files:** `src/pd_prep_for_pgdp/core/models.py` (3 occurrences, lines 417, 420, 423)
 
 **Justification.** These are inline payload-schema comments for the
 `JobType` enum variants — they document what `payload` dict structure each
@@ -191,7 +191,23 @@ awaiting deletion.
 
 ---
 
-### 17. Per-file rule bundles — ruff
+### 17. `E731` — ruff (lambda-assignment)
+
+**Suppression form:** `# noqa: E731` inline.
+
+**Files:** `tests/test_stage_runner.py:88`
+
+**Justification.** A single-expression `lambda` is assigned to `coerce` to
+mirror, inline, the exact coercion expression used inside `run_stage` — the
+test asserts that the helper reproduces the production behaviour verbatim.
+Promoting it to a `def` would obscure the one-to-one correspondence with the
+runner code under test. `E731` is not in the `tests/*` per-file-ignore
+bundle because lambda assignment is rare in this suite; the inline `noqa`
+keeps the suppression narrowly scoped to this one site.
+
+---
+
+### 18. Per-file rule bundles — ruff
 
 **Config:** `[tool.ruff.lint.per-file-ignores]` in `pyproject.toml`.
 
@@ -228,7 +244,7 @@ awaiting deletion.
 
 ---
 
-### 18. `TC` — ruff (type-checking imports)
+### 19. `TC` — ruff (type-checking imports)
 
 **Config:** suppressed on all `src/pd_prep_for_pgdp/**/*.py` that define
 Pydantic models or are in the adapter/API/core layers.
@@ -245,7 +261,7 @@ until the Pydantic models are migrated. See inline comment in `pyproject.toml`.
 
 ## Python — basedpyright
 
-### 19. `reportMissingImports` — basedpyright
+### 20. `reportMissingImports` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportMissingImports]` inline.
 
@@ -281,7 +297,7 @@ code); `# pyright: ignore[reportMissingImports]` is the correct form.
 
 ---
 
-### 20. `reportReturnType` — basedpyright
+### 21. `reportReturnType` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportReturnType]` inline.
 
@@ -301,7 +317,7 @@ stubs are placeholders for real implementations.
 
 ---
 
-### 21. `reportIncompatibleMethodOverride` — basedpyright
+### 22. `reportIncompatibleMethodOverride` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportIncompatibleMethodOverride]` inline.
 
@@ -318,7 +334,7 @@ compatible.
 
 ---
 
-### 22. `reportOptionalMemberAccess` — basedpyright
+### 23. `reportOptionalMemberAccess` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportOptionalMemberAccess]` inline.
 
@@ -332,7 +348,7 @@ is guaranteed to be set before any method that uses it is called, via
 
 ---
 
-### 23. `reportMissingTypeArgument` — basedpyright
+### 24. `reportMissingTypeArgument` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportMissingTypeArgument]` inline.
 
@@ -350,7 +366,7 @@ change; deferred to the annotation backlog.
 
 ---
 
-### 24. `reportConstantRedefinition` — basedpyright
+### 25. `reportConstantRedefinition` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportConstantRedefinition]` inline.
 
@@ -367,7 +383,7 @@ per-file-ignores for the same module.
 
 ---
 
-### 25. `reportAttributeAccessIssue` — basedpyright
+### 26. `reportAttributeAccessIssue` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportAttributeAccessIssue]` inline.
 
@@ -382,7 +398,7 @@ the injection is intentional and narrowly scoped.
 
 ---
 
-### 26. `reportArgumentType` — basedpyright
+### 27. `reportArgumentType` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportArgumentType]` inline.
 
@@ -401,7 +417,7 @@ the injection is intentional and narrowly scoped.
 
 ---
 
-### 27. `reportGeneralTypeIssues` — basedpyright
+### 28. `reportGeneralTypeIssues` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportGeneralTypeIssues]` inline.
 
@@ -415,7 +431,7 @@ the concrete implementations return `AsyncGenerator`. basedpyright flags the
 
 ---
 
-### 28. `reportAssignmentType` — basedpyright
+### 29. `reportAssignmentType` — basedpyright
 
 **Suppression form:** `# pyright: ignore[reportAssignmentType]` inline.
 
@@ -430,7 +446,7 @@ correct and intentional: the enum semantics are unambiguous.
 
 ---
 
-### 29. `type: ignore[no-any-return]` and `type: ignore[no-untyped-def]` — mypy-style (annotation backlog)
+### 30. `type: ignore[no-any-return]` and `type: ignore[no-untyped-def]` — mypy-style (annotation backlog)
 
 **Suppression form:** `# type: ignore[no-any-return]` and
 `# type: ignore[no-untyped-def]` inline.
@@ -470,7 +486,7 @@ the sqlite adapter annotation pass.
 
 ## TypeScript/ESLint (frontend)
 
-### 30. `@typescript-eslint/no-explicit-any` — ESLint
+### 31. `@typescript-eslint/no-explicit-any` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line @typescript-eslint/no-explicit-any` inline.
 
@@ -490,14 +506,14 @@ The `QueryCacheNotifyEvent` suppression covers a type that is internal to
 
 ---
 
-### 31. `react-hooks/exhaustive-deps` — ESLint
+### 32. `react-hooks/exhaustive-deps` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line react-hooks/exhaustive-deps` (or `// eslint-disable-line`) inline.
 
 **Files:**
 
 - `frontend/src/hooks/useActiveBatchJob.ts:70`
-- `frontend/src/pages/TextReviewPage.tsx:156`
+- `frontend/src/pages/TextReviewPage.tsx:154`
 - `frontend/src/components/ArtifactViewer.tsx:152`
 
 **Justification.** These hooks intentionally omit certain dependencies to
@@ -507,7 +523,7 @@ which dep is omitted and why.
 
 ---
 
-### 32. `jsx-a11y/heading-has-content` — ESLint
+### 33. `jsx-a11y/heading-has-content` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line jsx-a11y/heading-has-content` inline.
 
@@ -519,7 +535,7 @@ through the spread.
 
 ---
 
-### 33. `jsx-a11y/click-events-have-key-events`, `jsx-a11y/no-noninteractive-element-interactions`, `jsx-a11y/no-static-element-interactions` — ESLint
+### 34. `jsx-a11y/click-events-have-key-events`, `jsx-a11y/no-noninteractive-element-interactions`, `jsx-a11y/no-static-element-interactions` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line` inline.
 
@@ -527,7 +543,7 @@ through the spread.
 
 - `frontend/src/components/DiskCostBanner.tsx` (lines 79, 87) — modal dialog
   backdrop/inner panel click handling.
-- `frontend/src/pages/PageWorkbenchPage.tsx:940` — rotate widget arrow-key
+- `frontend/src/pages/PageWorkbenchPage.tsx:1039` — rotate widget arrow-key
   capture.
 
 **Justification.**
@@ -542,7 +558,7 @@ through the spread.
 
 ---
 
-### 34. `jsx-a11y/label-has-associated-control` — ESLint
+### 35. `jsx-a11y/label-has-associated-control` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line jsx-a11y/label-has-associated-control` inline.
 
@@ -558,7 +574,7 @@ wraps a native `<input>` but is opaque to the rule.
 
 ---
 
-### 35. `react-refresh/only-export-components` — ESLint
+### 36. `react-refresh/only-export-components` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line react-refresh/only-export-components` inline.
 
@@ -576,7 +592,7 @@ module organization without meaningful benefit.
 
 ---
 
-### 36. `@typescript-eslint/no-useless-constructor` — ESLint
+### 37. `@typescript-eslint/no-useless-constructor` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line @typescript-eslint/no-useless-constructor` inline.
 

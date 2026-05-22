@@ -85,7 +85,7 @@ def test_numpy_scalar_in_output_uses_isinstance_not_hasattr() -> None:
     assert not isinstance(fake_val, np.generic), "FakeWithItem must NOT satisfy isinstance(v, np.generic)"
 
     # Applying the coercion expression used in run_stage:
-    coerce = lambda v: int(v) if isinstance(v, np.generic) else v  # noqa: E731
+    coerce = lambda v: int(v) if isinstance(v, np.generic) else v  # noqa: E731  -- mirrors run_stage's coercion expression verbatim; a def would obscure the 1:1 correspondence
     assert coerce(np_val) == 42
     assert coerce(fake_val) is fake_val, "FakeWithItem must be returned unchanged"
 
