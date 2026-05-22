@@ -14,7 +14,7 @@ license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "pd-book-tools>=0.13.0",
-    "pd-ocr-ops>=0.2,<0.3",
+    "pd-ocr-ops>=0.2.2",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
@@ -78,7 +78,7 @@ explicit = true
 
 [tool.uv.sources]
 pd-book-tools = { index = "pd-index-pip" }
-pd-ocr-ops = { path = "../pd-ocr-ops", editable = true }
+pd-ocr-ops = { index = "pd-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
