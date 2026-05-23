@@ -37,7 +37,7 @@ import os
 import uuid
 from dataclasses import dataclass
 from time import time
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from pd_prep_for_pgdp.core.models import PageStageState, PageStageStatus
 
@@ -141,7 +141,7 @@ def make_stage_thumbnail_bytes(artifact_bytes: bytes, output_type: str) -> bytes
     if output_type not in _THUMBNAIL_OUTPUT_TYPES:
         return None
     try:
-        import cv2  # pyright: ignore[reportMissingImports]
+        import cv2
         import numpy as np
     except ImportError:
         return None
@@ -150,6 +150,7 @@ def make_stage_thumbnail_bytes(artifact_bytes: bytes, output_type: str) -> bytes
         img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
         if img is None:
             return None
+        img = cast("np.ndarray[tuple[int, ...], np.dtype[np.uint8]]", img)
         h, w = img.shape[:2]
         scale = min(_THUMB_MAX_DIM / max(h, w, 1), 1.0)
         if scale < 1.0:
@@ -200,7 +201,7 @@ def write_artifact_file_sync(
     try:
         fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         with os.fdopen(fd, "wb") as fp:
-            fp.write(artifact_bytes)
+            _ = fp.write(artifact_bytes)
             fp.flush()
             os.fsync(fp.fileno())
     except BaseException as exc:
@@ -222,7 +223,7 @@ def write_artifact_file_sync(
     if thumb_path is not None and thumb_bytes is not None:
         with contextlib.suppress(OSError):
             thumb_path.parent.mkdir(parents=True, exist_ok=True)
-            thumb_path.write_bytes(thumb_bytes)
+            _ = thumb_path.write_bytes(thumb_bytes)
 
 
 def _ext_for_stage(stage_id: str) -> str:
@@ -235,15 +236,15 @@ def _ext_for_stage(stage_id: str) -> str:
     if stage.output_type in COMPOUND_OUTPUT_TYPES:
         raise StageArtifactWriteError(
             f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
-            "use the dedicated multi-artifact writer (not yet implemented at M1 §C). "
-            "Single-file commits via commit_stage_artifact don't apply."
+            + "use the dedicated multi-artifact writer (not yet implemented at M1 §C). "
+            + "Single-file commits via commit_stage_artifact don't apply."
         )
     try:
         return OUTPUT_EXT_BY_TYPE[stage.output_type]
     except KeyError as exc:
         raise StageArtifactWriteError(
             f"stage {stage_id!r} has output_type {stage.output_type!r} which has no "
-            "extension mapping in OUTPUT_EXT_BY_TYPE; add one or use a sibling writer."
+            + "extension mapping in OUTPUT_EXT_BY_TYPE; add one or use a sibling writer."
         ) from exc
 
 
@@ -298,7 +299,7 @@ def _write_thumbnail(
     thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id)
     try:
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
-        thumb_path.write_bytes(thumb_bytes)
+        _ = thumb_path.write_bytes(thumb_bytes)
     except OSError:
         log.warning(
             "thumbnail write failed for stage %r (project=%s page=%s)",
@@ -363,7 +364,7 @@ async def commit_stage_artifact(
     try:
         fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         with os.fdopen(fd, "wb") as fp:
-            fp.write(artifact_bytes)
+            _ = fp.write(artifact_bytes)
             fp.flush()
             os.fsync(fp.fileno())
     except BaseException as exc:
@@ -521,7 +522,7 @@ async def commit_stage_artifacts_multi(
             try:
                 fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
                 with os.fdopen(fd, "wb") as fp:
-                    fp.write(data)
+                    _ = fp.write(data)
                     fp.flush()
                     os.fsync(fp.fileno())
             except BaseException as exc:

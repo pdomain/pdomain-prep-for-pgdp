@@ -42,15 +42,56 @@ exists.
 from __future__ import annotations
 
 import contextlib
+import importlib
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from typing import Literal, NoReturn, Protocol, TypedDict, cast
 
-from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+import numpy as np
+import numpy.typing as npt
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS, ResolvedPageConfig
 
 log = logging.getLogger(__name__)
+
+type ImageArray = npt.NDArray[np.uint8]
+type BBox = tuple[int, int, int, int]
+
+
+class PageAttrsOutput(TypedDict):
+    suggested_type: str
+    suggested_alignment: str
+    confidence: float
+    height: int
+    width: int
+    h_w_ratio: float
+
+
+class IllustrationRegionOutput(TypedDict):
+    index: int
+    label: str
+    type: Literal["illustration", "decoration", "plate"]
+    L: int | None
+    T: int | None
+    R: int | None
+    B: int | None
+
+
+class _AlignmentNamespace(Protocol):
+    DEFAULT: object
+
+
+type JsonStageOutput = BBox | PageAttrsOutput | list[IllustrationRegionOutput]
+type CompoundStageOutput = dict[str, bytes]
+type StageArtifact = ImageArray | bytes | str | JsonStageOutput | CompoundStageOutput
+type StageConfig = ResolvedPageConfig | None
+type StageImpl = Callable[..., StageArtifact]
+
+
+def _load_attr(module_path: str, attr_name: str) -> object:
+    module = importlib.import_module(module_path)
+    return cast("object", getattr(module, attr_name))
+
 
 # ─── Sentinel exception ─────────────────────────────────────────────────────
 
@@ -64,7 +105,7 @@ class StageNotImplemented(RuntimeError):  # noqa: N818  # intentional: signals "
     """
 
 
-def _make_placeholder(stage_id: str) -> Callable[..., Any]:
+def _make_placeholder(stage_id: str) -> StageImpl:
     """Build a placeholder callable for stages without a real impl yet.
 
     Returns a function that, when called, raises ``StageNotImplemented``
@@ -72,10 +113,10 @@ def _make_placeholder(stage_id: str) -> Callable[..., Any]:
     relying on traceback-walk hacks.
     """
 
-    def _placeholder(*_args: Any, **_kwargs: Any) -> Any:
+    def _placeholder(*_args: object, **_kwargs: object) -> NoReturn:
         raise StageNotImplemented(
             f"stage {stage_id!r} has no implementation registered for cpu yet "
-            "(M2 placeholder — wire up in a future slice)"
+            + "(M2 placeholder — wire up in a future slice)"
         )
 
     _placeholder.__name__ = f"placeholder_{stage_id}"
@@ -107,54 +148,56 @@ def _make_placeholder(stage_id: str) -> Callable[..., Any]:
 # manual SQLite seeding, which is the M2 smoke-test pass criterion.
 
 
-def _grayscale_cpu(image: Any, cfg: Any = None) -> Any:
+def _grayscale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Convert a 3-channel BGR ndarray to a 2-D grayscale ndarray.
 
     Wraps ``pd_book_tools.image_processing.cv2_processing.cv2_convert_to_grayscale``
     so the CPU image-processing path stays consistent with the monolithic
     process_page chain.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        cv2_convert_to_grayscale,
+    _ = cfg
+    cv2_convert_to_grayscale = cast(
+        "Callable[[ImageArray], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "cv2_convert_to_grayscale"),
     )
-
     return cv2_convert_to_grayscale(image)
 
 
-def _threshold_cpu(image: Any, cfg: Any = None) -> Any:
+def _threshold_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Binarise a 2-D grayscale ndarray.
 
     When ``cfg.threshold_level`` is set, applies a fixed-level binary threshold.
     Otherwise falls back to Otsu auto-thresholding.
     """
     if cfg is not None and cfg.threshold_level is not None:
-        from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-            binary_thresh,
+        binary_thresh = cast(
+            "Callable[..., ImageArray]",
+            _load_attr("pd_book_tools.image_processing.cv2_processing", "binary_thresh"),
         )
-
         return binary_thresh(image, level=cfg.threshold_level)
 
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        otsu_binary_thresh,
+    otsu_binary_thresh = cast(
+        "Callable[[ImageArray], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "otsu_binary_thresh"),
     )
-
     return otsu_binary_thresh(image)
 
 
-def _invert_cpu(image: Any, cfg: Any = None) -> Any:
+def _invert_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Bitwise complement of a uint8 ndarray (`255 - x`).
 
     Wraps ``pd_book_tools.image_processing.cv2_processing.invert_image``.
     Idempotent under double-application (Q3-friendly: `invert(invert(x)) == x`).
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        invert_image,
+    _ = cfg
+    invert_image = cast(
+        "Callable[[ImageArray], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "invert_image"),
     )
-
     return invert_image(image)
 
 
-def _ingest_source_cpu(source_bytes: bytes, cfg: Any = None) -> bytes:
+def _ingest_source_cpu(source_bytes: bytes, cfg: StageConfig = None) -> bytes:
     """Pass through the per-page source bytes unchanged.
 
     The runner reads the bytes from IStorage at the page's `source_key`
@@ -171,10 +214,11 @@ def _ingest_source_cpu(source_bytes: bytes, cfg: Any = None) -> bytes:
     extension. cv2.imdecode handles either format transparently when
     downstream stages read it back.
     """
+    _ = cfg
     return source_bytes
 
 
-def _decode_source_cpu(image: Any, cfg: Any = None) -> Any:
+def _decode_source_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Pass through the already-decoded source image unchanged.
 
     The runner cv2.imdecodes parent bytes before calling the impl, so by
@@ -183,10 +227,11 @@ def _decode_source_cpu(image: Any, cfg: Any = None) -> Any:
     persistence) gives `initial_crop` a well-defined parent path while
     keeping the registry impl pure in ndarray space.
     """
+    _ = cfg
     return image
 
 
-def _initial_crop_cpu(image: Any, cfg: Any = None) -> Any:
+def _initial_crop_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply project/per-page initial-crop insets, or pass through at default.
 
     Resolves the effective crop insets from ``cfg.initial_crop`` (per-page) or
@@ -201,15 +246,15 @@ def _initial_crop_cpu(image: Any, cfg: Any = None) -> Any:
     if not any(crop):
         return image
 
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        crop_edges,
+    crop_edges = cast(
+        "Callable[..., ImageArray]", _load_attr("pd_book_tools.image_processing.cv2_processing", "crop_edges")
     )
 
     L_, R_, T_, B_ = crop
     return crop_edges(image, top=T_, bottom=B_, left=L_, right=R_)
 
 
-def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
+def _manual_deskew_pre_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply optional pre-crop flip and/or manual rotation, or pass through.
 
     Transform order: flip first (in source image space), then rotate.
@@ -222,19 +267,19 @@ def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
     """
     import numpy as np
 
-    result = image
+    result: ImageArray = image
 
     if cfg is not None:
-        if getattr(cfg, "flip_horizontal", None):
+        if cfg.flip_horizontal:
             result = np.flip(result, axis=1)
-        if getattr(cfg, "flip_vertical", None):
+        if cfg.flip_vertical:
             result = np.flip(result, axis=0)
 
-    if cfg is not None and getattr(cfg, "deskew_before_crop", None) is not None:
-        from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-            rotate_image,
+    if cfg is not None and cfg.deskew_before_crop is not None:
+        rotate_image = cast(
+            "Callable[[ImageArray, float], ImageArray]",
+            _load_attr("pd_book_tools.image_processing.cv2_processing", "rotate_image"),
         )
-
         result = rotate_image(result, cfg.deskew_before_crop)
 
     return result
@@ -254,7 +299,7 @@ def _manual_deskew_pre_cpu(image: Any, cfg: Any = None) -> Any:
 # image->image transforms that carve out the remainder of the 4i-4n chain.
 
 
-def _find_content_edges_cpu(image: Any, cfg: Any = None) -> tuple[int, int, int, int]:
+def _find_content_edges_cpu(image: ImageArray, cfg: StageConfig = None) -> BBox:
     """Find the bounding box of the content region in a binary inverted image.
 
     Returns (minX, maxX, minY, maxY) — the four edge coordinates passed to
@@ -262,14 +307,15 @@ def _find_content_edges_cpu(image: Any, cfg: Any = None) -> tuple[int, int, int,
 
     The runner encodes this as a JSON list and writes it to `output.json`.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        find_edges,
+    _ = cfg
+    find_edges = cast(
+        "Callable[[ImageArray], BBox]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "find_edges"),
     )
-
     return find_edges(image)
 
 
-def _crop_to_content_cpu(image: Any, bbox: tuple[int, int, int, int], cfg: Any = None) -> Any:
+def _crop_to_content_cpu(image: ImageArray, bbox: BBox, cfg: StageConfig = None) -> ImageArray:
     """Crop the binary image to the content bounding box.
 
     `image` is the inverted binary ndarray (from `invert`);
@@ -280,31 +326,35 @@ def _crop_to_content_cpu(image: Any, bbox: tuple[int, int, int, int], cfg: Any =
     it is skipped. ResolvedPageConfig plumbing into the runner lands later;
     this iteration always takes the no-pad branch.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        crop_to_rectangle,
+    _ = cfg
+    crop_to_rectangle = cast(
+        "Callable[[ImageArray, int, int, int, int], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "crop_to_rectangle"),
     )
-
     minX, maxX, minY, maxY = bbox
     return crop_to_rectangle(image, minX, maxX, minY, maxY)
 
 
-def _auto_deskew_cpu(image: Any, cfg: Any = None) -> Any:
+def _auto_deskew_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Auto-deskew the binary content image.
 
     Common case: no manual override, non-special alignment, standard orientation.
     ResolvedPageConfig skip conditions land when config plumbing is wired;
     for now, always attempt auto-deskew via `auto_deskew(pct=0.30)`.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        auto_deskew,
+    _ = cfg
+    auto_deskew = cast(
+        "Callable[..., ImageArray | tuple[ImageArray, object, object]]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "auto_deskew"),
     )
-
     out = auto_deskew(image, pct=0.30)
     # `auto_deskew` may return either a bare ndarray or a (ndarray, angle) tuple.
-    return out[0] if isinstance(out, tuple) else out
+    if isinstance(out, tuple):
+        return out[0]
+    return out
 
 
-def _morph_fill_cpu(image: Any, cfg: Any = None) -> Any:
+def _morph_fill_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply morphological fill to close small gaps in text strokes.
 
     Optional via ``cfg.do_morph``; default is False, but wiring the impl
@@ -312,14 +362,15 @@ def _morph_fill_cpu(image: Any, cfg: Any = None) -> Any:
     idempotent on already-clean binary images. ResolvedPageConfig plumbing
     will expose the do_morph toggle; until then the impl always runs.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        morph_fill,
+    _ = cfg
+    morph_fill = cast(
+        "Callable[[ImageArray], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "morph_fill"),
     )
-
     return morph_fill(image)
 
 
-def _rescale_cpu(image: Any, cfg: Any = None) -> Any:
+def _rescale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Re-invert + rescale to canonical aspect ratio.
 
     Calls `rescale_image(invert_image(img_deskewed), target_short_side=1000)`.
@@ -327,15 +378,19 @@ def _rescale_cpu(image: Any, cfg: Any = None) -> Any:
     text=255/bg=0; `rescale_image` expects text=0/bg=255 (white-on-black).
     The inversion restores that convention before scaling.
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        invert_image,
-        rescale_image,
+    _ = cfg
+    invert_image = cast(
+        "Callable[[ImageArray], ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "invert_image"),
     )
-
+    rescale_image = cast(
+        "Callable[..., ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "rescale_image"),
+    )
     return rescale_image(invert_image(image), target_short_side=1000)
 
 
-def _canvas_map_cpu(image: Any, cfg: Any = None) -> Any:
+def _canvas_map_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Map the rescaled image onto a canonical canvas.
 
     Wraps `map_content_onto_scaled_canvas` with the default alignment
@@ -347,14 +402,18 @@ def _canvas_map_cpu(image: Any, cfg: Any = None) -> Any:
 
     Returns an ndarray; the runner encodes it to PNG (output_type='image_bytes').
     """
-    from pd_book_tools.image_processing.cv2_processing import (  # pyright: ignore[reportMissingImports]
-        Alignment,
-        map_content_onto_scaled_canvas,
+    _ = cfg
+    alignment_default = cast(
+        "_AlignmentNamespace",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "Alignment"),
     )
-
+    map_content_onto_scaled_canvas = cast(
+        "Callable[..., ImageArray]",
+        _load_attr("pd_book_tools.image_processing.cv2_processing", "map_content_onto_scaled_canvas"),
+    )
     return map_content_onto_scaled_canvas(
         image,
-        force_align=Alignment.DEFAULT,
+        force_align=alignment_default.DEFAULT,
         height_width_ratio=1.294,
     )
 
@@ -371,7 +430,7 @@ def _canvas_map_cpu(image: Any, cfg: Any = None) -> Any:
 # PNG-encodes the ndarray (output_type='image_bytes').
 
 
-def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
+def _auto_detect_attrs_cpu(image: ImageArray, cfg: StageConfig = None) -> PageAttrsOutput:
     """Detect page attributes from a decoded source image ndarray.
 
     The runner loads the `ingest_source` parent artifact as an ndarray (via
@@ -393,10 +452,11 @@ def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
 
     The runner JSON-serialises this dict and writes it to `output.json`.
     """
-    import cv2  # pyright: ignore[reportMissingImports]
+    import cv2
 
     from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
+    _ = cfg
     # Re-encode the ndarray to PNG bytes so detect_page_attributes can parse.
     ok, buf = cv2.imencode(".png", image)
     if not ok:
@@ -404,7 +464,7 @@ def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
     png_bytes = bytes(buf.tobytes())
 
     suggestion = detect_page_attributes(png_bytes)
-    height, width = image.shape[:2]
+    height, width = cast("tuple[int, int]", image.shape[:2])
     h_w_ratio = height / width if width > 0 else 1.65
 
     return {
@@ -417,7 +477,7 @@ def _auto_detect_attrs_cpu(image: Any, cfg: Any = None) -> dict[str, Any]:
     }
 
 
-def _blank_proof_synth_cpu(page_attrs: dict[str, Any], cfg: Any = None) -> Any:
+def _blank_proof_synth_cpu(page_attrs: PageAttrsOutput, cfg: StageConfig = None) -> ImageArray:
     """Synthesise a blank proofing image for blank / plate-b / plate-r pages.
 
     Takes the `page_attrs` dict from `auto_detect_attrs` and returns an
@@ -427,8 +487,9 @@ def _blank_proof_synth_cpu(page_attrs: dict[str, Any], cfg: Any = None) -> Any:
     Uses `h_w_ratio` from the detected page attributes. Falls back to 1.65
     (US-Letter proportions) when the field is absent or zero.
     """
-    import numpy as np  # pyright: ignore[reportMissingImports]
+    import numpy as np
 
+    _ = cfg
     h_w_ratio = float(page_attrs.get("h_w_ratio") or 1.65)
     short_side = 1000
     if h_w_ratio >= 1.0:
@@ -457,7 +518,7 @@ def _blank_proof_synth_cpu(page_attrs: dict[str, Any], cfg: Any = None) -> Any:
 # stage impls (M3). Until then the impl always takes the no-crop branch.
 
 
-def _ocr_crop_cpu(image: Any, cfg: Any = None) -> Any:
+def _ocr_crop_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply the OCR-crop margin and page-split logic to the proofing image.
 
     At default config (`cfg.ocr_crop == (0,0,0,0)`, no splits) this is a
@@ -469,6 +530,7 @@ def _ocr_crop_cpu(image: Any, cfg: Any = None) -> Any:
     only wires the no-config default so the chain is runnable end-to-end
     from `ingest_source` through `ocr_crop`.
     """
+    _ = cfg
     return image
 
 
@@ -480,7 +542,7 @@ def _ocr_crop_cpu(image: Any, cfg: Any = None) -> Any:
 # illustration-crop logic is deferred until M3.
 
 
-def _thumbnail_cpu(image: Any, cfg: Any = None) -> bytes:
+def _thumbnail_cpu(image: ImageArray, cfg: StageConfig = None) -> bytes:
     """Resize and JPEG-encode the source image for workbench thumbnail display.
 
     The runner loads the `ingest_source` artifact as an ndarray (output_type
@@ -491,19 +553,20 @@ def _thumbnail_cpu(image: Any, cfg: Any = None) -> bytes:
     Returns bytes; the runner's `jpeg_bytes` output-type path writes them
     verbatim as `output.jpg`.
     """
-    import cv2  # pyright: ignore[reportMissingImports]
+    import cv2
 
+    _ = cfg
     _THUMBNAIL_MAX_DIM = 300
     _THUMBNAIL_QUALITY = 85
 
-    img = image
-    h, w = img.shape[:2]
+    img: ImageArray = image
+    h, w = cast("tuple[int, int]", img.shape[:2])
     short = min(h, w)
     if short > _THUMBNAIL_MAX_DIM:
         scale = _THUMBNAIL_MAX_DIM / short
         new_w = max(1, round(w * scale))
         new_h = max(1, round(h * scale))
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        img = cast("ImageArray", cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA))
 
     ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _THUMBNAIL_QUALITY])
     if not ok:
@@ -511,7 +574,9 @@ def _thumbnail_cpu(image: Any, cfg: Any = None) -> bytes:
     return bytes(buf.tobytes())
 
 
-def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
+def _auto_detect_illustrations_cpu(
+    image: ImageArray, cfg: StageConfig = None
+) -> list[IllustrationRegionOutput]:
     """Detect illustration regions in a source image ndarray.
 
     Loads the layout detector (the same process-singleton as in
@@ -523,19 +588,19 @@ def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
     Returns a list of dicts; the runner JSON-serialises this list and writes
     it to `output.json` (output_type='illustration_regions').
     """
-    import cv2  # pyright: ignore[reportMissingImports]
+    import cv2
 
+    _ = cfg
     # Try loading the layout detector from pd_book_tools. This is a heavy
     # optional dependency (model weights); if absent, fall back to no-op.
     # Only ImportError is caught — runtime errors (CUDA init, OOM, …) propagate
     # so the stage is marked `failed` rather than silently producing no regions.
     try:
-        from pd_book_tools.layout import (
-            get_layout_detector,  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+        get_layout_detector = cast(
+            "Callable[[], object | None]", _load_attr("pd_book_tools.layout", "get_layout_detector")
         )
-
         detector = get_layout_detector()
-    except ImportError:
+    except (AttributeError, ImportError):
         detector = None
 
     if detector is None:
@@ -549,7 +614,7 @@ def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
     from pathlib import Path
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        tmp.write(bytes(buf.tobytes()))
+        _ = tmp.write(bytes(buf.tobytes()))
         tmp_path = Path(tmp.name)
 
     try:
@@ -570,7 +635,7 @@ def _auto_detect_illustrations_cpu(image: Any, cfg: Any = None) -> list[Any]:
     ]
 
 
-def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
+def _text_postprocess_cpu(text_bytes: object, cfg: StageConfig = None) -> str:
     """Apply step-8 normalisation to OCR text at default config.
 
     At default config (no per-project scannos, no custom regex, no
@@ -589,6 +654,7 @@ def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
     """
     from pd_prep_for_pgdp.core.text_postprocess import normalize_curly_quotes, normalize_em_dash
 
+    _ = cfg
     if isinstance(text_bytes, (bytes, bytearray)):
         text = text_bytes.decode(errors="replace")
     else:
@@ -614,7 +680,7 @@ def _text_postprocess_cpu(text_bytes: Any, cfg: Any = None) -> str:
 # StageNotImplemented.
 
 
-def _default_resolved_page_config() -> Any:
+def default_resolved_page_config() -> ResolvedPageConfig:
     """Build a minimal ResolvedPageConfig with all-default values.
 
     Used by stage impls that haven't yet received ResolvedPageConfig plumbing
@@ -652,7 +718,7 @@ def _default_resolved_page_config() -> Any:
     )
 
 
-def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
+def _ocr_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
     """Run OCR on the proofing image and emit words.json + raw.txt.
 
     Accepts the ndarray from `ocr_crop` (output_type='image_bytes' decoded
@@ -671,13 +737,13 @@ def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
     import os
     import tempfile
 
-    import cv2  # pyright: ignore[reportMissingImports]
+    import cv2
 
     from pd_prep_for_pgdp.core.models import SystemDefaults
     from pd_prep_for_pgdp.core.ocr import ocr_page
 
     if cfg is None:
-        cfg = _default_resolved_page_config()
+        cfg = default_resolved_page_config()
 
     # Honour PGDP_OCR_ENGINE env var so tests can force tesseract without
     # loading DocTR weights.
@@ -691,7 +757,8 @@ def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         tmp_path_str = f.name
     try:
-        cv2.imwrite(tmp_path_str, image)
+        if not cv2.imwrite(tmp_path_str, image):
+            raise RuntimeError("cv2.imwrite failed in _ocr_cpu")
         from pathlib import Path
 
         result = ocr_page(Path(tmp_path_str), cfg=cfg, system=system)
@@ -714,7 +781,7 @@ def _ocr_cpu(image: Any, cfg: Any = None) -> dict[str, bytes]:
     return {"words.json": words_json, "raw.txt": raw_txt}
 
 
-def _text_review_cpu(text_bytes: Any, cfg: Any = None) -> dict[str, bytes]:
+def _text_review_cpu(text_bytes: object, cfg: StageConfig = None) -> CompoundStageOutput:
     """Gate stage — copy text_postprocess output as the reviewed text.
 
     At default config (no human edit) this is an identity pass: the
@@ -728,6 +795,7 @@ def _text_review_cpu(text_bytes: Any, cfg: Any = None) -> dict[str, bytes]:
     """
     import json
 
+    _ = cfg
     text = bytes(text_bytes) if isinstance(text_bytes, (bytes, bytearray)) else str(text_bytes).encode()
 
     attestation = json.dumps({}).encode()
@@ -737,7 +805,7 @@ def _text_review_cpu(text_bytes: Any, cfg: Any = None) -> dict[str, bytes]:
 # ─── Registry assembly ──────────────────────────────────────────────────────
 
 # Real implementations registered for cpu. Keys must be in `PAGE_STAGE_IDS`.
-_REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
+_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "ingest_source": _ingest_source_cpu,
     "decode_source": _decode_source_cpu,
     "initial_crop": _initial_crop_cpu,
@@ -766,7 +834,7 @@ _REAL_CPU_IMPLS: dict[str, Callable[..., Any]] = {
 }
 
 
-def _build_registry() -> dict[str, dict[str, Callable[..., Any]]]:
+def _build_registry() -> dict[str, dict[str, StageImpl]]:
     """Materialise STAGE_IMPL once at import time.
 
     For every canonical stage_id, register a `'cpu'` entry — either the
@@ -778,14 +846,14 @@ def _build_registry() -> dict[str, dict[str, Callable[..., Any]]]:
     fallback from a `'cuda'` request to `'cpu'` when the cuda entry is
     missing — that fallback lives in the runner, not here).
     """
-    registry: dict[str, dict[str, Callable[..., Any]]] = {}
+    registry: dict[str, dict[str, StageImpl]] = {}
     for sid in PAGE_STAGE_IDS:
         impl = _REAL_CPU_IMPLS.get(sid) or _make_placeholder(sid)
         registry[sid] = {"cpu": impl}
     return registry
 
 
-STAGE_IMPL: dict[str, dict[str, Callable[..., Any]]] = _build_registry()
+STAGE_IMPL: dict[str, dict[str, StageImpl]] = _build_registry()
 """Module-level dispatch table. Keys: stage_id (str) → device (str) → callable.
 
 Stable in-process; no expectation of mutation at runtime. Tests assert
@@ -793,7 +861,7 @@ exhaustiveness via `PAGE_STAGE_IDS`.
 """
 
 
-def get_stage_impl(stage_id: str, device: str) -> Callable[..., Any]:
+def get_stage_impl(stage_id: str, device: str) -> StageImpl:
     """Return the callable registered for ``(stage_id, device)``.
 
     Raises ``KeyError`` for unknown stage_ids or unregistered devices —

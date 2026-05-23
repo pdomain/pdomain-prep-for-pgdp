@@ -33,11 +33,11 @@ import asyncio
 import logging
 import os
 import threading
+from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
     from pathlib import Path
 
     from pd_prep_for_pgdp.settings import Settings
@@ -45,11 +45,15 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _ArtifactKey = tuple[str, str, str]  # (project_id, page_id, stage_id)
+type _WriteCoroutine = Coroutine[object, object, None]
+type _WriteFactory = Callable[[], _WriteCoroutine]
+type _FailureCallback = Callable[[Exception], _WriteCoroutine]
 
 
 # ─── Internal: in-memory artifact with consumer reference count ──────────────
 
 
+@final
 class _PendingArtifact:
     """Artifact bytes with a mutable consumer reference count.
 
@@ -83,7 +87,7 @@ class _PendingArtifact:
 # ─── Public async wrapper for the sync file write ────────────────────────────
 
 
-async def _write_artifact_file_async(
+async def write_artifact_file_async(
     path: Path,
     data: bytes,
     *,
@@ -179,9 +183,9 @@ class StageWriteExecutor:
 
     def submit_write(
         self,
-        coro_factory: Callable[[], Coroutine[Any, Any, Any]],
+        coro_factory: _WriteFactory,
         *,
-        on_failure: Callable[[Exception], Coroutine[Any, Any, None]],
+        on_failure: _FailureCallback,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         """Block if queue full; submit write coroutine to the thread pool.
@@ -199,20 +203,20 @@ class StageWriteExecutor:
             The running asyncio event loop. Failure callbacks are posted to it
             via :func:`asyncio.run_coroutine_threadsafe`.
         """
-        self._semaphore.acquire()  # blocks = intentional back-pressure (Q8)
-        self._pool.submit(self._run_write, coro_factory, on_failure, loop)
+        _ = self._semaphore.acquire()  # blocks = intentional back-pressure (Q8)
+        _ = self._pool.submit(self._run_write, coro_factory, on_failure, loop)
 
     def _run_write(
         self,
-        coro_factory: Callable[[], Coroutine[Any, Any, Any]],
-        on_failure: Callable[[Exception], Coroutine[Any, Any, None]],
+        coro_factory: _WriteFactory,
+        on_failure: _FailureCallback,
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         try:
             asyncio.run(coro_factory())
         except Exception as exc:
             log.exception("deferred stage write failed: %s", exc)
-            asyncio.run_coroutine_threadsafe(on_failure(exc), loop)
+            _ = asyncio.run_coroutine_threadsafe(on_failure(exc), loop)
         finally:
             self._semaphore.release()
 

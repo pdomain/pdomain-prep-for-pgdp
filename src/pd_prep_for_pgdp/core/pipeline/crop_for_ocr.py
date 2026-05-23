@@ -9,7 +9,7 @@ lives in canonical canvas space.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -40,10 +40,10 @@ def _crop_iter(
     page: PageRecord,
     cfg: ResolvedPageConfig,
 ) -> Iterator[OcrCropOutput]:
-    import numpy as np  # pyright: ignore[reportMissingImports]
+    import numpy as np
 
     try:
-        import cv2  # pyright: ignore[reportMissingImports]
+        import cv2
     except ImportError as e:
         raise RuntimeError("cv2 required for crop_for_ocr") from e
 
@@ -51,6 +51,7 @@ def _crop_iter(
     img = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise ValueError("could not decode proofing image")
+    img = cast("np.ndarray[tuple[int, int], np.dtype[np.uint8]]", img)
 
     # Apply uniform OCR crop (project-wide). Skipped for pages where it
     # makes no sense — see config_resolver.ocr_crop_skip_idxs().
@@ -65,7 +66,7 @@ def _crop_iter(
         yield OcrCropOutput(suffix="", reading_order=0, image=bytes(buf.tobytes()))
         return
 
-    h, w = img.shape[:2]
+    h, w = img.shape
     for split in sorted(page.splits, key=lambda s: s.reading_order):
         L, R, T, B = _split_box(split, w, h)
         section = img[T:B, L:R]

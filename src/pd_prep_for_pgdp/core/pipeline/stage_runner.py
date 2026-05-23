@@ -58,9 +58,9 @@ import hashlib
 import json
 import logging
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
-import cv2  # pyright: ignore[reportMissingImports]
+import cv2
 import numpy as np
 
 from pd_prep_for_pgdp.core.models import PageRecord, PageStageState, PageStageStatus, ResolvedPageConfig
@@ -80,8 +80,18 @@ from .page_stage_writer import (
     stage_thumbnail_path,
 )
 from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
-from .stage_registry import StageNotImplemented, get_stage_impl
-from .stage_write_executor import StageWriteExecutor, _write_artifact_file_async
+from .stage_registry import (
+    CompoundStageOutput,
+    ImageArray,
+    JsonStageOutput,
+    PageAttrsOutput,
+    StageArtifact,
+    StageImpl,
+    StageNotImplemented,
+    default_resolved_page_config,
+    get_stage_impl,
+)
+from .stage_write_executor import StageWriteExecutor, write_artifact_file_async
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -126,6 +136,9 @@ class StageDependenciesNotMet(RuntimeError):  # noqa: N818  # intentional: signa
     The exception's args[0] message names the offending stage_ids; programmatic
     consumers can read `.missing` for the typed list.
     """
+
+    stage_id: str
+    missing: list[str]
 
     def __init__(self, stage_id: str, missing: list[str]) -> None:
         self.stage_id = stage_id
@@ -226,7 +239,7 @@ async def _resolve_config(
     database: IDatabase,
     project_id: str,
     page_id: str,
-) -> Any:
+) -> ResolvedPageConfig:
     """Load page + project + system defaults from DB and resolve to a
     ``ResolvedPageConfig``.
 
@@ -236,20 +249,18 @@ async def _resolve_config(
     """
     from pd_prep_for_pgdp.core.config_resolver import resolve_page_config
 
-    from .stage_registry import _default_resolved_page_config
-
     project = await database.get_project(project_id)
     if project is None:
-        return _default_resolved_page_config()
+        return default_resolved_page_config()
 
     try:
         idx0 = int(page_id)
     except ValueError:
-        return _default_resolved_page_config()
+        return default_resolved_page_config()
 
     page = await database.get_page(project_id, idx0)
     if page is None:
-        return _default_resolved_page_config()
+        return default_resolved_page_config()
 
     system = await database.get_system_defaults(project.owner_id)
     return resolve_page_config(system, project.config, page)
@@ -273,7 +284,7 @@ def _decode_image_bytes(data: bytes) -> np.ndarray:
     img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError("cv2.imdecode returned None — corrupt or empty image bytes")
-    return img
+    return cast("ImageArray", img)
 
 
 def _encode_image_to_png(img: np.ndarray) -> bytes:
@@ -284,15 +295,54 @@ def _encode_image_to_png(img: np.ndarray) -> bytes:
     return bytes(buf.tobytes())
 
 
+def _decode_json_output(raw: bytes, output_type: str) -> JsonStageOutput:
+    parsed = cast("object", json.loads(raw))
+    if output_type == "bbox":
+        if not isinstance(parsed, list):
+            raise TypeError(f"expected bbox list for output_type={output_type!r}")
+        parsed_list = cast("list[object]", parsed)
+        if len(parsed_list) != 4:
+            raise TypeError(f"expected bbox list for output_type={output_type!r}")
+        if not all(isinstance(v, int) for v in parsed_list):
+            raise TypeError(f"expected integer bbox values for output_type={output_type!r}")
+        left, right, top, bottom = parsed_list
+        return cast("JsonStageOutput", (left, right, top, bottom))
+    if output_type == "page_attrs":
+        if not isinstance(parsed, dict):
+            raise TypeError(f"expected dict for output_type={output_type!r}")
+        return cast("PageAttrsOutput", cast("object", parsed))
+    if output_type == "illustration_regions":
+        if not isinstance(parsed, list):
+            raise TypeError(f"expected list for output_type={output_type!r}")
+        return cast("JsonStageOutput", parsed)
+    raise ValueError(f"unsupported JSON output_type {output_type!r}")
+
+
+def _require_image_artifact(value: StageArtifact, *, stage_id: str) -> ImageArray:
+    if not isinstance(value, np.ndarray):
+        raise TypeError(f"stage {stage_id!r} expected an image artifact, got {type(value).__name__}")
+    return value
+
+
+def _require_compound_output(value: StageArtifact, *, stage_id: str) -> CompoundStageOutput:
+    if not isinstance(value, dict):
+        raise TypeError(f"stage {stage_id!r} expected dict[str, bytes], got {type(value).__name__}")
+    result: dict[str, bytes] = {}
+    for key, item in value.items():
+        if not isinstance(item, (bytes, bytearray)):
+            raise TypeError(f"stage {stage_id!r} expected dict[str, bytes], got {type(item).__name__}")
+        result[key] = bytes(item)
+    return result
+
+
 async def _load_parent_artifact(
     *,
     data_root: Path,
-    database: IDatabase,
     project_id: str,
     page_id: str,
     parent_stage_id: str,
     write_executor: StageWriteExecutor | None = None,
-) -> Any:
+) -> StageArtifact:
     """Load a parent stage's clean artifact, decoded into the runner's
     canonical in-memory type.
 
@@ -318,7 +368,7 @@ async def _load_parent_artifact(
             if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:
                 return _decode_image_bytes(cached)
             if parent_stage.output_type in _JSON_OUTPUT_TYPES:
-                return json.loads(cached)
+                return _decode_json_output(cached, parent_stage.output_type)
             # Compound or passthrough — return raw bytes; caller handles.
             return cached
 
@@ -329,9 +379,11 @@ async def _load_parent_artifact(
         # stages that consume their text output (e.g. text_postprocess
         # consuming the text artifact from ocr).
         stage_dir = data_root / "projects" / project_id / "pages" / page_id / "stages" / parent_stage_id
-        output_files = sorted(
-            f for f in (stage_dir.iterdir() if stage_dir.exists() else []) if f.name.startswith("output.")
-        )
+        output_files: list[Path] = []
+        if stage_dir.exists():
+            output_files = sorted(
+                path for path in stage_dir.iterdir() if path.is_file() and path.name.startswith("output.")
+            )
         if not output_files:
             raise StageDependenciesNotMet(
                 parent_stage_id,
@@ -353,7 +405,7 @@ async def _load_parent_artifact(
     if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:
         return _decode_image_bytes(raw)
     if parent_stage.output_type in _JSON_OUTPUT_TYPES:
-        return json.loads(raw)
+        return _decode_json_output(raw, parent_stage.output_type)
     # Fall back to raw bytes for unknown types; the impl must handle them.
     return raw
 
@@ -415,10 +467,10 @@ async def _cascade_dirty_to_split_children(
             await database.put_page_stage(decode_row.model_copy(update={"status": PageStageStatus.dirty}))
         # Cascade dirty from decode_source to its descendants within the child.
         await _cascade_dirty(
-            database=database,
             project_id=project_id,
             page_id=child_page_id,
             stage_id="decode_source",
+            database=database,
         )
 
 
@@ -598,7 +650,7 @@ async def _commit_single_artifact(
     _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id) if _thumb_bytes else None
     _tp, _ab, _thp, _thb = target_path, artifact_bytes, _thumb_path, _thumb_bytes
     write_executor.submit_write(
-        lambda: _write_artifact_file_async(_tp, _ab, thumb_path=_thp, thumb_bytes=_thb),
+        lambda: write_artifact_file_async(_tp, _ab, thumb_path=_thp, thumb_bytes=_thb),
         on_failure=_on_failure,
         loop=loop,
     )
@@ -606,7 +658,7 @@ async def _commit_single_artifact(
     return state
 
 
-def _call_impl(impl: Any, artifacts: list[Any], cfg: Any) -> Any:
+def _call_impl(impl: StageImpl, artifacts: list[StageArtifact], cfg: ResolvedPageConfig) -> StageArtifact:
     """Call a stage impl with its input artifacts and resolved config.
 
     All registered stage impls accept ``cfg`` as a keyword argument (defaulting
@@ -631,7 +683,7 @@ async def run_stage(
     page_source_key: str | None = None,
     write_executor: StageWriteExecutor | None = None,
     stage_events: StageEventBroker | None = None,
-    resolved_config: Any | None = None,
+    resolved_config: ResolvedPageConfig | None = None,
 ) -> PageStageState:
     """Run one stage on one page. Dual-writes its artifact, then cascades
     dirty downstream.
@@ -737,7 +789,7 @@ async def run_stage(
                 raise StageDependenciesNotMet(stage_id, missing)
 
     # Step 3: mark running so the UI / GET endpoint sees the transition.
-    await _mark_running(
+    _ = await _mark_running(
         database=database,
         project_id=project_id,
         page_id=page_id,
@@ -759,7 +811,7 @@ async def run_stage(
 
     # Sentinel for the impl's in-memory output; set inside the else branch
     # (non-ingest_source path) so the post-run not-applicable logic can read it.
-    output: Any = None
+    output: StageArtifact | None = None
 
     # Step 4-5: load inputs, dispatch.
     try:
@@ -788,14 +840,14 @@ async def run_stage(
                 # StageRunFailed (Q9 fail-loud).
                 raise ValueError(
                     f"stage {stage_id!r} requires `storage` + `page_source_key` to read "
-                    "the per-page upload; route handler must pass both"
+                    + "the per-page upload; route handler must pass both"
                 )
             source_bytes = await storage.get_bytes(page_source_key)
             artifact_bytes = _call_impl(impl, [source_bytes], cfg)
             if not isinstance(artifact_bytes, (bytes, bytearray)):
                 raise TypeError(
                     f"stage {stage_id!r} impl returned {type(artifact_bytes).__name__}, "
-                    "expected bytes for output_type='image_bytes'"
+                    + "expected bytes for output_type='image_bytes'"
                 )
             committed = await commit_stage_artifact(
                 data_root=data_root,
@@ -819,17 +871,17 @@ async def run_stage(
 
             parent_img = await _load_parent_artifact(
                 data_root=data_root,
-                database=database,
                 project_id=project_id,
                 page_id=_parent_pid,
                 parent_stage_id="ingest_source",
                 write_executor=write_executor,
             )
+            parent_img = _require_image_artifact(parent_img, stage_id=stage_id)
 
             # Crop to bbox (x, y, w, h) in source-image coordinate space.
             # Clamp to image bounds to guard against out-of-range bboxes.
             _bx, _by, _bw, _bh = _bbox
-            _img_h, _img_w = parent_img.shape[:2]
+            _img_h, _img_w = cast("tuple[int, int]", parent_img.shape[:2])
             _y1, _y2 = max(0, _by), min(_img_h, _by + _bh)
             _x1, _x2 = max(0, _bx), min(_img_w, _bx + _bw)
             cropped = parent_img[_y1:_y2, _x1:_x2]
@@ -864,7 +916,7 @@ async def run_stage(
             #   parent in depends_on order (whichever branch ran for this page).
             # - Standard stages: load all parents. Single-parent passes the bare
             #   artifact; multi-parent passes positional args in depends_on order.
-            parent_artifacts: list[Any] = []
+            parent_artifacts: list[StageArtifact] = []
 
             if stage.any_parent_ok:
                 # Find the first clean parent and load only that one.
@@ -885,7 +937,6 @@ async def run_stage(
                 parent_artifacts.append(
                     await _load_parent_artifact(
                         data_root=data_root,
-                        database=database,
                         project_id=project_id,
                         page_id=page_id,
                         parent_stage_id=chosen_parent,
@@ -897,7 +948,6 @@ async def run_stage(
                     parent_artifacts.append(
                         await _load_parent_artifact(
                             data_root=data_root,
-                            database=database,
                             project_id=project_id,
                             page_id=page_id,
                             parent_stage_id=parent_id,
@@ -914,11 +964,7 @@ async def run_stage(
                 # looked up in COMPOUND_PRIMARY_FILENAME.
                 # Deferred writes for compound stages are not yet implemented;
                 # they always use the synchronous multi-artifact writer.
-                if not isinstance(output, dict):
-                    raise TypeError(
-                        f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
-                        f"impl must return dict[str, bytes], got {type(output).__name__}"
-                    )
+                compound_output = _require_compound_output(output, stage_id=stage_id)
                 primary_filename = COMPOUND_PRIMARY_FILENAME[stage.output_type]
                 committed = await commit_stage_artifacts_multi(
                     data_root=data_root,
@@ -926,7 +972,7 @@ async def run_stage(
                     project_id=project_id,
                     page_id=page_id,
                     stage_id=stage_id,
-                    files=output,
+                    files=compound_output,
                     primary_filename=primary_filename,
                     stage_version=_stage_ver,
                     config_hash=_cfg_hash,
@@ -936,18 +982,30 @@ async def run_stage(
                 if stage.output_type in _JSON_OUTPUT_TYPES:
                     # Coerce numpy scalar types (int64, float32, etc.) to native
                     # Python so json.dumps can serialise without a custom encoder.
+                    json_output: object = output
                     if isinstance(output, (tuple, list)):
-                        output = [int(v) if isinstance(v, np.generic) else v for v in output]
-                    artifact_bytes = json.dumps(output).encode()
+                        json_output = [int(v) if isinstance(v, np.generic) else v for v in output]
+                    artifact_bytes = json.dumps(json_output).encode()
                 elif stage.output_type == "text":
-                    artifact_bytes = output.encode() if isinstance(output, str) else bytes(output)
-                elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES or isinstance(
-                    output, (bytes, bytearray)
-                ):
+                    if isinstance(output, str):
+                        artifact_bytes = output.encode()
+                    elif isinstance(output, (bytes, bytearray)):
+                        artifact_bytes = bytes(output)
+                    else:
+                        raise TypeError(
+                            f"stage {stage_id!r} expected text output, got {type(output).__name__}"
+                        )
+                elif stage.output_type in _PASSTHROUGH_BYTES_OUTPUT_TYPES:
+                    if not isinstance(output, (bytes, bytearray)):
+                        raise TypeError(
+                            f"stage {stage_id!r} expected byte output, got {type(output).__name__}"
+                        )
+                    artifact_bytes = bytes(output)
+                elif isinstance(output, (bytes, bytearray)):
                     artifact_bytes = bytes(output)
                 else:
                     # Image / gray / binary / image_bytes stages return ndarrays.
-                    artifact_bytes = _encode_image_to_png(output)
+                    artifact_bytes = _encode_image_to_png(_require_image_artifact(output, stage_id=stage_id))
 
                 committed = await _commit_single_artifact(
                     data_root=data_root,
@@ -998,7 +1056,8 @@ async def run_stage(
     # on the detected page type. This happens before dirty cascade so the
     # cascade skips these rows (they're not `clean`/`failed`).
     if stage_id == "auto_detect_attrs" and isinstance(output, dict):
-        na_ids = not_applicable_stages_for_page_type(output.get("suggested_type", "normal"))
+        page_attrs = cast("PageAttrsOutput", output)
+        na_ids = not_applicable_stages_for_page_type(page_attrs.get("suggested_type", "normal"))
         if na_ids:
             await _mark_not_applicable(
                 database=database,
