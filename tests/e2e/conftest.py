@@ -140,3 +140,61 @@ def live_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LiveServer
 
     server.should_exit = True
     thread.join(timeout=5)
+
+
+_TEST_API_KEY = "test-key-xyzzy"
+_TEST_SESSION_SECRET = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+
+
+@pytest.fixture(scope="session")
+def apikey_live_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LiveServer]:
+    """Like ``live_server`` but boots with ``auth_mode="apikey"`` so the
+    session-cookie proxy flow is exercised end-to-end by the browser.
+
+    The server is launched once for the whole test session; individual tests
+    must log in (and log out) as needed to establish or clear the session.
+    """
+    if not _spa_built():
+        pytest.skip("SPA not built — run `make frontend-build` (or `make e2e`) before pytest tests/e2e")
+
+    data_root = tmp_path_factory.mktemp("e2e-apikey-data")
+    config_dir = tmp_path_factory.mktemp("e2e-apikey-config")
+    settings = Settings(
+        host="127.0.0.1",
+        port=_free_port(),
+        data_root=data_root,
+        config_dir=config_dir,
+        storage_backend="filesystem",
+        database_url=f"sqlite:///{(data_root / 'state.db').as_posix()}",
+        gpu_backend="cpu",
+        dispatch_interval_seconds=0,
+        auth_mode="apikey",
+        api_key=_TEST_API_KEY,
+        session_secret=_TEST_SESSION_SECRET,
+    )
+    app = build_app(settings)
+    config = uvicorn.Config(app, host=settings.host, port=settings.port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=_run_server, args=(server,), daemon=True)
+    thread.start()
+
+    base_url = f"http://{settings.host}:{settings.port}"
+    # In apikey mode the /api/auth/me endpoint returns 401 for unauthenticated
+    # requests, so we probe /healthz (always 200) for readiness.
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        try:
+            r = httpx.get(f"{base_url}/healthz", timeout=0.5)
+            if r.status_code == 200:
+                break
+        except httpx.HTTPError:
+            time.sleep(0.1)
+    else:
+        server.should_exit = True
+        thread.join(timeout=2)
+        raise RuntimeError(f"uvicorn did not become ready at {base_url}")
+
+    yield LiveServer(base_url=base_url, settings=settings)
+
+    server.should_exit = True
+    thread.join(timeout=5)

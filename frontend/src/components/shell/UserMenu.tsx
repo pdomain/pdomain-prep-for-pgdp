@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/DropdownMenu";
 import { Button } from "@/components/ui/Button";
 import { useUiPrefs } from "@/stores/uiPrefs";
-import { api, getAuthToken, setAuthToken } from "@/api/client";
+import { api, getAuthToken, logout, setAuthToken } from "@/api/client";
 
 interface UserMenuProps {
   "data-testid"?: string;
@@ -65,10 +65,15 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
   const userId = me.data?.user_id ?? null;
 
   function handleSignOut() {
-    setAuthToken(null);
-    setToken(null);
-    queryClient.clear();
-    void navigate("/login");
+    // logout() clears the httpOnly session cookie (apikey mode) and any
+    // stored JWT token (jwt mode). setAuthToken(null) is also called inside
+    // logout(), but we keep setToken(null) here to trigger immediate re-render.
+    void logout().finally(() => {
+      setAuthToken(null);
+      setToken(null);
+      queryClient.clear();
+      void navigate("/login");
+    });
   }
 
   // "none" mode: nothing to show.

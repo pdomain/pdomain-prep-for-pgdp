@@ -30,6 +30,12 @@ from pd_prep_for_pgdp.api.dependencies import (
 )
 
 
+class _FakeSettings:
+    """Minimal settings stub that satisfies the `auth_mode` check in `get_user`."""
+
+    auth_mode = "none"
+
+
 class _Sentinels:
     """Tiny stand-in for `app.state` with sentinel objects per dependency."""
 
@@ -40,13 +46,19 @@ class _Sentinels:
     dispatcher = object()
     job_events = object()
     stage_events = object()
-    settings = object()
+    settings: object = _FakeSettings()  # needs auth_mode for get_user cookie check
     job_runner = object()
+
+
+# _FakeState IS _Sentinels: settings is a _FakeSettings so get_user can read
+# auth_mode, and is still the same object identity that the sentinel tests check.
+_FakeState = _Sentinels
 
 
 class _FakeRequest:
     def __init__(self) -> None:
-        self.app = type("_app", (), {"state": _Sentinels})()
+        self.app = type("_app", (), {"state": _FakeState})()
+        self.cookies: dict[str, str] = {}
 
 
 def test_get_storage_returns_app_state_storage() -> None:
@@ -115,7 +127,7 @@ class _ValueErrorAuth:
 @pytest.mark.asyncio
 async def test_get_user_wraps_unknown_exception_as_500() -> None:
     with pytest.raises(HTTPException) as exc:
-        await get_user(creds=None, auth=_RaisingAuth())  # type: ignore[arg-type]
+        await get_user(request=_FakeRequest(), creds=None, auth=_RaisingAuth())  # type: ignore[arg-type]
     assert exc.value.status_code == 500
     assert "unexpected authentication error" in str(exc.value.detail)
 
@@ -125,7 +137,7 @@ async def test_get_user_passes_through_http_exception() -> None:
     """A 403 from the auth adapter must reach the client untouched
     (not get re-wrapped)."""
     with pytest.raises(HTTPException) as exc:
-        await get_user(creds=None, auth=_HTTPAuth())  # type: ignore[arg-type]
+        await get_user(request=_FakeRequest(), creds=None, auth=_HTTPAuth())  # type: ignore[arg-type]
     assert exc.value.status_code == 403
     assert exc.value.detail == "custom-detail"
 
@@ -135,7 +147,7 @@ async def test_connection_error_in_auth_dependency_returns_503() -> None:
     """ConnectionError (and TimeoutError/OSError) from an auth adapter must
     become 503 Service Unavailable, not 500."""
     with pytest.raises(HTTPException) as exc:
-        await get_user(creds=None, auth=_ConnectionErrorAuth())  # type: ignore[arg-type]
+        await get_user(request=_FakeRequest(), creds=None, auth=_ConnectionErrorAuth())  # type: ignore[arg-type]
     assert exc.value.status_code == 503
     assert exc.value.detail == "auth service unavailable"
 
@@ -145,6 +157,6 @@ async def test_value_error_in_auth_dependency_returns_422() -> None:
     """ValueError from an auth adapter (malformed token format) must become
     422 Unprocessable Entity."""
     with pytest.raises(HTTPException) as exc:
-        await get_user(creds=None, auth=_ValueErrorAuth())  # type: ignore[arg-type]
+        await get_user(request=_FakeRequest(), creds=None, auth=_ValueErrorAuth())  # type: ignore[arg-type]
     assert exc.value.status_code == 422
     assert "malformed credential" in str(exc.value.detail)

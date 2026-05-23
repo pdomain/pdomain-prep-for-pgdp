@@ -1,7 +1,8 @@
 /**
- * OIDC PKCE login flow for managed (JWT) mode.
+ * Login page — handles both apikey mode and OIDC PKCE (jwt mode).
  *
- * The page acts as both the launcher and the OAuth redirect target:
+ * JWT mode:
+ *   The page acts as both the launcher and the OAuth redirect target:
  *   - On first mount, if there's no `?code=` query param, generate a PKCE
  *     verifier/challenge, stash the verifier in sessionStorage, and redirect
  *     to `${JWT_ISSUER}/authorize?...`.
@@ -9,13 +10,15 @@
  *     `${JWT_ISSUER}/token`, store the access token via `setAuthToken`,
  *     navigate back to `/`.
  *
- * Self-hosted apikey mode never reaches this page — `api/client.ts` already
- * pulls the token from `__ENV__.API_TOKEN`.
+ * Apikey mode:
+ *   Renders a simple API-key input form. On submit, calls `loginWithApiKey()`
+ *   which POSTs to `/api/auth/session` and receives an httpOnly SameSite=Strict
+ *   session cookie. The raw key is never stored in JS.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { setAuthToken } from "../api/client";
+import { loginWithApiKey, setAuthToken } from "../api/client";
 import { Card } from "../components/ui/Card";
 
 const PKCE_VERIFIER_KEY = "pgdp.pkce_verifier";
@@ -32,7 +35,59 @@ function env(): EnvShape {
   return ((window as any).__ENV__ ?? {}) as EnvShape;
 }
 
-export function LoginPage() {
+// ─── Apikey login sub-component ─────────────────────────────────────────��──
+
+function ApikeyLoginPage() {
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const keyRef = useRef<HTMLInputElement>(null);
+
+  function handleSubmit(evt: { preventDefault(): void }) {
+    evt.preventDefault();
+    const key = keyRef.current?.value ?? "";
+    if (!key) return;
+    setBusy(true);
+    void loginWithApiKey(key)
+      .then(() => navigate("/", { replace: true }))
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Login failed");
+        setBusy(false);
+      });
+  }
+
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <Card className="w-full max-w-md space-y-4 p-8">
+        <h1 className="text-center text-lg font-semibold text-ink-1">
+          Sign in
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            ref={keyRef}
+            type="password"
+            placeholder="API key"
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- login form; intentional focus
+            autoFocus
+            className="w-full rounded border border-border-default bg-bg-raised px-3 py-2 text-sm text-ink-1 placeholder-ink-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          {error && <p className="text-sm text-status-error">{error}</p>}
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+// ─── JWT / OIDC PKCE sub-component ─────────────────────────────────────────
+
+function JwtLoginPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +154,15 @@ export function LoginPage() {
   );
 }
 
-// ─── PKCE helpers ───────────────────────────────────────────────────────────
+// ─── Top-level dispatcher ───────────────────────────────────────────────────
+
+export function LoginPage() {
+  const authMode = env().AUTH_MODE ?? "none";
+  if (authMode === "apikey") return <ApikeyLoginPage />;
+  return <JwtLoginPage />;
+}
+
+// ─── PKCE helpers ───────────────────────────────────────────────────────���───
 
 async function startPkce(e: EnvShape): Promise<void> {
   const verifier = generateVerifier();
