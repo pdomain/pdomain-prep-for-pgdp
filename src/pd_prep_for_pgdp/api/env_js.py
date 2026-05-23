@@ -23,10 +23,19 @@ def _build_env(settings: Settings) -> dict[str, str]:
         "API_BASE": "",
         "AUTH_MODE": settings.auth_mode,
     }
-    # Self-hosted apikey mode: ship the token to the SPA so authenticated
-    # XHR / SSE requests work without a separate login flow.
-    if settings.auth_mode == "apikey" and settings.api_key:
-        env["API_TOKEN"] = settings.api_key
+    # NOTE: API_TOKEN / bearer secrets are intentionally NEVER emitted here.
+    #
+    # /env.js is served unauthenticated and readable by any browser visitor,
+    # including cross-origin pages via <script src="/env.js">.  Embedding the
+    # server-side bearer would expose it to the whole internet (issue #125).
+    #
+    # Auth-flow gap: apikey mode's SPA currently has no way to attach the
+    # bearer after this fix.  The correct resolution is a server-side proxy:
+    # the browser presents a per-session credential (httpOnly SameSite cookie
+    # or OIDC token) and the backend attaches the upstream bearer server-side.
+    # Until that proxy is implemented, browser clients in apikey mode will
+    # receive 401s from protected endpoints.  This is the correct security
+    # posture — unauthenticated exposure is worse than a degraded browser UX.
     if settings.auth_mode == "jwt":
         if settings.jwt_issuer:
             env["JWT_ISSUER"] = settings.jwt_issuer

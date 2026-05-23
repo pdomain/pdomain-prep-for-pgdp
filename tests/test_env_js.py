@@ -41,16 +41,36 @@ async def test_env_js_served_in_none_auth_mode(tmp_path) -> None:
     body = r.text
     assert "window.__ENV__" in body
     assert "API_BASE" in body
-    assert "API_TOKEN" not in body or 'API_TOKEN: ""' in body
+    assert "API_TOKEN" not in body
 
 
 @pytest.mark.anyio
-async def test_env_js_includes_api_token_in_apikey_mode(tmp_path) -> None:
-    app = build_app(_settings(tmp_path, auth_mode="apikey", api_key="secret-token-123"))
+async def test_env_js_does_not_leak_bearer_in_apikey_mode(tmp_path) -> None:
+    """Security: /env.js must never expose the server API key to unauthenticated browsers.
+
+    The bearer secret is for server-to-server calls only.  Any visitor — including
+    cross-origin pages via <script src="/env.js"> — can read this endpoint, so
+    embedding the secret here means anyone can impersonate the server.
+
+    Fix: strip API_TOKEN from the runtime-config payload.  The frontend must obtain
+    authentication through a separate, authenticated flow (e.g. server-side session
+    cookie) rather than reading the raw bearer from window.__ENV__.
+
+    Auth-flow gap: with this fix, apikey mode's frontend is left without a way to
+    attach the bearer.  The correct resolution is a server-side proxy: the browser
+    presents a per-session credential (cookie / OIDC token), and the backend
+    attaches the upstream bearer server-side.  Until that proxy is wired up,
+    apikey mode is effectively read-only from a browser client.
+    """
+    sentinel = "super-secret-sentinel-xyzzy"
+    app = build_app(_settings(tmp_path, auth_mode="apikey", api_key=sentinel))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/env.js")
     assert r.status_code == 200
-    assert "secret-token-123" in r.text
+    # The sentinel must NOT appear anywhere in the response body.
+    assert sentinel not in r.text, f"/env.js leaked the API key. Response body: {r.text!r}"
+    # AUTH_MODE should still be present so the SPA knows it needs auth.
+    assert '"apikey"' in r.text
 
 
 @pytest.mark.anyio
