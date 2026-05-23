@@ -484,6 +484,27 @@ the sqlite adapter annotation pass.
 
 ---
 
+### 38. `reportMissingTypeStubs` — basedpyright
+
+**Suppression form:** `# pyright: ignore[reportMissingTypeStubs]` inline.
+
+**Files:**
+
+- `src/pd_prep_for_pgdp/bootstrap.py:304` — `from pd_ocr_ops import SuiteAdapters, mount_routes`
+
+**Justification.** `pd_ocr_ops` ships no `py.typed` marker and no stub
+files. The package is a first-party workspace dependency installed from the
+`pd-index-pip` wheel; its types are correct at runtime but basedpyright
+cannot verify them statically. Until `pd_ocr_ops` adds a `py.typed` marker
+(or stubs are generated), suppress the warning at the point of import.
+
+Note: `pd_ocr_ops.gpu` top-level imports in bootstrap.py (lines 19–20, 38)
+are grandfathered in the basedpyright baseline. The inner `from pd_ocr_ops`
+import at line 304 is a new site that cannot use the baseline; the inline
+suppression is required instead.
+
+---
+
 ## TypeScript/ESLint (frontend)
 
 ### 31. `@typescript-eslint/no-explicit-any` — ESLint

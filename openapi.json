@@ -2659,6 +2659,217 @@
         }
       }
     },
+    "/api/suite/installed": {
+      "get": {
+        "tags": [
+          "suite"
+        ],
+        "summary": "Get Installed",
+        "operationId": "suite_list_installed",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Installed Api Suite Installed Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/suite/launch": {
+      "post": {
+        "tags": [
+          "suite"
+        ],
+        "summary": "Launch App",
+        "operationId": "suite_launch_app",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Launch App Api Suite Launch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/suite/prefs": {
+      "get": {
+        "tags": [
+          "suite"
+        ],
+        "summary": "Get Prefs",
+        "operationId": "suite_get_prefs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Prefs Api Suite Prefs Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/suite/prefs/common": {
+      "put": {
+        "tags": [
+          "suite"
+        ],
+        "summary": "Put Prefs Common",
+        "operationId": "suite_put_prefs_common",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommonUIPrefs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/suite/prefs/apps/{app_id}": {
+      "put": {
+        "tags": [
+          "suite"
+        ],
+        "summary": "Put Prefs App",
+        "operationId": "suite_put_prefs_app",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/icons/{size}": {
+      "get": {
+        "tags": [
+          "icons"
+        ],
+        "summary": "Get Icon",
+        "operationId": "suite_get_icon",
+        "parameters": [
+          {
+            "name": "size",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Size"
+            }
+          },
+          {
+            "name": "app_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/cdn/{key}": {
       "put": {
         "summary": "Cdn Put",
@@ -2775,6 +2986,43 @@
           "height"
         ],
         "title": "BoundingBox"
+      },
+      "CommonUIPrefs": {
+        "properties": {
+          "theme": {
+            "type": "string",
+            "title": "Theme",
+            "default": "dark"
+          },
+          "density": {
+            "type": "string",
+            "title": "Density",
+            "default": "normal"
+          },
+          "accent": {
+            "type": "string",
+            "title": "Accent",
+            "default": "#d6925a"
+          },
+          "font_size_base": {
+            "type": "integer",
+            "title": "Font Size Base",
+            "default": 12
+          },
+          "font_scale": {
+            "type": "number",
+            "maximum": 1.4,
+            "minimum": 0.8,
+            "title": "Font Scale",
+            "default": 1.0
+          },
+          "layer_colors": {
+            "$ref": "#/components/schemas/LayerColors"
+          }
+        },
+        "type": "object",
+        "title": "CommonUIPrefs",
+        "description": "Cross-app common UI preferences."
       },
       "CreateProjectRequest": {
         "properties": {
@@ -3465,6 +3713,34 @@
           "project_run_stage_all_pages"
         ],
         "title": "JobType"
+      },
+      "LayerColors": {
+        "properties": {
+          "word": {
+            "type": "string",
+            "title": "Word",
+            "default": "#4a9eff"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line",
+            "default": "#ff9f4a"
+          },
+          "para": {
+            "type": "string",
+            "title": "Para",
+            "default": "#4aff9f"
+          },
+          "block": {
+            "type": "string",
+            "title": "Block",
+            "default": "#ff4a9f"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LayerColors",
+        "description": "Hex color assignments for OCR layer overlays."
       },
       "ListPagesResponse": {
         "properties": {

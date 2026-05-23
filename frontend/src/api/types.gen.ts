@@ -912,6 +912,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/suite/installed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Installed */
+        get: operations["suite_list_installed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/suite/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Launch App */
+        post: operations["suite_launch_app"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/suite/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Prefs */
+        get: operations["suite_get_prefs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/suite/prefs/common": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Prefs Common */
+        put: operations["suite_put_prefs_common"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/suite/prefs/apps/{app_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Prefs App */
+        put: operations["suite_put_prefs_app"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/icons/{size}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Icon */
+        get: operations["suite_get_icon"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cdn/{key}": {
         parameters: {
             query?: never;
@@ -972,6 +1074,38 @@ export interface components {
             width: number;
             /** Height */
             height: number;
+        };
+        /**
+         * CommonUIPrefs
+         * @description Cross-app common UI preferences.
+         */
+        CommonUIPrefs: {
+            /**
+             * Theme
+             * @default dark
+             */
+            theme: string;
+            /**
+             * Density
+             * @default normal
+             */
+            density: string;
+            /**
+             * Accent
+             * @default #d6925a
+             */
+            accent: string;
+            /**
+             * Font Size Base
+             * @default 12
+             */
+            font_size_base: number;
+            /**
+             * Font Scale
+             * @default 1
+             */
+            font_scale: number;
+            layer_colors?: components["schemas"]["LayerColors"];
         };
         /** CreateProjectRequest */
         CreateProjectRequest: {
@@ -1263,6 +1397,32 @@ export interface components {
          * @enum {string}
          */
         JobType: "unzip" | "thumbnails" | "build_package" | "run_page_stage" | "project_run_dirty" | "project_run_stage_all_pages";
+        /**
+         * LayerColors
+         * @description Hex color assignments for OCR layer overlays.
+         */
+        LayerColors: {
+            /**
+             * Word
+             * @default #4a9eff
+             */
+            word: string;
+            /**
+             * Line
+             * @default #ff9f4a
+             */
+            line: string;
+            /**
+             * Para
+             * @default #4aff9f
+             */
+            para: string;
+            /**
+             * Block
+             * @default #ff4a9f
+             */
+            block: string;
+        };
         /** ListPagesResponse */
         ListPagesResponse: {
             /** Pages */
@@ -3691,6 +3851,176 @@ export interface operations {
             header?: never;
             path: {
                 job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suite_list_installed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    suite_launch_app: {
+        parameters: {
+            query: {
+                app_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suite_get_prefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    suite_put_prefs_common: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommonUIPrefs"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suite_put_prefs_app: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suite_get_icon: {
+        parameters: {
+            query: {
+                app_id: string;
+            };
+            header?: never;
+            path: {
+                size: number;
             };
             cookie?: never;
         };
