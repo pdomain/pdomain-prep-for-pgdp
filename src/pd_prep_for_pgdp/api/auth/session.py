@@ -8,7 +8,6 @@ misleading success response.
 from __future__ import annotations
 
 import hmac as _hmac
-from typing import cast
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -32,7 +31,7 @@ async def create_session(body: SessionRequest, request: Request, response: Respo
     """
     from pd_prep_for_pgdp.settings import Settings
 
-    settings = cast(Settings, request.app.state.settings)
+    settings: Settings = request.app.state.settings  # pyright: ignore[reportAny]
     expected = settings.api_key or ""
     if not expected or not _hmac.compare_digest(body.api_key, expected):
         raise HTTPException(status_code=401, detail="invalid api key")

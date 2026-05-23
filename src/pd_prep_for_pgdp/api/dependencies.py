@@ -106,7 +106,7 @@ async def get_user(
     # In apikey mode: check session cookie first, then fall back to Bearer.
     # This lets browser clients use the httpOnly cookie (no JS-visible secret)
     # while non-browser callers (scripts/CI) continue to work with Bearer.
-    settings = cast(Settings, request.app.state.settings)
+    settings: Settings = request.app.state.settings  # pyright: ignore[reportAny]
     if settings.auth_mode == "apikey":
         cookie_val = request.cookies.get(COOKIE_NAME)
         if cookie_val and verify_cookie_value(cookie_val, settings.session_secret):
