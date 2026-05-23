@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import httpx
+
+if TYPE_CHECKING:
+    from pathlib import Path
 import pytest
 
 from pd_prep_for_pgdp.bootstrap import build_app
 from pd_prep_for_pgdp.settings import Settings
 
 
-def _settings(tmp_path, **kw) -> Settings:
+def _settings(tmp_path: Path, **kw) -> Settings:
     base = {
         "host": "127.0.0.1",
         "port": 8765,
@@ -32,7 +37,7 @@ def _settings(tmp_path, **kw) -> Settings:
 
 
 @pytest.mark.anyio
-async def test_env_js_served_in_none_auth_mode(tmp_path) -> None:
+async def test_env_js_served_in_none_auth_mode(tmp_path: Path) -> None:
     app = build_app(_settings(tmp_path))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         r = await client.get("/env.js")
@@ -45,7 +50,7 @@ async def test_env_js_served_in_none_auth_mode(tmp_path) -> None:
 
 
 @pytest.mark.anyio
-async def test_env_js_does_not_leak_bearer_in_apikey_mode(tmp_path) -> None:
+async def test_env_js_does_not_leak_bearer_in_apikey_mode(tmp_path: Path) -> None:
     """Security: /env.js must never expose the server API key to unauthenticated browsers.
 
     The bearer secret is for server-to-server calls only.  Any visitor — including
@@ -74,7 +79,7 @@ async def test_env_js_does_not_leak_bearer_in_apikey_mode(tmp_path) -> None:
 
 
 @pytest.mark.anyio
-async def test_env_js_handles_jwt_mode_without_static_token(tmp_path) -> None:
+async def test_env_js_handles_jwt_mode_without_static_token(tmp_path: Path) -> None:
     """In JWT mode the SPA gets the token from its own login flow, not env.js."""
     app = build_app(
         _settings(

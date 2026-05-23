@@ -16,7 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pd_prep_for_pgdp.adapters.auth import IAuth, UserContext
 from pd_prep_for_pgdp.adapters.database import IDatabase
 from pd_prep_for_pgdp.adapters.storage import IStorage
-from pd_prep_for_pgdp.api.auth.session_cookie import _COOKIE_NAME, verify_cookie_value
+from pd_prep_for_pgdp.api.auth.session_cookie import COOKIE_NAME, verify_cookie_value
 from pd_prep_for_pgdp.core.job_events import JobEventBroker
 from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
 from pd_prep_for_pgdp.core.stage_events import StageEventBroker
@@ -106,9 +106,9 @@ async def get_user(
     # In apikey mode: check session cookie first, then fall back to Bearer.
     # This lets browser clients use the httpOnly cookie (no JS-visible secret)
     # while non-browser callers (scripts/CI) continue to work with Bearer.
-    settings: Settings = request.app.state.settings
+    settings = cast(Settings, request.app.state.settings)
     if settings.auth_mode == "apikey":
-        cookie_val = request.cookies.get(_COOKIE_NAME)
+        cookie_val = request.cookies.get(COOKIE_NAME)
         if cookie_val and verify_cookie_value(cookie_val, settings.session_secret):
             from pd_prep_for_pgdp.adapters.auth.base import UserContext
 

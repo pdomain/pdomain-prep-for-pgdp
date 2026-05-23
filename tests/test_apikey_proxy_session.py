@@ -14,7 +14,12 @@ test_apikey_auth.py and test_auth_me.py.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from pd_prep_for_pgdp.bootstrap import build_app
 from pd_prep_for_pgdp.settings import Settings
@@ -23,7 +28,7 @@ _SENTINEL = "super-secret-sentinel-xyzzy-apikey"
 _SESSION_SECRET = "test-session-secret-abc123"
 
 
-def _settings(tmp_path, **kw) -> Settings:
+def _settings(tmp_path: Path, **kw) -> Settings:
     base: dict = {
         "host": "127.0.0.1",
         "port": 8765,
@@ -42,7 +47,7 @@ def _settings(tmp_path, **kw) -> Settings:
 # ── 1. Unauthenticated → 401 ─────────────────────────────────────────────────
 
 
-def test_unauthenticated_protected_endpoint_returns_401(tmp_path) -> None:
+def test_unauthenticated_protected_endpoint_returns_401(tmp_path: Path) -> None:
     """Without a session cookie or Bearer header, /api/auth/me returns 401."""
     app = build_app(_settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL))
     with TestClient(app, cookies={}) as client:
@@ -53,7 +58,7 @@ def test_unauthenticated_protected_endpoint_returns_401(tmp_path) -> None:
 # ── 2. Login endpoint sets httpOnly cookie ────────────────────────────────────
 
 
-def test_session_login_with_correct_key_sets_cookie(tmp_path) -> None:
+def test_session_login_with_correct_key_sets_cookie(tmp_path: Path) -> None:
     """POST /api/auth/session with the correct key returns 200 and sets the session cookie."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
@@ -64,7 +69,7 @@ def test_session_login_with_correct_key_sets_cookie(tmp_path) -> None:
     assert "pgdp_session" in r.cookies
 
 
-def test_session_login_cookie_is_httponly(tmp_path) -> None:
+def test_session_login_cookie_is_httponly(tmp_path: Path) -> None:
     """The session cookie must be flagged HttpOnly."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
@@ -76,7 +81,7 @@ def test_session_login_cookie_is_httponly(tmp_path) -> None:
     assert "HttpOnly" in set_cookie or "httponly" in set_cookie.lower()
 
 
-def test_session_login_with_wrong_key_returns_401(tmp_path) -> None:
+def test_session_login_with_wrong_key_returns_401(tmp_path: Path) -> None:
     """Wrong key → 401, no cookie issued."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
@@ -90,7 +95,7 @@ def test_session_login_with_wrong_key_returns_401(tmp_path) -> None:
 # ── 3. Cookie → 200 on protected endpoint ────────────────────────────────────
 
 
-def test_session_cookie_authenticates_protected_request(tmp_path) -> None:
+def test_session_cookie_authenticates_protected_request(tmp_path: Path) -> None:
     """After login, the session cookie grants access to protected endpoints."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
@@ -107,7 +112,7 @@ def test_session_cookie_authenticates_protected_request(tmp_path) -> None:
 # ── 4. Sentinel never leaks ───────────────────────────────────────────────────
 
 
-def test_session_login_response_does_not_contain_bearer(tmp_path) -> None:
+def test_session_login_response_does_not_contain_bearer(tmp_path: Path) -> None:
     """The login response body and cookie value must not contain the upstream bearer."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
@@ -123,13 +128,13 @@ def test_session_login_response_does_not_contain_bearer(tmp_path) -> None:
 # ── 5. Logout clears cookie ───────────────────────────────────────────────────
 
 
-def test_logout_clears_session_cookie(tmp_path) -> None:
+def test_logout_clears_session_cookie(tmp_path: Path) -> None:
     """POST /api/auth/session/logout invalidates the session."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)
     )
     with TestClient(app) as client:
-        client.post("/api/auth/session", json={"api_key": _SENTINEL})
+        _ = client.post("/api/auth/session", json={"api_key": _SENTINEL})
         # Verify we're authenticated before logout
         assert client.get("/api/auth/me").status_code == 200
         logout = client.post("/api/auth/session/logout")
@@ -143,7 +148,7 @@ def test_logout_clears_session_cookie(tmp_path) -> None:
 # ── 6. Regression: none mode still works ─────────────────────────────────────
 
 
-def test_none_mode_protected_endpoint_still_works(tmp_path) -> None:
+def test_none_mode_protected_endpoint_still_works(tmp_path: Path) -> None:
     """In none-auth mode, all endpoints remain accessible without any credential."""
     app = build_app(_settings(tmp_path, auth_mode="none"))
     with TestClient(app) as client:
@@ -152,7 +157,7 @@ def test_none_mode_protected_endpoint_still_works(tmp_path) -> None:
     assert r.json()["user_id"] == "default"
 
 
-def test_none_mode_session_endpoint_not_needed(tmp_path) -> None:
+def test_none_mode_session_endpoint_not_needed(tmp_path: Path) -> None:
     """In none-auth mode, POST /api/auth/session is not a real route.
 
     FastAPI may return 404 (path not found) or 405 (path prefix found, method
@@ -168,7 +173,7 @@ def test_none_mode_session_endpoint_not_needed(tmp_path) -> None:
 # ── 7. Bearer fallback still works for non-browser callers ───────────────────
 
 
-def test_bearer_header_still_authenticates_in_apikey_mode(tmp_path) -> None:
+def test_bearer_header_still_authenticates_in_apikey_mode(tmp_path: Path) -> None:
     """Existing Bearer-based callers (scripts/CI) continue to work."""
     app = build_app(
         _settings(tmp_path, auth_mode="apikey", api_key=_SENTINEL, session_secret=_SESSION_SECRET)

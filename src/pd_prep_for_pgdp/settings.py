@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import warnings
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -54,7 +55,7 @@ class Settings(BaseSettings):
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
     session_secret: str = Field(
-        default_factory=lambda: __import__("secrets").token_hex(32),
+        default_factory=lambda: secrets.token_hex(32),
     )
     """HMAC-SHA256 signing secret for apikey-mode session cookies.
 

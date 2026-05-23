@@ -20,7 +20,7 @@ import hmac
 import secrets
 import time
 
-_COOKIE_NAME = "pgdp_session"
+COOKIE_NAME = "pgdp_session"
 _SEP = "."
 _MAX_AGE_SECONDS = 8 * 3600  # 8-hour soft lifetime
 
