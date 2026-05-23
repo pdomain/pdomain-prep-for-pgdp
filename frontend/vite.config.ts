@@ -21,6 +21,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    sourcemap: true,
+    // Source maps expose original TypeScript/React source in production builds.
+    // Only emit them in non-production environments (e.g. local dev builds).
+    sourcemap: process.env["NODE_ENV"] !== "production",
   },
 });
