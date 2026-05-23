@@ -14,9 +14,9 @@ from __future__ import annotations
 import asyncio
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
-from playwright.sync_api import Page, expect
+import pytest
 
 from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.core.models import (
@@ -32,6 +32,46 @@ from pd_prep_for_pgdp.core.models import (
 
 if TYPE_CHECKING:
     from .conftest import LiveServer
+
+
+class _Locator(Protocol):
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+
+class _LocatorLike(Protocol):
+    @property
+    def first(self) -> _Locator: ...
+
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+
+class _Page(Protocol):
+    def goto(self, url: str) -> None: ...
+
+    def get_by_text(self, text: str, /, exact: bool = False) -> _LocatorLike: ...
+
+    def get_by_role(self, role: str, /, name: str | None = None) -> _LocatorLike: ...
+
+
+class _ExpectResult(Protocol):
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+
+class _Expect(Protocol):
+    def __call__(self, locator: _Locator | _LocatorLike) -> _ExpectResult: ...
+
+
+class _PlaywrightSyncModule(Protocol):
+    expect: _Expect
+
+
+try:
+    raw_playwright = cast("object", pytest.importorskip("playwright.sync_api"))
+except ModuleNotFoundError as exc:
+    raise RuntimeError("playwright is required for e2e tests") from exc
+
+playwright_module = cast("_PlaywrightSyncModule", raw_playwright)
+expect = playwright_module.expect
 
 
 def _seed(db_url: str, project_id: str, job_type: JobType) -> None:
@@ -91,7 +131,7 @@ def _seed(db_url: str, project_id: str, job_type: JobType) -> None:
         raise error[0]
 
 
-def test_configure_page_shows_thumbnails_banner_during_ingest(live_server: LiveServer, page: Page) -> None:
+def test_configure_page_shows_thumbnails_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
     project_id = "banner-thumbs"
     _seed(live_server.settings.derived_database_url, project_id, JobType.thumbnails)
 
@@ -101,7 +141,7 @@ def test_configure_page_shows_thumbnails_banner_during_ingest(live_server: LiveS
     expect(page.get_by_role("link", name="Open jobs page →")).to_be_visible()
 
 
-def test_configure_page_shows_unzip_banner_during_ingest(live_server: LiveServer, page: Page) -> None:
+def test_configure_page_shows_unzip_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
     project_id = "banner-unzip"
     _seed(live_server.settings.derived_database_url, project_id, JobType.unzip)
 

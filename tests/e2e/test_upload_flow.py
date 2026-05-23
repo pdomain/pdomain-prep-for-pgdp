@@ -7,40 +7,98 @@ and `thumbnails` jobs appear and complete.
 
 from __future__ import annotations
 
-import io
-import re
 import zipfile
-from typing import TYPE_CHECKING
+from io import BytesIO
+from typing import TYPE_CHECKING, Protocol, cast
 
-import numpy as np
 import pytest
-from playwright.sync_api import Page, expect
+from PIL import Image
+
+try:
+    raw_playwright = cast("object", pytest.importorskip("playwright.sync_api"))
+except ModuleNotFoundError as exc:
+    raise RuntimeError("playwright is required for e2e tests") from exc
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from .conftest import LiveServer
 
 
+class _Locator(Protocol):
+    def click(self) -> None: ...
+
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+    def fill(self, text: str) -> None: ...
+
+    def set_input_files(self, value: str) -> None: ...
+
+    @property
+    def first(self) -> _Locator: ...
+
+    def filter(self, **kwargs: object) -> _FilterContext: ...
+
+
+class _FilterContext(Protocol):
+    def filter(self, **kwargs: object) -> _FilterContext: ...
+
+    @property
+    def first(self) -> _Locator: ...
+
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+
+class _Page(Protocol):
+    def goto(self, url: str) -> None: ...
+
+    def get_by_role(self, role: str, /, name: str) -> _Locator: ...
+
+    def get_by_label(self, label: str, /) -> _Locator: ...
+
+    def wait_for_url(self, url: str, *, timeout: int | None = None) -> None: ...
+
+    def locator(self, selector: str) -> _FilterContext: ...
+
+    def get_by_text(self, text: str, /, exact: bool = False) -> _Locator: ...
+
+
+class _ExpectResult(Protocol):
+    def to_be_visible(self, timeout: int | None = None) -> None: ...
+
+
+class _Expect(Protocol):
+    def __call__(self, locator: _Locator) -> _ExpectResult: ...
+
+
+class _PlaywrightSyncModule(Protocol):
+    expect: _Expect
+
+
+playwright_module = cast("_PlaywrightSyncModule", raw_playwright)
+expect = playwright_module.expect
+
+
 def _png(h: int = 60, w: int = 60) -> bytes:
-    cv2 = pytest.importorskip("cv2")
-    img = np.full((h, w, 3), 200, dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    return bytes(buf.tobytes())
+    image = Image.new("RGB", (w, h), color=(200, 200, 200))
+    output = BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
 
 
 def _zip_bytes() -> bytes:
-    buf = io.BytesIO()
+    buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("p1.png", _png())
         zf.writestr("p2.png", _png())
     return buf.getvalue()
 
 
-def test_upload_zip_navigates_to_filtered_jobs_page(live_server: LiveServer, page: Page, tmp_path) -> None:
-    pytest.importorskip("cv2")
-
+def test_upload_zip_navigates_to_filtered_jobs_page(
+    live_server: LiveServer, page: _Page, tmp_path: Path
+) -> None:
     zip_path = tmp_path / "book.zip"
-    zip_path.write_bytes(_zip_bytes())
+    _ = zip_path.write_bytes(_zip_bytes())
 
     page.goto(live_server.base_url)
     # The header always has a "New project" button; the empty-state card also
@@ -50,7 +108,7 @@ def test_upload_zip_navigates_to_filtered_jobs_page(live_server: LiveServer, pag
 
     page.get_by_label("Book name").fill("E2E Smoke Book")
     page.get_by_label("Source zip").set_input_files(str(zip_path))
-    page.get_by_role("button", name=re.compile(r"Create \+ Upload")).click()
+    page.get_by_role("button", name="Create + Upload").click()
 
     # Wait for the navigation to /jobs?project_id=... — that's the contract.
     page.wait_for_url("**/jobs?project_id=*", timeout=15_000)

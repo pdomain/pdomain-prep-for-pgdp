@@ -3,12 +3,14 @@
 Covers the easy error paths without standing up a real OIDC issuer:
   - no credentials → 401 'missing bearer token',
   - syntactically broken token → 401 'invalid token: ...',
-  - the `[jwt]` extra import error path is left to integration testing —
-    in this repo the dependency is always available because the dev group
-    pulls it in for tests.
+  - error branches from the optional jwt dependency.
 """
 
 from __future__ import annotations
+
+import sys
+import types
+from typing import Protocol, cast
 
 import pytest
 from fastapi import HTTPException
@@ -16,11 +18,56 @@ from fastapi import HTTPException
 from pd_prep_for_pgdp.adapters.auth.jwt_ import JwtAuth
 
 
+class _HttpxResponseLike(Protocol):
+    def json(self) -> dict[str, object]: ...
+
+    def raise_for_status(self) -> None: ...
+
+
+class _JwtDecode(Protocol):
+    def __call__(self, token: str, key: object, /, **kwargs: object) -> dict[str, object]: ...
+
+
+class _JwtModuleLike(Protocol):
+    exceptions: object
+    decode: _JwtDecode
+    PyJWKClient: object
+
+
+class _JwtError(Exception): ...
+
+
+def _install_fake_jwt_module(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    jwt_error: type[BaseException],
+    decode: _JwtDecode,
+) -> None:
+    module_object = cast(
+        "_JwtModuleLike",
+        cast("object", types.ModuleType("jwt")),
+    )
+    module_object.exceptions = types.SimpleNamespace(PyJWTError=jwt_error)
+    module_object.decode = decode
+    module_object.PyJWKClient = type("_PyJWKClient", (), {})
+    monkeypatch.setitem(sys.modules, "jwt", cast("types.ModuleType", cast("object", module_object)))
+
+
+def _build_jwk_client_factory(key: str) -> type[object]:
+    class _FakePyJWKClient:
+        def __init__(self, _url: str) -> None: ...
+
+        def get_signing_key_from_jwt(self, _token: str) -> object:
+            return types.SimpleNamespace(key=key)
+
+    return _FakePyJWKClient
+
+
 @pytest.mark.asyncio
 async def test_verify_none_credentials_raises_401() -> None:
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
     with pytest.raises(HTTPException) as exc:
-        await auth.verify(None)
+        _ = await auth.verify(None)
     assert exc.value.status_code == 401
     assert "missing bearer token" in str(exc.value.detail)
 
@@ -29,82 +76,61 @@ async def test_verify_none_credentials_raises_401() -> None:
 async def test_verify_empty_credentials_raises_401() -> None:
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
     with pytest.raises(HTTPException) as exc:
-        await auth.verify("")
+        _ = await auth.verify("")
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_verify_garbage_token_raises_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A clearly-malformed token should be rejected with 401 'invalid token'.
+    class _BadJwtError(_JwtError): ...
 
-    Skipped if the `[jwt]` extra isn't installed (pyjwt is optional in dev).
-    """
-    pytest.importorskip("jwt")
-    import jwt as pyjwt
+    def _decode(_token: str, _key: object, **_kwargs: object) -> dict[str, object]:
+        raise _BadJwtError("not a jwt")
+
+    _install_fake_jwt_module(monkeypatch, jwt_error=_BadJwtError, decode=_decode)
+    monkeypatch.setattr(sys.modules["jwt"], "PyJWKClient", _build_jwk_client_factory("fake-key"))
 
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
 
-    class _BoomClient:
-        def __init__(self, _url: str) -> None:
-            pass
-
-        def get_signing_key_from_jwt(self, _tok: str):
-            raise pyjwt.exceptions.DecodeError("not a jwt")
-
-    monkeypatch.setattr("jwt.PyJWKClient", _BoomClient)
-
     with pytest.raises(HTTPException) as exc:
-        await auth.verify("garbage.not.a.jwt")
+        _ = await auth.verify("garbage.not.a.jwt")
     assert exc.value.status_code == 401
     assert "invalid token" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
 async def test_verify_missing_sub_claim_raises_401(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A successful decode with no `sub` claim should be rejected — without a
-    sub we can't link the request to a user record."""
-    pytest.importorskip("jwt")
-    import jwt as pyjwt
+    def _decode(_token: str, _key: object, **_kwargs: object) -> dict[str, object]:
+        return {"aud": "aud", "iss": "https://issuer.example"}
+
+    _install_fake_jwt_module(
+        monkeypatch,
+        jwt_error=_JwtError,
+        decode=_decode,
+    )
+    monkeypatch.setattr(sys.modules["jwt"], "PyJWKClient", _build_jwk_client_factory("fake-key"))
 
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
 
-    class _OkKeyClient:
-        def __init__(self, _url: str) -> None:
-            pass
-
-        def get_signing_key_from_jwt(self, _tok: str):
-            return type("_K", (), {"key": "fake-key"})()
-
-    monkeypatch.setattr("jwt.PyJWKClient", _OkKeyClient)
-    monkeypatch.setattr(pyjwt, "decode", lambda *a, **kw: {"aud": "aud", "iss": "https://issuer.example"})
-
     with pytest.raises(HTTPException) as exc:
-        await auth.verify("any.jwt.token")
+        _ = await auth.verify("any.jwt.token")
     assert exc.value.status_code == 401
     assert "sub" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
 async def test_verify_returns_user_context_on_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A valid token with a sub claim resolves to a UserContext carrying that sub."""
-    pytest.importorskip("jwt")
-    import jwt as pyjwt
+    def _decode(_token: str, _key: object, **_kwargs: object) -> dict[str, object]:
+        return {"sub": "alice", "aud": "aud", "iss": "https://issuer.example"}
+
+    _install_fake_jwt_module(
+        monkeypatch,
+        jwt_error=_JwtError,
+        decode=_decode,
+    )
+    monkeypatch.setattr(sys.modules["jwt"], "PyJWKClient", _build_jwk_client_factory("fake-key"))
 
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
-
-    class _OkKeyClient:
-        def __init__(self, _url: str) -> None:
-            pass
-
-        def get_signing_key_from_jwt(self, _tok: str):
-            return type("_K", (), {"key": "fake-key"})()
-
-    monkeypatch.setattr("jwt.PyJWKClient", _OkKeyClient)
-    monkeypatch.setattr(
-        pyjwt,
-        "decode",
-        lambda *a, **kw: {"sub": "alice", "aud": "aud", "iss": "https://issuer.example"},
-    )
 
     ctx = await auth.verify("any.jwt.token")
     assert ctx.user_id == "alice"
@@ -112,87 +138,102 @@ async def test_verify_returns_user_context_on_success(monkeypatch: pytest.Monkey
 
 @pytest.mark.asyncio
 async def test_connection_error_during_jwt_verify_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A network failure during JWKS fetch must return 503, not 401."""
-    pytest.importorskip("jwt")
+    def _decode(_token: str, _key: object, **_kwargs: object) -> dict[str, object]:
+        return {"aud": "aud", "iss": "https://issuer.example", "sub": "alice"}
+
+    _install_fake_jwt_module(
+        monkeypatch,
+        jwt_error=_JwtError,
+        decode=_decode,
+    )
+
+    class _NetworkBoomClient:
+        def __init__(self, _url: str) -> None: ...
+
+        def get_signing_key_from_jwt(self, _tok: str) -> object:
+            raise ConnectionError("JWKS endpoint unreachable")
+
+    monkeypatch.setattr(sys.modules["jwt"], "PyJWKClient", _NetworkBoomClient)
 
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
 
-    class _NetworkBoomClient:
-        def __init__(self, _url: str) -> None:
-            pass
-
-        def get_signing_key_from_jwt(self, _tok: str):
-            raise ConnectionError("JWKS endpoint unreachable")
-
-    monkeypatch.setattr("jwt.PyJWKClient", _NetworkBoomClient)
-
     with pytest.raises(HTTPException) as exc:
-        await auth.verify("any.jwt.token")
+        _ = await auth.verify("any.jwt.token")
     assert exc.value.status_code == 503
     assert "authentication service unavailable" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
 async def test_unexpected_error_during_jwt_verify_returns_500(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unexpected (non-JWT, non-network) error must return 500, not 401."""
-    pytest.importorskip("jwt")
+    def _decode(_token: str, _key: object, **_kwargs: object) -> dict[str, object]:
+        return {"aud": "aud", "iss": "https://issuer.example", "sub": "alice"}
+
+    _install_fake_jwt_module(
+        monkeypatch,
+        jwt_error=_JwtError,
+        decode=_decode,
+    )
+
+    class _UnexpectedBoomClient:
+        def __init__(self, _url: str) -> None: ...
+
+        def get_signing_key_from_jwt(self, _tok: str) -> object:
+            raise ValueError("something completely unexpected")
+
+    monkeypatch.setattr(sys.modules["jwt"], "PyJWKClient", _UnexpectedBoomClient)
 
     auth = JwtAuth(issuer="https://issuer.example", audience="aud")
 
-    class _UnexpectedBoomClient:
-        def __init__(self, _url: str) -> None:
-            pass
-
-        def get_signing_key_from_jwt(self, _tok: str):
-            raise ValueError("something completely unexpected")
-
-    monkeypatch.setattr("jwt.PyJWKClient", _UnexpectedBoomClient)
-
     with pytest.raises(HTTPException) as exc:
-        await auth.verify("any.jwt.token")
+        _ = await auth.verify("any.jwt.token")
     assert exc.value.status_code == 500
     assert "unexpected auth error" in str(exc.value.detail)
 
 
 @pytest.mark.asyncio
 async def test_load_jwks_caches_after_first_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`_load_jwks` should hit the issuer's discovery endpoint once and
-    cache the resulting key map. The second call returns the same dict
-    without making more HTTP requests."""
-    auth = JwtAuth(issuer="https://issuer.example", audience="aud")
-
-    call_log: list[str] = []
 
     class _Resp:
-        def __init__(self, payload: dict) -> None:
-            self._payload = payload
+        def __init__(self, payload: dict[str, object]) -> None:
+            self._payload: dict[str, object] = payload
 
-        def json(self) -> dict:
+        def json(self) -> dict[str, object]:
             return self._payload
 
-        def raise_for_status(self) -> None:
-            pass
+        def raise_for_status(self) -> None: ...
 
     class _FakeClient:
-        async def __aenter__(self):
+        def __init__(self, call_log: list[str]) -> None:
+            self.call_log: list[str] = call_log
+
+        async def __aenter__(self) -> _FakeClient:
             return self
 
-        async def __aexit__(self, *_):
+        async def __aexit__(self, *_: object) -> bool:
             return False
 
-        async def get(self, url: str):
-            call_log.append(url)
+        async def get(self, url: str) -> _HttpxResponseLike:
+            self.call_log.append(url)
             if url.endswith("/.well-known/openid-configuration"):
                 return _Resp({"jwks_uri": "https://issuer.example/jwks"})
             return _Resp({"keys": [{"kid": "kid-1", "kty": "RSA"}]})
 
     import httpx
 
-    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _FakeClient())
+    call_log: list[str] = []
 
-    keys1 = await auth._load_jwks()
-    keys2 = await auth._load_jwks()
-    assert keys1 is keys2  # cached, same dict instance
+    class _AsyncClientFactory:
+        def __init__(self, entries: list[str]) -> None:
+            self.entries: list[str] = entries
+
+        def __call__(self, *args: object, **kwargs: object) -> _FakeClient:
+            return _FakeClient(self.entries)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _AsyncClientFactory(call_log))
+
+    auth = JwtAuth(issuer="https://issuer.example", audience="aud")
+    keys1 = await auth._load_jwks()  # pyright: ignore[reportPrivateUsage]
+    keys2 = await auth._load_jwks()  # pyright: ignore[reportPrivateUsage]
+    assert keys1 is keys2
     assert "kid-1" in keys1
-    # Discovery + JWKS fetch happen exactly once across both calls.
     assert len(call_log) == 2

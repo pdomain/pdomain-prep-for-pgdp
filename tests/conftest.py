@@ -12,7 +12,8 @@ CPU-only CI.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import importlib
+from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+class _CupyCuda(Protocol):
+    def is_available(self) -> bool: ...
+
+
+class _CupyLike(Protocol):
+    cuda: _CupyCuda | None
+
+
 def _detect_gpu() -> bool:
     """True iff cupy can import AND `cupy.cuda.is_available()` succeeds.
 
@@ -32,11 +41,14 @@ def _detect_gpu() -> bool:
     (e.g. wheel mismatch) and the import succeeds but device queries fail.
     """
     try:
-        import cupy  # type: ignore[import-not-found]
+        cupy = cast("_CupyLike", cast("object", importlib.import_module("cupy")))
     except ImportError:
         return False
     try:
-        return bool(cupy.cuda.is_available())
+        cuda = cupy.cuda
+        if cuda is None:
+            return False
+        return bool(cuda.is_available())
     except Exception:
         return False
 
@@ -45,7 +57,7 @@ gpu_available: bool = _detect_gpu()
 
 
 @pytest.fixture(autouse=True)
-def _disable_thumbnail_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+def disable_thumbnail_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pin Step-2 thumbnail generation to the single-thread path under tests.
 
     Production default is `os.cpu_count()` worker processes for real
@@ -89,6 +101,6 @@ def three_page_book_zip(tmp_path: Path) -> Path:
     artifacts are committed to the repo. See
     ``tests/fixtures/three_page_book.py`` for shape details.
     """
-    from tests.fixtures.three_page_book import build_three_page_book_zip
+    from .fixtures.three_page_book import build_three_page_book_zip
 
     return build_three_page_book_zip(tmp_path / "three_page_book.zip")

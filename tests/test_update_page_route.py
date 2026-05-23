@@ -15,6 +15,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -31,7 +35,7 @@ from pd_prep_for_pgdp.core.models import (
 from pd_prep_for_pgdp.settings import Settings
 
 
-def _settings(tmp_path) -> Settings:
+def _settings(tmp_path: Path) -> Settings:
     return Settings(
         host="127.0.0.1",
         port=8765,
@@ -71,7 +75,7 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
     asyncio.run(go())
 
 
-def test_patch_page_type_updates_row(tmp_path) -> None:
+def test_patch_page_type_updates_row(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
@@ -84,7 +88,7 @@ def test_patch_page_type_updates_row(tmp_path) -> None:
         assert r.json()["page_type"] == PageType.blank.value
 
 
-def test_patch_alignment_updates_row(tmp_path) -> None:
+def test_patch_alignment_updates_row(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
@@ -94,7 +98,7 @@ def test_patch_alignment_updates_row(tmp_path) -> None:
         assert r.json()["alignment"] == "center"
 
 
-def test_patch_splits_replaces_list(tmp_path) -> None:
+def test_patch_splits_replaces_list(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
@@ -109,11 +113,12 @@ def test_patch_splits_replaces_list(tmp_path) -> None:
             },
         )
         assert r.status_code == 200, r.text
-        body = r.json()
-        assert [s["suffix"] for s in body["splits"]] == ["a", "b"]
+        body: dict[str, object] = cast("dict[str, object]", r.json())
+        split_entries: list[dict[str, object]] = cast("list[dict[str, object]]", body["splits"])
+        assert [s["suffix"] for s in split_entries] == ["a", "b"]
 
 
-def test_patch_config_overrides_parsed(tmp_path) -> None:
+def test_patch_config_overrides_parsed(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
@@ -123,11 +128,11 @@ def test_patch_config_overrides_parsed(tmp_path) -> None:
             json={"config_overrides": {"threshold_level": 175}},
         )
         assert r.status_code == 200, r.text
-        body = r.json()
-        assert body["config_overrides"]["threshold_level"] == 175
+        body = cast("dict[str, object]", r.json())
+        assert cast("dict[str, object]", body["config_overrides"])["threshold_level"] == 175
 
 
-def test_patch_unknown_project_404(tmp_path) -> None:
+def test_patch_unknown_project_404(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     app = build_app(settings)
     with TestClient(app) as client:
@@ -135,7 +140,7 @@ def test_patch_unknown_project_404(tmp_path) -> None:
         assert r.status_code == 404
 
 
-def test_patch_unknown_page_404(tmp_path) -> None:
+def test_patch_unknown_page_404(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
@@ -144,7 +149,7 @@ def test_patch_unknown_page_404(tmp_path) -> None:
         assert r.status_code == 404
 
 
-def test_patch_other_users_project_404(tmp_path) -> None:
+def test_patch_other_users_project_404(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     _seed(settings, owner_id="someone-else")
     app = build_app(settings)
