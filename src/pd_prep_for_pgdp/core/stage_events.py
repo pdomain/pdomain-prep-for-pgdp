@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    StageEvent = dict[str, object]
+else:
+    StageEvent = dict[str, object]
 
 
 def stage_events_key(project_id: str, page_id: str) -> str:
@@ -37,10 +41,10 @@ class StageEventBroker:
     """
 
     def __init__(self) -> None:
-        self._queues: dict[str, list[asyncio.Queue[Any]]] = defaultdict(list)
+        self._queues: dict[str, list[asyncio.Queue[StageEvent | _Sentinel]]] = defaultdict(list)
         self._lock = asyncio.Lock()
 
-    async def publish(self, key: str, event: dict[str, Any]) -> None:
+    async def publish(self, key: str, event: StageEvent) -> None:
         async with self._lock:
             queues = list(self._queues.get(key, ()))
         for q in queues:
@@ -53,8 +57,8 @@ class StageEventBroker:
         for q in queues:
             await q.put(_CLOSED)
 
-    async def subscribe(self, key: str) -> AsyncIterator[dict[str, Any]]:
-        q: asyncio.Queue[Any] = asyncio.Queue()
+    async def subscribe(self, key: str) -> AsyncIterator[StageEvent]:
+        q: asyncio.Queue[StageEvent | _Sentinel] = asyncio.Queue()
         async with self._lock:
             self._queues[key].append(q)
         try:
@@ -62,6 +66,8 @@ class StageEventBroker:
                 event = await q.get()
                 if event is _CLOSED:
                     return
+                if not isinstance(event, dict):
+                    continue
                 yield event
         finally:
             async with self._lock:

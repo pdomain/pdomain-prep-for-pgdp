@@ -21,7 +21,7 @@ import asyncio
 import shutil
 import sys
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol, TextIO, cast
 
 from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.core.models import (
@@ -40,6 +40,15 @@ LEGACY_STATUSES: frozenset[PageProcessingStatus] = frozenset(
 )
 
 
+class _MigrateArgs(Protocol):
+    project_id: str | None
+    force_rebuild: bool
+    page_idx: int | None
+    data_root: Path | None
+    owner_id: str
+    all_users: bool
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="pgdp-prep migrate-projects",
@@ -48,13 +57,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "Read-only by default; pass --force-rebuild to mutate."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "project_id",
         nargs="?",
         default=None,
         help="Limit to this project_id. Default: all projects.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--force-rebuild",
         action="store_true",
         help=(
@@ -62,25 +71,25 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "dirty rows for each affected page."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--page-idx",
         type=int,
         default=None,
         metavar="IDX0",
         help="Narrow --force-rebuild to a single page (0-based index).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--data-root",
         type=Path,
         default=None,
         help="Override data_root (default: from PGDP_DATA_ROOT or ~/pgdp-projects).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--owner-id",
         default="default",
         help="Restrict to projects owned by this user_id. Default: 'default'.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--all-users",
         action="store_true",
         help="Scan every owner's projects (overrides --owner-id).",
@@ -94,18 +103,19 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
+    typed_args = cast(_MigrateArgs, cast(object, args))
     settings = Settings()
-    data_root = (args.data_root or settings.data_root).expanduser().resolve()
+    data_root = (typed_args.data_root or settings.data_root).expanduser().resolve()
     db = SqliteDatabase(settings.derived_database_url)
     await db.initialize()
     try:
-        projects = await _resolve_projects(db, args)
-        if args.project_id is not None and not projects:
-            print(f"migrate-projects: project not found: {args.project_id}", file=stdout)
+        projects = await _resolve_projects(db, typed_args)
+        if typed_args.project_id is not None and not projects:
+            print(f"migrate-projects: project not found: {typed_args.project_id}", file=stdout)
             return 1
 
-        if args.force_rebuild:
-            return await _force_rebuild(db, data_root, projects, args, stdout=stdout)
+        if typed_args.force_rebuild:
+            return await _force_rebuild(db, data_root, projects, typed_args, stdout=stdout)
         return await _report_legacy(db, projects, stdout=stdout)
     finally:
         await db.close()
@@ -114,7 +124,7 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
 # ─── Project / page resolution ───────────────────────────────────────────────
 
 
-async def _resolve_projects(db: SqliteDatabase, args: argparse.Namespace) -> list[Project]:
+async def _resolve_projects(db: SqliteDatabase, args: _MigrateArgs) -> list[Project]:
     if args.project_id is not None:
         proj = await db.get_project(args.project_id)
         if proj is None:
@@ -180,7 +190,7 @@ async def _force_rebuild(
     db: SqliteDatabase,
     data_root: Path,
     projects: list[Project],
-    args: argparse.Namespace,
+    args: _MigrateArgs,
     *,
     stdout: TextIO,
 ) -> int:

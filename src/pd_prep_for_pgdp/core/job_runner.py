@@ -20,7 +20,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
@@ -31,13 +31,19 @@ from .packaging import build_package
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pd_ocr_ops.gpu import BatchJobResult, GPUBackend
-
     from pd_prep_for_pgdp.adapters.database import IDatabase
     from pd_prep_for_pgdp.adapters.storage import IStorage
     from pd_prep_for_pgdp.dispatcher.base import IDispatcher
+    from pd_prep_for_pgdp.dispatcher.batched import CompletionCallback
 
     from .job_events import JobEventBroker
+
+    class GPUBackend(Protocol): ...
+
+    class _FlushResult(Protocol):
+        ok: bool
+        error: str | None
+
 
 log = logging.getLogger(__name__)
 
@@ -59,14 +65,14 @@ class InProcessJobRunner:
         max_concurrency: int = 1,
         data_root: Path | None = None,
     ) -> None:
-        self._db = database
-        self._storage = storage
-        self._gpu = gpu
-        self._data_root = data_root
-        self._dispatcher = dispatcher
-        self._events = events
-        self._poll = poll_interval
-        self._max_concurrency = max(1, max_concurrency)
+        self._db: IDatabase = database
+        self._storage: IStorage = storage
+        self._gpu: GPUBackend | None = gpu
+        self._data_root: Path | None = data_root
+        self._dispatcher: IDispatcher | None = dispatcher
+        self._events: JobEventBroker | None = events
+        self._poll: float = poll_interval
+        self._max_concurrency: int = max(1, max_concurrency)
         # Jobs that handed themselves off to the dispatcher; _run_one should
         # NOT mark them complete on the way out — the dispatcher's completion
         # callback owns that transition.
@@ -78,14 +84,25 @@ class InProcessJobRunner:
         # poll iterations rather than mid-DB-call. The lifespan teardown sets
         # it BEFORE awaiting the runner task to avoid a SQLite-level segfault
         # where the worker thread holds a cursor while close() runs.
-        self._stop = asyncio.Event()
+        self._stop: asyncio.Event = asyncio.Event()
 
         # When a BatchDispatcher is provided, register a completion callback so
         # jobs whose items finish a flush are marked complete (or failed).
         if isinstance(dispatcher, BatchDispatcher):
-            dispatcher.add_completion_callback(self._on_dispatcher_flush)
+            dispatcher.add_completion_callback(cast("CompletionCallback", self._on_dispatcher_flush))
 
-    async def _emit(self, job: Job) -> None:
+    @property
+    def db(self) -> IDatabase:
+        return self._db
+
+    @property
+    def storage(self) -> IStorage:
+        return self._storage
+
+    def park_job(self, job_id: str) -> None:
+        _ = self._parked_jobs.add(job_id)
+
+    async def emit(self, job: Job) -> None:
         """Push a status snapshot onto the event broker, if one is wired."""
         if self._events is None:
             return
@@ -109,13 +126,14 @@ class InProcessJobRunner:
         if job.status.value in terminal:
             await self._events.close(job.id)
 
-    async def _on_dispatcher_flush(self, job_id: str, results: list[BatchJobResult]) -> None:
+    async def _on_dispatcher_flush(self, job_id: str, results: list[object]) -> None:
         if not job_id:
             return
         job = await self._db.get_job(job_id)
         if job is None:
             return
-        ok = sum(1 for r in results if r.ok)
+        typed_results = [cast("_FlushResult", r) for r in results]
+        ok = sum(1 for r in typed_results if r.ok)
         err = len(results) - ok
         progress = job.progress.model_copy(
             update={
@@ -124,7 +142,7 @@ class InProcessJobRunner:
                 "message": f"ok={ok} err={err}",
             }
         )
-        first_err = next((r.error for r in results if not r.ok and r.error), None)
+        first_err = next((r.error for r in typed_results if not r.ok and r.error), None)
         updated = job.model_copy(
             update={
                 "status": JobStatus.error if err and not ok else JobStatus.complete,
@@ -134,7 +152,7 @@ class InProcessJobRunner:
             }
         )
         await self._db.put_job(updated)
-        await self._emit(updated)
+        await self.emit(updated)
 
     async def run_forever(self) -> None:
         """Loop until `stop()` is called or the task is cancelled.
@@ -159,8 +177,7 @@ class InProcessJobRunner:
                 consecutive_failures += 1
                 if consecutive_failures >= _CIRCUIT_BREAKER_MAX:
                     raise RuntimeError(
-                        f"InProcessJobRunner circuit breaker tripped after "
-                        f"{consecutive_failures} consecutive failures"
+                        f"InProcessJobRunner circuit breaker tripped after {consecutive_failures} consecutive failures"
                     ) from exc
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=self._poll)
@@ -196,7 +213,7 @@ class InProcessJobRunner:
             async with sem:
                 await self._run_one(job)
 
-        await asyncio.gather(*(_bounded(j) for j in slated))
+        _ = await asyncio.gather(*(_bounded(j) for j in slated))
         return len(slated)
 
     async def _check_awaiting_review(self) -> None:
@@ -234,7 +251,7 @@ class InProcessJobRunner:
             }
         )
         await self._db.put_job(job)
-        await self._emit(job)
+        await self.emit(job)
 
         try:
             handler = _HANDLERS.get(job.type)
@@ -251,13 +268,13 @@ class InProcessJobRunner:
         # If the handler handed the job off to the dispatcher, skip the
         # complete transition — the dispatcher's completion callback owns it.
         if job.id in self._scheduled_jobs:
-            self._scheduled_jobs.discard(job.id)
+            _ = self._scheduled_jobs.discard(job.id)
             return
 
         # If the handler parked the job in awaiting_review, skip complete —
         # the resume check will re-queue it when all pages are reviewed.
         if job.id in self._parked_jobs:
-            self._parked_jobs.discard(job.id)
+            _ = self._parked_jobs.discard(job.id)
             return
 
         # Re-read so we preserve progress writes the handler made via _update_progress.
@@ -270,7 +287,7 @@ class InProcessJobRunner:
         # adapter doesn't have CAS, so a tight race could still slip through.
         latest = await self._db.get_job(job.id)
         if latest is not None and latest.status == JobStatus.cancelled:
-            await self._emit(latest)
+            await self.emit(latest)
             return
         updated = job.model_copy(
             update={
@@ -279,12 +296,12 @@ class InProcessJobRunner:
             }
         )
         await self._db.put_job(updated)
-        await self._emit(updated)
+        await self.emit(updated)
 
     async def _mark_failed(self, job: Job, message: str) -> None:
         latest = await self._db.get_job(job.id)
         if latest is not None and latest.status == JobStatus.cancelled:
-            await self._emit(latest)
+            await self.emit(latest)
             return
         updated = job.model_copy(
             update={
@@ -294,15 +311,15 @@ class InProcessJobRunner:
             }
         )
         await self._db.put_job(updated)
-        await self._emit(updated)
+        await self.emit(updated)
 
-    async def _update_progress(self, job: Job, *, current: int, total: int, message: str = "") -> Job:
+    async def update_progress(self, job: Job, *, current: int, total: int, message: str = "") -> Job:
         progress = job.progress.model_copy(
             update={"current": current, "total": total, "message": message or job.progress.message}
         )
         updated = job.model_copy(update={"progress": progress})
         await self._db.put_job(updated)
-        await self._emit(updated)
+        await self.emit(updated)
         return updated
 
 
@@ -316,7 +333,7 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
     handler enqueues a `thumbnails` job for the same project so the user
     sees the second stage as a separate progress bar.
     """
-    project = await runner._db.get_project(job.project_id)
+    project = await runner.db.get_project(job.project_id)
     if project is None:
         raise FileNotFoundError(f"project {job.project_id} not found")
 
@@ -327,17 +344,17 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
     source_type = "zip" if source_key.endswith(".zip") else "local_folder"
 
     async def _report(current: int, total: int, stem: str) -> None:
-        await runner._update_progress(job, current=current, total=total, message=f"unzipping {stem}")
+        _ = await runner.update_progress(job, current=current, total=total, message=f"unzipping {stem}")
 
     result = await unzip_source(
         project=project,
         source_type=source_type,
         source_key=source_key,
-        storage=runner._storage,
-        database=runner._db,
+        storage=runner.storage,
+        database=runner.db,
         progress_cb=_report,
     )
-    await runner._update_progress(
+    _ = await runner.update_progress(
         job,
         current=result.page_count,
         total=result.page_count,
@@ -354,7 +371,7 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
             type=JobType.thumbnails,
             status=JobStatus.queued,
         )
-        await runner._db.put_job(thumb_job)
+        await runner.db.put_job(thumb_job)
 
 
 async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
@@ -364,20 +381,20 @@ async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
     — addresses the slowness the user observed on CPU when each page paid
     its own context-switch + library-init overhead.
     """
-    project = await runner._db.get_project(job.project_id)
+    project = await runner.db.get_project(job.project_id)
     if project is None:
         raise FileNotFoundError(f"project {job.project_id} not found")
 
     async def _report(current: int, total: int, stem: str) -> None:
-        await runner._update_progress(job, current=current, total=total, message=f"thumbnail {stem}")
+        _ = await runner.update_progress(job, current=current, total=total, message=f"thumbnail {stem}")
 
     result = await generate_thumbnails(
         project=project,
-        storage=runner._storage,
-        database=runner._db,
+        storage=runner.storage,
+        database=runner.db,
         progress_cb=_report,
     )
-    await runner._update_progress(
+    _ = await runner.update_progress(
         job,
         current=result.page_count,
         total=result.page_count,
@@ -386,20 +403,20 @@ async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
 
 
 async def _handle_build_package(runner: InProcessJobRunner, job: Job) -> None:
-    project = await runner._db.get_project(job.project_id)
+    project = await runner.db.get_project(job.project_id)
     if project is None:
         raise FileNotFoundError(f"project {job.project_id} not found")
 
-    if not await _all_pages_reviewed(runner._db, job.project_id):
+    if not await _all_pages_reviewed(runner.db, job.project_id):
         parked = job.model_copy(update={"status": JobStatus.awaiting_review})
-        await runner._db.put_job(parked)
-        await runner._emit(parked)
-        runner._parked_jobs.add(job.id)
+        await runner.db.put_job(parked)
+        await runner.emit(parked)
+        runner.park_job(job.id)
         return
 
-    pages, _, _ = await runner._db.list_pages(job.project_id, None, 1_000_000)
-    result = await build_package(project=project, pages=pages, storage=runner._storage)
-    await runner._update_progress(
+    pages, _, _ = await runner.db.list_pages(job.project_id, None, 1_000_000)
+    result = await build_package(project=project, pages=pages, storage=runner.storage)
+    _ = await runner.update_progress(
         job,
         current=result.page_count,
         total=result.page_count,
@@ -431,33 +448,33 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
 
     payload = job.payload
     project_id = payload.get("project_id") or job.project_id
-    page_id: str = payload["page_id"]
-    stage_id: str = payload["stage_id"]
-    device: str = payload.get("device", "cpu")
+    page_id = str(payload["page_id"])
+    stage_id = str(payload["stage_id"])
+    device = str(payload.get("device", "cpu"))
     # data_root is not stashed on the runner; the route records it in the
     # payload so the handler is self-contained.
     data_root = Path(payload["data_root"])
 
-    project = await runner._db.get_project(project_id)
+    project = await runner.db.get_project(project_id)
     if project is None:
         raise FileNotFoundError(f"project {project_id!r} not found")
     # page_source_key: look it up from the DB rather than embedding in payload.
     # idx0 is derivable from page_id (zero-padded int).
     idx0 = int(page_id)
-    page = await runner._db.get_page(project_id, idx0)
+    page = await runner.db.get_page(project_id, idx0)
     page_source_key = page.source_key if page is not None else None
 
     await run_stage(
         data_root=data_root,
-        database=runner._db,
+        database=runner.db,
         project_id=project_id,
         page_id=page_id,
         stage_id=stage_id,
         device=device,
-        storage=runner._storage,
+        storage=runner.storage,
         page_source_key=page_source_key,
     )
-    await runner._update_progress(
+    _ = await runner.update_progress(
         job,
         current=1,
         total=1,
@@ -483,15 +500,15 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
     from .models import PAGE_STAGE_IDS, PageStageStatus
     from .pipeline.stage_runner import run_stage
 
-    stage_filter: str | None = job.payload.get("stage_filter")
-    data_root = Path(job.payload.get("data_root", "."))
-    device: str = job.payload.get("device", "cpu")
+    stage_filter = str(job.payload["stage_filter"]) if "stage_filter" in job.payload else None
+    data_root = Path(str(job.payload.get("data_root", ".")))
+    device = str(job.payload.get("device", "cpu"))
 
-    project = await runner._db.get_project(job.project_id)
+    project = await runner.db.get_project(job.project_id)
     if project is None:
         raise FileNotFoundError(f"project {job.project_id!r} not found")
 
-    pages, _, _ = await runner._db.list_pages(job.project_id, None, 1_000_000)
+    pages, _, _ = await runner.db.list_pages(job.project_id, None, 1_000_000)
 
     # Collect pages that have at least one dirty/not-run stage (honouring filter).
     dirty_statuses = {PageStageStatus.dirty, PageStageStatus.not_run}
@@ -501,7 +518,7 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
         if page.ignore:
             continue
         page_id = f"{page.idx0:04d}"
-        rows = await runner._db.list_page_stages_for_page(job.project_id, page_id)
+        rows = await runner.db.list_page_stages_for_page(job.project_id, page_id)
         stage_ids = [
             r.stage_id
             for r in rows
@@ -511,7 +528,7 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
             pages_with_work.append((page_id, stage_ids, page.source_key))
 
     total = len(pages_with_work)
-    job = await runner._update_progress(job, current=0, total=total, message=f"dispatching {total} pages")
+    job = await runner.update_progress(job, current=0, total=total, message=f"dispatching {total} pages")
 
     parent_errors: list[str] = []
 
@@ -530,7 +547,7 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
                 "data_root": str(data_root),
             },
         )
-        await runner._db.put_job(child)
+        await runner.db.put_job(child)
 
         # Run dirty stages in canonical DAG order.
         ordered = [sid for sid in PAGE_STAGE_IDS if sid in stage_ids]
@@ -539,12 +556,12 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
             try:
                 await run_stage(
                     data_root=data_root,
-                    database=runner._db,
+                    database=runner.db,
                     project_id=job.project_id,
                     page_id=page_id,
                     stage_id=stage_id,
                     device=device,
-                    storage=runner._storage,
+                    storage=runner.storage,
                     page_source_key=page_source_key,
                 )
             except Exception as exc:
@@ -565,12 +582,12 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
                 "error_message": "; ".join(page_errors) if page_errors else None,
             }
         )
-        await runner._db.put_job(child_done)
+        await runner.db.put_job(child_done)
 
         if not child_ok:
             parent_errors.append(f"page {i}/{total}: {'; '.join(page_errors)}")
 
-        job = await runner._update_progress(
+        job = await runner.update_progress(
             job,
             current=i,
             total=total,
@@ -596,7 +613,7 @@ async def _handle_project_run_stage_all_pages(runner: InProcessJobRunner, job: J
     Delegates to ``_handle_project_run_dirty`` with ``stage_filter`` set to
     the requested ``stage_id``.
     """
-    stage_id: str = job.payload["stage_id"]
+    stage_id = str(job.payload["stage_id"])
     delegated = job.model_copy(update={"payload": {**job.payload, "stage_filter": stage_id}})
     await _handle_project_run_dirty(runner, delegated)
 

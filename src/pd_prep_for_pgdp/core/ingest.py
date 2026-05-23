@@ -19,6 +19,7 @@ a worker thread.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import io
 import logging
 import os
@@ -28,7 +29,7 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import anyio.to_thread
 
@@ -42,8 +43,10 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.storage import IStorage
+    from pd_prep_for_pgdp.adapters.storage import IStorage, ObjectInfo
 
 log = logging.getLogger(__name__)
 
@@ -161,8 +164,10 @@ def _resolve_thumbnail_workers(*, override: int | None) -> int:
             return max(1, int(raw))
         except ValueError:
             log.error(
-                "PGDP_THUMBNAIL_WORKERS=%r is not a valid integer; using cpu_count. "
-                "Set a valid integer to silence this.",
+                (
+                    "PGDP_THUMBNAIL_WORKERS=%r is not a valid integer; using cpu_count. "
+                    "Set a valid integer to silence this."
+                ),
                 raw,
             )
     return max(1, os.cpu_count() or 1)
@@ -375,7 +380,11 @@ async def _enumerate_zip(storage: IStorage, source_key: str, project_id: str) ->
 
 async def _enumerate_folder(storage: IStorage, prefix: str) -> list[_SourceEntry]:
     entries: list[_SourceEntry] = []
-    async for obj in storage.list_prefix(prefix):  # pyright: ignore[reportGeneralTypeIssues]
+    listing = storage.list_prefix(prefix)
+    if inspect.isawaitable(listing):
+        listing = await listing
+    listing = cast("AsyncIterator[ObjectInfo]", listing)
+    async for obj in listing:
         ext = _ext_lower(obj.key)
         if ext not in _IMAGE_EXTS:
             continue

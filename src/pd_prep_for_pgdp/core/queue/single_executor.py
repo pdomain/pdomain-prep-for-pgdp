@@ -40,11 +40,11 @@ class SingleExecutor:
     """
 
     def __init__(self, *, batch_window_s: float = 0.2) -> None:
-        self._window_s = batch_window_s
-        self._thread = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu-exec")
-        self._counter = 0
-        self._counter_lock = threading.Lock()
-        self._queue: asyncio.PriorityQueue[Any] | None = None  # pyright: ignore[reportMissingTypeArgument]
+        self._window_s: float = batch_window_s
+        self._thread: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpu-exec")
+        self._counter: int = 0
+        self._counter_lock: threading.Lock = threading.Lock()
+        self._queue: asyncio.PriorityQueue[_WorkItem] | None = None
         self._drain_task: asyncio.Task[None] | None = None
         # Process exit was sometimes blocked by the worker thread waiting on a
         # cancelled future. Register an atexit hook so a missed __aexit__
@@ -65,13 +65,13 @@ class SingleExecutor:
         self._thread.shutdown(wait=False)
 
     @property
-    def queue(self) -> asyncio.PriorityQueue[Any]:  # pyright: ignore[reportMissingTypeArgument]
+    def queue(self) -> asyncio.PriorityQueue[_WorkItem]:
         # Lazy: the queue must be created on the asyncio loop that owns it.
         if self._queue is None:
-            self._queue = asyncio.PriorityQueue()  # pyright: ignore[reportMissingTypeArgument]
+            self._queue = asyncio.PriorityQueue()
         return self._queue
 
-    def submit(self, priority: Priority, fn: Callable[..., Any], *args: Any) -> asyncio.Future[Any]:  # pyright: ignore[reportMissingTypeArgument]
+    def submit(self, priority: Priority, fn: Callable[..., Any], *args: Any) -> asyncio.Future[Any]:
         """Enqueue a work item; returns a future that resolves with the result.
 
         The priority + a monotonic counter ordering ensures we never tie-break
@@ -97,7 +97,7 @@ class SingleExecutor:
         loop = asyncio.get_running_loop()
         while True:
             first = await self.queue.get()
-            items: list[tuple[int, int, Callable[..., Any], tuple[Any, ...], asyncio.Future[Any]]] = [first]  # pyright: ignore[reportMissingTypeArgument]
+            items: list[_WorkItem] = [first]
             deadline = loop.time() + self._window_s
             while True:
                 remaining = deadline - loop.time()
@@ -114,7 +114,7 @@ class SingleExecutor:
 
     async def _dispatch(
         self,
-        items: list[tuple[int, int, Callable[..., Any], tuple[Any, ...], asyncio.Future[Any]]],  # pyright: ignore[reportMissingTypeArgument]
+        items: list[_WorkItem],
         loop: asyncio.AbstractEventLoop,
     ) -> None:
         for _prio, _seq, fn, args, fut in items:
@@ -130,3 +130,6 @@ class SingleExecutor:
             else:
                 if not fut.done():
                     fut.set_result(result)
+
+
+type _WorkItem = tuple[int, int, "Callable[..., Any]", tuple[Any, ...], asyncio.Future[Any]]

@@ -37,7 +37,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, Protocol, TextIO, cast
 
 from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pd_prep_for_pgdp.core.models import PageStageState, PageStageStatus, Project
@@ -72,6 +72,15 @@ class HealCounts:
     fts_entries_rebuilt: int = 0
 
 
+class _ReindexArgs(Protocol):
+    project_id: str | None
+    heal: bool
+    data_root: Path | None
+    owner_id: str
+    all_users: bool
+    json: bool
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="pgdp-prep reindex",
@@ -80,34 +89,34 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "Read-only by default; pass --heal to apply corrective mutations."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "project_id",
         nargs="?",
         default=None,
         help="Limit the scan to this project_id. Default: scan every project.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--heal",
         action="store_true",
         help="Apply corrective mutations to drifted rows / files.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--data-root",
         type=Path,
         default=None,
         help="Override the data_root (default: from PGDP_DATA_ROOT or ~/pgdp-projects).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--owner-id",
         default="default",
         help="Restrict to projects owned by this user_id. Default: 'default' (matches local solo mode).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--all-users",
         action="store_true",
         help="Scan every owner's projects (overrides --owner-id).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--json",
         action="store_true",
         help="Emit a structured JSON report instead of the human table.",
@@ -121,14 +130,15 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
+    typed_args = cast(_ReindexArgs, cast(object, args))
     settings = Settings()
-    data_root = (args.data_root or settings.data_root).expanduser().resolve()
+    data_root = (typed_args.data_root or settings.data_root).expanduser().resolve()
     db = SqliteDatabase(settings.derived_database_url)
     await db.initialize()
     try:
-        projects = await _resolve_projects(db, args)
-        if args.project_id is not None and not projects:
-            print(f"reindex: project not found: {args.project_id}", file=stdout)
+        projects = await _resolve_projects(db, typed_args)
+        if typed_args.project_id is not None and not projects:
+            print(f"reindex: project not found: {typed_args.project_id}", file=stdout)
             return 1
 
         all_reports: list[tuple[Project, str, ReconcileReport]] = []
@@ -145,12 +155,12 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
 
         any_drift = any(not r.is_clean for _, _, r in all_reports)
 
-        if args.heal:
+        if typed_args.heal:
             counts = await _heal_all(db, data_root, all_reports)
-            _print_heal_summary(all_reports, counts, json_mode=args.json, stdout=stdout)
+            _print_heal_summary(all_reports, counts, json_mode=typed_args.json, stdout=stdout)
             return 0
 
-        _print_drift_report(all_reports, json_mode=args.json, stdout=stdout)
+        _print_drift_report(all_reports, json_mode=typed_args.json, stdout=stdout)
         return 2 if any_drift else 0
     finally:
         await db.close()
@@ -159,7 +169,7 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 
-async def _resolve_projects(db: IDatabase, args: argparse.Namespace) -> list[Project]:
+async def _resolve_projects(db: IDatabase, args: _ReindexArgs) -> list[Project]:
     """Resolve the set of projects the CLI should scan."""
     if args.project_id is not None:
         proj = await db.get_project(args.project_id)

@@ -9,7 +9,7 @@ import os
 import socket
 import sys
 import webbrowser
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
 
@@ -19,6 +19,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 LAST_PORT_FILENAME = "last-port"
+
+
+class _MainArgs(Protocol):
+    host: str | None
+    port: int | None
+    reload: bool
+    frontend_dev: str | None
+    no_browser: bool
+    version: bool
+
+
+class _SubcommandModule(Protocol):
+    def main(self, argv: list[str] | None = None) -> int: ...
 
 
 def _read_last_port(config_dir: Path) -> int | None:
@@ -50,24 +63,24 @@ def _write_last_port(config_dir: Path, port: int) -> None:
     """
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / LAST_PORT_FILENAME).write_text(f"{port}\n", encoding="utf-8")
+        _ = (config_dir / LAST_PORT_FILENAME).write_text(f"{port}\n", encoding="utf-8")
     except OSError:
         pass
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="pgdp-prep", description=__doc__)
-    p.add_argument("--host", default=None, help="bind host (default 127.0.0.1)")
-    p.add_argument("--port", type=int, default=None, help="bind port (default 8765)")
-    p.add_argument("--reload", action="store_true", help="enable uvicorn auto-reload")
-    p.add_argument(
+    _ = p.add_argument("--host", default=None, help="bind host (default 127.0.0.1)")
+    _ = p.add_argument("--port", type=int, default=None, help="bind port (default 8765)")
+    _ = p.add_argument("--reload", action="store_true", help="enable uvicorn auto-reload")
+    _ = p.add_argument(
         "--frontend-dev",
         default=None,
         metavar="URL",
         help="proxy unknown asset paths to a Vite dev server (e.g. http://localhost:5173)",
     )
-    p.add_argument("--no-browser", action="store_true", help="don't open a browser tab on start")
-    p.add_argument("--version", action="store_true", help="print version and exit")
+    _ = p.add_argument("--no-browser", action="store_true", help="don't open a browser tab on start")
+    _ = p.add_argument("--version", action="store_true", help="print version and exit")
     return p.parse_args(argv)
 
 
@@ -143,7 +156,7 @@ def _pick_port(
     # Default-port collision: hand off to the kernel.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind((host, 0))
-        chosen = probe.getsockname()[1]
+        chosen = int(cast("tuple[str, int]", probe.getsockname())[1])
     print(  # noqa: T201  # CLI user-facing fallback notice
         f"Port {preferred} in use; falling back to OS-assigned port {chosen}.",
     )
@@ -187,8 +200,8 @@ def _dispatch_subcommand(argv: list[str]) -> int | None:
         return None
     import importlib
 
-    mod = importlib.import_module(module_path)
-    return mod.main(argv[1:])  # type: ignore[no-any-return]
+    mod = cast("_SubcommandModule", cast("object", importlib.import_module(module_path)))
+    return mod.main(argv[1:])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -201,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     if sub_rc is not None:
         return sub_rc
 
-    args = _parse_args(raw_argv)
+    args = cast("_MainArgs", cast("object", _parse_args(raw_argv)))
 
     if args.version:
         from . import __version__
@@ -243,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.no_browser and not args.reload:
         with contextlib.suppress(Exception):
-            webbrowser.open(url, new=1)
+            _ = webbrowser.open(url, new=1)
 
     uvicorn.run(
         "pd_prep_for_pgdp.bootstrap:build_app",

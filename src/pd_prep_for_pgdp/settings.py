@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import warnings
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,7 +20,7 @@ LogFormat = Literal["plain", "json"]
 class Settings(BaseSettings):
     """One process-wide settings instance. Chosen at startup; never mutated."""
 
-    model_config = SettingsConfigDict(
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_prefix="PGDP_",
         env_file=".env",
         env_file_encoding="utf-8",
@@ -121,8 +121,10 @@ class Settings(BaseSettings):
     def _warn_on_legacy_gpu_backend_env(self) -> Settings:
         if "PGDP_GPU_BACKEND" in os.environ and "PD_GPU_BACKEND" not in os.environ:
             warnings.warn(
-                "PGDP_GPU_BACKEND is deprecated; rename to PD_GPU_BACKEND "
-                "(this alias will be removed in a future pd-prep-for-pgdp release).",
+                (
+                    "PGDP_GPU_BACKEND is deprecated; rename to PD_GPU_BACKEND "
+                    "(this alias will be removed in a future pd-prep-for-pgdp release)."
+                ),
                 DeprecationWarning,
                 stacklevel=2,
             )

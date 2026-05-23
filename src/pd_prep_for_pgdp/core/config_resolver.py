@@ -9,7 +9,7 @@ Resolution rule: page override > project default override > system default.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .models import (
     PageRecord,
@@ -23,12 +23,14 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
-def _pick(field: str, page_value: Any, project_overrides: Mapping[str, Any], fallback: Any) -> Any:
+def _pick[T](field: str, page_value: T | None, project_overrides: Mapping[str, object], fallback: T) -> T:
     """Page override wins, then project default override, then system fallback."""
     if page_value is not None:
         return page_value
     if field in project_overrides:
-        return project_overrides[field]
+        value = project_overrides[field]
+        if isinstance(value, type(fallback)):
+            return value
     return fallback
 
 

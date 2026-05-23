@@ -11,7 +11,7 @@ import logging
 import platform
 from contextlib import asynccontextmanager
 from importlib import resources
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, cast
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +41,11 @@ if TYPE_CHECKING:
     from .adapters.database.base import IDatabase
     from .adapters.storage.base import IStorage
     from .dispatcher.base import IDispatcher
+
+
+class _InstallRouteFn(Protocol):
+    def __call__(self, app: FastAPI) -> None: ...
+
 
 log = logging.getLogger(__name__)
 
@@ -116,13 +121,15 @@ class _NoOpGPUBackend:
 
     name = "cpu"  # type: ignore[assignment]  # matches Protocol Literal
 
-    async def process_page(self, req: Any) -> Any:  # pragma: no cover
+    async def process_page(self, req: object) -> object:  # pragma: no cover
         raise NotImplementedError("process_page removed in M6 — use per-stage endpoint")
 
-    async def run_ocr(self, req: Any) -> Any:  # pragma: no cover
+    async def run_ocr(self, req: object) -> object:  # pragma: no cover
         raise NotImplementedError("run_ocr removed in M6 — use per-stage endpoint")
 
-    async def run_batch(self, items: list, *, progress_cb: Any = None) -> list:  # pyright: ignore[reportMissingTypeArgument]  # pragma: no cover
+    async def run_batch(
+        self, items: list[object], *, progress_cb: object | None = None
+    ) -> list[object]:  # pragma: no cover
         # Not reachable: no surviving job handler calls dispatcher.submit()
         # in local/cpu/mps mode. Raise loudly if that ever changes.
         raise NotImplementedError("_NoOpGPUBackend.run_batch must never be called")
@@ -133,7 +140,7 @@ def build_gpu_backend(
     *,
     storage: IStorage | None = None,
     database: IDatabase | None = None,
-    executor: Any | None = None,
+    executor: object | None = None,
 ) -> GPUBackend:
     chosen = settings.gpu_backend or _autodetect_gpu_backend()
     log.info("Selected GPU backend: %s", chosen)
@@ -267,9 +274,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app.state.job_runner = job_runner
 
     install_error_handlers(app, debug=settings.debug)
-    install_auth_routes(app)
-    install_data_routes(app)
-    install_gpu_routes(app)
+    cast(_InstallRouteFn, install_auth_routes)(app)
+    cast(_InstallRouteFn, install_data_routes)(app)
+    cast(_InstallRouteFn, install_gpu_routes)(app)
 
     # /healthz is mode-agnostic — gpu_worker_only nodes still need a liveness
     # probe — and unauthenticated by design (orchestrators don't carry tokens).
