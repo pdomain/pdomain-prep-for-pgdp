@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from pydantic import BaseModel
 
+from pd_prep_for_pgdp.api.dependencies import get_app_state
 from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 log = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ class HealthzResponse(BaseModel):
 
 @router.get("/healthz", include_in_schema=False)
 async def healthz(request: Request) -> HealthzResponse:
-    state = request.app.state
+    state = get_app_state(request)
     settings = state.settings
     gpu = state.gpu_backend
     dispatcher = state.dispatcher
@@ -59,7 +60,7 @@ async def healthz(request: Request) -> HealthzResponse:
 
     db_reachable = True
     try:
-        await database.list_recent_jobs(_HEALTHZ_OWNER_SENTINEL, limit=1)
+        _ = await database.list_recent_jobs(_HEALTHZ_OWNER_SENTINEL, limit=1)
     except Exception as e:  # pragma: no cover - exercised via test patch
         log.warning("healthz db probe failed: %s", e)
         db_reachable = False
@@ -75,7 +76,7 @@ async def healthz(request: Request) -> HealthzResponse:
     )
 
 
-def install_healthz(app) -> None:  # type: ignore[no-untyped-def]
+def install_healthz(app: FastAPI) -> None:
     """Register `GET /healthz`. Call before the SPA mount so the catch-all
     fallback doesn't shadow it (the SPA fallback only handles `/{full_path}`
     after include_in_schema=False routes are registered, but mounting first

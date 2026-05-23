@@ -22,6 +22,9 @@ from pd_prep_for_pgdp.api.dependencies import (
     get_dispatcher,
     get_gpu_backend,
     get_job_events,
+    get_job_runner,
+    get_settings,
+    get_stage_events,
     get_storage,
     get_user,
 )
@@ -36,6 +39,9 @@ class _Sentinels:
     gpu_backend = object()
     dispatcher = object()
     job_events = object()
+    stage_events = object()
+    settings = object()
+    job_runner = object()
 
 
 class _FakeRequest:
@@ -65,6 +71,18 @@ def test_get_dispatcher_returns_app_state_dispatcher() -> None:
 
 def test_get_job_events_returns_app_state_job_events() -> None:
     assert get_job_events(_FakeRequest()) is _Sentinels.job_events  # type: ignore[arg-type]
+
+
+def test_get_stage_events_returns_app_state_stage_events() -> None:
+    assert get_stage_events(_FakeRequest()) is _Sentinels.stage_events  # type: ignore[arg-type]
+
+
+def test_get_settings_returns_app_state_settings() -> None:
+    assert get_settings(_FakeRequest()) is _Sentinels.settings  # type: ignore[arg-type]
+
+
+def test_get_job_runner_returns_app_state_job_runner() -> None:
+    assert get_job_runner(_FakeRequest()) is _Sentinels.job_runner  # type: ignore[arg-type]
 
 
 # ── get_user ────────────────────────────────────────────────────────────────

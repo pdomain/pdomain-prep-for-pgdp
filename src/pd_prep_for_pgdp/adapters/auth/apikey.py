@@ -13,7 +13,7 @@ class ApiKeyAuth:
     def __init__(self, expected_key: str) -> None:
         if not expected_key:
             raise ValueError("ApiKeyAuth requires a non-empty key")
-        self._expected = expected_key
+        self._expected: str = expected_key
 
     async def verify(self, credentials: str | None) -> UserContext:
         if not credentials or not hmac.compare_digest(credentials, self._expected):

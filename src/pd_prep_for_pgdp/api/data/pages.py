@@ -5,18 +5,19 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from collections.abc import AsyncIterator
+from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag
 from pd_prep_for_pgdp.api.dependencies import (
-    get_database,
-    get_settings,
-    get_stage_events,
-    get_storage,
-    get_user,
+    DatabaseDep,
+    SettingsDep,
+    StageEventsDep,
+    StorageDep,
+    UserDep,
 )
 from pd_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
@@ -49,12 +50,6 @@ from pd_prep_for_pgdp.core.pipeline.stage_runner import (
     run_stage,
 )
 from pd_prep_for_pgdp.core.prefix import compute_prefix
-
-if TYPE_CHECKING:
-    from pd_prep_for_pgdp.adapters.auth import UserContext
-    from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.storage import IStorage
-    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -151,14 +146,14 @@ class ReorderPagesResponse(BaseModel):
 )
 async def list_pages(
     project_id: str,
-    cursor: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=500),
-    page_type: PageType | None = Query(None),
-    has_splits: bool | None = Query(None),
-    status: PageProcessingStatus | None = Query(None),
-    review_needed: bool | None = Query(None),
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
+    cursor: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    page_type: Annotated[PageType | None, Query()] = None,
+    has_splits: Annotated[bool | None, Query()] = None,
+    status: Annotated[PageProcessingStatus | None, Query()] = None,
+    review_needed: Annotated[bool | None, Query()] = None,
 ) -> ListPagesResponse:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -206,8 +201,8 @@ def _needs_review(page: PageRecord) -> bool:
 async def get_page(
     project_id: str,
     idx0: int,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> PageRecord:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -226,8 +221,8 @@ async def get_page(
 async def reorder_pages(
     project_id: str,
     body: ReorderPagesRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> ReorderPagesResponse:
     """Reorder pages in a project.
 
@@ -293,8 +288,8 @@ async def update_page(
     project_id: str,
     idx0: int,
     body: UpdatePageRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> PageRecord:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -302,24 +297,24 @@ async def update_page(
     page = await db.get_page(project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
-    update = body.model_dump(exclude_unset=True)
-    old_overrides = page.config_overrides.model_dump()
-    if "config_overrides" in update and update["config_overrides"] is not None:
-        page.config_overrides = PageConfigOverrides.model_validate(update["config_overrides"])
-    if "page_type" in update:
+    updated_fields = body.model_fields_set
+    old_overrides = cast(dict[str, object], page.config_overrides.model_dump())
+    if "config_overrides" in updated_fields and body.config_overrides is not None:
+        page.config_overrides = body.config_overrides
+    if "page_type" in updated_fields:
         page.page_type = body.page_type or page.page_type
-    if "alignment" in update:
+    if "alignment" in updated_fields:
         page.alignment = body.alignment or page.alignment
-    if "splits" in update and body.splits is not None:
+    if "splits" in updated_fields and body.splits is not None:
         page.splits = body.splits
-    if "illustration_regions" in update and body.illustration_regions is not None:
+    if "illustration_regions" in updated_fields and body.illustration_regions is not None:
         page.illustration_regions = body.illustration_regions
     await db.put_page(page)
 
     # Cascade dirty to stages whose config-field sets overlap with the changed
     # config_overrides fields, so the chip rail reflects staleness immediately.
-    new_overrides = page.config_overrides.model_dump()
-    changed_fields = {f for f, v in new_overrides.items() if v != old_overrides.get(f)}
+    new_overrides = cast(dict[str, object], page.config_overrides.model_dump())
+    changed_fields = {field for field, value in new_overrides.items() if value != old_overrides.get(field)}
     if changed_fields:
         page_id = f"{idx0:04d}"
         await cascade_dirty_for_config_change(
@@ -341,9 +336,9 @@ async def update_page_text(
     project_id: str,
     idx0: int,
     body: UpdatePageTextRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> UpdatePageTextResponse:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -378,9 +373,9 @@ async def get_page_text(
     project_id: str,
     idx0: int,
     suffix: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> GetPageTextResponse:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -494,9 +489,9 @@ async def delete_page_words(
     project_id: str,
     idx0: int,
     body: DeleteWordsRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> DeleteWordsResponse:
     """Soft-delete OCR words from a page's `<root>.words.json` and
     rewrite `<root>.txt` from the survivors (roadmap §9a).
@@ -545,7 +540,7 @@ async def delete_page_words(
         ) from exc
 
     drop = set(body.word_ids)
-    updated_words = []
+    updated_words: list[OcrWord] = []
     deleted_count = 0
     for w in words:
         if w.id in drop and not w.deleted:
@@ -555,13 +550,13 @@ async def delete_page_words(
             updated_words.append(w)
     words = updated_words
 
-    survivors = [w for w in words if not w.deleted]
+    survivors: list[OcrWord] = [word for word in words if not word.deleted]
 
     # Even when deleted_count == 0 we rewrite — keeps the response
     # contract uniform and lets the client treat this as the canonical
     # "current state of the page" round-trip.
     new_text = _rebuild_text_from_words(survivors)
-    payload = json.dumps([w.model_dump(mode="json") for w in words]).encode("utf-8")
+    payload = json.dumps([word.model_dump(mode="json") for word in words]).encode("utf-8")
     await storage.put_bytes(words_key, payload, "application/json")
     await storage.put_bytes(text_key, new_text.encode("utf-8"), "text/plain")
 
@@ -583,9 +578,9 @@ async def restore_page_words(
     project_id: str,
     idx0: int,
     body: RestoreWordsRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> RestoreWordsResponse:
     """Restore previously soft-deleted OCR words for a page (roadmap §9a).
 
@@ -627,7 +622,7 @@ async def restore_page_words(
         ) from exc
 
     restore = set(body.word_ids)
-    updated_words = []
+    updated_words: list[OcrWord] = []
     restored_count = 0
     for w in words:
         if w.id in restore and w.deleted:
@@ -637,9 +632,9 @@ async def restore_page_words(
             updated_words.append(w)
     words = updated_words
 
-    survivors = [w for w in words if not w.deleted]
+    survivors: list[OcrWord] = [word for word in words if not word.deleted]
     new_text = _rebuild_text_from_words(survivors)
-    payload = json.dumps([w.model_dump(mode="json") for w in words]).encode("utf-8")
+    payload = json.dumps([word.model_dump(mode="json") for word in words]).encode("utf-8")
     await storage.put_bytes(words_key, payload, "application/json")
     await storage.put_bytes(text_key, new_text.encode("utf-8"), "text/plain")
 
@@ -674,8 +669,8 @@ async def split_page(
     project_id: str,
     idx0: int,
     body: SplitPageRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> SplitPageResponse:
     """Create N sibling child pages by splitting a parent page.
 
@@ -732,8 +727,8 @@ async def split_page(
 async def unsplit_page(
     project_id: str,
     idx0: int,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> PageRecord:
     """Reverse a split: delete all sibling child pages and return the parent.
 
@@ -789,8 +784,8 @@ def _page_id_for_idx0(idx0: int) -> str:
 async def list_page_stages(
     project_id: str,
     idx0: int,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> list[PageStageState]:
     """Return ordered per-page stage state for the 22-stage DAG.
 
@@ -814,7 +809,7 @@ async def list_page_stages(
     page_id = _page_id_for_idx0(idx0)
     # Lazy-init: idempotent + concurrency-safe via `INSERT OR IGNORE` on the
     # composite PK.
-    await db.init_page_stages_for_page(project_id, page_id)
+    _ = await db.init_page_stages_for_page(project_id, page_id)
     rows = await db.list_page_stages_for_page(project_id, page_id)
 
     # Order by topological order — matches spec §"Per-page stage DAG"
@@ -847,12 +842,12 @@ async def run_page_stage(
     project_id: str,
     idx0: int,
     stage_id: str,
-    async_: bool = Query(False, alias="async"),
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
-    settings: Settings = Depends(get_settings),
-    stage_events=Depends(get_stage_events),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+    async_: Annotated[bool, Query(alias="async")] = False,
 ) -> Job | PageStageState:
     """Run one stage on one page synchronously and return the new row.
 
@@ -999,11 +994,11 @@ async def get_page_stage_artifact(
     project_id: str,
     idx0: int,
     stage_id: str,
-    v: str | None = None,  # cache-busting: ?v=<last_run_at>; value is ignored server-side
-    if_none_match: str | None = Header(None, alias="If-None-Match"),
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    settings: Settings = Depends(get_settings),
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    _v: str | None = None,  # cache-busting: ?v=<last_run_at>; value is ignored server-side
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
     """Stream the bytes of a clean stage's on-disk artifact.
 
@@ -1097,10 +1092,10 @@ async def get_page_stage_thumbnail(
     project_id: str,
     idx0: int,
     stage_id: str,
-    if_none_match: str | None = Header(None, alias="If-None-Match"),
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    settings: Settings = Depends(get_settings),
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
     """Return the pre-generated thumbnail PNG for a clean stage's output.
 
@@ -1148,9 +1143,9 @@ async def get_page_stage_thumbnail(
 async def stream_page_stage_events(
     project_id: str,
     idx0: int,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    stage_events=Depends(get_stage_events),
+    user: UserDep,
+    db: DatabaseDep,
+    stage_events: StageEventsDep,
 ):
     """SSE — push stage-status and stage-progress events for one page.
 
@@ -1175,7 +1170,7 @@ async def stream_page_stage_events(
     page_id = _page_id_for_idx0(idx0)
     key = stage_events_key(project_id, page_id)
 
-    async def stream():
+    async def stream() -> AsyncIterator[dict[str, str]]:
         rows = await db.list_page_stages_for_page(project_id, page_id)
         snapshot = {
             "type": "snapshot",
@@ -1184,6 +1179,7 @@ async def stream_page_stage_events(
         yield {"event": "snapshot", "data": json.dumps(snapshot)}
 
         async for ev in stage_events.subscribe(key):
-            yield {"event": ev.get("type", "stage-status"), "data": json.dumps(ev)}
+            event = cast(dict[str, object], ev)
+            yield {"event": str(event.get("type", "stage-status")), "data": json.dumps(event)}
 
     return EventSourceResponse(stream())

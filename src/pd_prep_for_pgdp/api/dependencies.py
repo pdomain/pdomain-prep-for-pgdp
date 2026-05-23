@@ -8,68 +8,98 @@ tests can override individual dependencies via FastAPI's standard mechanism.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Annotated, Protocol, cast
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-if TYPE_CHECKING:
-    from pd_ocr_ops.gpu import GPUBackend
+from pd_prep_for_pgdp.adapters.auth import IAuth, UserContext
+from pd_prep_for_pgdp.adapters.database import IDatabase
+from pd_prep_for_pgdp.adapters.storage import IStorage
+from pd_prep_for_pgdp.core.job_events import JobEventBroker
+from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+from pd_prep_for_pgdp.core.stage_events import StageEventBroker
+from pd_prep_for_pgdp.dispatcher import IDispatcher
+from pd_prep_for_pgdp.settings import Settings
 
-    from pd_prep_for_pgdp.adapters.auth import IAuth, UserContext
-    from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.storage import IStorage
-    from pd_prep_for_pgdp.dispatcher import IDispatcher
-    from pd_prep_for_pgdp.settings import Settings
+
+class GPUBackend(Protocol):
+    name: str
+
 
 log = logging.getLogger(__name__)
 
 _security = HTTPBearer(auto_error=False)
 
 
+class AppState(Protocol):
+    storage: IStorage
+    database: IDatabase
+    auth: IAuth
+    gpu_backend: GPUBackend
+    dispatcher: IDispatcher
+    job_events: JobEventBroker
+    stage_events: StageEventBroker
+    settings: Settings
+    job_runner: InProcessJobRunner
+
+
+class _AppWithState(Protocol):
+    state: AppState
+
+
+def get_app_state(request: Request) -> AppState:
+    app = cast(_AppWithState, request.app)
+    return app.state
+
+
 def get_storage(request: Request) -> IStorage:
-    return request.app.state.storage  # type: ignore[no-any-return]
+    return get_app_state(request).storage
 
 
 def get_database(request: Request) -> IDatabase:
-    return request.app.state.database  # type: ignore[no-any-return]
+    return get_app_state(request).database
 
 
 def get_auth(request: Request) -> IAuth:
-    return request.app.state.auth  # type: ignore[no-any-return]
+    return get_app_state(request).auth
 
 
 def get_gpu_backend(request: Request) -> GPUBackend:
-    return request.app.state.gpu_backend  # type: ignore[no-any-return]
+    return get_app_state(request).gpu_backend
 
 
 def get_dispatcher(request: Request) -> IDispatcher:
-    return request.app.state.dispatcher  # type: ignore[no-any-return]
+    return get_app_state(request).dispatcher
 
 
-def get_job_events(request: Request):  # type: ignore[no-untyped-def]
-    return request.app.state.job_events
+def get_job_events(request: Request) -> JobEventBroker:
+    return get_app_state(request).job_events
 
 
-def get_stage_events(request: Request):  # type: ignore[no-untyped-def]
-    return request.app.state.stage_events
+def get_stage_events(request: Request) -> StageEventBroker:
+    return get_app_state(request).stage_events
 
 
 def get_settings(request: Request) -> Settings:
     """Read-only access to the Settings instance for routes that need
     `data_root` (the on-disk artifact root) — e.g. the per-page stage runner."""
-    return request.app.state.settings  # type: ignore[no-any-return]
+    return get_app_state(request).settings
 
 
-def get_job_runner(request: Request):  # type: ignore[no-untyped-def]
+def get_job_runner(request: Request) -> InProcessJobRunner:
     """The InProcessJobRunner — used by the async stage-run route to enqueue
     a Job and hand off execution to the background poll loop."""
-    return request.app.state.job_runner
+    return get_app_state(request).job_runner
+
+
+SecurityDep = Annotated[HTTPAuthorizationCredentials | None, Depends(_security)]
+AuthDep = Annotated[IAuth, Depends(get_auth)]
 
 
 async def get_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(_security),
-    auth: IAuth = Depends(get_auth),
+    creds: SecurityDep,
+    auth: AuthDep,
 ) -> UserContext:
     try:
         return await auth.verify(creds.credentials if creds else None)
@@ -82,3 +112,12 @@ async def get_user(
     except Exception as e:
         log.exception("unexpected error in auth dependency")
         raise HTTPException(status_code=500, detail="unexpected authentication error") from e
+
+
+UserDep = Annotated[UserContext, Depends(get_user)]
+DatabaseDep = Annotated[IDatabase, Depends(get_database)]
+StorageDep = Annotated[IStorage, Depends(get_storage)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+GPUBackendDep = Annotated[GPUBackend, Depends(get_gpu_backend)]
+JobEventsDep = Annotated[JobEventBroker, Depends(get_job_events)]
+StageEventsDep = Annotated[StageEventBroker, Depends(get_stage_events)]

@@ -8,7 +8,7 @@ serves them.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import anyio
 
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 class FilesystemStorage(IStorage):
     def __init__(self, root: Path, cdn_url_base: str = "/cdn") -> None:
-        self._root = root
-        self._cdn = cdn_url_base.rstrip("/")
+        self._root: Path = root
+        self._cdn: str = cdn_url_base.rstrip("/")
         self._root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
@@ -45,23 +45,28 @@ class FilesystemStorage(IStorage):
             raise ValueError(f"key escapes data root: {key!r}")
         return p
 
+    @override
     async def put_bytes(self, key: str, data: bytes, content_type: str = "") -> None:
         p = self._path(key)
         p.parent.mkdir(parents=True, exist_ok=True)
-        await anyio.Path(p).write_bytes(data)
+        _ = await anyio.Path(p).write_bytes(data)
 
+    @override
     async def get_bytes(self, key: str) -> bytes:
         return await anyio.Path(self._path(key)).read_bytes()
 
+    @override
     async def exists(self, key: str) -> bool:
         return await anyio.Path(self._path(key)).exists()
 
+    @override
     async def delete(self, key: str) -> None:
         p = self._path(key)
         if p.exists():
             p.unlink()
 
-    async def list_prefix(self, prefix: str) -> AsyncIterator[ObjectInfo]:  # pyright: ignore[reportIncompatibleMethodOverride]
+    @override
+    async def list_prefix(self, prefix: str) -> AsyncIterator[ObjectInfo]:
         base = self._path(prefix)
         if not base.exists():
             return
@@ -71,10 +76,12 @@ class FilesystemStorage(IStorage):
                 stat = f.stat()
                 yield ObjectInfo(key=rel, size=stat.st_size, last_modified_epoch=stat.st_mtime)
 
+    @override
     async def presign_put(self, key: str, content_type: str, expires_in: int = 3600) -> str:
         # Filesystem mode does direct uploads through the FastAPI process; the
         # caller PUTs to /cdn/<key> with the same path it uses to GET.
         return f"{self._cdn}/{key.lstrip('/')}"
 
+    @override
     async def presign_get(self, key: str, expires_in: int = 3600) -> str:
         return f"{self._cdn}/{key.lstrip('/')}"

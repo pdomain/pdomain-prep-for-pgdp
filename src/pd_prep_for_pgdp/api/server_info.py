@@ -19,8 +19,10 @@ the public API contract).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, FastAPI, Request
 from pydantic import BaseModel
+
+from pd_prep_for_pgdp.api.dependencies import get_app_state
 
 router = APIRouter()
 
@@ -33,13 +35,13 @@ class ServerInfoResponse(BaseModel):
 
 @router.get("/api/server-info", include_in_schema=False)
 async def server_info(request: Request) -> ServerInfoResponse:
-    settings = request.app.state.settings
+    settings = get_app_state(request).settings
     host = settings.host
     port = settings.port
     return ServerInfoResponse(host=host, port=port, url=f"http://{host}:{port}")
 
 
-def install_server_info(app) -> None:  # type: ignore[no-untyped-def]
+def install_server_info(app: FastAPI) -> None:
     """Register `GET /api/server-info`. Call before the SPA mount so the
     catch-all `/{full_path}` fallback doesn't shadow it."""
     app.include_router(router)
