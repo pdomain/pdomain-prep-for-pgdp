@@ -30,6 +30,12 @@ from pd_prep_for_pgdp.api.dependencies import (
 )
 
 
+class _FakeSettings:
+    """Minimal settings stub that satisfies the `auth_mode` check in `get_user`."""
+
+    auth_mode = "none"
+
+
 class _Sentinels:
     """Tiny stand-in for `app.state` with sentinel objects per dependency."""
 
@@ -40,18 +46,13 @@ class _Sentinels:
     dispatcher = object()
     job_events = object()
     stage_events = object()
-    settings = object()
+    settings: object = _FakeSettings()  # needs auth_mode for get_user cookie check
     job_runner = object()
 
 
-class _FakeSettings:
-    """Minimal settings stub that satisfies the `auth_mode` check in `get_user`."""
-
-    auth_mode = "none"
-
-
-class _FakeState(_Sentinels):
-    settings = _FakeSettings()
+# _FakeState IS _Sentinels: settings is a _FakeSettings so get_user can read
+# auth_mode, and is still the same object identity that the sentinel tests check.
+_FakeState = _Sentinels
 
 
 class _FakeRequest:
