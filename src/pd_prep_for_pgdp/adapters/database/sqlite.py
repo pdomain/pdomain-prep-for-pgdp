@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
+from typing import ParamSpec, TypeVar, cast
 
 import anyio.to_thread
 
@@ -124,6 +127,58 @@ CREATE VIRTUAL TABLE IF NOT EXISTS page_text_fts USING fts5(
 );
 """
 
+type _JsonTextRow = tuple[str]
+type _CountRow = tuple[int]
+type _OwnerIdRow = tuple[str]
+type _PageInsertRow = tuple[str, int, str]
+type _SearchRow = tuple[str, int, str | None, float]
+type _PageStageRow = tuple[
+    str,
+    str,
+    str,
+    str,
+    int,
+    str | None,
+    str | None,
+    str | None,
+    float | None,
+    int | None,
+    str | None,
+    str | None,
+]
+
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+def _fetch_optional_json_text_row(cur: sqlite3.Cursor) -> _JsonTextRow | None:
+    return cast(_JsonTextRow | None, cur.fetchone())
+
+
+def _fetch_json_text_rows(cur: sqlite3.Cursor) -> list[_JsonTextRow]:
+    return cast(list[_JsonTextRow], cur.fetchall())
+
+
+def _fetch_count(cur: sqlite3.Cursor) -> int:
+    row = cast(_CountRow | None, cur.fetchone())
+    return 0 if row is None else row[0]
+
+
+def _fetch_optional_page_stage_row(cur: sqlite3.Cursor) -> _PageStageRow | None:
+    return cast(_PageStageRow | None, cur.fetchone())
+
+
+def _fetch_page_stage_rows(cur: sqlite3.Cursor) -> list[_PageStageRow]:
+    return cast(list[_PageStageRow], cur.fetchall())
+
+
+def _fetch_search_rows(cur: sqlite3.Cursor) -> list[_SearchRow]:
+    return cast(list[_SearchRow], cur.fetchall())
+
+
+def _fetch_owner_id_rows(cur: sqlite3.Cursor) -> list[_OwnerIdRow]:
+    return cast(list[_OwnerIdRow], cur.fetchall())
+
 
 # ─── Legacy migration helpers ───────────────────────────────────────────────────
 
@@ -152,13 +207,13 @@ class SqliteDatabase:
         if not url.startswith(prefix):
             raise ValueError(f"unrecognised SQLite URL: {url!r}")
         path = url[len(prefix) :]
-        self._memory = path == ":memory:"
-        self._path = path if self._memory else str(Path(path).expanduser())
+        self._memory: bool = path == ":memory:"
+        self._path: str = path if self._memory else str(Path(path).expanduser())
         self._conn: sqlite3.Connection | None = None
         # SQLite connection isn't safe to share across threads without a lock.
         # The runner now fans out concurrent jobs (max_concurrency > 1) so
         # two threads can race on commit() without this guard.
-        self._write_lock = threading.Lock()
+        self._write_lock: threading.Lock = threading.Lock()
 
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -169,8 +224,8 @@ class SqliteDatabase:
         if not self._memory:
             Path(self._path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self._path, check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode = WAL;")
-        self._conn.executescript(_SCHEMA)
+        _ = self._conn.execute("PRAGMA journal_mode = WAL;")
+        _ = self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
     async def close(self) -> None:
@@ -186,7 +241,7 @@ class SqliteDatabase:
                 self._conn = None
 
     @contextmanager
-    def _cursor(self):
+    def _cursor(self) -> Generator[sqlite3.Cursor]:
         assert self._conn is not None, "Database not initialised"
         with self._write_lock:
             cur = self._conn.cursor()
@@ -196,17 +251,16 @@ class SqliteDatabase:
             finally:
                 cur.close()
 
-    async def _run(self, fn, *args):  # type: ignore[no-untyped-def]
-        return await anyio.to_thread.run_sync(lambda: fn(*args))
+    async def _run(self, fn: Callable[_P, _T], *args: _P.args, **kwargs: _P.kwargs) -> _T:
+        return await anyio.to_thread.run_sync(partial(fn, *args, **kwargs))
 
     # ── System defaults ─────────────────────────────────────────────────────
 
     async def get_system_defaults(self, owner_id: str) -> SystemDefaults:
         def _go() -> SystemDefaults:
             with self._cursor() as cur:
-                row = cur.execute(
-                    "SELECT body FROM system_defaults WHERE owner_id = ?", (owner_id,)
-                ).fetchone()
+                _ = cur.execute("SELECT body FROM system_defaults WHERE owner_id = ?", (owner_id,))
+                row = _fetch_optional_json_text_row(cur)
                 if row is None:
                     return SystemDefaults()
                 return SystemDefaults.model_validate_json(row[0])
@@ -218,7 +272,7 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "INSERT OR REPLACE INTO system_defaults (owner_id, body) VALUES (?, ?)",
                     (owner_id, body),
                 )
@@ -235,10 +289,11 @@ class SqliteDatabase:
     ) -> list[Project]:
         def _go() -> list[Project]:
             with self._cursor() as cur:
-                rows = cur.execute(
+                _ = cur.execute(
                     "SELECT body FROM projects WHERE owner_id = ? ORDER BY updated_at DESC",
                     (owner_id,),
-                ).fetchall()
+                )
+                rows = _fetch_json_text_rows(cur)
                 projects = [Project.model_validate_json(r[0]) for r in rows]
             if include_archived:
                 return projects
@@ -252,7 +307,8 @@ class SqliteDatabase:
     async def get_project(self, project_id: str) -> Project | None:
         def _go() -> Project | None:
             with self._cursor() as cur:
-                row = cur.execute("SELECT body FROM projects WHERE id = ?", (project_id,)).fetchone()
+                _ = cur.execute("SELECT body FROM projects WHERE id = ?", (project_id,))
+                row = _fetch_optional_json_text_row(cur)
                 return Project.model_validate_json(row[0]) if row else None
 
         return await self._run(_go)
@@ -263,7 +319,7 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "INSERT OR REPLACE INTO projects (id, owner_id, body, updated_at) VALUES (?, ?, ?, ?)",
                     (project.id, project.owner_id, body, ts),
                 )
@@ -273,9 +329,9 @@ class SqliteDatabase:
     async def delete_project(self, project_id: str) -> None:
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute("DELETE FROM page_stages WHERE project_id = ?", (project_id,))
-                cur.execute("DELETE FROM pages WHERE project_id = ?", (project_id,))
-                cur.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+                _ = cur.execute("DELETE FROM page_stages WHERE project_id = ?", (project_id,))
+                _ = cur.execute("DELETE FROM pages WHERE project_id = ?", (project_id,))
+                _ = cur.execute("DELETE FROM projects WHERE id = ?", (project_id,))
 
         await self._run(_go)
 
@@ -290,13 +346,13 @@ class SqliteDatabase:
         def _go() -> tuple[list[PageRecord], str | None, int]:
             offset = int(cursor) if cursor else 0
             with self._cursor() as cur:
-                total = cur.execute(
-                    "SELECT COUNT(*) FROM pages WHERE project_id = ?", (project_id,)
-                ).fetchone()[0]
-                rows = cur.execute(
+                _ = cur.execute("SELECT COUNT(*) FROM pages WHERE project_id = ?", (project_id,))
+                total = _fetch_count(cur)
+                _ = cur.execute(
                     "SELECT body FROM pages WHERE project_id = ? ORDER BY idx0 LIMIT ? OFFSET ?",
                     (project_id, limit, offset),
-                ).fetchall()
+                )
+                rows = _fetch_json_text_rows(cur)
             pages = [PageRecord.model_validate_json(r[0]) for r in rows]
             next_cursor = str(offset + limit) if offset + limit < total else None
             return pages, next_cursor, total
@@ -306,10 +362,11 @@ class SqliteDatabase:
     async def get_page(self, project_id: str, idx0: int) -> PageRecord | None:
         def _go() -> PageRecord | None:
             with self._cursor() as cur:
-                row = cur.execute(
+                _ = cur.execute(
                     "SELECT body FROM pages WHERE project_id = ? AND idx0 = ?",
                     (project_id, idx0),
-                ).fetchone()
+                )
+                row = _fetch_optional_json_text_row(cur)
                 return PageRecord.model_validate_json(row[0]) if row else None
 
         return await self._run(_go)
@@ -319,7 +376,7 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "INSERT OR REPLACE INTO pages (project_id, idx0, body) VALUES (?, ?, ?)",
                     (page.project_id, page.idx0, body),
                 )
@@ -329,11 +386,11 @@ class SqliteDatabase:
     async def put_pages(self, pages: list[PageRecord]) -> None:
         if not pages:
             return
-        rows = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
+        rows: list[_PageInsertRow] = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.executemany(
+                _ = cur.executemany(
                     "INSERT OR REPLACE INTO pages (project_id, idx0, body) VALUES (?, ?, ?)",
                     rows,
                 )
@@ -343,7 +400,7 @@ class SqliteDatabase:
     async def delete_page(self, project_id: str, idx0: int) -> None:
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "DELETE FROM pages WHERE project_id=? AND idx0=?",
                     (project_id, idx0),
                 )
@@ -359,10 +416,11 @@ class SqliteDatabase:
 
         def _go() -> list[PageRecord]:
             with self._cursor() as cur:
-                rows = cur.execute(
+                _ = cur.execute(
                     "SELECT body FROM pages WHERE project_id=? ORDER BY idx0",
                     (project_id,),
-                ).fetchall()
+                )
+                rows = _fetch_json_text_rows(cur)
             pages = [PageRecord.model_validate_json(r[0]) for r in rows]
             return [p for p in pages if p.parent_page_id == parent_page_id]
 
@@ -383,18 +441,21 @@ class SqliteDatabase:
         def _go() -> None:
             with self._cursor() as cur:
                 # Remove stale FTS entry (no-op if missing).
-                cur.execute(
+                _ = cur.execute(
                     "DELETE FROM page_text_fts WHERE page_id=? AND project_id=?",
                     (page_id, project_id),
                 )
                 # Authoritative companion row (upsert).
-                cur.execute(
-                    "INSERT OR REPLACE INTO page_text "
-                    "(project_id, page_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
+                _ = cur.execute(
+                    """
+                    INSERT OR REPLACE INTO page_text
+                        (project_id, page_id, idx0, ocr_text)
+                    VALUES (?, ?, ?, ?)
+                    """,
                     (project_id, page_id, idx0, normalized),
                 )
                 # New FTS entry.
-                cur.execute(
+                _ = cur.execute(
                     "INSERT INTO page_text_fts (page_id, project_id, idx0, ocr_text) VALUES (?, ?, ?, ?)",
                     (page_id, project_id, idx0, normalized),
                 )
@@ -422,21 +483,24 @@ class SqliteDatabase:
 
         def _go() -> tuple[list[SearchResult], int]:
             with self._cursor() as cur:
-                total_row = cur.execute(
+                _ = cur.execute(
                     "SELECT COUNT(*) FROM page_text_fts WHERE page_text_fts MATCH ? AND project_id=?",
                     (normalized_query, project_id),
-                ).fetchone()
-                total = int(total_row[0]) if total_row else 0
+                )
+                total = _fetch_count(cur)
 
-                rows = cur.execute(
-                    "SELECT page_id, idx0, "
-                    "snippet(page_text_fts, 3, '', '', '...', 15), rank "
-                    "FROM page_text_fts "
-                    "WHERE page_text_fts MATCH ? AND project_id=? "
-                    "ORDER BY rank "
-                    "LIMIT ? OFFSET ?",
+                _ = cur.execute(
+                    """
+                    SELECT page_id, idx0,
+                           snippet(page_text_fts, 3, '', '', '...', 15), rank
+                    FROM page_text_fts
+                    WHERE page_text_fts MATCH ? AND project_id=?
+                    ORDER BY rank
+                    LIMIT ? OFFSET ?
+                    """,
                     (normalized_query, project_id, limit, offset),
-                ).fetchall()
+                )
+                rows = _fetch_search_rows(cur)
 
             return (
                 [
@@ -458,7 +522,8 @@ class SqliteDatabase:
     async def get_job(self, job_id: str) -> Job | None:
         def _go() -> Job | None:
             with self._cursor() as cur:
-                row = cur.execute("SELECT body FROM jobs WHERE id = ?", (job_id,)).fetchone()
+                _ = cur.execute("SELECT body FROM jobs WHERE id = ?", (job_id,))
+                row = _fetch_optional_json_text_row(cur)
                 return Job.model_validate_json(row[0]) if row else None
 
         return await self._run(_go)
@@ -469,7 +534,7 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "INSERT OR REPLACE INTO jobs (id, owner_id, body, created_at) VALUES (?, ?, ?, ?)",
                     (job.id, job.owner_id, body, ts),
                 )
@@ -479,10 +544,11 @@ class SqliteDatabase:
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         def _go() -> list[Job]:
             with self._cursor() as cur:
-                rows = cur.execute(
+                _ = cur.execute(
                     "SELECT body FROM jobs WHERE owner_id = ? ORDER BY created_at DESC LIMIT ?",
                     (owner_id, limit),
-                ).fetchall()
+                )
+                rows = _fetch_json_text_rows(cur)
             return [Job.model_validate_json(r[0]) for r in rows]
 
         return await self._run(_go)
@@ -499,14 +565,17 @@ class SqliteDatabase:
 
         def _go() -> PageStageState | None:
             with self._cursor() as cur:
-                row = cur.execute(
-                    "SELECT project_id, page_id, stage_id, status, stage_version, "
-                    "       config_hash, input_hash, artifact_key, last_run_at, "
-                    "       duration_ms, error_message, job_id "
-                    "FROM page_stages "
-                    "WHERE project_id=? AND page_id=? AND stage_id=?",
+                _ = cur.execute(
+                    """
+                    SELECT project_id, page_id, stage_id, status, stage_version,
+                           config_hash, input_hash, artifact_key, last_run_at,
+                           duration_ms, error_message, job_id
+                    FROM page_stages
+                    WHERE project_id=? AND page_id=? AND stage_id=?
+                    """,
                     (project_id, page_id, stage_id),
-                ).fetchone()
+                )
+                row = _fetch_optional_page_stage_row(cur)
             return _row_to_page_stage(row) if row else None
 
         return await self._run(_go)
@@ -521,12 +590,14 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
-                    "INSERT OR REPLACE INTO page_stages "
-                    "(project_id, page_id, stage_id, status, stage_version, "
-                    " config_hash, input_hash, artifact_key, last_run_at, "
-                    " duration_ms, error_message, job_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                _ = cur.execute(
+                    """
+                    INSERT OR REPLACE INTO page_stages
+                        (project_id, page_id, stage_id, status, stage_version,
+                         config_hash, input_hash, artifact_key, last_run_at,
+                         duration_ms, error_message, job_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
                     (
                         state.project_id,
                         state.page_id,
@@ -554,14 +625,17 @@ class SqliteDatabase:
 
         def _go() -> list[PageStageState]:
             with self._cursor() as cur:
-                rows = cur.execute(
-                    "SELECT project_id, page_id, stage_id, status, stage_version, "
-                    "       config_hash, input_hash, artifact_key, last_run_at, "
-                    "       duration_ms, error_message, job_id "
-                    "FROM page_stages "
-                    "WHERE project_id=? AND page_id=?",
+                _ = cur.execute(
+                    """
+                    SELECT project_id, page_id, stage_id, status, stage_version,
+                           config_hash, input_hash, artifact_key, last_run_at,
+                           duration_ms, error_message, job_id
+                    FROM page_stages
+                    WHERE project_id=? AND page_id=?
+                    """,
                     (project_id, page_id),
-                ).fetchall()
+                )
+                rows = _fetch_page_stage_rows(cur)
             return [_row_to_page_stage(r) for r in rows]
 
         return await self._run(_go)
@@ -575,14 +649,17 @@ class SqliteDatabase:
 
         def _go() -> list[PageStageState]:
             with self._cursor() as cur:
-                rows = cur.execute(
-                    "SELECT project_id, page_id, stage_id, status, stage_version, "
-                    "       config_hash, input_hash, artifact_key, last_run_at, "
-                    "       duration_ms, error_message, job_id "
-                    "FROM page_stages "
-                    "WHERE project_id=? AND status=?",
+                _ = cur.execute(
+                    """
+                    SELECT project_id, page_id, stage_id, status, stage_version,
+                           config_hash, input_hash, artifact_key, last_run_at,
+                           duration_ms, error_message, job_id
+                    FROM page_stages
+                    WHERE project_id=? AND status=?
+                    """,
                     (project_id, status.value),
-                ).fetchall()
+                )
+                rows = _fetch_page_stage_rows(cur)
             return [_row_to_page_stage(r) for r in rows]
 
         return await self._run(_go)
@@ -596,7 +673,7 @@ class SqliteDatabase:
 
         def _go() -> None:
             with self._cursor() as cur:
-                cur.execute(
+                _ = cur.execute(
                     "DELETE FROM page_stages WHERE project_id=? AND page_id=?",
                     (project_id, page_id),
                 )
@@ -628,20 +705,24 @@ class SqliteDatabase:
 
         def _go() -> int:
             with self._cursor() as cur:
-                rows_before = cur.execute(
+                _ = cur.execute(
                     "SELECT COUNT(*) FROM page_stages WHERE project_id=? AND page_id=?",
                     (project_id, page_id),
-                ).fetchone()[0]
-                cur.executemany(
-                    "INSERT OR IGNORE INTO page_stages "
-                    "(project_id, page_id, stage_id, status, stage_version) "
-                    f"VALUES (?, ?, ?, '{initial_status}', 1)",
+                )
+                rows_before = _fetch_count(cur)
+                _ = cur.executemany(
+                    f"""
+                    INSERT OR IGNORE INTO page_stages
+                        (project_id, page_id, stage_id, status, stage_version)
+                    VALUES (?, ?, ?, '{initial_status}', 1)
+                    """,
                     [(project_id, page_id, sid) for sid in PAGE_STAGE_IDS],
                 )
-                rows_after = cur.execute(
+                _ = cur.execute(
                     "SELECT COUNT(*) FROM page_stages WHERE project_id=? AND page_id=?",
                     (project_id, page_id),
-                ).fetchone()[0]
+                )
+                rows_after = _fetch_count(cur)
                 return rows_after - rows_before
 
         return await self._run(_go)
@@ -659,13 +740,14 @@ class SqliteDatabase:
 
         def _go() -> list[str]:
             with self._cursor() as cur:
-                rows = cur.execute("SELECT DISTINCT owner_id FROM jobs").fetchall()
+                _ = cur.execute("SELECT DISTINCT owner_id FROM jobs")
+                rows = _fetch_owner_id_rows(cur)
             return [row[0] for row in rows] or ["default"]
 
         return await self._run(_go)
 
 
-def _row_to_page_stage(row: tuple) -> PageStageState:  # pyright: ignore[reportMissingTypeArgument]
+def _row_to_page_stage(row: _PageStageRow) -> PageStageState:
     """Hydrate a fetched DB row into a PageStageState model.
 
     Column order matches the SELECT clauses above; keep them aligned.

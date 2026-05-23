@@ -15,17 +15,56 @@ fails, so this module is safe to import lazily.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-# Eager imports — the [postgres] extra is required to construct this class.
-# Bootstrap wraps the resulting ImportError into a friendly RuntimeError
-# pointing the user at the extra; no module-level fallback shim here.
-from psycopg import AsyncConnection  # pyright: ignore[reportMissingImports]
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Protocol, Self, cast
 
 from pd_prep_for_pgdp.core.models import Job, PageRecord, Project, SystemDefaults
 
 if TYPE_CHECKING:
     from .base import SearchResult
+
+    class _AsyncCursor(Protocol):
+        async def execute(self, query: str, params: Sequence[object] | None = None) -> object: ...
+
+        async def executemany(
+            self,
+            query: str,
+            params_seq: Sequence[Sequence[object]],
+        ) -> object: ...
+
+        async def fetchone(self) -> tuple[object, ...] | None: ...
+
+        async def fetchall(self) -> list[tuple[object, ...]]: ...
+
+        async def __aenter__(self) -> Self: ...
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            traceback: object | None,
+        ) -> object: ...
+
+    class _AsyncConnection(Protocol):
+        def cursor(self) -> _AsyncCursor: ...
+
+        async def close(self) -> object: ...
+
+    class _AsyncConnectionFactory(Protocol):
+        @staticmethod
+        async def connect(conninfo: str, *, autocommit: bool) -> _AsyncConnection: ...
+
+    AsyncConnection: _AsyncConnectionFactory
+else:
+    # Eager imports — the [postgres] extra is required to construct this class.
+    # Bootstrap wraps the resulting ImportError into a friendly RuntimeError
+    # pointing the user at the extra; no module-level fallback shim here.
+    from psycopg import AsyncConnection
+
+
+type _JsonTextRow = tuple[str]
+type _CountRow = tuple[int]
+type _PageInsertRow = tuple[str, int, str]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS system_defaults (
@@ -74,22 +113,23 @@ class PostgresDatabase:
         # surface immediately rather than failing inside libpq.
         if not (url.startswith("postgres://") or url.startswith("postgresql://")):
             raise ValueError(f"unrecognised Postgres URL: {url!r}")
-        self._url = url
-        self._conn: AsyncConnection | None = None
+        self._url: str = url
+        self._conn: _AsyncConnection | None = None
 
     # ── Lifecycle ───────────────────────────────────────────────────────────
 
     async def initialize(self) -> None:
-        self._conn = await AsyncConnection.connect(self._url, autocommit=True)
-        async with self._conn.cursor() as cur:  # pyright: ignore[reportOptionalMemberAccess]
-            await cur.execute(_SCHEMA)
+        conn = await AsyncConnection.connect(self._url, autocommit=True)
+        self._conn = conn
+        async with conn.cursor() as cur:
+            _ = await cur.execute(_SCHEMA)
 
     async def close(self) -> None:
         if self._conn is not None:
-            await self._conn.close()
+            _ = await self._conn.close()
             self._conn = None
 
-    def _require_conn(self) -> AsyncConnection:
+    def _require_conn(self) -> _AsyncConnection:
         if self._conn is None:
             raise RuntimeError("PostgresDatabase not initialised")
         return self._conn
@@ -99,11 +139,11 @@ class PostgresDatabase:
     async def get_system_defaults(self, owner_id: str) -> SystemDefaults:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT body::text FROM system_defaults WHERE owner_id = %s",
                 (owner_id,),
             )
-            row = await cur.fetchone()
+            row = cast(_JsonTextRow | None, await cur.fetchone())
         if row is None:
             return SystemDefaults()
         return SystemDefaults.model_validate_json(row[0])
@@ -112,9 +152,11 @@ class PostgresDatabase:
         conn = self._require_conn()
         body = defaults.model_dump_json()
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO system_defaults (owner_id, body) VALUES (%s, %s::jsonb) "
-                "ON CONFLICT (owner_id) DO UPDATE SET body = EXCLUDED.body",
+            _ = await cur.execute(
+                """
+                INSERT INTO system_defaults (owner_id, body) VALUES (%s, %s::jsonb)
+                ON CONFLICT (owner_id) DO UPDATE SET body = EXCLUDED.body
+                """,
                 (owner_id, body),
             )
 
@@ -128,11 +170,11 @@ class PostgresDatabase:
     ) -> list[Project]:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT body::text FROM projects WHERE owner_id = %s ORDER BY updated_at DESC",
                 (owner_id,),
             )
-            rows = await cur.fetchall()
+            rows = cast(list[_JsonTextRow], await cur.fetchall())
         projects = [Project.model_validate_json(r[0]) for r in rows]
         if include_archived:
             return projects
@@ -144,8 +186,8 @@ class PostgresDatabase:
     async def get_project(self, project_id: str) -> Project | None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute("SELECT body::text FROM projects WHERE id = %s", (project_id,))
-            row = await cur.fetchone()
+            _ = await cur.execute("SELECT body::text FROM projects WHERE id = %s", (project_id,))
+            row = cast(_JsonTextRow | None, await cur.fetchone())
         return Project.model_validate_json(row[0]) if row else None
 
     async def put_project(self, project: Project) -> None:
@@ -153,19 +195,23 @@ class PostgresDatabase:
         body = project.model_dump_json()
         ts = project.updated_at.timestamp()
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO projects (id, owner_id, body, updated_at) "
-                "VALUES (%s, %s, %s::jsonb, %s) "
-                "ON CONFLICT (id) DO UPDATE SET "
-                "owner_id = EXCLUDED.owner_id, body = EXCLUDED.body, updated_at = EXCLUDED.updated_at",
+            _ = await cur.execute(
+                """
+                INSERT INTO projects (id, owner_id, body, updated_at)
+                VALUES (%s, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    owner_id = EXCLUDED.owner_id,
+                    body = EXCLUDED.body,
+                    updated_at = EXCLUDED.updated_at
+                """,
                 (project.id, project.owner_id, body, ts),
             )
 
     async def delete_project(self, project_id: str) -> None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute("DELETE FROM pages WHERE project_id = %s", (project_id,))
-            await cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+            _ = await cur.execute("DELETE FROM pages WHERE project_id = %s", (project_id,))
+            _ = await cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
 
     # ── Pages ───────────────────────────────────────────────────────────────
 
@@ -178,17 +224,17 @@ class PostgresDatabase:
         conn = self._require_conn()
         offset = int(cursor) if cursor else 0
         async with conn.cursor() as cur:
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT COUNT(*) FROM pages WHERE project_id = %s",
                 (project_id,),
             )
-            total_row = await cur.fetchone()
+            total_row = cast(_CountRow | None, await cur.fetchone())
             total = total_row[0] if total_row else 0
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT body::text FROM pages WHERE project_id = %s ORDER BY idx0 LIMIT %s OFFSET %s",
                 (project_id, limit, offset),
             )
-            rows = await cur.fetchall()
+            rows = cast(list[_JsonTextRow], await cur.fetchall())
         pages = [PageRecord.model_validate_json(r[0]) for r in rows]
         next_cursor = str(offset + limit) if offset + limit < total else None
         return pages, next_cursor, total
@@ -196,20 +242,22 @@ class PostgresDatabase:
     async def get_page(self, project_id: str, idx0: int) -> PageRecord | None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT body::text FROM pages WHERE project_id = %s AND idx0 = %s",
                 (project_id, idx0),
             )
-            row = await cur.fetchone()
+            row = cast(_JsonTextRow | None, await cur.fetchone())
         return PageRecord.model_validate_json(row[0]) if row else None
 
     async def put_page(self, page: PageRecord) -> None:
         conn = self._require_conn()
         body = page.model_dump_json()
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb) "
-                "ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body",
+            _ = await cur.execute(
+                """
+                INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb)
+                ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body
+                """,
                 (page.project_id, page.idx0, body),
             )
 
@@ -217,11 +265,13 @@ class PostgresDatabase:
         if not pages:
             return
         conn = self._require_conn()
-        rows = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
+        rows: list[_PageInsertRow] = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
         async with conn.cursor() as cur:
-            await cur.executemany(
-                "INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb) "
-                "ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body",
+            _ = await cur.executemany(
+                """
+                INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb)
+                ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body
+                """,
                 rows,
             )
 
@@ -230,8 +280,8 @@ class PostgresDatabase:
     async def get_job(self, job_id: str) -> Job | None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute("SELECT body::text FROM jobs WHERE id = %s", (job_id,))
-            row = await cur.fetchone()
+            _ = await cur.execute("SELECT body::text FROM jobs WHERE id = %s", (job_id,))
+            row = cast(_JsonTextRow | None, await cur.fetchone())
         return Job.model_validate_json(row[0]) if row else None
 
     async def put_job(self, job: Job) -> None:
@@ -239,40 +289,44 @@ class PostgresDatabase:
         body = job.model_dump_json()
         ts = job.created_at.timestamp()
         async with conn.cursor() as cur:
-            await cur.execute(
-                "INSERT INTO jobs (id, owner_id, body, created_at) "
-                "VALUES (%s, %s, %s::jsonb, %s) "
-                "ON CONFLICT (id) DO UPDATE SET "
-                "owner_id = EXCLUDED.owner_id, body = EXCLUDED.body, created_at = EXCLUDED.created_at",
+            _ = await cur.execute(
+                """
+                INSERT INTO jobs (id, owner_id, body, created_at)
+                VALUES (%s, %s, %s::jsonb, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    owner_id = EXCLUDED.owner_id,
+                    body = EXCLUDED.body,
+                    created_at = EXCLUDED.created_at
+                """,
                 (job.id, job.owner_id, body, ts),
             )
 
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            await cur.execute(
+            _ = await cur.execute(
                 "SELECT body::text FROM jobs WHERE owner_id = %s ORDER BY created_at DESC LIMIT %s",
                 (owner_id, limit),
             )
-            rows = await cur.fetchall()
+            rows = cast(list[_JsonTextRow], await cur.fetchall())
         return [Job.model_validate_json(r[0]) for r in rows]
 
     # ── Full-text search (stub — Postgres tsvector implementation deferred) ──
 
     async def upsert_page_text(
         self,
-        project_id: str,
-        page_id: str,
-        idx0: int,
-        ocr_text: str,
+        _project_id: str,
+        _page_id: str,
+        _idx0: int,
+        _ocr_text: str,
     ) -> None:
         raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
 
     async def search(
         self,
-        project_id: str,
-        query: str,
-        limit: int = 20,
-        offset: int = 0,
+        _project_id: str,
+        _query: str,
+        _limit: int = 20,
+        _offset: int = 0,
     ) -> tuple[list[SearchResult], int]:
         raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
