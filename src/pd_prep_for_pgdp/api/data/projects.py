@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from pd_prep_for_pgdp.api.dependencies import get_database, get_settings, get_storage, get_user
+from pd_prep_for_pgdp.api.dependencies import DatabaseDep, SettingsDep, StorageDep, UserDep
 from pd_prep_for_pgdp.core.ingest import extract_zip_image_thumbnail, peek_zip_image_names
 from pd_prep_for_pgdp.core.models import (
     Job,
@@ -29,8 +29,6 @@ if TYPE_CHECKING:
 
     from pd_prep_for_pgdp.adapters.auth import UserContext
     from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.adapters.storage import IStorage
-    from pd_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -91,7 +89,7 @@ class CreateProjectResponse(BaseModel):
 
 
 class UpdateConfigRequest(BaseModel):
-    project_config: dict[str, Any]
+    project_config: dict[str, object]
     name: str | None = None
     """Optional rename. Lifts both `Project.name` and `ProjectConfig.book_name`."""
 
@@ -116,9 +114,9 @@ class SourcePreviewResponse(BaseModel):
 @router.post("/projects", response_model=CreateProjectResponse, operation_id="create_project")
 async def create_project(
     body: CreateProjectRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> CreateProjectResponse:
     project_id = uuid.uuid4().hex
     now = datetime.now(UTC)
@@ -153,9 +151,9 @@ async def create_project(
 
 @router.get("/projects", response_model=list[Project], operation_id="list_projects")
 async def list_projects(
+    user: UserDep,
+    db: DatabaseDep,
     include_archived: bool = False,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
 ) -> list[Project]:
     return await db.list_projects(user.user_id, include_archived=include_archived)
 
@@ -163,9 +161,9 @@ async def list_projects(
 @router.get("/projects/{project_id}", response_model=Project, operation_id="get_project")
 async def get_project(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    settings: Settings = Depends(get_settings),
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
 ) -> Project:
     project = await db.get_project(project_id)
     if project is None:
@@ -190,20 +188,21 @@ async def get_project(
 async def update_project_config(
     project_id: str,
     body: UpdateConfigRequest,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> UpdateConfigResponse:
     project = await db.get_project(project_id)
     if project is None:
         raise HTTPException(404, "project not found")
     if project.owner_id != user.user_id:
         raise HTTPException(403, "not authorised")
-    merged = project.config.model_dump()
+    merged = cast(dict[str, object], project.config.model_dump())
     merged.update(body.project_config)
     # `name` is normally a top-level Project field, but conceptually it's the
     # same data as `book_name`. Keep them in sync — whichever the caller sends
     # wins, with explicit `name` taking priority over `project_config.book_name`.
-    new_name = body.name or merged.get("book_name")
+    book_name = merged.get("book_name")
+    new_name = body.name or (book_name if isinstance(book_name, str) else None)
     if new_name:
         merged["book_name"] = new_name
     project.config = ProjectConfig.model_validate(merged)
@@ -214,7 +213,7 @@ async def update_project_config(
     # Re-derive prefixes whenever ranges change. Cheap (in-memory walk).
     from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
-    await assign_prefixes(project=project, database=db)
+    _ = await assign_prefixes(project=project, database=db)
     return UpdateConfigResponse(
         project_config=project.config,
         updated_at=project.updated_at,
@@ -224,8 +223,8 @@ async def update_project_config(
 @router.delete("/projects/{project_id}", status_code=204, operation_id="delete_project")
 async def delete_project(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> None:
     project = await db.get_project(project_id)
     if project is None:
@@ -257,8 +256,8 @@ async def _set_archived(
 @router.post("/projects/{project_id}/archive", response_model=Project, operation_id="archive_project")
 async def archive_project(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> Project:
     """Soft-delete: hide the project from default listings without removing data.
 
@@ -274,10 +273,10 @@ async def archive_project(
 )
 async def source_preview(
     project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
     limit: int = 20,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
 ) -> SourcePreviewResponse:
     """Return image filenames + total count from the project's `source.zip`.
 
@@ -308,9 +307,9 @@ async def source_preview(
 async def source_preview_thumbnail(
     project_id: str,
     filename: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    storage: IStorage = Depends(get_storage),
+    user: UserDep,
+    db: DatabaseDep,
+    storage: StorageDep,
 ) -> Response:
     """Return a JPEG thumbnail for one image entry inside the project's source.zip.
 
@@ -343,8 +342,8 @@ async def source_preview_thumbnail(
 @router.post("/projects/{project_id}/unarchive", response_model=Project, operation_id="unarchive_project")
 async def unarchive_project(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> Project:
     """Restore a soft-deleted project. Idempotent."""
     return await _set_archived(project_id, archived=False, user=user, db=db)
@@ -364,8 +363,8 @@ class ReviewStatusResponse(BaseModel):
 )
 async def get_project_review_status(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> ReviewStatusResponse:
     """Return unreviewed page count + awaiting_review job for a project."""
     project = await db.get_project(project_id)
@@ -412,10 +411,10 @@ class JobSubmitResponse(BaseModel):
 )
 async def project_run_dirty(
     project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
     stage_filter: str | None = None,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    settings: Settings = Depends(get_settings),
 ) -> JobSubmitResponse:
     """Submit a project_run_dirty job.
 
@@ -451,8 +450,8 @@ async def project_run_dirty(
 )
 async def project_build_package(
     project_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> JobSubmitResponse:
     """Submit a build_package job for the project.
 

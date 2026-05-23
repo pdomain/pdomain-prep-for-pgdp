@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from pd_prep_for_pgdp.api.dependencies import get_gpu_backend
+from pd_prep_for_pgdp.api.dependencies import GPUBackendDep
 from pd_prep_for_pgdp.core.models import IllustrationRegion, PageSplit
-
-if TYPE_CHECKING:
-    from pd_ocr_ops.gpu import GPUBackend
 
 router = APIRouter(tags=["gpu"])
 
@@ -48,8 +45,8 @@ class ExtractIllustrationResponse(BaseModel):
 
 @router.post("/suggest-splits", response_model=SuggestSplitsResponse, operation_id="suggest_splits")
 async def suggest_splits(
-    body: SuggestSplitsRequest,
-    gpu: GPUBackend = Depends(get_gpu_backend),
+    _body: SuggestSplitsRequest,
+    _gpu: GPUBackendDep,
 ) -> SuggestSplitsResponse:
     # Wired in a later iteration once the splitter heuristic / layout model lands.
     return SuggestSplitsResponse()
@@ -61,8 +58,8 @@ async def suggest_splits(
     operation_id="suggest_illustrations",
 )
 async def suggest_illustrations(
-    body: SuggestIllustrationsRequest,
-    gpu: GPUBackend = Depends(get_gpu_backend),
+    _body: SuggestIllustrationsRequest,
+    _gpu: GPUBackendDep,
 ) -> SuggestIllustrationsResponse:
     return SuggestIllustrationsResponse()
 
@@ -71,7 +68,7 @@ async def suggest_illustrations(
     "/extract-illustration", response_model=ExtractIllustrationResponse, operation_id="extract_illustration"
 )
 async def extract_illustration(
-    body: ExtractIllustrationRequest,
-    gpu: GPUBackend = Depends(get_gpu_backend),
+    _body: ExtractIllustrationRequest,
+    _gpu: GPUBackendDep,
 ) -> ExtractIllustrationResponse:
     raise NotImplementedError("core.illustrations.extract_illustration not yet wired")

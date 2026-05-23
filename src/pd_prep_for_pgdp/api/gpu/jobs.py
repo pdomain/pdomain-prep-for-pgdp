@@ -4,29 +4,25 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from pd_prep_for_pgdp.api.dependencies import get_database, get_job_events, get_user
+from pd_prep_for_pgdp.api.dependencies import DatabaseDep, JobEventsDep, UserDep
 from pd_prep_for_pgdp.core.models import Job, JobStatus
 
 from .schemas import BatchJobResponse, RetryJobRequest
-
-if TYPE_CHECKING:
-    from pd_prep_for_pgdp.adapters.auth import UserContext
-    from pd_prep_for_pgdp.adapters.database import IDatabase
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
 
 router = APIRouter(tags=["gpu"])
 
 
 @router.get("/jobs", response_model=list[Job], operation_id="list_gpu_jobs")
 async def list_jobs(
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
     limit: int = 50,
 ) -> list[Job]:
     """List the most recent jobs for the current user (newest first)."""
@@ -36,8 +32,8 @@ async def list_jobs(
 @router.get("/jobs/{job_id}", response_model=Job, operation_id="get_gpu_job")
 async def get_job(
     job_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> Job:
     job = await db.get_job(job_id)
     if job is None or job.owner_id != user.user_id:
@@ -48,8 +44,8 @@ async def get_job(
 @router.delete("/jobs/{job_id}", status_code=204, operation_id="cancel_gpu_job")
 async def cancel_job(
     job_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
+    user: UserDep,
+    db: DatabaseDep,
 ) -> None:
     job = await db.get_job(job_id)
     if job is None or job.owner_id != user.user_id:
@@ -64,9 +60,9 @@ async def cancel_job(
 )
 async def retry_job(
     job_id: str,
+    user: UserDep,
+    db: DatabaseDep,
     body: RetryJobRequest | None = None,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
 ) -> BatchJobResponse:
     """Create a fresh copy of a failed/cancelled job in `queued` status.
 
@@ -106,7 +102,8 @@ async def retry_job(
         payload=new_payload,
     )
     await db.put_job(new_job)
-    page_idxs = new_job.payload.get("page_idxs") or []
+    page_idxs_raw = new_job.payload.get("page_idxs")
+    page_idxs = cast(list[object], page_idxs_raw) if isinstance(page_idxs_raw, list) else []
     return BatchJobResponse(
         job_id=new_job.id,
         status=new_job.status,
@@ -119,9 +116,9 @@ async def retry_job(
 @router.get("/jobs/{job_id}/events", operation_id="stream_gpu_job_events")
 async def job_events(
     job_id: str,
-    user: UserContext = Depends(get_user),
-    db: IDatabase = Depends(get_database),
-    events: JobEventBroker = Depends(get_job_events),
+    user: UserDep,
+    db: DatabaseDep,
+    events: JobEventsDep,
 ):
     """SSE — push status transitions until the job is terminal.
 
@@ -134,7 +131,7 @@ async def job_events(
     if job is None or job.owner_id != user.user_id:
         raise HTTPException(404, "job not found")
 
-    async def stream():
+    async def stream() -> AsyncIterator[dict[str, str]]:
         # Initial snapshot.
         snapshot = {
             "type": "progress",
@@ -153,11 +150,12 @@ async def job_events(
             return
 
         async for ev in events.subscribe(job_id):
+            event = cast(dict[str, object], ev)
             yield {
-                "event": ev.get("status", "progress"),
-                "data": json.dumps(ev),
+                "event": str(event.get("status", "progress")),
+                "data": json.dumps(event),
             }
-            if ev.get("status") in {"complete", "error", "cancelled"}:
+            if event.get("status") in {"complete", "error", "cancelled"}:
                 return
 
     return EventSourceResponse(stream())
