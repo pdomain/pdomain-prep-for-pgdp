@@ -135,8 +135,9 @@ upgrade-pd-book-tools: ## Pin pd-book-tools to its latest GitHub tag
 # Resolve mise: PATH first, then the standard local-install location.
 MISE := $(shell command -v mise 2>/dev/null || echo $$HOME/.local/bin/mise)
 HAVE_MISE = [ -x "$(MISE)" ]
-# Run a command through mise if available, fall through to bare PATH otherwise.
-MISE_RUN = if $(HAVE_MISE); then $(MISE) exec --; fi
+# Use the pinned Node toolchain without loading this checkout's mise.toml.
+# Fresh worktrees should not need a per-path `mise trust` just to run hooks.
+MISE_NODE_RUN = $(MISE) --no-config exec node@24 --
 
 mise-download: ## [optional] Download the mise binary only (no shell init, no tools yet)
 	@if $(HAVE_MISE); then \
@@ -180,8 +181,8 @@ mise-doctor: ## [optional] Show resolved tool versions (mise binary + PATH fallb
 # Run pnpm through mise if available, else use PATH pnpm directly.
 define _pnpm
 	if $(HAVE_MISE); then \
-		echo "  (via $(MISE) exec)"; \
-		cd frontend && $(MISE) exec -- pnpm $(1); \
+		echo "  (via $(MISE) exec --no-config node@24)"; \
+		cd frontend && $(MISE_NODE_RUN) pnpm $(1); \
 	elif command -v pnpm >/dev/null 2>&1; then \
 		cd frontend && pnpm $(1); \
 	else \
@@ -247,7 +248,7 @@ openapi-export: ## Regenerate openapi.json + frontend/src/api/types.gen.ts
 	# so we can audit the diff and migrate surfaces deliberately (P4 #20).
 	uv run python scripts/export_openapi.py openapi.json
 	@if $(HAVE_MISE); then \
-		cd frontend && $(MISE) exec -- npx --yes openapi-typescript ../openapi.json -o src/api/types.gen.ts; \
+		cd frontend && $(MISE_NODE_RUN) npx --yes openapi-typescript ../openapi.json -o src/api/types.gen.ts; \
 	else \
 		cd frontend && npx --yes openapi-typescript ../openapi.json -o src/api/types.gen.ts; \
 	fi

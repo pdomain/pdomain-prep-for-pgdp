@@ -67,16 +67,9 @@ repos:
     -   id: frontend-tsc
         name: frontend tsc -b --noEmit
         description: TypeScript project-references type-check for the React SPA.
-        # bash -c so we can put mise's tool shims on PATH first —
-        # pre-commit subshells don't inherit the user's shell rc, so
-        # a bare `git commit` from a non-mise-activated shell would
-        # otherwise fail with `npx: command not found`. Mirrors the
-        # cargo-fmt/cargo-clippy pattern in pd-png-optimizer (which
-        # sources ~/.cargo/env). Falls through cleanly when mise isn't
-        # installed (CI provisions node via setup-node).
-        entry: bash -c 'if command -v mise >/dev/null 2>&1; then eval "$(mise
-          activate bash --shims)" 2>/dev/null || true; fi; cd frontend && exec
-          npx tsc -b --noEmit'
+        # Use mise-managed Node when available, without loading this
+        # checkout's mise.toml. Fresh worktrees should not need per-path trust.
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise --no-config exec node@24 -- npx tsc -b --noEmit; else exec npx tsc -b --noEmit; fi'
         language: system
         files:
           ^frontend/(src/.*\.(ts|tsx)|tsconfig.*\.json|package(-lock)?\.json|vite\.config\.ts)$
@@ -84,11 +77,7 @@ repos:
     -   id: frontend-eslint
         name: frontend eslint
         description: ESLint flat-config check for the React SPA.
-        # Same mise-activation prelude as frontend-tsc — see the
-        # comment above for why bash -c + the activation guard.
-        entry: bash -c 'if command -v mise >/dev/null 2>&1; then eval "$(mise
-          activate bash --shims)" 2>/dev/null || true; fi; cd frontend && exec
-          npm run --silent lint'
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise --no-config exec node@24 -- npm run --silent lint; else exec npm run --silent lint; fi'
         language: system
         # Match what eslint actually lints: SPA source, the flat config
         # itself, and dependency manifests (a new dep can change rules
@@ -100,9 +89,7 @@ repos:
     -   id: frontend-prettier
         name: frontend prettier --check
         description: Prettier format check for the React SPA.
-        entry: bash -c 'if command -v mise >/dev/null 2>&1; then eval "$(mise
-          activate bash --shims)" 2>/dev/null || true; fi; cd frontend && exec
-          npm run --silent format:check'
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise --no-config exec node@24 -- npm run --silent format:check; else exec npm run --silent format:check; fi'
         language: system
         # Prettier covers a broader file set than ESLint (CSS, JSON,
         # config files); keep the path filter wide enough to match.
