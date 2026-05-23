@@ -1521,7 +1521,7 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.13.0"
+version = "0.14.1"
 source = { registry = "https://concavetrillion.github.io/pd-index-pip/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1545,9 +1545,9 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.13.0/pd_book_tools-0.13.0.tar.gz" }
+sdist = { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.14.1/pd_book_tools-0.14.1.tar.gz" }
 wheels = [
-    { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.13.0/pd_book_tools-0.13.0-py3-none-any.whl" },
+    { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.14.1/pd_book_tools-0.14.1-py3-none-any.whl" },
 ]
 
 [[package]]
@@ -1635,7 +1635,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
     { name = "nvidia-nvimgcodec-cu12", marker = "extra == 'cuda'", specifier = ">=0.3" },
-    { name = "pd-book-tools", specifier = ">=0.13.0", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
+    { name = "pd-book-tools", specifier = ">=0.14.1", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
     { name = "pd-ocr-ops", specifier = ">=0.2.2", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },
