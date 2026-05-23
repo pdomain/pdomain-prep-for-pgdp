@@ -12,18 +12,18 @@ import io
 import zipfile
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from pathlib import Path
+
 import pytest
 from PIL import Image
 
-from tests.fixtures.three_page_book import (
+from .fixtures.three_page_book import (
     PAGE_H,
     PAGE_W,
     build_three_page_book_zip,
     page_filenames,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def test_helper_produces_three_image_entries(tmp_path: Path) -> None:
