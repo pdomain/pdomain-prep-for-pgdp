@@ -1,9 +1,9 @@
-// uiPrefs.test.ts — Phase 2.5 store tests.
+// uiPrefs.test.ts — Phase 2.7c store tests.
 //
-// The store was migrated from zustand `create` + `persist` middleware to a
-// plain `createStore` with manual localStorage (key: "pgdp.uiPrefs").
-// The persist-middleware envelope ({state:{theme}}) is gone — theme is now
-// stored as a bare string.
+// Phase 2.7c (#330): searchOpen state moved to local React state in App.tsx;
+// the store is now theme-only. searchOpen tests removed; store is now a
+// pure UI-prefs store with theme, localStorage persistence, and OS-aware
+// system mode.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useUiPrefs, THEME_STORAGE_KEY } from "./uiPrefs";
@@ -11,8 +11,8 @@ import { useUiPrefs, THEME_STORAGE_KEY } from "./uiPrefs";
 describe("useUiPrefs", () => {
   beforeEach(() => {
     localStorage.clear();
-    // Reset store state directly (setState merges, so we cover both fields).
-    useUiPrefs.setState({ theme: "light", searchOpen: false });
+    // Reset store state directly (only theme now — searchOpen removed).
+    useUiPrefs.setState({ theme: "light" });
     // Remove DOM attribute set by previous test's applyTheme.
     document.documentElement.removeAttribute("data-theme");
   });
@@ -31,17 +31,6 @@ describe("useUiPrefs", () => {
     expect(useUiPrefs.getState().theme).toBe("system");
   });
 
-  it("default searchOpen is false", () => {
-    expect(useUiPrefs.getState().searchOpen).toBe(false);
-  });
-
-  it("setSearchOpen toggles the value", () => {
-    useUiPrefs.getState().setSearchOpen(true);
-    expect(useUiPrefs.getState().searchOpen).toBe(true);
-    useUiPrefs.getState().setSearchOpen(false);
-    expect(useUiPrefs.getState().searchOpen).toBe(false);
-  });
-
   describe("persistence (localStorage)", () => {
     it("persists theme to localStorage after setTheme (bare string, not envelope)", () => {
       useUiPrefs.getState().setTheme("dark");
@@ -57,14 +46,6 @@ describe("useUiPrefs", () => {
     it("persists 'system' theme", () => {
       useUiPrefs.getState().setTheme("system");
       expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
-    });
-
-    it("does not persist searchOpen to localStorage", () => {
-      useUiPrefs.getState().setSearchOpen(true);
-      // Only theme writes to localStorage; searchOpen has no persistence.
-      const stored = localStorage.getItem(THEME_STORAGE_KEY);
-      // Nothing should have been written (theme wasn't touched).
-      expect(stored).toBeNull();
     });
   });
 

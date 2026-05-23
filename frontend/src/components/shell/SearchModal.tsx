@@ -3,11 +3,14 @@
  *
  * Wraps the existing SearchPanel in a Radix Dialog that:
  *   - Opens via the mod+k global hotkey.
- *   - Reads / writes open state from the uiPrefs store so the TopNav
- *     search pill button can open it without prop-drilling.
+ *   - Accepts explicit open/onOpenChange props — open state is owned by
+ *     App.tsx (local React state) rather than the uiPrefs store.
  *   - Extracts the current projectId from the URL (same technique as
  *     OpenTasksBell). When no project route is active, shows a helpful
  *     "navigate to a project to search" message instead.
+ *
+ * Phase 2.7c (#330): searchOpen removed from uiPrefs store; the dialog
+ * open state is passed as props from App.tsx.
  *
  * SearchPanel is never modified here; only wrapped.
  */
@@ -16,20 +19,25 @@ import { useMatch } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "@concavetrillion/pd-ui/icons";
 import { SearchPanel } from "@/components/SearchPanel";
-import { useUiPrefs } from "@/stores/uiPrefs";
 
 interface SearchModalProps {
+  /** Whether the dialog is open. Controlled by the parent (App.tsx). */
+  open: boolean;
+  /** Called when the dialog requests an open-state change (e.g. close via X or Escape). */
+  onOpenChange: (open: boolean) => void;
   "data-testid"?: string;
 }
 
-export function SearchModal({ "data-testid": testId }: SearchModalProps) {
-  const { searchOpen, setSearchOpen } = useUiPrefs();
-
+export function SearchModal({
+  open,
+  onOpenChange,
+  "data-testid": testId,
+}: SearchModalProps) {
   useHotkeys(
     "mod+k",
     (e) => {
       e.preventDefault();
-      setSearchOpen(true);
+      onOpenChange(true);
     },
     { enableOnFormTags: false },
   );
@@ -39,7 +47,7 @@ export function SearchModal({ "data-testid": testId }: SearchModalProps) {
   const projectId = match?.params?.projectId ?? null;
 
   return (
-    <DialogPrimitive.Root open={searchOpen} onOpenChange={setSearchOpen}>
+    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content

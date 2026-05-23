@@ -1,32 +1,31 @@
-// uiPrefs.ts — UI preferences store (theme, searchOpen).
+// uiPrefs.ts — UI preferences store (theme only).
 //
 // Phase 2.5 (ocr-container-meta#266): migrated from hand-rolled Zustand
 // `create` + `persist` middleware to Zustand's vanilla `createStore`.
 // External API (`useUiPrefs` store object, hook-compatible surface) is
-// preserved so consuming components (SearchModal, App.tsx) need no changes.
+// preserved so consuming components (UserMenu, App.tsx) need no changes.
+//
+// Phase 2.7c (ocr-container-meta#330): removed searchOpen/setSearchOpen from
+// this store. searchOpen is transient UI state (not a preference); it now
+// lives as local React state in App.tsx. The store is now theme-only.
 //
 // GAP-5: Cannot use pd-ui's `createUIPrefsStore()` factory yet.
-//   pd-ui's factory:
-//     - Requires async load/persistCommon/persistApp callbacks (designed
-//       for the future pd-suite prefs API, §3.2 of cross-cut-design spec).
-//     - Models `theme` as 'dark' | 'light' only — no 'system' variant.
-//   This store needs:
-//     - Synchronous in-memory state with manual localStorage persistence
-//       for theme (key: "pgdp.uiPrefs").
-//     - 'system' theme variant that resolves via prefers-color-scheme media
-//       query and listens for OS-level changes.
-//     - App-specific `searchOpen` state (not part of UIPrefs schema).
-//   Replace with pd-ui factory when: the factory gains 'system' theme
-//   support AND the pd-suite prefs API is wired via pd-ocr-ops routes.
+//   Sub-gap RESOLVED by Phase 2.7b: async load/persistCommon/persistApp
+//     callbacks are now wired to real pd-ocr-ops routes in App.tsx.
+//   Remaining blockers:
+//     - pd-ui's UIPrefs.theme is 'dark' | 'light' only — no 'system' variant.
+//       The local store supports 'system' (via prefers-color-scheme); the
+//       AppShell receives the resolved effective value (Phase 2.7a fix).
+//   Replace with pd-ui factory when: the factory gains 'system' theme support.
 //
 // Phase 2.4 GAP-2/GAP-3 reconciliation:
-//   App.tsx's UI_PREFS_CONFIG.load() read from the same localStorage key
+//   App.tsx's UI_PREFS_CONFIG.load() reads from the same localStorage key
 //   (pgdp.uiPrefs) to seed the pd-ui AppShell store. With Phase 2.5 the
-//   local store now writes theme directly to that key as a plain string
-//   (not wrapped in zustand persist's {state:{theme}} envelope). The
-//   UI_PREFS_CONFIG shim in App.tsx is updated accordingly.
+//   local store writes theme directly to that key as a plain string (not
+//   wrapped in zustand persist's {state:{theme}} envelope).
 //   GAP-2/GAP-3 comments in App.tsx remain until server-side persistence
-//   is wired via pd-ocr-ops.
+//   is wired via pd-ocr-ops (resolved in Phase 2.7b — UI_PREFS_CONFIG now
+//   calls real endpoints).
 
 import { createStore } from "zustand/vanilla";
 import { useSyncExternalStore } from "react";
@@ -114,8 +113,6 @@ function setupSystemListener(theme: Theme, notifyFn: () => void): void {
 interface UiPrefsState {
   theme: Theme;
   setTheme: (theme: Theme) => void;
-  searchOpen: boolean;
-  setSearchOpen: (v: boolean) => void;
 }
 
 const _store = createStore<UiPrefsState>()((set) => ({
@@ -129,30 +126,18 @@ const _store = createStore<UiPrefsState>()((set) => ({
     });
     applyTheme(theme);
   },
-
-  // GAP-5: searchOpen is app-local state — not part of pd-ui's UIPrefs schema.
-  // Keep here until pd-ui's factory gains an app-prefs slot and pd-prep-for-pgdp
-  // migrates searchOpen into UIPrefs.app.
-  searchOpen: false,
-  setSearchOpen: (searchOpen: boolean) => set({ searchOpen }),
 }));
 
 /**
- * useUiPrefs — UI preferences store.
+ * useUiPrefs — UI preferences store (theme only).
  *
  * Exposes the same Zustand-hook-compatible surface as the pre-Phase-2.5 store
- * (getState, setState, subscribe, getState().setTheme, getState().setSearchOpen)
- * so all call sites (SearchModal, App.tsx) remain unchanged.
+ * (getState, setState, subscribe, getState().setTheme) so consuming components
+ * (UserMenu, App.tsx) remain unchanged.
  *
- * Also callable as a hook — `useUiPrefs()` returns the full state, matching
- * the Zustand bound-store API that callers like `App.tsx` expect:
- *   const { setSearchOpen } = useUiPrefs();
+ * Also callable as a hook — `useUiPrefs()` returns the full state:
+ *   const { theme, setTheme } = useUiPrefs();
  */
-export function useUiPrefs(): UiPrefsState;
-export function useUiPrefs(
-  selector: undefined,
-  equals: undefined,
-): UiPrefsState;
 export function useUiPrefs(): UiPrefsState {
   return useSyncExternalStore(
     _store.subscribe,

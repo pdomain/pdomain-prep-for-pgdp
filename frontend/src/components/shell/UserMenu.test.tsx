@@ -33,7 +33,7 @@ function renderWithProviders(ui: ReactElement, { authMode = "none" } = {}) {
 
 describe("UserMenu", () => {
   beforeEach(() => {
-    useUiPrefs.setState({ theme: "light", searchOpen: false });
+    useUiPrefs.setState({ theme: "light" });
     localStorage.clear();
     (window as any).__ENV__ = {};
   });

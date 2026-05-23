@@ -5,6 +5,8 @@
 //              resolved; /api/suite/* is now mounted by bootstrap.py via
 //              pd_ocr_ops.mount_routes(). UIPrefsConfig load/persist uses
 //              GET/PUT /api/suite/prefs with localStorage fallback.
+// Phase 2.7c: searchOpen moved from uiPrefs store to local React state (#330).
+//              SearchModal now accepts explicit open/onOpenChange props.
 //
 // Slot mapping vs former local layout (components/shell/AppShell.tsx):
 //   header   ← TopNav (was header slot of custom AppShell)
@@ -20,6 +22,7 @@
 // GAP-5 (from uiPrefs.ts): pd-ui's UIPrefs.theme is 'dark' | 'light' (no
 //         'system'). The local store supports 'system'; when theme is 'system'
 //         the pd-ui AppShell receives the resolved effective value.
+//         Resolve when pd-ui's UIPrefs gains 'system' theme support.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -48,7 +51,7 @@ import { HotkeyHelpModal } from "./components/shell/HotkeyHelpModal";
 import { SearchModal } from "./components/shell/SearchModal";
 import { TopNav } from "./components/shell/TopNav";
 import { UserMenu } from "./components/shell/UserMenu";
-import { useUiPrefs, THEME_STORAGE_KEY } from "./stores/uiPrefs";
+import { THEME_STORAGE_KEY } from "./stores/uiPrefs";
 
 type ReviewStatusResponse = components["schemas"]["ReviewStatusResponse"];
 import { JobsPage } from "./pages/JobsPage";
@@ -68,9 +71,9 @@ import { CropsGridPage } from "./pages/CropsGridPage";
 // persistCommon() writes to the backend and mirrors theme to localStorage
 // so the local uiPrefs.ts store stays in sync.
 //
-// GAP-5 (from uiPrefs.ts): pd-ui's UIPrefs.theme is 'dark' | 'light' (no
-// 'system'). The local store supports 'system'; when theme is 'system' the
-// pd-ui AppShell receives the resolved effective value ('dark' or 'light').
+// GAP-5 (from uiPrefs.ts, remaining after Phase 2.7c): pd-ui's UIPrefs.theme
+// is 'dark' | 'light' (no 'system'). The local store supports 'system'; when
+// theme is 'system' the pd-ui AppShell receives the resolved effective value.
 
 /** Resolve 'system' theme preference to an effective 'dark' | 'light' value. */
 function resolveTheme(): "dark" | "light" {
@@ -220,7 +223,9 @@ async function postLaunch(id: string): Promise<LaunchResult> {
 }
 
 export default function App() {
-  const { setSearchOpen } = useUiPrefs();
+  // Phase 2.7c (#330): searchOpen moved from uiPrefs store to local React
+  // state. SearchModal now accepts explicit open/onOpenChange props.
+  const [searchOpen, setSearchOpen] = useState(false);
   const projectMatch = useMatch("/projects/:projectId/*");
   const [hotkeyHelpOpen, setHotkeyHelpOpen] = useState(false);
 
@@ -276,7 +281,7 @@ export default function App() {
                * pinned to the bottom of the main zone via flex layout.
                */
               <div className="flex flex-col h-full overflow-hidden">
-                <SearchModal />
+                <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
                 <HotkeyHelpModal
                   open={hotkeyHelpOpen}
                   onClose={() => setHotkeyHelpOpen(false)}
