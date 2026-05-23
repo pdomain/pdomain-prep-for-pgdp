@@ -1179,7 +1179,6 @@ async def stream_page_stage_events(
         yield {"event": "snapshot", "data": json.dumps(snapshot)}
 
         async for ev in stage_events.subscribe(key):
-            event = cast(dict[str, object], ev)
-            yield {"event": str(event.get("type", "stage-status")), "data": json.dumps(event)}
+            yield {"event": str(ev.get("type", "stage-status")), "data": json.dumps(ev)}
 
     return EventSourceResponse(stream())

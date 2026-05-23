@@ -522,6 +522,8 @@ def _make_thumbnail_bytes(src: bytes) -> bytes:
     if img is None:
         raise _CorruptImageError("cv2.imdecode returned None")
 
+    h: int
+    w: int
     h, w = img.shape[:2]
     short = min(h, w)
     if short > THUMBNAIL_MAX_DIM:

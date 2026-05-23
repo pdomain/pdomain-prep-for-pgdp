@@ -613,7 +613,7 @@ async def _handle_project_run_stage_all_pages(runner: InProcessJobRunner, job: J
     Delegates to ``_handle_project_run_dirty`` with ``stage_filter`` set to
     the requested ``stage_id``.
     """
-    stage_id = str(job.payload["stage_id"])
+    stage_id = cast(str, job.payload["stage_id"])
     delegated = job.model_copy(update={"payload": {**job.payload, "stage_filter": stage_id}})
     await _handle_project_run_dirty(runner, delegated)
 
