@@ -118,7 +118,7 @@ guarded by `try`/`except`). When a suppression *is* warranted —
 `[tool.ruff.lint]` `ignore` / `per-file-ignores` entry — it must (1) carry a
 short inline rationale at the point of deviation explaining *why* the
 suppression is safe, and (2) be catalogued in the repo's
-`docs/conventions/lint-deviations.md`, which records the rule, the tool, the
+`docs/process/lint-deviations.md`, which records the rule, the tool, the
 file locations, and the justification. Use basedpyright's native
 `# pyright: ignore[reportRuleName]` form — mypy-style `# type: ignore[code]`
 codes are not honored by basedpyright.
@@ -142,7 +142,7 @@ this is how it gets justified.
 **Common judgment-call violations** (bot flags, CT decides)
 
 - A suppression whose inline rationale exists but is missing from
-  `docs/conventions/lint-deviations.md` — CT decides whether to catalogue it or
+  `docs/process/lint-deviations.md` — CT decides whether to catalogue it or
   remove the suppression.
 - A long-standing suppression whose stated rationale no longer holds after a
   refactor — CT decides whether to drop the suppression.
