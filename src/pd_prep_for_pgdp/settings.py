@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     api_key: str | None = None
     jwt_issuer: str | None = None
     jwt_audience: str | None = None
+    session_secret: str = Field(
+        default_factory=lambda: __import__("secrets").token_hex(32),
+    )
+    """HMAC-SHA256 signing secret for apikey-mode session cookies.
+
+    In production, set ``PGDP_SESSION_SECRET`` to a stable value so sessions
+    survive server restarts.  In development, a fresh random secret is
+    generated at startup (sessions are lost on restart, which is fine locally).
+    """
 
     # ── GPU backend ──────────────────────────────────────────────────────────
     gpu_backend: GpuBackend | None = Field(

@@ -274,7 +274,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app.state.job_runner = job_runner
 
     install_error_handlers(app, debug=settings.debug)
-    cast(_InstallRouteFn, install_auth_routes)(app)
+    install_auth_routes(app, auth_mode=settings.auth_mode)
     cast(_InstallRouteFn, install_data_routes)(app)
     cast(_InstallRouteFn, install_gpu_routes)(app)
 
