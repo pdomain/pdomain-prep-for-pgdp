@@ -1,11 +1,11 @@
 ---
-title: pd-ui design handoff — implementation plan
+title: "pd-ui design handoff \u2014 implementation plan"
 date: 2026-05-24
-repo: pd-prep-for-pgdp
+repo: ConcaveTrillion/pd-prep-for-pgdp
 spec: docs/specs/2026-05-24-pd-ui-design-handoff-implementation.md
 status: active
-synced: ~
-milestone: ~
+synced: 2026-05-24
+milestone: 14
 ---
 
 # pd-ui design handoff — implementation plan
