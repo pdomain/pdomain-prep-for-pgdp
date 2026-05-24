@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -29,6 +30,38 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _OXIPNG_LEVEL = 4
+
+# Keep only ASCII alphanumeric, hyphen, dot, parens, space.
+# [a-zA-Z0-9] rather than \w: Python \w matches all Unicode letters/digits,
+# which would allow non-ASCII chars to pass silently — the goal is ASCII-only.
+_UNSAFE_CHARS = re.compile(r"[^a-zA-Z0-9\-._() ]")
+
+
+def _safe_package_slug(book_name: str, fallback: str) -> str:
+    """Return a filesystem-safe ASCII slug for use in a storage key.
+
+    Strips path separators, control chars, OS-reserved characters, and
+    consecutive dot sequences that could form relative-path components (e.g. ..).
+    Falls back to *fallback* (typically project.id) if the result is empty.
+
+    Transformation chain for ``"../../evil"``:
+        slash→_  : ``".._.._evil"``
+        char filter: unchanged  (dots and _ are both in safe set)
+        collapse ..: ``"._._evil"``
+        strip('. _'): ``"evil"``
+    """
+    # Replace path separators with underscore
+    name = re.sub(r"[\\/]", "_", book_name)
+    # Remove remaining unsafe characters (anything not in the ASCII safe set)
+    name = _UNSAFE_CHARS.sub("", name)
+    # Collapse consecutive dots (e.g. ".." from "../../" → ".") so that
+    # slash-replaced underscores between dot groups cannot re-form ".." after strip.
+    name = re.sub(r"\.{2,}", ".", name)
+    # Strip leading/trailing dots, spaces, and underscores.
+    # Dots: hidden-file prefix on POSIX, Windows reserved.
+    # Leading underscores: left over from stripped path separators.
+    name = name.strip(". _")
+    return name if name else fallback
 
 
 def _optimize_png(data: bytes, *, skip_counter: list[int] | None = None) -> bytes:
