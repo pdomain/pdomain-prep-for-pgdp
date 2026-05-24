@@ -32,7 +32,20 @@ make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e`
 make e2e AI=1       # Playwright e2e suite (separate uv group)
 make run            # builds SPA bundle, then launches pgdp-prep at http://127.0.0.1:8765
 make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
+
+# local-dev workflow (spec #362) — reference implementation; see ../docs/process/local-dev.md
+make local-setup        # clone any missing sibling pd-* repos
+make local-dev          # switch to local-dev mode (Python + npm siblings editable + marker)
+make local-check        # print local-dev mode + per-sibling resolution
+make local-upgrade-deps # upgrade deps then restore editables (local-mode only)
+make local-install      # uv tool install --editable . with editable siblings (local-mode only)
+make local-uninstall    # uv tool uninstall pgdp-prep
+make local-run          # run pgdp-prep against local-dev workspace (local-mode only)
 ```
+
+Legacy `dev-local`, `install-local`, `uninstall-local`,
+`check-local-editable`, `upgrade-deps-local`, `run-local` are kept as
+deprecation aliases.
 
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose
