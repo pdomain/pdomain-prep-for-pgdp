@@ -18,6 +18,20 @@ from .schemas import BatchJobResponse, RetryJobRequest
 
 router = APIRouter(tags=["gpu"])
 
+# Per-job-type allowlist of keys that are safe to override on retry.
+# Keys NOT in this set are rejected with 400. Identity fields (project_id,
+# owner_id, data_root) and page-identity fields (page_id, stage_id) are
+# intentionally absent from all allowlists — they must never be overrideable.
+# Unknown job types default to frozenset() (new types start locked down).
+_RETRY_SAFE_KEYS: dict[str, frozenset[str]] = {
+    "unzip": frozenset(),
+    "thumbnails": frozenset(),
+    "build_package": frozenset(),
+    "run_page_stage": frozenset({"device"}),
+    "project_run_dirty": frozenset(),
+    "project_run_stage_all_pages": frozenset(),
+}
+
 
 @router.get("/jobs", response_model=list[Job], operation_id="list_gpu_jobs")
 async def list_jobs(
@@ -86,11 +100,30 @@ async def retry_job(
     dispatch_mode = "scheduled" if interval > 0 else "immediate"
     next_dispatch = datetime.now(UTC) + timedelta(seconds=interval) if interval > 0 else None
 
+    # Issue #126 — enforce per-job-type key allowlist before merging overrides.
+    # Any key not in _RETRY_SAFE_KEYS for this job type is rejected with 400.
+    # Identity/path fields (project_id, data_root, owner_id, page_id, stage_id)
+    # are intentionally absent from all allowlists.
+    if body is not None and body.payload_override:
+        safe_keys = _RETRY_SAFE_KEYS.get(job.type.value, frozenset())
+        rejected = sorted(set(body.payload_override) - safe_keys)
+        if rejected:
+            raise HTTPException(400, f"payload keys not overridable for {job.type.value}: {rejected}")
+
+    # Issue #126 — ownership check: the original job's project must belong
+    # to the requesting user. In auth_mode=none both sides are "default" so
+    # the check trivially passes. Uses job.project_id (DB row), NOT payload.
+    if job.project_id:
+        project = await db.get_project(job.project_id)
+        if project is None or project.owner_id != user.user_id:
+            raise HTTPException(403, "not authorised to retry this job")
+
     # Shallow-merge `payload_override` over a copy of the original payload.
     # `dict(job.payload)` keeps the original job's row immutable.
     new_payload = dict(job.payload)
     if body is not None and body.payload_override:
-        new_payload.update(body.payload_override)
+        safe_keys = _RETRY_SAFE_KEYS.get(job.type.value, frozenset())
+        new_payload.update({k: body.payload_override[k] for k in safe_keys if k in body.payload_override})
 
     new_job = Job(
         id=uuid.uuid4().hex,
