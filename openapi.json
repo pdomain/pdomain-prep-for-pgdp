@@ -2873,7 +2873,7 @@
     "/cdn/{key}": {
       "put": {
         "summary": "Cdn Put",
-        "description": "Write `key` (under the data root) using bytes from the request body.\n\nPath traversal (`..`, absolute paths) is rejected by the storage adapter.",
+        "description": "Write `key` (under the data root) using bytes from the request body.\n\nPath traversal (`..`, absolute paths) is rejected by the storage adapter.\nRejects bodies exceeding ``settings.max_cdn_upload_bytes`` with HTTP 413.",
         "operationId": "upload_cdn_asset",
         "parameters": [
           {

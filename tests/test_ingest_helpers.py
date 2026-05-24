@@ -169,8 +169,8 @@ def test_thumbnail_for_page_returns_error_on_corrupt_bytes() -> None:
     assert jpg is None
     assert err is not None
     assert "bad" not in err  # stem is in the bookkeeping tuple, not the message
-    # error message comes from the cv2 layer
-    assert "imdecode" in err.lower() or "cv2" in err.lower()
+    # error originates in the Pillow header-check layer or the cv2 decode layer
+    assert any(kw in err.lower() for kw in ("imdecode", "cv2", "cannot read image header", "cannot identify"))
 
 
 def test_thumbnail_for_page_is_top_level_picklable() -> None:

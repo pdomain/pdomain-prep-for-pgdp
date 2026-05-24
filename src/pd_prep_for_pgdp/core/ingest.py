@@ -29,7 +29,7 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import anyio.to_thread
 
@@ -76,6 +76,7 @@ async def unzip_source(
     storage: IStorage,
     database: IDatabase,
     progress_cb: ProgressCb | None = None,
+    zip_limits: _ZipLimitsProto | None = None,
 ) -> IngestResult:
     """Extract source files (or list a folder), create one PageRecord per image.
 
@@ -83,9 +84,13 @@ async def unzip_source(
     follow-up `generate_thumbnails` job creates the JPGs. Page ranges
     (`proof_start_idx0`, `proof_end_idx0`) on the project default to 0 and
     will be updated after the user clicks through the Configure page.
+
+    ``zip_limits`` is forwarded to ``_check_zip_limits`` when extracting a
+    zip source. When ``None``, limits are read from env vars via a fresh
+    ``Settings()`` instance.
     """
     if source_type == "zip":
-        entries = await _enumerate_zip(storage, source_key, project.id)
+        entries = await _enumerate_zip(storage, source_key, project.id, limits=zip_limits)
     else:
         entries = await _enumerate_folder(storage, source_key)
 
@@ -358,8 +363,77 @@ class _SourceEntry:
 _VALID_NAME_RE = re.compile(r"[^\x00-\x1f\\/:\*\?\"<>\|]+")
 
 
-async def _enumerate_zip(storage: IStorage, source_key: str, project_id: str) -> list[_SourceEntry]:
+class _ZipLimitsProto(Protocol):
+    """Structural Protocol for zip resource limits.
+
+    Any object with these four ``int`` attributes satisfies the contract —
+    both ``Settings`` and the test-local ``_ZipLimits`` dataclass qualify.
+    """
+
+    max_source_zip_bytes: int
+    max_zip_entries: int
+    max_entry_uncompressed_bytes: int
+    max_total_uncompressed_bytes: int
+
+
+def _check_zip_limits(raw: bytes, limits: _ZipLimitsProto) -> None:
+    """Validate a source-zip byte buffer against resource limits.
+
+    Raises ``ValueError`` if any limit is exceeded:
+
+    - Source zip size (``max_source_zip_bytes``): checked before opening
+      the zip to catch large payloads early.
+    - Entry count (``max_zip_entries``): checked against the central
+      directory; no entry payload is decompressed.
+    - Per-entry uncompressed size (``max_entry_uncompressed_bytes``):
+      checked against ``ZipInfo.file_size`` from the central directory.
+      Note: this is the *claimed* size; an attacker can underreport.
+      Streaming decompression with a byte counter is the V2 hardening.
+    - Total uncompressed size (``max_total_uncompressed_bytes``):
+      running sum of ``ZipInfo.file_size`` for all entries.
+
+    This function reads only the zip central directory — no entry payload
+    is decompressed.  Call it before any ``zf.read(info)`` operations.
+    """
+    if len(raw) > limits.max_source_zip_bytes:
+        raise ValueError(f"source zip exceeds limit ({len(raw)} > {limits.max_source_zip_bytes} bytes)")
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        infos = zf.infolist()
+        if len(infos) > limits.max_zip_entries:
+            raise ValueError(f"zip has too many entries ({len(infos)} > {limits.max_zip_entries})")
+        total_uncompressed = 0
+        for info in infos:
+            if info.file_size > limits.max_entry_uncompressed_bytes:
+                raise ValueError(
+                    f"zip entry too large: {info.filename!r} claims "
+                    f"{info.file_size} uncompressed bytes "
+                    f"(limit {limits.max_entry_uncompressed_bytes})"
+                )
+            total_uncompressed += info.file_size
+            if total_uncompressed > limits.max_total_uncompressed_bytes:
+                raise ValueError(
+                    f"zip total uncompressed size exceeds limit "
+                    f"({total_uncompressed} > {limits.max_total_uncompressed_bytes} bytes)"
+                )
+
+
+async def _enumerate_zip(
+    storage: IStorage,
+    source_key: str,
+    project_id: str,
+    limits: _ZipLimitsProto | None = None,
+) -> list[_SourceEntry]:
     raw = await storage.get_bytes(source_key)
+    resolved: _ZipLimitsProto
+    if limits is None:
+        # Construct limits from env vars at call time so PGDP_MAX_* overrides
+        # apply even when the caller doesn't thread settings through explicitly.
+        from pd_prep_for_pgdp.settings import Settings  # late import avoids circularity
+
+        resolved = Settings()
+    else:
+        resolved = limits
+    _check_zip_limits(raw, resolved)
     out: list[_SourceEntry] = []
     with zipfile.ZipFile(io.BytesIO(raw)) as zf:
         for info in zf.infolist():
@@ -508,9 +582,43 @@ def thumbnail_for_page(idx0: int, stem: str, src: bytes) -> tuple[int, str, byte
     return idx0, stem, jpg, None
 
 
-def _make_thumbnail_bytes(src: bytes) -> bytes:
-    """Decode `src`, resize to fit `THUMBNAIL_MAX_DIM`, encode back to JPG."""
+def _make_thumbnail_bytes(src: bytes, max_image_pixels: int | None = None) -> bytes:
+    """Decode ``src``, resize to fit ``THUMBNAIL_MAX_DIM``, encode back to JPG.
+
+    ``max_image_pixels`` caps the pixel count (width * height) read from the
+    image header via Pillow *before* cv2.imdecode is called. This prevents a
+    maliciously crafted image with huge advertised dimensions from causing
+    cv2 to allocate gigabytes of RAM. When ``None``, the limit is read from
+    the ``PGDP_MAX_IMAGE_PIXELS`` env var via a fresh ``Settings()`` instance.
+
+    Raises ``_CorruptImageError`` if the image header cannot be parsed or the
+    pixel count exceeds the limit.
+    """
+    import io as _io
+
     import numpy as np  # pyright: ignore[reportMissingImports]
+
+    if max_image_pixels is None:
+        from pd_prep_for_pgdp.settings import Settings
+
+        max_image_pixels = Settings().max_image_pixels
+
+    # Pre-decode dimension check via Pillow header read — no pixels decoded.
+    try:
+        import warnings as _warnings
+
+        from PIL import Image
+
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")  # suppress PIL DecompressionBombWarning
+            with Image.open(_io.BytesIO(src)) as img_meta:
+                w, h = img_meta.size
+        if w * h > max_image_pixels:
+            raise _CorruptImageError(f"image too large: {w}x{h} = {w * h} pixels (limit {max_image_pixels})")
+    except _CorruptImageError:
+        raise
+    except Exception as e:
+        raise _CorruptImageError(f"cannot read image header: {e}") from e
 
     try:
         import cv2  # pyright: ignore[reportMissingImports]
