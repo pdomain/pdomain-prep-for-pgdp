@@ -10,8 +10,6 @@ related:
   - pd-prep-for-pgdp/docs/specs/design-brief-index.md
 ---
 
-# pd-ui design handoff — feature implementation in pd-prep-for-pgdp
-
 ## TL;DR
 
 The `pd-ui/docs/templates/design_handoff_pd_ui/` bundle is the design
@@ -79,8 +77,8 @@ can be implemented without re-reading every `.jsx` prototype.
 
 ### Goals
 
-- Implement every feature shown in `final/` (4 wired stages + Projects
-  + Pipeline shell) in pd-prep-for-pgdp.
+- Implement every feature shown in `final/` (4 wired stages, Projects,
+  Pipeline shell) in pd-prep-for-pgdp.
 - Implement every feature shown in `wf02`, `wf03`, `wf05b`, `wf09` (new
   Stage 11), `wf-pw` (cross-cutting Page Workbench primitives), and
   `wf01` (folder-upload modal variants) since these are canonical for
@@ -221,6 +219,12 @@ plan implements, organized by stage.
   preset, Thumbnail quality (Fast/Standard/High), Concurrent workers
   slider 1–8, Re-generate thumbnails, Auto-confirm toggle.
 
+**Density toggle note:** The S/M/L thumbnail size toggle is consumer-owned
+local state — pd-ui ships `ThumbSizeToggle` (the UI control) and
+`ThumbGrid` (CSS grid primitive); the consumer wires the toggle's state
+value and derives the grid's column count from it. pd-ui does not own the
+selected size state.
+
 **Backend contract:**
 
 - Existing: `/api/projects/{id}/pages` (list), `/api/projects/{id}/ingest`.
@@ -258,10 +262,9 @@ plan implements, organized by stage.
 | `StageControlsLeft` (per-page drawer) | `:673-823` | `pdUi/Grayscale/StageControlsLeft` |
 
 **WF11 variants** (`wf11/wf11-variations.jsx`) provide six exploratory
-designs for the same control panel — pd-ui ships **Variant F** (auto-
-detect + visual chooser + advanced accordion + CPU-fallback warning
-+ cached note) as the production component. The remaining variants
-are Storybook stories only.
+designs for the same control panel — pd-ui ships **Variant F** (auto-detect,
+visual chooser, advanced accordion, CPU-fallback warning, cached note) as
+the production component. The remaining variants are Storybook stories only.
 
 **Controls:**
 
@@ -539,6 +542,10 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
   `mixed-lang` (purple).
 - **Cross-stage**: `errored` (mismatch).
 
+**Density toggle note:** As in the Source stage, the thumb size toggle
+(S/M/L) is consumer-owned local state. pd-ui ships `ThumbSizeToggle` and
+`ThumbGrid`; the consumer wires state and column count.
+
 **Backend contract:**
 
 - Existing: `/api/projects/{id}/pages` returns per-page flags array.
@@ -560,8 +567,8 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 | `PWHeader` (breadcrumb + Prev/Next + edit-mode + actions) | `wf-pw/wf-pw-variations.jsx:19-52` | `pdUi/PageWorkbench/PWHeader` |
 | `EditModeSelector` (View/Split/Illustration/Rotate) | `:54-83` | `pdUi/PageWorkbench/EditModeSelector` |
 | `PageAttributesBar` + `AttrEditorPopover` | `:100-223` | `pdUi/PageWorkbench/PageAttributesBar` |
-| `ArtifactViewer` + `ArtifactPlate` + `PaperRender` | `:264-444` | `pdUi/PageWorkbench/ArtifactViewer` |
-| `SplitOverlay` / `IllustOverlay` / `WordBboxOverlay` | `:340-398` | `pdUi/PageWorkbench/overlays/*` |
+| `ArtifactViewer` + `ArtifactPlate` + `PaperRender` | `:264-444` | `pdUi/PageWorkbench/ArtifactViewer` (pd-ui export) |
+| `SplitOverlay` / `IllustOverlay` / `WordBboxOverlay` | `:340-398` | `pdUi/PageWorkbench/overlays/*` (pd-ui export) |
 | `StageControlsPanel` + per-stage controls | `:457-668` | `pdUi/PageWorkbench/StageControlsPanel` (with sub-export per stage) |
 | `LabelerCanvas` + `LayerToggle` | `:1132-1287` | `pdUi/PageWorkbench/LabelerCanvas` |
 | `HierarchyTreePanel` + `TreeRow` | `:1296-1414` | `pdUi/PageWorkbench/HierarchyTreePanel` |
@@ -583,6 +590,16 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 **Per-stage controls** (each is its own pd-ui export):
 `ThresholdControls`, `CanvasMapControls`, `GrayscaleControls`,
 `DeskewControls`, `InitialCropControls`, `OcrControls`.
+
+**Note on ArtifactViewer ownership:** `ArtifactViewer` is the shared
+pd-* image-annotation viewer (used by pd-prep-for-pgdp PageWorkbench AND
+pd-ocr-labeler-spa). It is a pd-ui export, not a consumer-owned component.
+`ArtifactViewer` + `ArtifactPlate` + `PaperRender` + `SplitOverlay` +
+`IllustOverlay` + `WordBboxOverlay` all compose on top of pd-ui's
+lower-level `PageImageCanvas` (Konva stage with 6-slot API). These exports
+land in pd-ui Phase 2 (see follow-up spec
+`pd-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md` —
+referenced but not yet filed at edit time).
 
 ---
 
@@ -647,8 +664,9 @@ replaces the modal chrome and surfaces the manifest review step.
 
 ---
 
-### Pipeline shell + AppTemplate (`final/template/`, `final/pipeline/`,
-`design-system/template.jsx`)
+### Pipeline shell + PipelineTemplate
+
+Sources: `final/template/`, `final/pipeline/`, `design-system/template.jsx`
 
 **Components:**
 
@@ -657,7 +675,7 @@ replaces the modal chrome and surfaces the manifest review step.
 | `AppHeader` (logo + search + jobs pill + bell + avatar) | `design-system/template.jsx:10-98` | `pdUi/shell/AppHeader` |
 | `JobsPill` + `JobsDrawer` + `JobRow` | `:100-194, :304-547` | `pdUi/shell/Jobs*` |
 | `Breadcrumb` (with content-controls slot) | `:201-241` | `pdUi/shell/Breadcrumb` |
-| `AppTemplate` (full page chrome) | `:264-291` | `pdUi/templates/AppTemplate` |
+| `PipelineTemplate` (full page chrome) | `:264-291` | `pdUi/templates/PipelineTemplate` |
 | `ProjectInfoBand` | (`final/pipeline-template/`) | `pdUi/molecules/ProjectInfoBand` |
 | `StageStrip` (23-dot progress) | (`final/pipeline-template/`) | `pdUi/molecules/StageStrip` |
 | `TabsBand` (per-stage tabs) | (`final/pipeline-template/`) | `pdUi/molecules/TabsBand` |
@@ -665,6 +683,19 @@ replaces the modal chrome and surfaces the manifest review step.
 
 `CanvasNav` is design-canvas chrome, not production. Theme handling
 in pd-prep-for-pgdp uses pd-ui's existing theme provider.
+
+`AppShell` (generic) + `PipelineTemplate` (per-project) compose the full
+page chrome. `AppShell` wraps the top-level app frame (header, nav rail,
+theme); `PipelineTemplate` slots in the pipeline-specific chrome
+(`ProjectInfoBand`, `StageStrip`, `TabsBand`) for project-scoped routes.
+
+pd-ui's `getTabsForStage(stageId)` has defaults for `source`, `ocr`,
+`text_review`, `build_package`, and `hyphen_join` only. All other stages
+fall back to a generic 4-tab default (Overview / Pages / Workbench /
+Settings). Consumer must pass an explicit `tabsSlot` override per stage
+where the design specifies non-default tabs — for example, Grayscale's
+Overview / Pages / Step Settings layout has no Workbench tab and therefore
+requires a `tabsSlot` override rather than relying on the default.
 
 ---
 
@@ -676,6 +707,15 @@ The full list of atoms is in `design-system/ui-base.jsx` (`Icon`,
 the molecule frequency table in `COMPONENT_INDEX.md`. All atoms are
 imported through `@concavetrillion/pd-ui`; pd-prep-for-pgdp keeps no
 ad-hoc duplicates.
+
+**Badge `tone` prop status:** `Badge` ships in pd-ui Phase 1 with
+structural variants (`default` / `primary` / `danger`). The semantic
+`tone` prop (`clean` / `fuzzy` / `mismatch` / etc.) that this spec assumes
+is declared as a TypeScript type (`BadgeTone`) at `Badge.tsx:16-29` but is
+**not yet wired into the component** (tracked in pd-ui issue #339).
+Consumer must not pass `tone` until pd-ui issue #339 lands; use `variant`
+for structural styling and inline color tokens for status indicators until
+then.
 
 **Tokens** (CSS custom properties; identical names across both apps):
 
@@ -750,6 +790,31 @@ Per-slice acceptance:
    `?stage=grayscale&prefix=p019`). The 23-dot `StageStrip` stays
    mounted across stage changes; no full-page navigation between
    stages.
+
+## Implementation status (audit 2026-05-24)
+
+The 4-way audit (pd-ui repo state vs. this spec) found the following:
+
+- **Foundation layer shipped.** pd-ui milestone #333 landed 61 components
+  covering atoms, molecules, shell, `AppShell`, `PipelineTemplate`, token
+  system, `PageImageCanvas` (Konva stage with 6-slot API), `ThumbSizeToggle`,
+  `ThumbGrid`, and all structural `Badge` variants.
+- **Per-stage component layer deferred.** 43 stage-specific components
+  (across Source, Grayscale, Crop, Scannos, Validation, Quality flags,
+  Page Workbench overlays, ArtifactViewer family) are deferred to pd-ui
+  Phase 2. See follow-up spec
+  `pd-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md`
+  (referenced but not yet filed at edit time).
+- **Slice readiness split.** Of the 46 slices in the companion plan
+  (`docs/plans/pd-ui-design-handoff-implementation.md`):
+  - **15 ready-to-start** — foundation, Projects landing page, Folder
+    upload modal, Quality flags (banner + filter, primitives-only),
+    Routing + React Router registration, Storybook consumer entries.
+  - **31 blocked** on pd-ui Phase 2 exports landing (per-stage components,
+    ArtifactViewer family, stage-specific overlays).
+  - Slices marked blocked may be co-located in pd-prep-for-pgdp using
+    pd-ui primitives + canvas slots as a stopgap if Phase 2 stretches;
+    the components would be refactored into pd-ui exports in a later pass.
 
 ## Open Questions
 
