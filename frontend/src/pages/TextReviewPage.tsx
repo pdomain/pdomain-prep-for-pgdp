@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Link, useParams } from "react-router-dom";
+import { Link, useBlocker, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 
@@ -49,7 +49,10 @@ export function TextReviewPage() {
   // Radix Select doesn't allow empty string values, so we use this constant.
   const WHOLE_PAGE_VALUE = "__whole__";
   const [splitSuffix, setSplitSuffix] = useState<string>(WHOLE_PAGE_VALUE);
-  const [text, setText] = useState<string>("");
+  // Issue #130: separate server-truth from local draft so that background
+  // refetches never silently overwrite unsaved edits.
+  const [serverText, setServerText] = useState<string | null>(null);
+  const [draftText, setDraftText] = useState<string>("");
   const [dirty, setDirty] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
   const [words, setWords] = useState<OcrWord[]>([]);
@@ -112,19 +115,33 @@ export function TextReviewPage() {
 
   useEffect(() => {
     if (text$.data) {
-      setText(text$.data.text);
+      // Always update server-truth.
+      setServerText(text$.data.text);
       setWords(text$.data.words ?? []);
-      setDirty(false);
-      setActiveWordIndex(null);
-      setSelectedWordIds(new Set());
+      // Only copy to draft when the draft is clean (no unsaved edits).
+      // `dirty` is intentionally excluded from deps — we want the snapshot
+      // of dirty captured when the effect fires (i.e. when server data
+      // arrives), not re-run on every keystroke. A stale dirty===true
+      // correctly prevents overwriting a mid-edit draft.
+      if (!dirty) {
+        setDraftText(text$.data.text);
+        setDirty(false);
+        setActiveWordIndex(null);
+        setSelectedWordIds(new Set());
+      }
     } else if (text$.error) {
       // 404 = no text yet (probably needs OCR first)
-      setText("");
+      setServerText("");
       setWords([]);
-      setDirty(false);
-      setActiveWordIndex(null);
-      setSelectedWordIds(new Set());
+      if (!dirty) {
+        setDraftText("");
+        setDirty(false);
+        setActiveWordIndex(null);
+        setSelectedWordIds(new Set());
+      }
     }
+    // dirty intentionally NOT in deps — see note above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text$.data, text$.error]);
 
   useEffect(() => {
@@ -154,9 +171,45 @@ export function TextReviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Issue #130 — discard helper: reset draft to last known server state and
+  // clear the dirty flag. Used by the navigation blocker when the user
+  // confirms discarding their unsaved edits.
+  const discardEdits = useCallback(() => {
+    if (serverText !== null) {
+      setDraftText(serverText);
+    }
+    setDirty(false);
+  }, [serverText]);
+
+  // Issue #130 — navigation blocker: intercept React Router in-app navigation
+  // (Prev / Next links) while the draft has unsaved edits. `useBlocker` is
+  // called unconditionally; it is a no-op when `dirty === false`.
+  const blocker = useBlocker(dirty);
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      if (window.confirm("You have unsaved changes. Discard and navigate?")) {
+        discardEdits();
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker, discardEdits]);
+
+  // Issue #130 — beforeunload: warn the user before closing/refreshing the
+  // tab when the draft has unsaved edits.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
   const wordIndex = useMemo(
-    () => buildWordOffsetIndex(text, words),
-    [text, words],
+    () => buildWordOffsetIndex(draftText, words),
+    [draftText, words],
   );
 
   // Phase 2.2: Preload the page image to discover its natural dimensions
@@ -185,7 +238,7 @@ export function TextReviewPage() {
       const suffix = splitSuffix === WHOLE_PAGE_VALUE ? null : splitSuffix;
       return api.patch<{ text_key: string }>(
         `/api/data/projects/${projectId}/pages/${idx0}/text`,
-        { split_suffix: suffix, text },
+        { split_suffix: suffix, text: draftText },
       );
     },
     onSuccess: () => {
@@ -221,7 +274,8 @@ export function TextReviewPage() {
       );
     },
     onSuccess: (resp) => {
-      setText(resp.text);
+      setServerText(resp.text);
+      setDraftText(resp.text);
       setWords(resp.remaining_words ?? []);
       // Server is now the source of truth — clear local edit / select
       // state so the proofer can immediately stage another batch.
@@ -271,7 +325,8 @@ export function TextReviewPage() {
       );
     },
     onSuccess: (resp) => {
-      setText(resp.text);
+      setServerText(resp.text);
+      setDraftText(resp.text);
       setWords(resp.remaining_words ?? []);
       setDirty(false);
       setActiveWordIndex(null);
@@ -377,11 +432,11 @@ export function TextReviewPage() {
       ),
     onMutate: () => {
       // Snapshot the textarea content right before the new OCR
-      // result lands. Closure captures the current `text`, so
+      // result lands. Closure captures the current `draftText`, so
       // back-to-back re-OCR clicks always compare against the
       // text that was on screen immediately before THIS click —
       // not the very first prior-text we ever captured.
-      setPriorText(text);
+      setPriorText(draftText);
       setViewMode("diff");
     },
     onSuccess: () => {
@@ -402,8 +457,8 @@ export function TextReviewPage() {
   // empty-array fallback is cheap and keeps the render path
   // unconditional.
   const diff = useMemo(
-    () => (priorText !== null ? diffLines(priorText, text) : []),
-    [priorText, text],
+    () => (priorText !== null ? diffLines(priorText, draftText) : []),
+    [priorText, draftText],
   );
   const diffHasChanges = useMemo(
     () => diff.some((d) => d.kind !== "equal"),
@@ -448,7 +503,7 @@ export function TextReviewPage() {
       // computed line-height; some browsers report "normal" so fall
       // back to font-size × 1.2.
       try {
-        const before = text.slice(0, r.start);
+        const before = draftText.slice(0, r.start);
         const line = before.split("\n").length - 1;
         const cs = window.getComputedStyle(ta);
         const lhRaw = cs.lineHeight;
@@ -608,9 +663,9 @@ export function TextReviewPage() {
         <Card className="p-4 flex flex-col gap-4">
           <textarea
             ref={textareaRef}
-            value={text}
+            value={draftText}
             onChange={(e) => {
-              setText(e.target.value);
+              setDraftText(e.target.value);
               setDirty(true);
             }}
             onSelect={handleTextareaSelect}
