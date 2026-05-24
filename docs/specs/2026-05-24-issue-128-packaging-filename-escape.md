@@ -143,7 +143,7 @@ def _safe_package_slug(book_name: str, fallback: str) -> str:
 Replace line 151 in `packaging.py`:
 
 ```python
-from pd_prep_for_pgdp.app.api.data.storage_keys import assert_project_scoped_key
+from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 
 slug = _safe_package_slug(project.config.book_name, fallback=project.id)
 package_key = f"projects/{project.id}/for_zip/{slug}.zip"
@@ -249,7 +249,7 @@ collapse step make the correct output `"evil"`, not `"__evil"` or `"_.._evil"`.
 Both #128 and #127 need to assert that a storage key is scoped to a specific project prefix.
 Rather than duplicating the logic, both specs share a single helper module:
 
-**Shared module: `src/pd_prep_for_pgdp/app/api/data/storage_keys.py`**
+**Shared module: `src/pd_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
 
 ```python
 def assert_project_scoped_key(project_id: str, key: str) -> None:

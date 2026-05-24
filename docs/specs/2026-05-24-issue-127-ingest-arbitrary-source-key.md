@@ -205,7 +205,7 @@ Before the fix the route returns `202`; after the fix it returns `400`.
 Both #127 and #128 need to assert that a storage key is scoped to a specific project prefix.
 Rather than duplicating the logic, both specs share a single helper module:
 
-**Shared module: `src/pd_prep_for_pgdp/app/api/data/storage_keys.py`**
+**Shared module: `src/pd_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
 
 ```python
 def assert_project_scoped_key(project_id: str, key: str) -> None:
@@ -230,7 +230,7 @@ re-implementing the check.
 `assert_project_scoped_key` and re-raises as `HTTPException(400, ...)`:
 
 ```python
-from pd_prep_for_pgdp.app.api.data.storage_keys import assert_project_scoped_key
+from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 
 def _validate_source_key(project_id: str, source_key: str) -> None:
     try:
