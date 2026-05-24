@@ -2873,8 +2873,13 @@
     "/cdn/{key}": {
       "put": {
         "summary": "Cdn Put",
-        "description": "Write `key` (under the data root) using bytes from the request body.\n\nPath traversal (`..`, absolute paths) is rejected by the storage adapter.\nRejects bodies exceeding ``settings.max_cdn_upload_bytes`` with HTTP 413.",
+        "description": "Write ``key`` (under the data root) using bytes from the request body.\n\nRequires a valid authenticated session in all auth modes (in\n``auth_mode=none`` NoneAuth always succeeds, so the dependency is a\nno-op for single-user local installs).\n\nPath traversal (``..``, absolute paths) is rejected.\nBodies exceeding ``settings.max_cdn_upload_bytes`` are rejected with 413.",
         "operationId": "upload_cdn_asset",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "key",

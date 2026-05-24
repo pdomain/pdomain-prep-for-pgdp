@@ -344,16 +344,26 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         install_env_js(app)
 
         if settings.cdn_enabled:
-            from .api.cdn import install_cdn_upload
+            from .api.cdn import install_cdn_routes
 
-            # PUT handler must be registered BEFORE the StaticFiles mount so
-            # `PUT /cdn/<key>` isn't shadowed by the read-only mount.
-            install_cdn_upload(app)
-            app.mount(
-                "/cdn",
-                StaticFiles(directory=str(settings.data_root), check_dir=False),
-                name="cdn",
-            )
+            # Register CDN routes before the SPA StaticFiles mount so
+            # PUT /cdn/<key> and (in multi-user modes) GET /cdn/<key>
+            # are not shadowed by the catch-all SPA fallback.
+            #
+            # Mode-split (issue #124 Option B):
+            #   "none"       → PUT route only + StaticFiles read mount
+            #                  (single user; StaticFiles is fine)
+            #   "apikey"
+            #   "jwt"        → PUT + authenticated GET route;
+            #                  NO StaticFiles overlay (it would shadow
+            #                  the ownership-checking GET handler)
+            install_cdn_routes(app, auth_mode=settings.auth_mode)
+            if settings.auth_mode == "none":
+                app.mount(
+                    "/cdn",
+                    StaticFiles(directory=str(settings.data_root), check_dir=False),
+                    name="cdn",
+                )
         _mount_static_frontend(app, settings)
 
     return app

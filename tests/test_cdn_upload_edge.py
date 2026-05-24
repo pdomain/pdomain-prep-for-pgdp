@@ -17,8 +17,12 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
+from pd_prep_for_pgdp.adapters.auth.base import UserContext
 from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pd_prep_for_pgdp.api.cdn import cdn_put
+
+# Minimal authenticated user for direct-call tests.
+_DEFAULT_USER = UserContext()
 
 
 class _FakeRequest:
@@ -41,7 +45,7 @@ def storage(tmp_path) -> FilesystemStorage:
 async def test_cdn_put_rejects_dotdot_segment_directly(storage: FilesystemStorage) -> None:
     req: Any = _FakeRequest()
     with pytest.raises(HTTPException) as exc:
-        await cdn_put("projects/../leak", req, storage=storage)
+        await cdn_put("projects/../leak", req, user=_DEFAULT_USER, storage=storage)
     assert exc.value.status_code == 400
 
 
@@ -52,7 +56,7 @@ async def test_cdn_put_rejects_absolute_path(storage: FilesystemStorage) -> None
     # under FastAPI/Starlette routing, but if a client crafts a request
     # that bypasses normalisation the handler still rejects it.
     with pytest.raises(HTTPException) as exc:
-        await cdn_put("/etc/passwd", req, storage=storage)
+        await cdn_put("/etc/passwd", req, user=_DEFAULT_USER, storage=storage)
     assert exc.value.status_code == 400
 
 
@@ -69,6 +73,6 @@ async def test_cdn_put_returns_400_when_storage_raises_value_error(
 
     req: Any = _FakeRequest(body=b"x")
     with pytest.raises(HTTPException) as exc:
-        await cdn_put("projects/legit/key", req, storage=_RejectingStorage())  # type: ignore[arg-type]
+        await cdn_put("projects/legit/key", req, user=_DEFAULT_USER, storage=_RejectingStorage())  # type: ignore[arg-type]
     assert exc.value.status_code == 400
     assert "escapes" in str(exc.value.detail)
