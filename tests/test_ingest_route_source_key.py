@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 
-def _create_project(client: "TestClient") -> str:
+def _create_project(client: TestClient) -> str:
     """Create a project via the data API and return its id."""
     r = client.post(
         "/api/data/projects",
@@ -36,7 +36,7 @@ def _create_project(client: "TestClient") -> str:
     return r.json()["project"]["id"]  # type: ignore[no-any-return]
 
 
-def _post_ingest(client: "TestClient", project_id: str, source_key: str) -> object:
+def _post_ingest(client: TestClient, project_id: str, source_key: str) -> object:
     return client.post(
         "/api/gpu/ingest",
         json={
@@ -50,7 +50,7 @@ def _post_ingest(client: "TestClient", project_id: str, source_key: str) -> obje
 # ── Slice 1 — route-level source_key validation ────────────────────────────
 
 
-def test_ingest_rejects_cross_project_source_key(client: "TestClient") -> None:
+def test_ingest_rejects_cross_project_source_key(client: TestClient) -> None:
     """Supplying another project's source_key must return 400.
 
     Before the fix the route returns 202; after the fix it returns 400.
@@ -60,7 +60,7 @@ def test_ingest_rejects_cross_project_source_key(client: "TestClient") -> None:
     assert r.status_code == 400, r.text  # type: ignore[attr-defined]
 
 
-def test_ingest_accepts_own_project_source_key(client: "TestClient") -> None:
+def test_ingest_accepts_own_project_source_key(client: TestClient) -> None:
     """source_key under the own project prefix must be accepted (202)."""
     own_id = _create_project(client)
     r = _post_ingest(client, own_id, f"projects/{own_id}/uploads/source.zip")
@@ -68,7 +68,7 @@ def test_ingest_accepts_own_project_source_key(client: "TestClient") -> None:
 
 
 def test_ingest_rejects_cross_project_source_key_with_leading_slash(
-    client: "TestClient",
+    client: TestClient,
 ) -> None:
     """CDN-relative keys with a leading slash — cross-project still returns 400."""
     own_id = _create_project(client)
@@ -77,7 +77,7 @@ def test_ingest_rejects_cross_project_source_key_with_leading_slash(
 
 
 def test_ingest_accepts_own_project_source_key_with_leading_slash(
-    client: "TestClient",
+    client: TestClient,
 ) -> None:
     """Leading-slash own-project key is normalised and accepted (202)."""
     own_id = _create_project(client)
@@ -85,9 +85,7 @@ def test_ingest_accepts_own_project_source_key_with_leading_slash(
     assert r.status_code == 202, r.text  # type: ignore[attr-defined]
 
 
-def test_ingest_missing_project_returns_404(client: "TestClient") -> None:
+def test_ingest_missing_project_returns_404(client: TestClient) -> None:
     """Unknown project_id still returns 404 regardless of source_key."""
-    r = _post_ingest(
-        client, "nonexistent-id", "projects/nonexistent-id/uploads/s.zip"
-    )
+    r = _post_ingest(client, "nonexistent-id", "projects/nonexistent-id/uploads/s.zip")
     assert r.status_code == 404  # type: ignore[attr-defined]

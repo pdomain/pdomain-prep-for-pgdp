@@ -20,6 +20,9 @@ venv/
 env/
 .uv-cache/
 
+# Local-dev mode marker (spec #362)
+.venv/.pd-local-mode
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

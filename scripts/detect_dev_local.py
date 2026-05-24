@@ -48,7 +48,8 @@ def _uv_reports_editable() -> bool:
 
 
 def _marker_file_present() -> bool:
-    return Path(".venv", ".dev-local").is_file()
+    # Check both legacy marker (.dev-local) and canonical marker (.pd-local-mode, spec #362)
+    return Path(".venv", ".dev-local").is_file() or Path(".venv", ".pd-local-mode").is_file()
 
 
 def _env_override() -> bool:

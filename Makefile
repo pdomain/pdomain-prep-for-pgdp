@@ -13,8 +13,10 @@ $(_goals):
 else
 
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
-        typecheck pre-commit-check test e2e build clean ci local-setup dev-local install-local \
-        uninstall-local check-local-editable run run-cpu run-local frontend-install \
+        typecheck pre-commit-check test e2e build clean ci \
+        local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
+        dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
+        run run-cpu frontend-install \
         frontend-build frontend-dev frontend-test frontend-knip openapi-export upgrade-pd-book-tools \
         release-patch release-minor release-major _do-release docker-build docker-run \
         mise-download mise-trust-worktrees mise-setup mise-doctor upgrade-deps
@@ -91,10 +93,10 @@ reset: clean remove-venv setup ## Rebuild the virtual environment
 
 upgrade-deps: ## Upgrade dependencies and sync local environment
 	@if uv run --no-sync python scripts/detect_dev_local.py >/dev/null 2>&1; then \
-		echo "❌ dev-local install detected (editable pd-book-tools)."; \
-		echo "   'make upgrade-deps' would silently revert it to the pinned tag."; \
-		echo "   Use 'make upgrade-deps-local' to upgrade and re-install editable."; \
-		echo "   Or set PD_DEV_LOCAL=0 and run 'make reset' to switch to canonical."; \
+		echo "❌ local-dev install detected (editable siblings present)."; \
+		echo "   'make upgrade-deps' would silently revert them to pinned registry versions."; \
+		echo "   Use 'make local-upgrade-deps' to upgrade and restore editable siblings."; \
+		echo "   Or remove .venv/.pd-local-mode and run 'make reset' to switch to canonical."; \
 		exit 1; \
 	fi
 	@echo "⬆️ Upgrading dependency lockfile..."
@@ -102,15 +104,6 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 	@echo "📦 Syncing upgraded dependencies..."
 	uv sync --group dev
 	@echo "✅ Dependencies upgraded and environment synced!"
-
-upgrade-deps-local: ## [local-dev] Upgrade deps then restore editable pd-book-tools
-	@echo "⬆️ Upgrading dependency lockfile..."
-	uv lock --upgrade
-	@echo "📦 Syncing upgraded dependencies..."
-	uv sync --group dev
-	@echo "🔁 Restoring editable pd-book-tools sibling install..."
-	@$(MAKE) --no-print-directory dev-local
-	@echo "✅ Dependencies upgraded; editable pd-book-tools restored."
 
 upgrade-pd-book-tools: ## Pin pd-book-tools to its latest GitHub tag
 	@echo "🔍 Fetching latest pd-book-tools tag..."
@@ -308,42 +301,49 @@ clean: ## Clean cache + build artifacts
 
 ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip ## Full CI pipeline
 
-# ---------------------------------------------------------------------------
-# Local editable workflow (requires ../pd-book-tools sibling checkout)
-# ---------------------------------------------------------------------------
+# ─── local-dev workflow (spec #362) ─────────────────────────────────────────
 
-local-setup: ## [local-dev] Clone ../pd-book-tools if missing and set up the editable workspace
-	@if [ ! -d "$(PEER_BOOK_TOOLS_PATH)" ]; then \
-		echo "📥 Cloning pd-book-tools..."; \
-		git clone "$(PEER_BOOK_TOOLS_REPO)" "$(PEER_BOOK_TOOLS_PATH)"; \
-	fi
-	@$(MAKE) --no-print-directory dev-local
+local-setup: ## Clone any missing sibling pd-* repos into the workspace
+	@./scripts/local-setup.sh
 
-dev-local: ## [local-dev] Install pd-book-tools editable from ../pd-book-tools
-	$(call _require_peer_book_tools)
-	UV_LINK_MODE=copy uv sync --group dev
-	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS)"
-	@mkdir -p .venv && touch .venv/.dev-local
-	@$(MAKE) --no-print-directory check-local-editable
+local-dev: ## Switch to local-dev mode (siblings editable + marker)
+	@./scripts/local-dev.sh
 
-install-local: ## [local-dev] Install pgdp-prep with both . and ../pd-book-tools editable
-	$(call _require_peer_book_tools)
-	UV_LINK_MODE=copy uv tool install --force --reinstall --no-sources --editable . --with-editable "$(PEER_BOOK_TOOLS)"
-	@mkdir -p .venv && touch .venv/.dev-local
-	@echo "✅ 'pgdp-prep' is on PATH and tracks ./ + $(PEER_BOOK_TOOLS) live."
+local-check: ## Print local-dev mode status + per-sibling resolution
+	@./scripts/local-check.sh
 
-uninstall-local: ## [local-dev] Uninstall the local-editable pgdp-prep tool
-	uv tool uninstall pd-prep-for-pgdp || true
+local-upgrade-deps: ## Upgrade deps then restore editable siblings (local-mode only)
+	@./scripts/local-upgrade-deps.sh
 
-check-local-editable: ## [local-dev] Verify pd-book-tools resolves to the sibling checkout
-	$(call _require_peer_book_tools)
-	@env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python -c "import inspect, os, sys, pd_book_tools; \
-module_file = os.path.realpath(inspect.getfile(pd_book_tools)); \
-peer = os.path.realpath('$(PEER_BOOK_TOOLS)'); \
-print('module_file=', module_file); \
-print('expected_peer=', peer); \
-sys.exit(0 if module_file.startswith(peer + os.sep) or module_file == peer else 1)" \
-	|| (echo "❌ pd-book-tools is not local/editable. Run: make dev-local" >&2; exit 1)
+local-install: ## Install uv tool with editable siblings (local-mode only)
+	@./scripts/local-install.sh
+
+local-uninstall: ## Uninstall the uv tool (siblings + venv untouched)
+	@./scripts/local-uninstall.sh
+
+local-run: ## Run the CLI/server against local-dev workspace (local-mode only)
+	@./scripts/local-run.sh
+
+# Back-compat aliases for legacy target names (deprecated — use canonical names above)
+dev-local: ## DEPRECATED: use local-dev
+	@echo "warning: 'dev-local' is deprecated; use 'local-dev'"
+	@$(MAKE) --no-print-directory local-dev
+
+install-local: ## DEPRECATED: use local-install
+	@echo "warning: 'install-local' is deprecated; use 'local-install'"
+	@$(MAKE) --no-print-directory local-install
+
+uninstall-local: ## DEPRECATED: use local-uninstall
+	@echo "warning: 'uninstall-local' is deprecated; use 'local-uninstall'"
+	@$(MAKE) --no-print-directory local-uninstall
+
+check-local-editable: ## DEPRECATED: use local-check
+	@echo "warning: 'check-local-editable' is deprecated; use 'local-check'"
+	@$(MAKE) --no-print-directory local-check
+
+upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
+	@echo "warning: 'upgrade-deps-local' is deprecated; use 'local-upgrade-deps'"
+	@$(MAKE) --no-print-directory local-upgrade-deps
 
 # ---------------------------------------------------------------------------
 # `make run` — canonical local-mode entry point.
@@ -374,8 +374,9 @@ run-cpu: frontend-build ## Build SPA + launch pgdp-prep with PGDP_GPU_BACKEND=cp
 	@echo "🚀 Launching pgdp-prep at http://127.0.0.1:8765 (CPU backend forced)..."
 	PGDP_GPU_BACKEND=cpu uv run pgdp-prep $(ARGS)
 
-run-local: check-local-editable ## [local-dev] Run pgdp-prep against the local editable workspace
-	env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run pgdp-prep $(ARGS)
+run-local: ## DEPRECATED: use local-run
+	@echo "warning: 'run-local' is deprecated; use 'local-run'"
+	@$(MAKE) --no-print-directory local-run
 
 # ---------------------------------------------------------------------------
 # Docker (managed mode)
