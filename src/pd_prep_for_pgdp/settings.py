@@ -107,6 +107,25 @@ class Settings(BaseSettings):
 
     None = ``4 x resolved pool_size``. Override: ``PGDP_STAGE_WRITE_QUEUE_CAP``."""
 
+    # ── Resource limits ──────────────────────────────────────────────────────
+    max_cdn_upload_bytes: int = 300 * 1024 * 1024
+    """Max bytes for a single PUT /cdn/{key} upload body (default 300 MB)."""
+
+    max_source_zip_bytes: int = 2 * 1024 * 1024 * 1024
+    """Max bytes for a source zip fetched from storage before extraction (default 2 GB)."""
+
+    max_zip_entries: int = 2000
+    """Max number of entries in a source zip (default 2000; no book has > ~1500 scans)."""
+
+    max_entry_uncompressed_bytes: int = 100 * 1024 * 1024
+    """Max uncompressed bytes for a single zip entry (default 100 MB; single TIFF page)."""
+
+    max_total_uncompressed_bytes: int = 5 * 1024 * 1024 * 1024
+    """Max total uncompressed bytes across all zip entries (default 5 GB; one full book)."""
+
+    max_image_pixels: int = 200_000_000
+    """Max pixel count (width * height) for decoded images (default 200 MP; ~14142 * 14142)."""
+
     # ── Debug ────────────────────────────────────────────────────────────────
     debug: bool = False
     """When True, 500 responses include last 3 lines of traceback. Never enable in production."""
