@@ -582,9 +582,43 @@ def thumbnail_for_page(idx0: int, stem: str, src: bytes) -> tuple[int, str, byte
     return idx0, stem, jpg, None
 
 
-def _make_thumbnail_bytes(src: bytes) -> bytes:
-    """Decode `src`, resize to fit `THUMBNAIL_MAX_DIM`, encode back to JPG."""
+def _make_thumbnail_bytes(src: bytes, max_image_pixels: int | None = None) -> bytes:
+    """Decode ``src``, resize to fit ``THUMBNAIL_MAX_DIM``, encode back to JPG.
+
+    ``max_image_pixels`` caps the pixel count (width * height) read from the
+    image header via Pillow *before* cv2.imdecode is called. This prevents a
+    maliciously crafted image with huge advertised dimensions from causing
+    cv2 to allocate gigabytes of RAM. When ``None``, the limit is read from
+    the ``PGDP_MAX_IMAGE_PIXELS`` env var via a fresh ``Settings()`` instance.
+
+    Raises ``_CorruptImageError`` if the image header cannot be parsed or the
+    pixel count exceeds the limit.
+    """
+    import io as _io
+
     import numpy as np  # pyright: ignore[reportMissingImports]
+
+    if max_image_pixels is None:
+        from pd_prep_for_pgdp.settings import Settings
+
+        max_image_pixels = Settings().max_image_pixels
+
+    # Pre-decode dimension check via Pillow header read — no pixels decoded.
+    try:
+        import warnings as _warnings
+
+        from PIL import Image
+
+        with _warnings.catch_warnings():
+            _warnings.simplefilter("ignore")  # suppress PIL DecompressionBombWarning
+            with Image.open(_io.BytesIO(src)) as img_meta:
+                w, h = img_meta.size
+        if w * h > max_image_pixels:
+            raise _CorruptImageError(f"image too large: {w}x{h} = {w * h} pixels (limit {max_image_pixels})")
+    except _CorruptImageError:
+        raise
+    except Exception as e:
+        raise _CorruptImageError(f"cannot read image header: {e}") from e
 
     try:
         import cv2  # pyright: ignore[reportMissingImports]
