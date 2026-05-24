@@ -341,6 +341,15 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
     if not source_key:
         raise ValueError("unzip job missing source_key in progress.message")
 
+    # Defence-in-depth: validate the key is scoped to this project even if
+    # the job was enqueued without going through the API route (e.g. direct
+    # DB writes, migration scripts, or tests that bypass the ingest route).
+    # We inline the prefix check here rather than importing from api/ to
+    # avoid a circular import (api/ imports core/ which would re-import api/).
+    _expected_prefix = f"projects/{job.project_id}/"
+    if not source_key.lstrip("/").startswith(_expected_prefix):
+        raise ValueError(f"source_key escapes project prefix: {source_key!r}")
+
     source_type = "zip" if source_key.endswith(".zip") else "local_folder"
 
     async def _report(current: int, total: int, stem: str) -> None:

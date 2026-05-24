@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 from pd_prep_for_pgdp.api.dependencies import get_database, get_user
 from pd_prep_for_pgdp.core.models import Job, JobProgress, JobStatus, JobType
 
@@ -25,6 +26,18 @@ if TYPE_CHECKING:
 router = APIRouter(tags=["gpu"])
 
 
+def _validate_source_key(project_id: str, source_key: str) -> None:
+    """Raise HTTPException(400) if source_key is not scoped to project_id.
+
+    Wraps assert_project_scoped_key so that route-level validation raises the
+    correct HTTP status code rather than a bare ValueError.
+    """
+    try:
+        assert_project_scoped_key(project_id, source_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/ingest", response_model=JobResponse, status_code=202, operation_id="start_ingest")
 async def ingest(
     body: IngestRequest,
@@ -34,6 +47,8 @@ async def ingest(
     project = await db.get_project(body.project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    _validate_source_key(body.project_id, body.source_key)
 
     job = Job(
         id=uuid.uuid4().hex,
