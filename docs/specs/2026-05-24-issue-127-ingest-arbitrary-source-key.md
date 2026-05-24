@@ -200,6 +200,49 @@ Before the fix the route returns `202`; after the fix it returns `400`.
 - `POST /api/gpu/ingest` with other user's project_id → `404` (unchanged — ownership already
   enforced).
 
+## Cross-spec coordination with #128
+
+Both #127 and #128 need to assert that a storage key is scoped to a specific project prefix.
+Rather than duplicating the logic, both specs share a single helper module:
+
+**Shared module: `src/pd_prep_for_pgdp/app/api/data/storage_keys.py`**
+
+```python
+def assert_project_scoped_key(project_id: str, key: str) -> None:
+    """Raise ValueError if `key` does not fall under projects/{project_id}/.
+
+    Strips a leading slash before checking so both CDN-relative and bare
+    storage keys are handled consistently.
+    """
+    clean = key.lstrip("/")
+    expected_prefix = f"projects/{project_id}/"
+    if not clean.startswith(expected_prefix):
+        raise ValueError(
+            f"key must be under projects/{project_id}/; got: {key!r}"
+        )
+```
+
+**Ownership rule:** whichever issue (#127 or #128) ships first introduces
+`storage_keys.py`. The other issue then imports from it rather than
+re-implementing the check.
+
+`_validate_source_key` in `api/gpu/ingest.py` (this spec) wraps
+`assert_project_scoped_key` and re-raises as `HTTPException(400, ...)`:
+
+```python
+from pd_prep_for_pgdp.app.api.data.storage_keys import assert_project_scoped_key
+
+def _validate_source_key(project_id: str, source_key: str) -> None:
+    try:
+        assert_project_scoped_key(project_id, source_key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+```
+
+The `packaging.py` assertion in #128 calls `assert_project_scoped_key` directly
+(it raises `ValueError`, which is the right error type for a programmer-error guard
+inside the packaging pipeline).
+
 ## Open Questions
 
 1. **Upload flow source key contract:** how is `source_key` communicated to the ingest call after

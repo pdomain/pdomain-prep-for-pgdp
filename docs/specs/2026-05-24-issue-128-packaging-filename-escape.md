@@ -132,17 +132,21 @@ def _safe_package_slug(book_name: str, fallback: str) -> str:
 Replace line 151 in `packaging.py`:
 
 ```python
+from pd_prep_for_pgdp.app.api.data.storage_keys import assert_project_scoped_key
+
 slug = _safe_package_slug(project.config.book_name, fallback=project.id)
 package_key = f"projects/{project.id}/for_zip/{slug}.zip"
-# Assertion: key must stay under for_zip/ (belt-and-suspenders)
-expected_prefix = f"projects/{project.id}/for_zip/"
-if not package_key.startswith(expected_prefix):
-    raise ValueError(f"package_key escapes for_zip prefix: {package_key!r}")
+# Assertion: key must stay under for_zip/ (belt-and-suspenders).
+# Uses shared helper from storage_keys.py (see "Cross-spec coordination" below).
+assert_project_scoped_key(project.id, package_key)
 await storage.put_bytes(package_key, package_bytes, "application/zip")
 ```
 
-The assertion after `_safe_package_slug` is a programmer-error guard; it should never fire if
-`_safe_package_slug` is correct, but it makes the invariant explicit and testable.
+The `assert_project_scoped_key` call is a programmer-error guard; it should never fire if
+`_safe_package_slug` is correct, but it makes the invariant explicit and testable. Note that
+`assert_project_scoped_key` checks the `projects/{id}/` prefix only; the tighter `for_zip/`
+scoping is ensured by `_safe_package_slug` producing a flat slug (no path separators) before
+interpolation.
 
 Also expose `package_key` (or `slug`) in the `PackagingResult` so the frontend and download route
 can construct the correct URL without re-running the slug logic.
@@ -196,6 +200,37 @@ which does not start with `projects/proj123/for_zip/`.
 
 - Normal book names produce expected keys: `"My Book"` → `projects/{id}/for_zip/My Book.zip`.
 - `PackagingResult` still carries the correct key for the frontend download URL.
+
+## Cross-spec coordination with #127
+
+Both #128 and #127 need to assert that a storage key is scoped to a specific project prefix.
+Rather than duplicating the logic, both specs share a single helper module:
+
+**Shared module: `src/pd_prep_for_pgdp/app/api/data/storage_keys.py`**
+
+```python
+def assert_project_scoped_key(project_id: str, key: str) -> None:
+    """Raise ValueError if `key` does not fall under projects/{project_id}/.
+
+    Strips a leading slash before checking so both CDN-relative and bare
+    storage keys are handled consistently.
+    """
+    clean = key.lstrip("/")
+    expected_prefix = f"projects/{project_id}/"
+    if not clean.startswith(expected_prefix):
+        raise ValueError(
+            f"key must be under projects/{project_id}/; got: {key!r}"
+        )
+```
+
+**Ownership rule:** whichever issue (#127 or #128) ships first introduces
+`storage_keys.py`. The other issue then imports from it rather than
+re-implementing the check.
+
+This spec (#128) uses `assert_project_scoped_key` as the belt-and-suspenders containment
+assertion after `_safe_package_slug` (see Decision section above). Issue #127 wraps the same
+function in `_validate_source_key` and re-raises as `HTTPException(400, ...)` at the API
+boundary.
 
 ## Open Questions
 
