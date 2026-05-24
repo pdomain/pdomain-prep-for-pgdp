@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import platform
 from contextlib import asynccontextmanager
 from importlib import resources
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
 from fastapi import FastAPI
@@ -355,6 +357,31 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         _mount_static_frontend(app, settings)
 
     return app
+
+
+def _safe_static_file(static_root: str, full_path: str) -> str | None:
+    """Return the resolved path iff it is a regular file inside static_root, else None.
+
+    Handles URL-decoded absolute paths (e.g. FastAPI decodes ``%2Fetc%2Fpasswd``
+    to ``/etc/passwd`` before the handler sees ``full_path``) and traversal
+    segments (``..``) by resolving both paths and asserting containment.
+
+    Mirrors the defence already in ``FilesystemStorage._path()``.
+    """
+    if not full_path:
+        return None
+    candidate = os.path.join(static_root, full_path)
+    try:
+        resolved = Path(candidate).resolve()
+        root_resolved = Path(static_root).resolve()
+    except (OSError, ValueError):
+        return None
+    # resolved must be strictly inside root_resolved (not equal — root is a dir).
+    if root_resolved not in resolved.parents and resolved != root_resolved:
+        return None
+    if resolved.is_file():
+        return str(resolved)
+    return None
 
 
 def _mount_static_frontend(app: FastAPI, settings: Settings) -> None:
