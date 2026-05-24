@@ -41,11 +41,15 @@ make local-upgrade-deps # upgrade deps then restore editables (local-mode only)
 make local-install      # uv tool install --editable . with editable siblings (local-mode only)
 make local-uninstall    # uv tool uninstall pgdp-prep
 make local-run          # run pgdp-prep against local-dev workspace (local-mode only)
+
+# sibling-dep refresh (spec #363) — see ../docs/process/update-pd-deps.md
+make update-pd-deps     # bump pd-* sibling deps to registry latest; leaves diff for review
 ```
 
 Legacy `dev-local`, `install-local`, `uninstall-local`,
 `check-local-editable`, `upgrade-deps-local`, `run-local` are kept as
 deprecation aliases.
+Legacy `upgrade-pd-book-tools` delegates to `update-pd-deps`.
 
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose

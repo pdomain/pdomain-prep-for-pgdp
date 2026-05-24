@@ -17,7 +17,7 @@ else
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
         run run-cpu frontend-install \
-        frontend-build frontend-dev frontend-test frontend-knip openapi-export upgrade-pd-book-tools \
+        frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pd-deps upgrade-pd-book-tools \
         release-patch release-minor release-major _do-release docker-build docker-run \
         mise-download mise-trust-worktrees mise-setup mise-doctor upgrade-deps
 
@@ -105,13 +105,12 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 	uv sync --group dev
 	@echo "✅ Dependencies upgraded and environment synced!"
 
-upgrade-pd-book-tools: ## Pin pd-book-tools to its latest GitHub tag
-	@echo "🔍 Fetching latest pd-book-tools tag..."
-	$(eval LATEST_TAG := $(shell curl -sSf "https://api.github.com/repos/ConcaveTrillion/pd-book-tools/tags" | grep '"name"' | head -1 | sed 's/.*"name": "\(.*\)".*/\1/'))
-	@if [ -z "$(LATEST_TAG)" ]; then echo "❌ Could not fetch latest tag." && exit 1; fi
-	@echo "📌 Pinning to $(LATEST_TAG)..."
-	@sed -i 's|pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = ".*" }|pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "$(LATEST_TAG)" }|' pyproject.toml
-	uv sync --group dev
+update-pd-deps: ## Bump all sibling pd-* deps (Python + npm) to registry latest; leaves diff for review
+	@./scripts/update-pd-deps.sh
+
+upgrade-pd-book-tools: ## DEPRECATED: use update-pd-deps
+	@echo "warning: 'upgrade-pd-book-tools' is deprecated; use 'make update-pd-deps'"
+	@$(MAKE) --no-print-directory update-pd-deps
 
 # ---------------------------------------------------------------------------
 # Optional: mise-managed tool versions
