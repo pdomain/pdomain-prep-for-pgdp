@@ -66,7 +66,8 @@ include HMAC signatures and expiry; it is not affected.
 - `FilesystemStorage.presign_get` returns `/cdn/<key>` and the frontend uses those URLs directly
   in `<img>` tags. Replacing the mount with a FastAPI route must not change URL shape.
 - Upload size: the PUT handler currently reads the entire body into memory before calling
-  `storage.put_bytes`. A size limit must be applied at this step (see also #129).
+  `storage.put_bytes`. A size limit must be applied at this step; the canonical limit value
+  is `Settings.max_cdn_upload_bytes`, owned by #129 (see "Coordination with #129" below).
 - Local-first priority: the fix must be low-friction for `auth_mode=none` (single-user local
   install). Adding auth to reads when there is only one user should not require token headers for
   simple image viewing.
@@ -163,8 +164,9 @@ is installed.
 
 **Slice 3 — Upload size limit (also closes part of #129):**
 
-- `src/pd_prep_for_pgdp/api/cdn.py`: add `MAX_CDN_UPLOAD_BYTES = 200 * 1024 * 1024` (200 MB
-  per upload). Check `request.headers.get("content-length")` before reading body; also
+- `src/pd_prep_for_pgdp/api/cdn.py`: read `settings.max_cdn_upload_bytes` (owned and
+  defaulted by #129's Settings table — do **not** define a local `MAX_CDN_UPLOAD_BYTES`
+  constant here). Check `request.headers.get("content-length")` before reading body; also
   enforce during streaming read.
 - `tests/test_cdn.py`: PUT with oversized body → 413.
 
@@ -196,14 +198,24 @@ Both tests fail before the fix (PUT returns 204 without auth; GET returns 200 wi
 - `test_cdn.py`: path traversal `../` → 400 on both PUT and GET.
 - Existing `test_spa_fallback.py` tests unaffected (CDN routes are separate from SPA mount).
 
+## Coordination with #129
+
+`Settings.max_cdn_upload_bytes` is **owned by #129** (resource-bounds spec). That spec's
+defaults table sets the value to 300 MB (a single 600 DPI page scan) and adds the field to
+`settings.py`. This spec (#124) only **consumes** that setting in `cdn_put`; it must not
+declare its own constant or override the default.
+
+No other Settings fields overlap between #124 and #129. The upload-body guard in #129 Slice 1
+(the `content-length` check and post-read `len(body)` check in `cdn.py`) and the auth guard
+in #124 Slice 3 touch the same function; whichever ships first should leave a clearly-labeled
+`# TODO: add settings.max_cdn_upload_bytes guard (tracked in #129)` comment if the limit is
+not yet in place, so they compose cleanly when both slices land.
+
 ## Open Questions
 
-1. **Max CDN upload size:** 200 MB is proposed; is this large enough for high-resolution page
-   scans? A single 600 DPI A4 TIFF can exceed 100 MB. Needs confirmation from CT before coding.
-
-2. **`auth_mode=none` read path:** keeping `StaticFiles` is the low-friction choice; are there
+1. **`auth_mode=none` read path:** keeping `StaticFiles` is the low-friction choice; are there
    plans to make local mode truly single-user-locked (no LAN access)? If yes, Option C
    (authenticated reads everywhere) should replace the mode-split.
 
-3. **Streaming uploads:** Slice 3 proposes a size check on `content-length`; large uploads
+2. **Streaming uploads:** Slice 3 proposes a size check on `content-length`; large uploads
    should eventually be streamed to disk rather than buffered. Tracked more specifically in #129.
