@@ -436,11 +436,16 @@ async def _handle_build_package(runner: InProcessJobRunner, job: Job) -> None:
 async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
     """Run a single per-page stage via the async route (?async=true).
 
-    Payload keys (all required):
-      - ``project_id``: the project being processed.
-      - ``page_id``:    zero-padded 4-digit string (e.g. ``"0000"``).
-      - ``stage_id``:   canonical stage id from ``PAGE_STAGE_IDS``.
-      - ``device``:     ``"cpu"`` (default) or ``"cuda"``.
+    Payload keys:
+      - ``page_id``:    zero-padded 4-digit string (e.g. ``"0000"``). Required.
+      - ``stage_id``:   canonical stage id from ``PAGE_STAGE_IDS``. Required.
+      - ``device``:     ``"cpu"`` (default) or ``"cuda"``. Safe to override on retry.
+
+    Identity fields (``project_id``, ``data_root``) are intentionally NOT read
+    from the payload — see Issue #126. ``project_id`` comes from ``job.project_id``
+    (the authoritative DB column); ``data_root`` comes from ``runner._data_root``
+    (Settings-injected at construction time). This prevents payload-injection
+    attacks even if the retry route's allowlist is bypassed.
 
     The runner calls ``run_stage`` with the same arguments the synchronous
     route would pass, using the runner's own ``_storage`` and ``_db``
@@ -456,13 +461,25 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
     from .pipeline.stage_runner import run_stage
 
     payload = job.payload
-    project_id = payload.get("project_id") or job.project_id
+    # Issue #126 defence-in-depth: use job.project_id (authoritative DB row),
+    # NOT payload.get("project_id"). The retry route's allowlist already blocks
+    # project_id overrides, but the handler must be self-hardened too.
+    project_id = job.project_id
     page_id = str(payload["page_id"])
     stage_id = str(payload["stage_id"])
     device = str(payload.get("device", "cpu"))
-    # data_root is not stashed on the runner; the route records it in the
-    # payload so the handler is self-contained.
-    data_root = Path(payload["data_root"])
+    # Issue #126 defence-in-depth: derive data_root from runner._data_root
+    # (Settings-injected at construction time via bootstrap.py), NOT from
+    # payload["data_root"]. Prevents path-traversal even if the allowlist is bypassed.
+    if runner._data_root is not None:
+        data_root = runner._data_root
+    else:
+        # Fallback: runner constructed without data_root (legacy/test path).
+        # Read from payload only as last resort, raising clearly if absent.
+        raw = payload.get("data_root")
+        if raw is None:
+            raise ValueError("run_page_stage: runner has no data_root and payload is missing data_root")
+        data_root = Path(str(raw))
 
     project = await runner.db.get_project(project_id)
     if project is None:

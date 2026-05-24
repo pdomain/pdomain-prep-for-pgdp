@@ -175,3 +175,121 @@ async def test_runner_loop_can_be_cancelled(db: SqliteDatabase, storage: Filesys
     with contextlib.suppress(asyncio.CancelledError):
         await task
     # No assertion beyond "did not deadlock".
+
+
+# ─── Issue #126 Slice 2: handler hardening ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_handle_run_page_stage_uses_job_project_id_not_payload(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
+    """_handle_run_page_stage must use job.project_id (DB row) even if
+    payload contains a different project_id.  This is defence-in-depth:
+    the retry route's allowlist already blocks project_id overrides, but
+    the handler must be self-hardened too.
+
+    We verify by seeding project 'real-project', constructing a run_page_stage
+    job whose payload carries project_id='evil-project', and confirming the
+    handler raises an error about 'evil-project' NOT being found — which means
+    it used job.project_id ('real-project') and ignored payload['project_id'].
+    Actually, the hardened handler ignores payload['project_id'] entirely and
+    uses job.project_id directly, so the run_stage call uses the correct
+    project. We confirm no mis-routing by checking the job used real-project.
+    """
+    from unittest.mock import patch
+
+    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+
+    project = _project("real-project")
+    await db.put_project(project)
+
+    job = Job(
+        id="j-hardened",
+        project_id="real-project",  # authoritative project binding
+        owner_id="default",
+        type=JobType.run_page_stage,
+        status=JobStatus.queued,
+        payload={
+            "project_id": "evil-project",  # attacker-injected — must be ignored
+            "page_id": "0000",
+            "stage_id": "process_page",
+            "device": "cpu",
+            "data_root": "/attacker/path",  # must also be ignored
+        },
+    )
+    await db.put_job(job)
+
+    calls: list[dict[str, object]] = []
+
+    async def fake_run_stage(**kwargs: object) -> None:
+        calls.append(dict(kwargs))
+
+    runner = InProcessJobRunner(
+        database=db,
+        storage=storage,
+        data_root=tmp_path / "runner-data",
+        poll_interval=0.05,
+    )
+
+    with patch("pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
+        await runner.run_pending(max_jobs=1)
+
+    # The handler must have called run_stage with the runner's data_root,
+    # not /attacker/path from the payload.
+    assert len(calls) == 1, f"run_stage call count mismatch: {calls}"
+    call = calls[0]
+    # project_id must be 'real-project' (job.project_id), not 'evil-project'.
+    assert call["project_id"] == "real-project", f"wrong project_id: {call['project_id']!r}"
+    # data_root must be the runner's data_root, not the payload's.
+
+    assert call["data_root"] == tmp_path / "runner-data", f"wrong data_root: {call['data_root']!r}"
+
+
+@pytest.mark.asyncio
+async def test_run_page_stage_handler_data_root_from_runner_not_payload(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
+    """Even when payload has no data_root key at all, the handler must use
+    runner._data_root without raising a KeyError.
+    """
+    from unittest.mock import patch
+
+    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+
+    project = _project("p2")
+    await db.put_project(project)
+
+    job = Job(
+        id="j-no-data-root",
+        project_id="p2",
+        owner_id="default",
+        type=JobType.run_page_stage,
+        status=JobStatus.queued,
+        payload={
+            # data_root intentionally absent — handler must not KeyError
+            "page_id": "0000",
+            "stage_id": "process_page",
+            "device": "cpu",
+        },
+    )
+    await db.put_job(job)
+
+    calls: list[dict[str, object]] = []
+
+    async def fake_run_stage(**kwargs: object) -> None:
+        calls.append(dict(kwargs))
+
+    runner = InProcessJobRunner(
+        database=db,
+        storage=storage,
+        data_root=tmp_path / "safe-data",
+        poll_interval=0.05,
+    )
+
+    with patch("pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
+        await runner.run_pending(max_jobs=1)
+
+    assert len(calls) == 1
+
+    assert calls[0]["data_root"] == tmp_path / "safe-data"
