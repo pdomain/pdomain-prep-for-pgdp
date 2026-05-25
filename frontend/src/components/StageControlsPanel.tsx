@@ -108,21 +108,19 @@ export function StageControlsPanel({
   return (
     <div
       data-testid="stage-controls-panel"
-      className="space-y-2 rounded border bg-white p-3 text-sm"
+      className="space-y-2 rounded border bg-surface p-3 text-sm"
     >
       <h2 className="text-sm font-semibold">
-        Controls — <span className="font-mono text-slate-600">{stageId}</span>
+        Controls — <span className="font-mono text-ink-2">{stageId}</span>
       </h2>
 
       <Card className="p-4">
         {fields.isLoading && (
-          <p className="text-xs text-slate-400">Loading fields…</p>
+          <p className="text-xs text-ink-4">Loading fields…</p>
         )}
 
         {visibleFields.length === 0 && !fields.isLoading && (
-          <p className="text-xs text-slate-400">
-            No config fields for this stage.
-          </p>
+          <p className="text-xs text-ink-4">No config fields for this stage.</p>
         )}
 
         <div className="space-y-2">
@@ -208,7 +206,7 @@ function NumField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-slate-600">{field}</span>
+      <span className="text-xs text-ink-2">{field}</span>
       <Input
         data-testid={`field-${field}`}
         type="number"
@@ -246,7 +244,7 @@ function ToggleField({
           ? "border-emerald-500 bg-emerald-50 text-emerald-800"
           : value === false
             ? "border-rose-500 bg-rose-50 text-rose-800"
-            : "border-slate-300 bg-white text-slate-500"
+            : "border-border-2 bg-surface text-ink-3"
       }`}
     >
       <div className="font-medium">{field}</div>

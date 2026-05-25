@@ -401,7 +401,7 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
     const runBtn = buildListItem!.querySelector(
-      'button[class*="hover:bg-slate-50"]',
+      'button[class*="hover:bg-page"]',
     )!;
 
     await userEvent.click(runBtn);
@@ -433,7 +433,7 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
     const runBtn = buildListItem!.querySelector(
-      'button[class*="hover:bg-slate-50"]',
+      'button[class*="hover:bg-page"]',
     )!;
 
     // The build_package button should be disabled while the job is active
@@ -494,7 +494,7 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li");
     const runBtn = buildListItem!.querySelector(
-      'button[class*="hover:bg-slate-50"]',
+      'button[class*="hover:bg-page"]',
     )!;
 
     // Button should be enabled initially (no active job)
@@ -806,7 +806,7 @@ describe("ProjectConfigurePage — RunPipelinePanel P0.2 (Download package)", ()
     const buildLabel = await screen.findByText(/step 10 — build package/i);
     const buildListItem = buildLabel.closest("li")!;
     const runBtn = buildListItem.querySelector(
-      'button[class*="hover:bg-slate-50"]',
+      'button[class*="hover:bg-page"]',
     )!;
 
     await userEvent.click(runBtn);

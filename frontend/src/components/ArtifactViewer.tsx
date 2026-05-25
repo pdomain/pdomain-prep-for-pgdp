@@ -164,10 +164,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
 
   if (stages.isPending) {
     return (
-      <Card
-        data-testid="artifact-viewer"
-        className="p-3 text-xs text-slate-500"
-      >
+      <Card data-testid="artifact-viewer" className="p-3 text-xs text-ink-3">
         Loading…
       </Card>
     );
@@ -175,10 +172,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
 
   if (available.length === 0) {
     return (
-      <Card
-        data-testid="artifact-viewer"
-        className="p-4 text-sm text-slate-500"
-      >
+      <Card data-testid="artifact-viewer" className="p-4 text-sm text-ink-3">
         No stage artifacts yet. Run a stage to view its output here.
       </Card>
     );
@@ -193,7 +187,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
       <div className="flex flex-wrap gap-4 text-sm">
         {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Radix Select wraps a button, not a native input; association via wrapping */}
         <label className="flex items-center gap-2">
-          <span className="text-slate-600">Stage:</span>
+          <span className="text-ink-2">Stage:</span>
           <Select
             value={primaryId ?? ""}
             onValueChange={(value) => setPrimaryId(value || undefined)}
@@ -201,7 +195,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
             <SelectTrigger
               aria-label="Stage"
               data-testid="artifact-primary-select"
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
+              className="rounded border border-border-2 px-2 py-1 text-sm"
             >
               <SelectValue placeholder="— select —" />
             </SelectTrigger>
@@ -222,7 +216,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
         </label>
         {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Radix Select wraps a button, not a native input; association via wrapping */}
         <label className="flex items-center gap-2">
-          <span className="text-slate-600">Compare with:</span>
+          <span className="text-ink-2">Compare with:</span>
           <Select
             value={compareIdResolved ?? ""}
             onValueChange={(value) => setCompareId(value || undefined)}
@@ -230,7 +224,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
             <SelectTrigger
               aria-label="Compare with"
               data-testid="artifact-compare-select"
-              className="rounded border border-slate-300 px-2 py-1 text-sm"
+              className="rounded border border-border-2 px-2 py-1 text-sm"
             >
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
@@ -255,7 +249,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div
           data-testid="artifact-primary-pane"
-          className="overflow-auto rounded border bg-slate-50"
+          className="overflow-auto rounded border bg-page"
         >
           {primaryStage ? (
             <ArtifactPane
@@ -265,14 +259,12 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
               paneId="primary"
             />
           ) : (
-            <div className="p-4 text-xs text-slate-400">
-              Select a stage above
-            </div>
+            <div className="p-4 text-xs text-ink-4">Select a stage above</div>
           )}
         </div>
         <div
           data-testid="artifact-compare-pane"
-          className="overflow-auto rounded border bg-slate-50"
+          className="overflow-auto rounded border bg-page"
         >
           {compareStage ? (
             <ArtifactPane
@@ -282,7 +274,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
               paneId="compare"
             />
           ) : (
-            <div className="p-4 text-xs text-slate-400">
+            <div className="p-4 text-xs text-ink-4">
               Select a stage to compare
             </div>
           )}
@@ -312,7 +304,7 @@ function ArtifactPane({
     return (
       <div
         data-testid="artifact-illustrations-panel"
-        className="p-4 text-xs text-slate-600"
+        className="p-4 text-xs text-ink-2"
       >
         Illustration artifacts — use the Illustrations panel below.
       </div>
@@ -333,7 +325,7 @@ function ArtifactPane({
   return (
     <div
       data-testid={`artifact-${paneId}-text`}
-      className="whitespace-pre-wrap p-3 font-mono text-xs text-slate-700"
+      className="whitespace-pre-wrap p-3 font-mono text-xs text-ink-2"
     >
       <a
         href={url}

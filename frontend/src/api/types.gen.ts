@@ -1024,9 +1024,14 @@ export interface paths {
         get?: never;
         /**
          * Cdn Put
-         * @description Write `key` (under the data root) using bytes from the request body.
+         * @description Write ``key`` (under the data root) using bytes from the request body.
          *
-         *     Path traversal (`..`, absolute paths) is rejected by the storage adapter.
+         *     Requires a valid authenticated session in all auth modes (in
+         *     ``auth_mode=none`` NoneAuth always succeeds, so the dependency is a
+         *     no-op for single-user local installs).
+         *
+         *     Path traversal (``..``, absolute paths) is rejected.
+         *     Bodies exceeding ``settings.max_cdn_upload_bytes`` are rejected with 413.
          */
         put: operations["upload_cdn_asset"];
         post?: never;

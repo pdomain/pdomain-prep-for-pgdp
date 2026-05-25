@@ -86,7 +86,7 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
           variant="ghost"
           size="icon"
           data-testid={testId ?? "user-menu-trigger"}
-          className="text-white hover:bg-slate-700"
+          className="text-accent-ink hover:bg-raised"
           aria-label="User menu"
         >
           <User className="h-4 w-4" />

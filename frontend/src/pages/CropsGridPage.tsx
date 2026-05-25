@@ -40,27 +40,27 @@ export function CropsGridPage() {
   );
 
   if (pages.isLoading) {
-    return <p className="text-slate-500">Loading…</p>;
+    return <p className="text-ink-3">Loading…</p>;
   }
 
   return (
     <section className="space-y-4">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-slate-500">
+      <nav className="flex items-center gap-2 text-sm text-ink-3">
         <Link
           to={`/projects/${projectId}`}
-          className="hover:text-slate-800 underline"
+          className="hover:text-ink-1 underline"
         >
           Back to project
         </Link>
         <span aria-hidden>/</span>
-        <span className="text-slate-800 font-medium">Crops</span>
+        <span className="text-ink-1 font-medium">Crops</span>
       </nav>
 
       <h1 className="text-xl font-semibold">Crop thumbnails</h1>
 
       {allPages.length === 0 ? (
-        <p className="text-slate-500">No pages yet.</p>
+        <p className="text-ink-3">No pages yet.</p>
       ) : (
         <div className="grid gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
           {allPages.map((page: PageRecord) => (
@@ -84,23 +84,23 @@ function ThumbnailCard({
   return (
     <Link
       to={href}
-      className="group flex flex-col items-center gap-1 rounded border border-slate-200 bg-white p-1.5 hover:border-slate-400 hover:shadow-sm transition-all"
+      className="group flex flex-col items-center gap-1 rounded border border-border-1 bg-surface p-1.5 hover:border-border-2 hover:shadow-sm transition-all"
     >
       {page.thumbnail_key !== null ? (
         <img
           src={canvasMapThumbnailUrl(projectId, page.idx0)}
           alt={page.prefix}
-          className="w-full rounded object-contain aspect-[3/4] bg-slate-50"
+          className="w-full rounded object-contain aspect-[3/4] bg-page"
         />
       ) : (
         <div
           data-testid={`thumbnail-placeholder-${page.idx0}`}
-          className="w-full rounded bg-slate-100 aspect-[3/4] flex items-center justify-center text-xs text-slate-400"
+          className="w-full rounded bg-raised aspect-[3/4] flex items-center justify-center text-xs text-ink-4"
         >
           no crop
         </div>
       )}
-      <span className="text-[11px] font-mono text-slate-600 truncate w-full text-center leading-tight">
+      <span className="text-[11px] font-mono text-ink-2 truncate w-full text-center leading-tight">
         {page.prefix}
       </span>
     </Link>
