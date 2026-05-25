@@ -6,3 +6,4 @@ allowBuilds:
   msw: true
 minimumReleaseAgeExclude:
   - "@concavetrillion/pd-ui@0.1.0-alpha.1"
+  - "@concavetrillion/pd-ui@0.2.1"
