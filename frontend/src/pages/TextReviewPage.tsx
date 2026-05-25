@@ -582,7 +582,7 @@ export function TextReviewPage() {
             variant="outline"
             size="xs"
             onClick={handleUndo}
-            className="border-amber-400 bg-white hover:bg-amber-100"
+            className="border-amber-400 bg-surface hover:bg-amber-100"
           >
             Restore last delete (Ctrl+Z)
           </Button>

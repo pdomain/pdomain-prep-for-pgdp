@@ -170,7 +170,7 @@ export function ProjectConfigurePage() {
   const displayedPages = localPageOrder ?? visiblePages;
 
   if (project.isLoading || pages.isLoading) {
-    return <p className="text-slate-500">Loading…</p>;
+    return <p className="text-ink-3">Loading…</p>;
   }
   if (!project.data) {
     return <p className="text-red-600">Project not found.</p>;
@@ -225,19 +225,19 @@ export function ProjectConfigurePage() {
           <>
             <Link
               to={`/projects/${projectId}/pages/0`}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
             >
               Open Workbench
             </Link>
             <Link
               to={`/projects/${projectId}/crops`}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
             >
               Crops
             </Link>
             <Link
               to={`/projects/${projectId}/review`}
-              className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
             >
               Review queue
             </Link>
@@ -273,19 +273,19 @@ export function ProjectConfigurePage() {
         <TabsList className="flex border-b border-border-1 px-6 gap-1">
           <TabsTrigger
             value="pipeline"
-            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-slate-900 data-[state=active]:font-medium"
+            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:font-medium"
           >
             Pipeline
           </TabsTrigger>
           <TabsTrigger
             value="pages"
-            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-slate-900 data-[state=active]:font-medium"
+            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:font-medium"
           >
             Pages
           </TabsTrigger>
           <TabsTrigger
             value="settings"
-            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-slate-900 data-[state=active]:font-medium"
+            className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:font-medium"
           >
             Settings
           </TabsTrigger>
@@ -319,7 +319,7 @@ export function ProjectConfigurePage() {
 
             {splitParentIds.size > 0 && (
               <div className="flex items-center gap-2">
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-2">
                   <input
                     type="checkbox"
                     checked={showSplitParents}
@@ -390,7 +390,7 @@ export function ProjectConfigurePage() {
                   <button
                     onClick={() => pages.fetchNextPage()}
                     disabled={pages.isFetchingNextPage}
-                    className="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                    className="rounded border border-border-2 px-4 py-2 text-sm hover:bg-page disabled:opacity-50"
                   >
                     {pages.isFetchingNextPage
                       ? "Loading…"
@@ -461,13 +461,13 @@ function BookSettingsAccordion({
       : null;
 
   return (
-    <div className="rounded border bg-white">
+    <div className="rounded border bg-surface">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium hover:bg-slate-50"
+        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium hover:bg-page"
       >
         Book Settings — ranges
-        <span className="text-slate-400">{open ? "▾" : "▸"}</span>
+        <span className="text-ink-4">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <div className="grid gap-4 p-4 sm:grid-cols-2">
@@ -512,13 +512,13 @@ function BookSettingsAccordion({
           />
           <label className="block text-sm sm:col-span-2">
             <div className="flex items-center justify-between">
-              <span className="text-slate-700">
+              <span className="text-ink-2">
                 Layout detector confidence
-                <span className="ml-2 text-xs text-slate-500">
+                <span className="ml-2 text-xs text-ink-3">
                   (per-project; overrides system default)
                 </span>
               </span>
-              <span className="font-mono text-xs text-slate-500">
+              <span className="font-mono text-xs text-ink-3">
                 {layoutConf === null ? "(inherit)" : layoutConf.toFixed(2)}
               </span>
             </div>
@@ -549,7 +549,7 @@ function BookSettingsAccordion({
                       return { ...d, default_overrides: o };
                     })
                   }
-                  className="rounded border border-slate-300 px-2 py-0.5 text-xs hover:bg-slate-50"
+                  className="rounded border border-border-2 px-2 py-0.5 text-xs hover:bg-page"
                 >
                   inherit
                 </button>
@@ -560,7 +560,7 @@ function BookSettingsAccordion({
             <button
               onClick={() => save.mutate()}
               disabled={save.isPending}
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 hover:bg-slate-800"
+              className="rounded bg-accent px-3 py-1.5 text-sm text-accent-ink disabled:opacity-50 hover:bg-accent/90"
             >
               {save.isPending ? "Saving…" : "Save ranges"}
             </button>
@@ -586,7 +586,7 @@ function RangeField({
 }) {
   return (
     <label className="block text-sm">
-      <div className="text-slate-700">{label}</div>
+      <div className="text-ink-2">{label}</div>
       <div className="mt-1 flex items-center gap-2">
         <input
           type="number"
@@ -594,16 +594,16 @@ function RangeField({
           max={max}
           value={from}
           onChange={(e) => onChange(Number(e.target.value), to)}
-          className="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
+          className="w-20 rounded border border-border-2 px-2 py-1 text-sm"
         />
-        <span className="text-slate-400">…</span>
+        <span className="text-ink-4">…</span>
         <input
           type="number"
           min={0}
           max={max}
           value={to}
           onChange={(e) => onChange(from, Number(e.target.value))}
-          className="w-20 rounded border border-slate-300 px-2 py-1 text-sm"
+          className="w-20 rounded border border-border-2 px-2 py-1 text-sm"
         />
       </div>
     </label>
@@ -638,32 +638,32 @@ function BulkActions({
   if (selected.size === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded border border-slate-300 bg-slate-50 p-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded border border-border-2 bg-page p-2 text-sm">
       <span className="font-medium">{selected.size} selected</span>
       {(["normal", "blank", "plate_b", "plate_p", "plate_r"] as const).map(
         (pt) => (
           <button
             key={pt}
             onClick={() => apply.mutate({ page_type: pt })}
-            className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100"
+            className="rounded border border-border-2 bg-surface px-2 py-1 hover:bg-raised"
           >
             {pt}
           </button>
         ),
       )}
-      <span className="text-slate-400">·</span>
+      <span className="text-ink-4">·</span>
       {(["default", "top", "center", "bottom"] as const).map((al) => (
         <button
           key={al}
           onClick={() => apply.mutate({ alignment: al })}
-          className="rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-100"
+          className="rounded border border-border-2 bg-surface px-2 py-1 hover:bg-raised"
         >
           align {al}
         </button>
       ))}
       <button
         onClick={onClear}
-        className="ml-auto rounded px-2 py-1 text-slate-500 hover:bg-slate-200"
+        className="ml-auto rounded px-2 py-1 text-ink-3 hover:bg-sunk"
       >
         clear
       </button>
@@ -700,16 +700,16 @@ function RunAllDirtyPanel({ projectId }: { projectId: string }) {
       ? "text-emerald-700"
       : event?.status === "error"
         ? "text-rose-600"
-        : "text-slate-500";
+        : "text-ink-3";
   const progress =
     event && event.total > 0 ? `${event.current}/${event.total} pages` : "";
 
   return (
-    <div className="flex items-center gap-3 rounded border bg-white px-4 py-3">
+    <div className="flex items-center gap-3 rounded border bg-surface px-4 py-3">
       <button
         onClick={() => submit.mutate()}
         disabled={submit.isPending || jobId !== null}
-        className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page disabled:opacity-50"
         aria-label="Run all dirty stages"
       >
         Run all dirty stages
@@ -816,13 +816,13 @@ function RunPipelinePanel({
   });
 
   return (
-    <div className="rounded border bg-white">
+    <div className="rounded border bg-surface">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium hover:bg-slate-50"
+        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium hover:bg-page"
       >
         Run pipeline
-        <span className="text-slate-400">{open ? "▾" : "▸"}</span>
+        <span className="text-ink-4">{open ? "▾" : "▸"}</span>
       </button>
       {open && (
         <ul className="divide-y">
@@ -833,7 +833,7 @@ function RunPipelinePanel({
             >
               <div>
                 <div className="text-sm font-medium">{step.label}</div>
-                <div className="text-xs text-slate-500">{step.subtitle}</div>
+                <div className="text-xs text-ink-3">{step.subtitle}</div>
               </div>
               <div className="flex items-center gap-2">
                 {active[step.type] && (
@@ -859,7 +859,7 @@ function RunPipelinePanel({
                 <button
                   onClick={() => submit.mutate(step.type)}
                   disabled={submit.isPending || active[step.type] !== null}
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page disabled:opacity-50"
                 >
                   Run
                 </button>
@@ -910,7 +910,7 @@ function DownloadPackageButton({
       <button
         onClick={() => downloadMutation.mutate()}
         disabled={downloadMutation.isPending}
-        className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1.5"
+        className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page disabled:opacity-50 flex items-center gap-1.5"
         aria-label="Download package"
       >
         {downloadMutation.isPending ? (
@@ -968,14 +968,14 @@ function JobProgressInline({
 
   if (error)
     return <span className="text-xs text-rose-600">channel: {error}</span>;
-  if (!event) return <span className="text-xs text-slate-400">…</span>;
+  if (!event) return <span className="text-xs text-ink-4">…</span>;
 
   const colour =
     event.status === "complete"
       ? "text-emerald-700"
       : event.status === "error"
         ? "text-rose-600"
-        : "text-slate-500";
+        : "text-ink-3";
   const progress = event.total ? `${event.current}/${event.total}` : "";
   // `current_page` is a 0-indexed idx0 from the backend. Show it 1-indexed
   // so it matches the labels users see in the page grid / workbench.
@@ -1003,13 +1003,13 @@ function ProjectJobsFeed({ projectId }: { projectId: string }) {
   });
 
   return (
-    <div className="rounded border bg-white">
+    <div className="rounded border bg-surface">
       <div className="px-4 py-2 text-sm font-medium">Recent jobs</div>
       {jobs.isLoading && (
-        <div className="px-4 pb-3 text-xs text-slate-500">Loading…</div>
+        <div className="px-4 pb-3 text-xs text-ink-3">Loading…</div>
       )}
       {jobs.data?.length === 0 && (
-        <div className="px-4 pb-3 text-xs text-slate-500">
+        <div className="px-4 pb-3 text-xs text-ink-3">
           No jobs run yet for this project.
         </div>
       )}
@@ -1023,7 +1023,7 @@ function ProjectJobsFeed({ projectId }: { projectId: string }) {
                   ? "text-rose-700"
                   : j.status === "running" || j.status === "scheduled"
                     ? "text-sky-700"
-                    : "text-slate-600";
+                    : "text-ink-2";
             return (
               <li
                 key={j.id}
@@ -1031,10 +1031,10 @@ function ProjectJobsFeed({ projectId }: { projectId: string }) {
               >
                 <div className="flex items-center gap-2">
                   <span className={`font-medium ${colour}`}>{j.status}</span>
-                  <span className="font-mono text-slate-500">{j.type}</span>
+                  <span className="font-mono text-ink-3">{j.type}</span>
                 </div>
                 {j.progress.total > 0 && (
-                  <span className="text-slate-400">
+                  <span className="text-ink-4">
                     {j.progress.current}/{j.progress.total}
                   </span>
                 )}

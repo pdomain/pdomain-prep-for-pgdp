@@ -92,7 +92,7 @@ describe("LineDiffView", () => {
     // Placeholder rows are the only DOM cells whose only text is the
     // non-breaking space. Counting them is the cleanest assertion that
     // the pairing pass collapsed delete+insert.
-    const placeholders = container.querySelectorAll("div.bg-slate-50\\/50");
+    const placeholders = container.querySelectorAll("div.bg-page\\/50");
     expect(placeholders).toHaveLength(2);
   });
 });

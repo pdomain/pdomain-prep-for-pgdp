@@ -48,7 +48,7 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
 
   if (preview.isLoading) {
     return (
-      <div className="text-xs text-slate-500" role="status">
+      <div className="text-xs text-ink-3" role="status">
         Loading preview…
       </div>
     );
@@ -59,7 +59,7 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
     // "source zip not uploaded" race — show a calmer message than
     // the raw error string.
     return (
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-ink-3">
         Source zip is not yet available for preview.
       </div>
     );
@@ -68,7 +68,7 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
   const data = preview.data;
   if (!data || data.filenames.length === 0) {
     return (
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-ink-3">
         Source zip contains no recognised images.
       </div>
     );
@@ -76,16 +76,16 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-slate-600">
+      <div className="text-xs text-ink-2">
         Showing {data.filenames.length} of {data.total_image_count}
       </div>
       <ul className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-10">
         {data.filenames.map((name) => (
           <li
             key={name}
-            className="flex flex-col gap-1 overflow-hidden rounded border border-slate-200 bg-white"
+            className="flex flex-col gap-1 overflow-hidden rounded border border-border-1 bg-surface"
           >
-            <div className="aspect-[2/3] w-full overflow-hidden bg-slate-100">
+            <div className="aspect-[2/3] w-full overflow-hidden bg-raised">
               <img
                 // encodeURIComponent escapes "/" (→ %2F) and " " (→ %20),
                 // matching FastAPI's `{filename}` path-parameter decoding.
@@ -98,7 +98,7 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
               />
             </div>
             <div
-              className="truncate px-1 pb-1 font-mono text-[10px] text-slate-600"
+              className="truncate px-1 pb-1 font-mono text-[10px] text-ink-2"
               title={name}
             >
               {name}

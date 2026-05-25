@@ -137,7 +137,7 @@ function JwtLoginPage() {
       <Card className="w-full max-w-md space-y-4 p-8 text-center">
         {/* Brand glyph — matches TopNav left cluster */}
         <div className="flex justify-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-base font-bold text-slate-900">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-base font-bold text-ink-1">
             p
           </span>
         </div>

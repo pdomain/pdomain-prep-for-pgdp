@@ -78,7 +78,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
       {dialogOpen && (
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- backdrop click-to-close; role=dialog is set; keyboard close handled by Escape elsewhere
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => setDialogOpen(false)}
           role="dialog"
           aria-modal="true"
@@ -86,23 +86,23 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
         >
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- stopPropagation on inner panel; keyboard events handled by outer dialog */}
           <div
-            className="relative w-full max-w-md rounded-lg bg-white p-6 shadow-lg space-y-4"
+            className="relative w-full max-w-md rounded-lg bg-surface p-6 shadow-lg space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-ink-1">
                 Reclaim disk space
               </h2>
               <button
                 type="button"
                 onClick={() => setDialogOpen(false)}
                 aria-label="Close"
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-slate-500 hover:bg-slate-100 transition-colors"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-ink-3 hover:bg-raised transition-colors"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-ink-2">
               Stage artifact pruning is coming soon. In a future release you
               will be able to remove intermediate stage files for completed
               pages while keeping source images and final proofing outputs.
@@ -111,7 +111,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
               <button
                 type="button"
                 onClick={() => setDialogOpen(false)}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
               >
                 Close
               </button>

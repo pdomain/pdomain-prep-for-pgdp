@@ -257,11 +257,11 @@ export default function App() {
                 centerSlot={
                   <button
                     onClick={() => setSearchOpen(true)}
-                    className="flex w-full items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-400 hover:border-slate-600 hover:text-slate-300 transition-colors"
+                    className="flex w-full items-center gap-2 rounded-md border border-border-3 bg-raised px-3 py-1.5 text-sm text-ink-4 hover:border-border-3 hover:text-ink-4 transition-colors"
                     aria-label="Search (⌘K)"
                   >
                     <span className="flex-1 text-left">Search projects…</span>
-                    <kbd className="ml-auto text-xs text-slate-500 font-mono">
+                    <kbd className="ml-auto text-xs text-ink-3 font-mono">
                       ⌘K
                     </kbd>
                   </button>
@@ -358,7 +358,7 @@ function OpenTasksBell() {
   return (
     <Link
       to={`/projects/${projectId}/review`}
-      className="relative flex items-center text-slate-600 hover:text-slate-900"
+      className="relative flex items-center text-ink-2 hover:text-ink-1"
       title={`${count} page${count === 1 ? "" : "s"} awaiting review`}
       aria-label={`Open tasks: ${count} page${count === 1 ? "" : "s"} awaiting review`}
     >

@@ -146,7 +146,7 @@ export function StageChainRail({
     return (
       <div
         data-testid="stage-chain-rail"
-        className="rounded border bg-white p-3 text-xs text-slate-500"
+        className="rounded border bg-surface p-3 text-xs text-ink-3"
       >
         Loading stages…
       </div>
@@ -169,11 +169,11 @@ export function StageChainRail({
   return (
     <div
       data-testid="stage-chain-rail"
-      className="rounded border bg-white p-2"
+      className="rounded border bg-surface p-2"
       role="toolbar"
       aria-label="Per-page stage chain"
     >
-      <div className="mb-1 text-[11px] font-medium text-slate-500">
+      <div className="mb-1 text-[11px] font-medium text-ink-3">
         Stage chain ({rows.length})
       </div>
       <div className="flex flex-wrap gap-1">
@@ -201,12 +201,12 @@ export function StageChainRail({
                   src={thumbUrl}
                   alt={`${row.stage_id} thumbnail`}
                   loading="lazy"
-                  className="h-10 w-10 rounded border border-slate-200 object-cover"
+                  className="h-10 w-10 rounded border border-border-1 object-cover"
                 />
               ) : hasArtifact && !isImageStage ? (
                 <span
                   data-testid={`stage-icon-${row.stage_id}`}
-                  className="flex h-10 w-10 items-center justify-center rounded border border-slate-200 bg-slate-100 text-xs text-slate-500"
+                  className="flex h-10 w-10 items-center justify-center rounded border border-border-1 bg-raised text-xs text-ink-3"
                   title="Text artifact"
                   aria-label="Text artifact"
                 >

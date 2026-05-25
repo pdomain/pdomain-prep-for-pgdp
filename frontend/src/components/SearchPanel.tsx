@@ -73,7 +73,7 @@ export function SearchPanel({ projectId }: Props) {
   const hasPrev = offset > 0;
 
   return (
-    <div className="rounded border bg-white" data-testid="search-panel">
+    <div className="rounded border bg-surface" data-testid="search-panel">
       <div className="px-4 pt-3 pb-2 text-sm font-medium">Search pages</div>
 
       <form
@@ -87,18 +87,18 @@ export function SearchPanel({ projectId }: Props) {
           placeholder="Search OCR text…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+          className="flex-1 rounded border border-border-2 px-2 py-1 text-sm"
         />
         <button
           type="submit"
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
         >
           Search
         </button>
       </form>
 
       {search.isLoading && (
-        <p className="px-4 pb-3 text-xs text-slate-500">Searching…</p>
+        <p className="px-4 pb-3 text-xs text-ink-3">Searching…</p>
       )}
 
       {search.isError && (
@@ -109,12 +109,12 @@ export function SearchPanel({ projectId }: Props) {
         committed &&
         results.length === 0 &&
         !search.isError && (
-          <p className="px-4 pb-3 text-xs text-slate-500">No results.</p>
+          <p className="px-4 pb-3 text-xs text-ink-3">No results.</p>
         )}
 
       {results.length > 0 && (
         <>
-          <p className="px-4 pb-1 text-xs text-slate-400">
+          <p className="px-4 pb-1 text-xs text-ink-4">
             {totalCount} result{totalCount !== 1 ? "s" : ""}
           </p>
           <ul className="divide-y" data-testid="search-results">
@@ -123,16 +123,16 @@ export function SearchPanel({ projectId }: Props) {
                 <div className="flex items-baseline justify-between gap-2">
                   <Link
                     to={`/projects/${projectId}/pages/${hit.idx0}`}
-                    className="text-sm font-medium text-slate-800 hover:text-sky-700 hover:underline"
+                    className="text-sm font-medium text-ink-1 hover:text-sky-700 hover:underline"
                     data-testid={`result-link-${hit.idx0}`}
                   >
                     Page {hit.idx0 + 1}
                   </Link>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-ink-4">
                     score {hit.score.toFixed(2)}
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-slate-600">
+                <p className="mt-0.5 text-xs text-ink-2">
                   <SnippetHtml raw={hit.snippet} />
                 </p>
               </li>
@@ -144,14 +144,14 @@ export function SearchPanel({ projectId }: Props) {
               <button
                 onClick={() => setOffset((o) => Math.max(0, o - PAGE_LIMIT))}
                 disabled={!hasPrev}
-                className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                className="rounded border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
               >
                 Previous 20
               </button>
               <button
                 onClick={() => setOffset((o) => o + PAGE_LIMIT)}
                 disabled={!hasMore}
-                className="rounded border border-slate-300 px-3 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                className="rounded border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
               >
                 Next 20
               </button>

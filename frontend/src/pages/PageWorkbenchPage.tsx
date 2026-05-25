@@ -288,7 +288,7 @@ export function PageWorkbenchPage() {
     return () => document.removeEventListener("keydown", handler);
   }, [editMode]);
 
-  if (page.isLoading) return <p className="text-slate-500">Loading…</p>;
+  if (page.isLoading) return <p className="text-ink-3">Loading…</p>;
   if (!page.data) return <p className="text-red-600">Page not found.</p>;
 
   const handleAddSplit = (rect: {
@@ -394,13 +394,13 @@ export function PageWorkbenchPage() {
               )}
               <Link
                 to={`/projects/${projectId}/pages/${Math.max(0, idx0 - 1)}`}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
               >
                 ← Prev
               </Link>
               <Link
                 to={`/projects/${projectId}/pages/${idx0 + 1}`}
-                className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
               >
                 Next →
               </Link>
@@ -731,8 +731,8 @@ function CanvasViewer({
 
   if (!naturalSize) {
     return (
-      <div className="rounded border bg-white" style={{ minHeight: 400 }}>
-        <div className="flex h-96 items-center justify-center text-slate-400">
+      <div className="rounded border bg-surface" style={{ minHeight: 400 }}>
+        <div className="flex h-96 items-center justify-center text-ink-4">
           Loading image…
         </div>
       </div>
@@ -762,7 +762,7 @@ function CanvasViewer({
 
   return (
     <div
-      className="rounded border bg-white relative"
+      className="rounded border bg-surface relative"
       style={{ minHeight: 400, ...rotateStyle }}
     >
       {/* ── pd-ui PageImageCanvas — Konva Stage host ──────────────────────
@@ -986,7 +986,7 @@ function ModeToolbar({
       className={`rounded px-3 py-1.5 text-sm border ${
         mode === m
           ? `${hue} text-white border-transparent`
-          : "border-slate-300 bg-white hover:bg-slate-50"
+          : "border-border-2 bg-surface hover:bg-page"
       }`}
     >
       {label}
@@ -994,8 +994,8 @@ function ModeToolbar({
   );
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-slate-500">Mode:</span>
-      {btn("view", "View", "bg-slate-700")}
+      <span className="text-ink-3">Mode:</span>
+      {btn("view", "View", "bg-accent")}
       {btn("split", "Add split", "bg-blue-600")}
       {btn("illustration", "Add illustration", "bg-red-600")}
       {btn("create-sibling", "Draw split region", "bg-indigo-600")}
@@ -1044,7 +1044,7 @@ function RotateToolbar({
     >
       <span className="font-medium text-amber-800">Rotate:</span>
       {/* Angle readout */}
-      <span className="min-w-[4rem] rounded bg-white px-2 py-0.5 font-mono text-sm text-slate-800 border border-slate-200">
+      <span className="min-w-[4rem] rounded bg-surface px-2 py-0.5 font-mono text-sm text-ink-1 border border-border-1">
         {displayAngle < 0 ? `${displayAngle}°` : `${displayAngle}°`}
       </span>
       {/* Apply / Reset / Escape */}
@@ -1058,22 +1058,22 @@ function RotateToolbar({
       <button
         onClick={onReset}
         disabled={isPending}
-        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 bg-surface px-3 py-1 text-sm hover:bg-page disabled:opacity-50"
       >
         Reset
       </button>
       <button
         onClick={onEscape}
-        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+        className="rounded border border-border-2 bg-surface px-3 py-1 text-sm hover:bg-page"
       >
         Cancel
       </button>
       {/* Discrete orientation buttons */}
-      <span className="ml-2 text-slate-500">|</span>
+      <span className="ml-2 text-ink-3">|</span>
       <button
         onClick={() => onDiscreteRotate(90)}
         disabled={isPending}
-        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 bg-surface px-2 py-1 text-xs hover:bg-page disabled:opacity-50"
         title="Rotate 90° clockwise"
       >
         90° CW
@@ -1081,7 +1081,7 @@ function RotateToolbar({
       <button
         onClick={() => onDiscreteRotate(-90)}
         disabled={isPending}
-        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 bg-surface px-2 py-1 text-xs hover:bg-page disabled:opacity-50"
         title="Rotate 90° counter-clockwise"
       >
         90° CCW
@@ -1089,7 +1089,7 @@ function RotateToolbar({
       <button
         onClick={() => onDiscreteRotate(180)}
         disabled={isPending}
-        className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 bg-surface px-2 py-1 text-xs hover:bg-page disabled:opacity-50"
         title="Rotate 180°"
       >
         180°
@@ -1127,7 +1127,7 @@ function FlipToolbar({
         className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
           flipH
             ? "border-teal-600 bg-teal-600 text-white"
-            : "border-slate-300 bg-white hover:bg-slate-50"
+            : "border-border-2 bg-surface hover:bg-page"
         }`}
       >
         Flip Horizontal
@@ -1139,22 +1139,22 @@ function FlipToolbar({
         className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
           flipV
             ? "border-teal-600 bg-teal-600 text-white"
-            : "border-slate-300 bg-white hover:bg-slate-50"
+            : "border-border-2 bg-surface hover:bg-page"
         }`}
       >
         Flip Vertical
       </button>
-      <span className="ml-2 text-slate-500">|</span>
+      <span className="ml-2 text-ink-3">|</span>
       <button
         onClick={onReset}
         disabled={isPending}
-        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+        className="rounded border border-border-2 bg-surface px-3 py-1 text-sm hover:bg-page disabled:opacity-50"
       >
         Reset
       </button>
       <button
         onClick={onCancel}
-        className="rounded border border-slate-300 bg-white px-3 py-1 text-sm hover:bg-slate-50"
+        className="rounded border border-border-2 bg-surface px-3 py-1 text-sm hover:bg-page"
       >
         Cancel
       </button>
@@ -1172,14 +1172,14 @@ function PageIdentityPanel({
   onChange: (patch: Partial<PageRecord>) => void;
 }) {
   return (
-    <div className="space-y-2 rounded border bg-white p-3 text-sm">
+    <div className="space-y-2 rounded border bg-surface p-3 text-sm">
       <h2 className="text-sm font-semibold">Identity</h2>
       <label className="block">
-        <span className="text-xs text-slate-600">Page type</span>
+        <span className="text-xs text-ink-2">Page type</span>
         <select
           value={page.page_type}
           onChange={(e) => onChange({ page_type: e.target.value as PageType })}
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          className="mt-1 w-full rounded border border-border-2 px-2 py-1 text-sm"
         >
           {PAGE_TYPES.map((pt) => (
             <option key={pt} value={pt}>
@@ -1189,13 +1189,13 @@ function PageIdentityPanel({
         </select>
       </label>
       <label className="block">
-        <span className="text-xs text-slate-600">Alignment</span>
+        <span className="text-xs text-ink-2">Alignment</span>
         <select
           value={page.alignment}
           onChange={(e) =>
             onChange({ alignment: e.target.value as AlignmentOverride })
           }
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          className="mt-1 w-full rounded border border-border-2 px-2 py-1 text-sm"
         >
           {ALIGNMENTS.map((al) => (
             <option key={al} value={al}>
@@ -1217,7 +1217,7 @@ function SplitsPanel({
 }) {
   if (splits.length === 0) return null;
   return (
-    <div className="space-y-2 rounded border bg-white p-3 text-sm">
+    <div className="space-y-2 rounded border bg-surface p-3 text-sm">
       <h2 className="text-sm font-semibold">Splits</h2>
       <ul className="divide-y">
         {[...splits]
@@ -1228,11 +1228,9 @@ function SplitsPanel({
               className="flex items-center justify-between py-1"
             >
               <span className="font-mono text-xs">
-                <span className="text-slate-500">
-                  order {s.reading_order}:{" "}
-                </span>
+                <span className="text-ink-3">order {s.reading_order}: </span>
                 {s.suffix}
-                <span className="ml-2 text-slate-400">
+                <span className="ml-2 text-ink-4">
                   L{s.L ?? "·"} R{s.R ?? "·"} T{s.T ?? "·"} B{s.B ?? "·"}
                 </span>
               </span>
@@ -1258,15 +1256,15 @@ function RegionsPanel({
 }) {
   if (regions.length === 0) return null;
   return (
-    <div className="space-y-2 rounded border bg-white p-3 text-sm">
+    <div className="space-y-2 rounded border bg-surface p-3 text-sm">
       <h2 className="text-sm font-semibold">Illustration regions</h2>
       <ul className="divide-y">
         {regions.map((r) => (
           <li key={r.index} className="flex items-center justify-between py-1">
             <span className="font-mono text-xs">
-              <span className="text-slate-500">#{r.index} </span>
-              <span className="rounded bg-slate-100 px-1">{r.type}</span>
-              <span className="ml-2 text-slate-400">
+              <span className="text-ink-3">#{r.index} </span>
+              <span className="rounded bg-raised px-1">{r.type}</span>
+              <span className="ml-2 text-ink-4">
                 L{r.L ?? "·"} R{r.R ?? "·"} T{r.T ?? "·"} B{r.B ?? "·"}
               </span>
             </span>
@@ -1303,7 +1301,7 @@ function ConfigOverridesPanel({
   }
 
   return (
-    <div className="space-y-3 rounded border bg-white p-3 text-sm">
+    <div className="space-y-3 rounded border bg-surface p-3 text-sm">
       <h2 className="text-sm font-semibold">Overrides</h2>
 
       <NumField
@@ -1365,18 +1363,18 @@ function ConfigOverridesPanel({
         <button
           onClick={onPreview}
           disabled={previewing}
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 hover:bg-slate-800"
+          className="rounded bg-accent px-3 py-1.5 text-sm text-accent-ink disabled:opacity-50 hover:bg-accent/90"
         >
           {previewing ? "Processing…" : "Preview"}
         </button>
         <button
           onClick={onSave}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
         >
           Save
         </button>
         {backendInfo && (
-          <span className="ml-auto text-xs text-slate-500">{backendInfo}</span>
+          <span className="ml-auto text-xs text-ink-3">{backendInfo}</span>
         )}
       </div>
     </div>
@@ -1396,7 +1394,7 @@ function NumField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-slate-600">{label}</span>
+      <span className="text-xs text-ink-2">{label}</span>
       <input
         type="number"
         step={step}
@@ -1406,7 +1404,7 @@ function NumField({
           const raw = e.target.value;
           onChange(raw === "" ? null : Number(raw));
         }}
-        className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+        className="mt-1 w-full rounded border border-border-2 px-2 py-1 text-sm"
       />
     </label>
   );
@@ -1432,7 +1430,7 @@ function Toggle({
           ? "border-emerald-500 bg-emerald-50 text-emerald-800"
           : value === false
             ? "border-rose-500 bg-rose-50 text-rose-800"
-            : "border-slate-300 bg-white text-slate-500"
+            : "border-border-2 bg-surface text-ink-3"
       }`}
     >
       <div className="font-medium">{label}</div>
@@ -1511,9 +1509,9 @@ function CreateSiblingPanel({
   isPending: boolean;
 }) {
   return (
-    <div className="space-y-2 rounded border bg-white p-3 text-sm">
+    <div className="space-y-2 rounded border bg-surface p-3 text-sm">
       <h2 className="text-sm font-semibold">Create split</h2>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-3">
         Draw a crop region on the image, then confirm to create sibling pages.
       </p>
       <button
@@ -1521,7 +1519,7 @@ function CreateSiblingPanel({
         className={`w-full rounded border px-2 py-1 text-xs ${
           editMode === "create-sibling"
             ? "border-indigo-500 bg-indigo-50 text-indigo-800"
-            : "border-slate-300 hover:bg-slate-50"
+            : "border-border-2 hover:bg-page"
         }`}
       >
         {editMode === "create-sibling"
@@ -1531,18 +1529,16 @@ function CreateSiblingPanel({
             : "Draw crop region"}
       </button>
       <label className="block">
-        <span className="text-xs text-slate-600">
-          Suffixes (comma-separated)
-        </span>
+        <span className="text-xs text-ink-2">Suffixes (comma-separated)</span>
         <input
           type="text"
           value={suffixes}
           onChange={(e) => onChangeSuffixes(e.target.value)}
-          className="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+          className="mt-1 w-full rounded border border-border-2 px-2 py-1 text-sm"
           placeholder="a,b"
         />
       </label>
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-ink-4">
         Stage: <span className="font-mono">{stageId}</span>
       </p>
       <button

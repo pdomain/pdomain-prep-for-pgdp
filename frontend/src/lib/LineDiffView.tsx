@@ -70,7 +70,7 @@ export function LineDiffView({ diff, className }: Props) {
   return (
     <div
       className={
-        "overflow-auto rounded border border-slate-300 bg-white font-mono text-xs " +
+        "overflow-auto rounded border border-border-2 bg-surface font-mono text-xs " +
         (className ?? "")
       }
     >
@@ -93,7 +93,7 @@ function Column({
 }) {
   return (
     <div>
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <div className="sticky top-0 z-10 border-b border-border-1 bg-page px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3">
         {label}
       </div>
       <div>
@@ -105,14 +105,12 @@ function Column({
             return (
               <div
                 key={idx}
-                className="flex min-h-[1.25rem] items-start bg-slate-50/50 px-2 leading-5"
+                className="flex min-h-[1.25rem] items-start bg-page/50 px-2 leading-5"
               >
-                <span className="w-8 select-none text-right text-slate-300">
+                <span className="w-8 select-none text-right text-ink-4">
                   &nbsp;
                 </span>
-                <span className="ml-2 whitespace-pre text-slate-300">
-                  &nbsp;
-                </span>
+                <span className="ml-2 whitespace-pre text-ink-4">&nbsp;</span>
               </div>
             );
           }
@@ -121,14 +119,14 @@ function Column({
               ? "bg-red-50 text-red-900"
               : cell.kind === "insert"
                 ? "bg-emerald-50 text-emerald-900"
-                : "text-slate-700";
+                : "text-ink-2";
           const lineNo = side === "left" ? cell.priorLineNo : cell.nextLineNo;
           return (
             <div
               key={idx}
               className={`flex min-h-[1.25rem] items-start px-2 leading-5 ${tint}`}
             >
-              <span className="w-8 select-none text-right text-slate-400">
+              <span className="w-8 select-none text-right text-ink-4">
                 {gutter(lineNo)}
               </span>
               <span className="ml-2 whitespace-pre">
