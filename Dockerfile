@@ -22,8 +22,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_NO_PROGRESS=1 \
     UV_LINK_MODE=copy
 
-# git is needed by uv to resolve the pd-book-tools git source (and any
-# future git-sourced deps). ca-certificates so the HTTPS clone works.
+# git is needed by uv for any git-sourced deps that may be added in future.
+# ca-certificates so HTTPS fetches (registry wheels, git clones) work.
 RUN apt-get update \
     && apt-get install --no-install-recommends -y git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -54,7 +54,8 @@ WORKDIR /app
 ARG VERSION=0.0.0+docker
 
 # Project metadata first so dependency-only layer caches well.
-COPY pyproject.toml ./
+# uv.lock pins every transitive dep to exact hashes for reproducibility.
+COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 COPY README.md ./
 
@@ -68,8 +69,13 @@ COPY --from=frontend-build /app/dist/ ./src/pd_prep_for_pgdp/static/
 RUN sed -i 's|^dynamic = \["version"\]|version = "'"${VERSION}"'"|' pyproject.toml \
     && grep -E '^(version|dynamic)' pyproject.toml
 
-# Install with the [s3,postgres,modal,jwt] extras for managed mode.
-RUN uv pip install --system ".[s3,postgres,modal,jwt]"
+# Install from uv.lock for exact reproducibility. UV_SYSTEM_PYTHON=1 installs
+# into the system Python instead of a venv. --frozen refuses to update the
+# lockfile. --no-dev skips dev-only deps. --no-editable installs the project
+# package itself as a regular (non-editable) wheel.
+RUN UV_SYSTEM_PYTHON=1 uv sync --frozen --no-dev \
+    --extra s3 --extra postgres --extra modal --extra jwt \
+    --no-editable
 
 # Transfer ownership of /app to the non-root user so the app can write
 # any local temp files it needs (e.g. SQLite in local mode).

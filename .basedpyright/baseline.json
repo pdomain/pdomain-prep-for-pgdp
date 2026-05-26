@@ -58,22 +58,6 @@
                     "endColumn": 63,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportMissingTypeStubs",
-                "range": {
-                    "startColumn": 19,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnnecessaryTypeIgnoreComment",
-                "range": {
-                    "startColumn": 44,
-                    "endColumn": 64,
-                    "lineCount": 1
-                }
             }
         ],
         "./src/pd_prep_for_pgdp/api/auth/__init__.py": [
