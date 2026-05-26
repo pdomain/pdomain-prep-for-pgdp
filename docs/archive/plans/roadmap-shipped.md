@@ -483,7 +483,7 @@ wheels.
 Already wired before the roadmap was split: `.pre-commit-config.yaml`
 runs `DavidAnson/markdownlint-cli2` `v0.22.1` against
 `.markdownlint-cli2.jsonc`, with a `--fix` variant gated to the
-`manual` stage. pd-ocr-labeler-spa mirrored this configuration. No
+`manual` stage. pdomain-ocr-labeler-spa mirrored this configuration. No
 code work was outstanding — the entry was a doc-only note kept in
 the active roadmap by oversight; moved here for accuracy.
 
@@ -615,7 +615,7 @@ was redundant complexity.
 
 ## §28 — Guard `upgrade-deps` against silent dev-local revert
 
-`scripts/detect_dev_local.py` exits 0 when an editable `pd-book-tools`
+`scripts/detect_dev_local.py` exits 0 when an editable `pdomain-book-tools`
 install is present (precedence: `uv pip show` "Editable project
 location:" line → `.venv/.dev-local` marker → `PD_DEV_LOCAL=1` env
 override). `make upgrade-deps` now refuses with a clear message in

@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-11
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#46
+> **Spec-Issue**: ConcaveTrillion/pdomain-prep-for-pgdp#46
 
 ## TL;DR
 
@@ -149,9 +149,9 @@ index. Idempotent.
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §P2 #13 (lines 591–595)
-- Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_postprocess`
+- Roadmap: `pdomain-prep-for-pgdp/docs/plans/roadmap.md` §P2 #13 (lines 591–595)
+- Long-form pipeline spec: `pdomain-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_postprocess`
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`
-- Adapter pattern reference: `pd-prep-for-pgdp/src/pd_prep_for_pgdp/adapters/`
+- Adapter pattern reference: `pdomain-prep-for-pgdp/src/pd_prep_for_pgdp/adapters/`
 - Parent spec issue (retro-demoted): #14
 - This spec's issue: #46

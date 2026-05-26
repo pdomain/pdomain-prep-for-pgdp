@@ -1,4 +1,4 @@
-# Session prompt — pd-prep-for-pgdp hi-fi redesign implementation
+# Session prompt — pdomain-prep-for-pgdp hi-fi redesign implementation
 
 Use the `subagent-driven-development` skill to implement the full hi-fi
 redesign plan at
@@ -6,7 +6,7 @@ redesign plan at
 
 ## Repo context
 
-- Repo: `/workspaces/ocr-container/pd-prep-for-pgdp`
+- Repo: `/workspaces/ocr-container/pdomain-prep-for-pgdp`
 - Branch: `main` (all prior work merged; spec committed at `9ca26e8`)
 - CI: `make ci AI=1` — must stay green after every slice
 - Frontend test runner: `make test AI=1` (vitest via uv)
@@ -15,7 +15,7 @@ redesign plan at
 ## What the spec covers
 
 5 phases, 21 slices, ~5 200 LOC total. Transforms the existing M0–M4
-frontend into the same five-layer design stack as `pd-ocr-labeler-spa`:
+frontend into the same five-layer design stack as `pdomain-ocr-labeler-spa`:
 
 1. **Token layer** — `frontend/src/styles/tokens.css` with CSS custom
    properties for colour/spacing, light default + `[data-theme="dark"]`
@@ -76,10 +76,10 @@ its listed dependencies are ✅.
 ## Sibling reference
 
 The labeler-spa hi-fi spec at
-`../pd-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md`
+`../pdomain-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md`
 is the upstream reference for token names, primitive APIs, and the
 shadcn/CVA patterns. When in doubt, match labeler-spa naming exactly
-so the two apps stay shape-compatible for a future `pd-ui` extraction.
+so the two apps stay shape-compatible for a future `pdomain-ui` extraction.
 
 ## Start
 

@@ -2,7 +2,7 @@
 
 > **Status**: Shipped — but as **Option A**, not the Option B drafted below.
 > **Last updated**: 2026-05-22
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#12
+> **Spec-Issue**: ConcaveTrillion/pdomain-prep-for-pgdp#12
 
 ## TL;DR
 

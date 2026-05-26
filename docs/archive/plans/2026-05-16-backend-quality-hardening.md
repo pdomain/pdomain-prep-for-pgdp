@@ -10,7 +10,7 @@
 
 **Architecture:** Four cohesive groups—Critical (corrupt data / invisible failures), High (exception narrowing + rollback safety), Medium (typing hygiene + observability). Each task adds failing tests first, then fixes the code, keeping the CI green at every commit. No feature additions, no API breakage.
 
-**Tech Stack:** Python 3.13, FastAPI, Pydantic v2, SQLite, pd-book-tools v0.9.0 (pinned). Test runner: `uv run pytest`. CI: `make ci AI=1`.
+**Tech Stack:** Python 3.13, FastAPI, Pydantic v2, SQLite, pdomain-book-tools v0.9.0 (pinned). Test runner: `uv run pytest`. CI: `make ci AI=1`.
 
 **Source of truth for all audit findings:** `docs/audit/code-quality-audit-2026-05-16.md`.
 
@@ -294,7 +294,7 @@ def auto_detect_illustrations(
     except ImportError as exc:
         raise RuntimeError(
             "pd_book_tools layout types are not available; "
-            "install pd-book-tools with layout support"
+            "install pdomain-book-tools with layout support"
         ) from exc
 
     keep_types = {RegionType.figure, RegionType.decoration, RegionType.table}
@@ -345,7 +345,7 @@ def _map_region_type(rt: Any) -> str:
     return _REGION_TYPE_MAP[rt]
 ```
 
-> **Note:** The `_REGION_TYPE_MAP` lazy init keeps the module importable without pd-book-tools for unit tests that mock the detector. The `auto_detect_illustrations` function itself will raise `RuntimeError` on import failure, which is the right behaviour for a real run.
+> **Note:** The `_REGION_TYPE_MAP` lazy init keeps the module importable without pdomain-book-tools for unit tests that mock the detector. The `auto_detect_illustrations` function itself will raise `RuntimeError` on import failure, which is the right behaviour for a real run.
 
 - [x] **Step 4: Run the tests**
 

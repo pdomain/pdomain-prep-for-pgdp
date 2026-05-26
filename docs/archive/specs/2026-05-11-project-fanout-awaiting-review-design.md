@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-11
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#45
+> **Spec-Issue**: ConcaveTrillion/pdomain-prep-for-pgdp#45
 
 ## TL;DR
 
@@ -141,8 +141,8 @@ Parent (retro-demoted on 2026-05-11): #11. Roadmap section: `docs/plans/roadmap.
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §M5 (lines 431–493)
-- Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_review` as
+- Roadmap: `pdomain-prep-for-pgdp/docs/plans/roadmap.md` §M5 (lines 431–493)
+- Long-form pipeline spec: `pdomain-prep-for-pgdp/docs/specs/pipeline-task-model.md` §`text_review` as
   gate stage, §Two scopes of task
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`
 - Q7 lock (text_review gate): pipeline-task-model.md §Open questions — Locked

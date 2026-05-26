@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-13
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#13
+> **Spec-Issue**: ConcaveTrillion/pdomain-prep-for-pgdp#13
 
 ## TL;DR
 

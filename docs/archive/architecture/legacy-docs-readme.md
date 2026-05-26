@@ -1,4 +1,4 @@
-# pd-prep-for-pgdp — Docs
+# pdomain-prep-for-pgdp — Docs
 
 Three kinds of docs live here:
 

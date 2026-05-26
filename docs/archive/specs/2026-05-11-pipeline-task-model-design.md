@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-11
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#47
+> **Spec-Issue**: ConcaveTrillion/pdomain-prep-for-pgdp#47
 
 ## TL;DR
 
@@ -27,14 +27,14 @@ persistence column, API route, and Q1–Q10 lock with full code-level grounding.
 its long-form reference; the canonical decisions are summarised below.
 
 Parent (now `kind:feature-request`, retro-demoted on 2026-05-11 from `kind:spec`): #17. Original
-freeform doc carries `> Spec-Issue: ConcaveTrillion/pd-prep-for-pgdp#17` (now broken); after this
+freeform doc carries `> Spec-Issue: ConcaveTrillion/pdomain-prep-for-pgdp#17` (now broken); after this
 spec lands, that header should be migrated to point at the demoted issue's current state or this
 design doc (out of scope for this draft — flag for reviewer).
 
 ## Constraints
 
 - **Stack:** FastAPI + Python 3.13 backend; React + Vite + TS + TanStack Query + Konva frontend;
-  SQLite + filesystem storage in local mode (active); CPU-first execution; `pd-book-tools` pinned to
+  SQLite + filesystem storage in local mode (active); CPU-first execution; `pdomain-book-tools` pinned to
   `v0.9.0`.
 - **Dual-write contract is non-negotiable:** every stage write commits the on-disk artifact AND the
   `page_stages` DB row transactionally. `pgdp-prep reindex` is the source-of-truth arbiter.
@@ -124,7 +124,7 @@ versioned via `stage_version` (Q4). Two scopes of task — **project-level** (`p
 - **Splits cascade dirty across the parent boundary** — a parent re-run dirties its children's
   `decode_source` (cross-page propagation case spelled out in the long-form spec §"Cross-page dirty
   propagation: split children").
-- **Workspace memory:** subagents (`pd-prep-for-pgdp`, `pd-prep-for-pgdp-docs`) should treat this
+- **Workspace memory:** subagents (`pdomain-prep-for-pgdp`, `pdomain-prep-for-pgdp-docs`) should treat this
   spec as the authoritative summary; the long-form `pipeline-task-model.md` is the long-form design
   notes.
 
@@ -137,7 +137,7 @@ re-evaluation rather than silently flipping.
 **Reconciliation items flagged for reviewer:**
 
 - The long-form `docs/specs/pipeline-task-model.md` carries `Spec-Issue:
-  ConcaveTrillion/pd-prep-for-pgdp#17`. After the retro-demotion of #17 to `kind:feature-request`,
+  ConcaveTrillion/pdomain-prep-for-pgdp#17`. After the retro-demotion of #17 to `kind:feature-request`,
   that header is stale. Reviewer to decide: re-point at this new spec's issue (#47), mark the
   freeform doc `Status: Superseded by 2026-05-11-pipeline-task-model-design.md`, or migrate the
   freeform doc into a non-spec design-notes location.
@@ -148,10 +148,10 @@ re-evaluation rather than silently flipping.
 
 ## References
 
-- Long-form design: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md`
-- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §P0.5, §M1–§M6
-- Shipped log: `pd-prep-for-pgdp/docs/archive/plans/roadmap-shipped.md`
-- Repo orientation: `pd-prep-for-pgdp/CLAUDE.md`
+- Long-form design: `pdomain-prep-for-pgdp/docs/specs/pipeline-task-model.md`
+- Roadmap: `pdomain-prep-for-pgdp/docs/plans/roadmap.md` §P0.5, §M1–§M6
+- Shipped log: `pdomain-prep-for-pgdp/docs/archive/plans/roadmap-shipped.md`
+- Repo orientation: `pdomain-prep-for-pgdp/CLAUDE.md`
 - M1/M2 commits anchoring the design in code: `128ead9`, `2341fa1`, `c46eaea`, `6d335e6`, `e126c20`,
   `d836619`, `8af4f15`, `c42bc85`, `55dbc9d`, `02f7ad7`, `2a62346`, `39d2288`, `7246199`, `66f32af`,
   `5abc7c9`, `a55d93e`

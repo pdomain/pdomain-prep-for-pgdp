@@ -9,7 +9,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Produce a complete design brief — existing screen docs + new workflow specs — that can be fed to Claude Design (claude.ai/design) to wireframe all pending pd-prep-for-pgdp features.
+**Goal:** Produce a complete design brief — existing screen docs + new workflow specs — that can be fed to Claude Design (claude.ai/design) to wireframe all pending pdomain-prep-for-pgdp features.
 
 **Architecture:** Two output directories under `docs/design-brief/`: `existing-ui/` (one markdown + screenshot per screen) and `workflows/` (one design-brief markdown per new feature). A master `index.md` stitches them together as the root document for Claude Design. Screenshots are taken by running the app with `make run` and using Playwright to capture each screen at 1440×900.
 
@@ -78,7 +78,7 @@ scripts/
 Create `docs/design-brief/design-system.md` with this exact content (values sourced from `frontend/tailwind.config.ts` and `frontend/src/styles/tokens.css`):
 
 ```markdown
-# pd-prep-for-pgdp Design System
+# pdomain-prep-for-pgdp Design System
 
 ## Brand & Purpose
 A book-scanning prep tool for Distributed Proofreaders (PGDP). Dark, professional tone.
@@ -177,8 +177,8 @@ CheckCircle, HardDrive, Search, X, ArrowRight, Download, Upload.
 - [ ] **Step 2: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/design-system.md
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): design system reference for Claude Design brief"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/design-system.md
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): design system reference for Claude Design brief"
 ```
 
 ---
@@ -193,7 +193,7 @@ git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): desig
 ```python
 #!/usr/bin/env python3
 """
-Playwright script to capture screenshots of all pd-prep-for-pgdp screens.
+Playwright script to capture screenshots of all pdomain-prep-for-pgdp screens.
 Requires: uv run --group e2e python scripts/capture-screenshots.py
 Server must be running: make run-cpu (http://127.0.0.1:8765)
 """
@@ -261,8 +261,8 @@ if __name__ == "__main__":
 - [ ] **Step 2: Make executable and test it runs without error (server not required to start)**
 
 ```bash
-chmod +x /workspaces/ocr-container/pd-prep-for-pgdp/scripts/capture-screenshots.py
-cd /workspaces/ocr-container/pd-prep-for-pgdp && \
+chmod +x /workspaces/ocr-container/pdomain-prep-for-pgdp/scripts/capture-screenshots.py
+cd /workspaces/ocr-container/pdomain-prep-for-pgdp && \
   uv run --group e2e python scripts/capture-screenshots.py --help 2>&1 || echo "(no --help flag; script ran)"
 ```
 
@@ -271,8 +271,8 @@ Expected: Script exits cleanly (it will fail to connect to server, which is fine
 - [ ] **Step 3: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add scripts/capture-screenshots.py
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "scripts: Playwright screenshot capture for design brief"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add scripts/capture-screenshots.py
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "scripts: Playwright screenshot capture for design brief"
 ```
 
 ---
@@ -570,8 +570,8 @@ CSS grid: 3 rows (auto / 1fr / auto). Full 100dvh height.
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/existing-ui/
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): screen descriptions 00-02, 08-09 for Claude Design brief"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/existing-ui/
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): screen descriptions 00-02, 08-09 for Claude Design brief"
 ```
 
 ---
@@ -845,8 +845,8 @@ page →" CTA navigates to the first page in queue.
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/existing-ui/
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): workbench screen descriptions 03-07 for Claude Design brief"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/existing-ui/
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): workbench screen descriptions 03-07 for Claude Design brief"
 ```
 
 ---
@@ -1219,8 +1219,8 @@ Left: "5 pages selected" count. Center: "Re-run from initial_crop" primary butto
 - [ ] **Step 6: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/workflows/
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): workflow specs WF-01 through WF-03, WF-09, WF-10"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/workflows/
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): workflow specs WF-01 through WF-03, WF-09, WF-10"
 ```
 
 ---
@@ -1542,7 +1542,7 @@ thresholding quality downstream.
 ## Goal
 Add a grayscale mode selector to the grayscale stage controls, offering:
 - Standard (luminosity-weighted) — current behavior, fast
-- Perceptual (GEGL C2G equivalent from pd-book-tools) — better on color scans, slower
+- Perceptual (GEGL C2G equivalent from pdomain-book-tools) — better on color scans, slower
 
 ## Happy Path Mockup Spec
 
@@ -1558,7 +1558,7 @@ When Perceptual selected: amber info callout:
 Thumbnail in chip rail updates after re-run to show the difference.
 
 ## Open Design Questions
-- Is GEGL available as a subprocess call, or does pd-book-tools provide a
+- Is GEGL available as a subprocess call, or does pdomain-book-tools provide a
   pure-Python equivalent? (Determines whether this is a STAGE_IMPL addition
   or a subprocess wrapper.)
 - Should perceptual mode be auto-selected when the source image is detected
@@ -1611,8 +1611,8 @@ Enable/disable toggle per row (preserves rule without deleting).
 - [ ] **Step 8: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/workflows/
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): workflow specs WF-04 through WF-12"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/workflows/
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): workflow specs WF-04 through WF-12"
 ```
 
 ---
@@ -1625,9 +1625,9 @@ git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): workf
 - [ ] **Step 1: Write `index.md`**
 
 ```markdown
-# pd-prep-for-pgdp — Design Brief for Claude Design
+# pdomain-prep-for-pgdp — Design Brief for Claude Design
 
-**App:** pd-prep-for-pgdp — converts scanned book images into PGDP submission packages.
+**App:** pdomain-prep-for-pgdp — converts scanned book images into PGDP submission packages.
 **Stack:** FastAPI + React 19 + Vite + TypeScript + TanStack Query + Konva + Tailwind.
 **Design system:** See `design-system.md` for full token reference.
 **Codebase:** Available for import to understand brand context.
@@ -1693,8 +1693,8 @@ When importing this brief into Claude Design, use this as the starting prompt:
 - [ ] **Step 2: Commit**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/index.md
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): master index.md — design brief root for Claude Design"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/index.md
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): master index.md — design brief root for Claude Design"
 ```
 
 ---
@@ -1707,14 +1707,14 @@ git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): maste
 - [ ] **Step 1: Start the app**
 
 ```bash
-cd /workspaces/ocr-container/pd-prep-for-pgdp && make run-cpu
+cd /workspaces/ocr-container/pdomain-prep-for-pgdp && make run-cpu
 # Wait for "Uvicorn running on http://127.0.0.1:8765" in output
 ```
 
 - [ ] **Step 2: Run the screenshot script**
 
 ```bash
-cd /workspaces/ocr-container/pd-prep-for-pgdp && \
+cd /workspaces/ocr-container/pdomain-prep-for-pgdp && \
   uv run --group e2e python scripts/capture-screenshots.py
 ```
 
@@ -1738,8 +1738,8 @@ creating a project via the UI.
 - [ ] **Step 4: Commit screenshots**
 
 ```bash
-git -C /workspaces/ocr-container/pd-prep-for-pgdp add docs/design-brief/existing-ui/screenshots/
-git -C /workspaces/ocr-container/pd-prep-for-pgdp commit -m "docs(design): existing UI screenshots for Claude Design brief"
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp add docs/design-brief/existing-ui/screenshots/
+git -C /workspaces/ocr-container/pdomain-prep-for-pgdp commit -m "docs(design): existing UI screenshots for Claude Design brief"
 ```
 
 ---
