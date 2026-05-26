@@ -8,13 +8,18 @@ import { http, HttpResponse } from "msw";
 import { server } from "./test/server";
 import type * as React from "react";
 
-// Phase 2.4: Mock @concavetrillion/pd-ui/shell so AppShell renders a
+// Task #155 (s0-c): Mock @concavetrillion/pd-ui/shell so AppShell renders a
 // transparent pass-through in jsdom — no Zustand store setup, no real
 // grid layout. The mock preserves the slot-forwarding contract (header,
-// main, children) so downstream tests can assert on TopNav + Routes.
+// headerActions, main, children) so downstream tests can assert on
+// AppHeader + Routes.
+//
+// AppHeader mock renders a labelled div with data-testid="app-header" so
+// tests can query for it in the header slot.
 vi.mock("@concavetrillion/pd-ui/shell", () => ({
   AppShell: ({
     header,
+    headerActions,
     main,
     children,
   }: {
@@ -22,6 +27,7 @@ vi.mock("@concavetrillion/pd-ui/shell", () => ({
     appDisplayName?: string;
     appIconUrl?: string;
     header?: React.ReactNode;
+    headerActions?: React.ReactNode;
     main?: React.ReactNode;
     children?: React.ReactNode;
     launcherSlot?: string;
@@ -29,9 +35,28 @@ vi.mock("@concavetrillion/pd-ui/shell", () => ({
     uiPrefsConfig?: unknown;
   }) => (
     <div data-testid="pd-ui-app-shell">
-      <div data-testid="pd-ui-app-shell-header">{header}</div>
+      <div data-testid="pd-ui-app-shell-header">
+        {header}
+        {headerActions}
+      </div>
       <div data-testid="pd-ui-app-shell-main">{main}</div>
       {children}
+    </div>
+  ),
+  AppHeader: ({
+    appName,
+    onSearchClick,
+  }: {
+    appName?: string;
+    searchPlaceholder?: string;
+    activeJobs?: unknown[];
+    onSearchClick?: () => void;
+  }) => (
+    <div data-testid="app-header">
+      <span>{appName ?? "pgdp-prep"}</span>
+      <button aria-label="Search (⌘K)" onClick={onSearchClick}>
+        Search
+      </button>
     </div>
   ),
   SuiteSiblingsProvider: ({
@@ -134,11 +159,11 @@ function withNoProjects() {
 }
 
 describe("App: routing shell", () => {
-  it("renders the top-nav brand on the root route", async () => {
+  it("renders the app-header brand on the root route", async () => {
     withNoProjects();
     renderApp();
     await waitFor(() => {
-      // TopNav renders brand text "pgdp-prep" regardless of route.
+      // AppHeader mock renders brand text "pgdp-prep" regardless of route.
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
   });
@@ -165,25 +190,27 @@ describe("App: routing shell", () => {
     expect(screen.getByTestId("pd-ui-app-shell")).toBeInTheDocument();
   });
 
-  it("Phase 2.4: TopNav renders inside AppShell header slot", async () => {
+  it("Task #155: AppHeader renders inside AppShell header slot", async () => {
     withNoProjects();
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
     const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
-    // TopNav brand text is a descendant of the AppShell header slot.
-    expect(headerSlot.querySelector("[data-testid='top-nav']")).not.toBeNull();
+    // AppHeader mock renders with data-testid="app-header" inside the header slot.
+    expect(
+      headerSlot.querySelector("[data-testid='app-header']"),
+    ).not.toBeNull();
   });
 
-  it("Phase 2.4: search pill renders in AppShell header slot", async () => {
+  it("Task #155: search trigger renders in AppShell header slot", async () => {
     withNoProjects();
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
     const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
-    // The search pill button should be inside the header slot.
+    // AppHeader mock renders a Search button wired to onSearchClick.
     const searchBtn = headerSlot.querySelector("[aria-label='Search (⌘K)']");
     expect(searchBtn).not.toBeNull();
   });
@@ -220,11 +247,10 @@ describe("App: routing shell", () => {
   // API calls from the SuiteSiblingsProvider (whose mock renders children
   // transparently so the real fetchInstalled callback still fires on mount).
 
-  it("Phase 2.7b: AppShell receives appId=pd-prep-for-pgdp and is wired", async () => {
+  it("Phase 2.7b / Task #155: AppShell receives appId=pd-prep-for-pgdp and AppHeader is wired", async () => {
     // Verify the AppShell wrapper is present and the header slot is wired.
-    // The mock AppShell renders slots as data-testid divs, so we check
-    // that appId is encoded in the outer wrapper (outer div data-testid=app-shell)
-    // and that the header slot contains TopNav brand text.
+    // The mock AppShell renders slots as data-testid divs; AppHeader mock
+    // renders data-testid="app-header" with brand text inside the header slot.
     withNoProjects();
     renderApp();
     await waitFor(() => {
@@ -232,7 +258,7 @@ describe("App: routing shell", () => {
     });
     const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
     expect(headerSlot).toBeInTheDocument();
-    // TopNav renders the app brand inside the header slot.
+    // AppHeader renders the app brand inside the header slot.
     expect(headerSlot.textContent).toContain("pgdp-prep");
   });
 
