@@ -1,7 +1,7 @@
 /**
- * Separator tests — after Task 2 (s0-b) the component is pd-ui's Separator.
+ * Separator tests — after Task 2 (s0-b) the component is pdomain-ui's Separator.
  *
- * pd-ui Separator renders a <div> with className "separator" (semantic CSS
+ * pdomain-ui Separator renders a <div> with className "separator" (semantic CSS
  * class from primitives.css) rather than raw Tailwind classes. Tests assert
  * on the behavioral contract: renders, sets data-orientation, merges className,
  * and forwards data-testid.

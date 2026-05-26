@@ -19,9 +19,9 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -79,7 +79,7 @@ def storage(tmp_path) -> FilesystemStorage:
 
 @pytest.mark.asyncio
 async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
@@ -119,7 +119,7 @@ async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: Fil
 
 @pytest.mark.asyncio
 async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
@@ -146,7 +146,7 @@ async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: File
 
 @pytest.mark.asyncio
 async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
@@ -166,7 +166,7 @@ async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: Filesys
 
 @pytest.mark.asyncio
 async def test_runner_loop_can_be_cancelled(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
     task = asyncio.create_task(runner.run_forever())
@@ -199,7 +199,7 @@ async def test_handle_run_page_stage_uses_job_project_id_not_payload(
     """
     from unittest.mock import patch
 
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("real-project")
     await db.put_project(project)
@@ -232,7 +232,7 @@ async def test_handle_run_page_stage_uses_job_project_id_not_payload(
         poll_interval=0.05,
     )
 
-    with patch("pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
+    with patch("pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
         await runner.run_pending(max_jobs=1)
 
     # The handler must have called run_stage with the runner's data_root,
@@ -255,7 +255,7 @@ async def test_run_page_stage_handler_data_root_from_runner_not_payload(
     """
     from unittest.mock import patch
 
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("p2")
     await db.put_project(project)
@@ -287,7 +287,7 @@ async def test_run_page_stage_handler_data_root_from_runner_not_payload(
         poll_interval=0.05,
     )
 
-    with patch("pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
+    with patch("pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
         await runner.run_pending(max_jobs=1)
 
     assert len(calls) == 1

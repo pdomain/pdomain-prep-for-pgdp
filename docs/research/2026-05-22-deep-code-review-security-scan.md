@@ -1,6 +1,6 @@
 # Deep Code Review and Security Scan - 2026-05-22
 
-Repo: `ConcaveTrillion/pd-prep-for-pgdp`
+Repo: `pdomain/pdomain-prep-for-pgdp`
 
 Scope: backend API/auth/data access, file-processing/pipeline/storage/packaging, frontend/browser behavior,
 build/dependency/CI/release/config.
@@ -14,11 +14,11 @@ Method:
   - `pnpm audit --audit-level low --json`: 2 moderate dev-tool vulnerabilities, 0 low/high/critical.
   - `pnpm audit --prod`: no known production npm vulnerabilities reported by subagent.
   - `uv lock --check`: passed.
-  - `pip-audit` on full exported requirements was blocked by private/local `pd-book-tools`; subagent
+  - `pip-audit` on full exported requirements was blocked by private/local `pdomain-book-tools`; subagent
     audit of locked public deps found `starlette==1.0.0` vulnerable.
   - `uv run ruff check --select S --output-format json src scripts`: no Bandit-rule findings.
 
-Existing repo status before filing: no open issues or PRs in `ConcaveTrillion/pd-prep-for-pgdp`.
+Existing repo status before filing: no open issues or PRs in `pdomain/pdomain-prep-for-pgdp`.
 
 ## Findings
 
@@ -27,7 +27,7 @@ Existing repo status before filing: no open issues or PRs in `ConcaveTrillion/pd
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/bootstrap.py:343-348`
+Evidence: `src/pdomain_prep_for_pgdp/bootstrap.py:343-348`
 
 The SPA fallback joins the static bundle path with `full_path` and serves `candidate` when
 `os.path.isfile(candidate)` is true. If `full_path` is an absolute path after URL decoding,
@@ -45,8 +45,8 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:S`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/bootstrap.py:295-305`, `src/pd_prep_for_pgdp/api/cdn.py:22-39`,
-`src/pd_prep_for_pgdp/adapters/storage/filesystem.py:74-80`
+Evidence: `src/pdomain_prep_for_pgdp/bootstrap.py:295-305`, `src/pdomain_prep_for_pgdp/api/cdn.py:22-39`,
+`src/pdomain_prep_for_pgdp/adapters/storage/filesystem.py:74-80`
 
 In filesystem mode, "presigned" URLs are plain `/cdn/<key>` paths. The PUT route has no auth dependency
 and the StaticFiles mount serves the whole data root. In `apikey` or `jwt` mode, anyone with a known
@@ -63,9 +63,9 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:L`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/api/env_js.py:26-30`, `src/pd_prep_for_pgdp/api/env_js.py:38-46`,
+Evidence: `src/pdomain_prep_for_pgdp/api/env_js.py:26-30`, `src/pdomain_prep_for_pgdp/api/env_js.py:38-46`,
 `frontend/src/api/client.ts:14-23`, `frontend/src/api/client.ts:62-63`,
-`src/pd_prep_for_pgdp/bootstrap.py:245-250`
+`src/pdomain_prep_for_pgdp/bootstrap.py:245-250`
 
 When `auth_mode="apikey"`, `/env.js` emits `API_TOKEN` to unauthenticated browser clients. Any visitor,
 and cross-origin pages via script inclusion, can recover the bearer token and call protected APIs;
@@ -82,8 +82,8 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:M`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/api/gpu/jobs.py:93-107`,
-`src/pd_prep_for_pgdp/core/job_runner.py:432-459`
+Evidence: `src/pdomain_prep_for_pgdp/api/gpu/jobs.py:93-107`,
+`src/pdomain_prep_for_pgdp/core/job_runner.py:432-459`
 
 Retry shallow-merges arbitrary `payload_override` keys into the copied job payload.
 `_handle_run_page_stage()` trusts payload fields including `project_id`, `page_id`, `stage_id`, and
@@ -101,9 +101,9 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:M`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/api/gpu/ingest.py:28-49`,
-`src/pd_prep_for_pgdp/core/job_runner.py:323-337`, `src/pd_prep_for_pgdp/core/ingest.py:84-87`,
-`src/pd_prep_for_pgdp/core/ingest.py:356-371`
+Evidence: `src/pdomain_prep_for_pgdp/api/gpu/ingest.py:28-49`,
+`src/pdomain_prep_for_pgdp/core/job_runner.py:323-337`, `src/pdomain_prep_for_pgdp/core/ingest.py:84-87`,
+`src/pdomain_prep_for_pgdp/core/ingest.py:356-371`
 
 The ingest route verifies ownership of `project_id` but stores attacker-controlled `source_key` in the
 queued job. The runner later reads that key from storage. A user can point their ingest at another known
@@ -120,9 +120,9 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:S`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/core/models.py:67-69`,
-`src/pd_prep_for_pgdp/api/data/projects.py:201-211`,
-`src/pd_prep_for_pgdp/core/packaging.py:150-152`
+Evidence: `src/pdomain_prep_for_pgdp/core/models.py:67-69`,
+`src/pdomain_prep_for_pgdp/api/data/projects.py:201-211`,
+`src/pdomain_prep_for_pgdp/core/packaging.py:150-152`
 
 `book_name` is user-controlled and is interpolated directly into `projects/{id}/for_zip/{book_name}.zip`.
 In filesystem mode, traversal-like names can resolve outside `for_zip/` and overwrite other project
@@ -139,9 +139,9 @@ Suggested labels: `kind:bug`, `priority:high`, `effort:M`, `model:sonnet`, `mode
 Severity: High
 Category: security
 
-Evidence: `src/pd_prep_for_pgdp/api/cdn.py:34`, `src/pd_prep_for_pgdp/core/ingest.py:194-218`,
-`src/pd_prep_for_pgdp/core/ingest.py:356-371`, `src/pd_prep_for_pgdp/core/ingest.py:427-452`,
-`src/pd_prep_for_pgdp/core/ingest.py:502-527`
+Evidence: `src/pdomain_prep_for_pgdp/api/cdn.py:34`, `src/pdomain_prep_for_pgdp/core/ingest.py:194-218`,
+`src/pdomain_prep_for_pgdp/core/ingest.py:356-371`, `src/pdomain_prep_for_pgdp/core/ingest.py:427-452`,
+`src/pdomain_prep_for_pgdp/core/ingest.py:502-527`
 
 Upload, preview, unzip, and thumbnail code paths read entire request bodies, entire source zips, ZIP
 entries, and page source bytes into memory. Large uploads, zip bombs, or huge decoded images can exhaust
@@ -177,9 +177,9 @@ Suggested labels: `kind:bug`, `area:tests`, `priority:high`, `effort:M`, `model:
 Severity: Medium
 Category: code-quality
 
-Evidence: `src/pd_prep_for_pgdp/adapters/database/base.py:93-126`,
-`src/pd_prep_for_pgdp/adapters/database/postgres.py:260-278`,
-`src/pd_prep_for_pgdp/bootstrap.py:63-74`
+Evidence: `src/pdomain_prep_for_pgdp/adapters/database/base.py:93-126`,
+`src/pdomain_prep_for_pgdp/adapters/database/postgres.py:260-278`,
+`src/pdomain_prep_for_pgdp/bootstrap.py:63-74`
 
 `build_database()` can select `PostgresDatabase`, but the adapter lacks required page-stage/split/
 enumeration methods and raises `NotImplementedError` for search. Stage routes and job handlers will fail
@@ -195,9 +195,9 @@ Suggested labels: `kind:bug`, `priority:medium`, `effort:L`, `area:tests`, `mode
 Severity: Medium
 Category: code-quality
 
-Evidence: `src/pd_prep_for_pgdp/api/gpu/jobs.py:48-59`,
-`src/pd_prep_for_pgdp/core/job_runner.py:263-305`,
-`src/pd_prep_for_pgdp/core/job_runner.py:347-357`
+Evidence: `src/pdomain_prep_for_pgdp/api/gpu/jobs.py:48-59`,
+`src/pdomain_prep_for_pgdp/core/job_runner.py:263-305`,
+`src/pdomain_prep_for_pgdp/core/job_runner.py:347-357`
 
 Cancellation writes `status=cancelled`, but a running handler can later call `_update_progress()` with
 a stale running job object and overwrite the cancelled status. Unzip can then enqueue follow-up thumbnail
@@ -214,7 +214,7 @@ Suggested labels: `kind:bug`, `area:tests`, `priority:medium`, `effort:M`, `mode
 Severity: Medium
 Category: code-quality
 
-Evidence: `src/pd_prep_for_pgdp/adapters/storage/s3.py:51-60`
+Evidence: `src/pdomain_prep_for_pgdp/adapters/storage/s3.py:51-60`
 
 `S3Storage.exists()` catches only `self._client.exceptions.NoSuchKey`, while real `head_object` commonly
 raises `botocore.exceptions.ClientError` with 404/NoSuchKey/NotFound. Routes expecting `exists() == False`
@@ -230,8 +230,8 @@ Suggested labels: `kind:bug`, `area:tests`, `priority:medium`, `effort:S`, `mode
 Severity: Medium
 Category: code-quality
 
-Evidence: `src/pd_prep_for_pgdp/core/ingest.py:367-371`,
-`src/pd_prep_for_pgdp/core/ingest.py:461-466`
+Evidence: `src/pdomain_prep_for_pgdp/core/ingest.py:367-371`,
+`src/pdomain_prep_for_pgdp/core/ingest.py:461-466`
 
 `_stem_from_zipname()` drops directory paths, and `_enumerate_zip()` writes to `source/{stem}{ext}`. A
 zip containing `a/page.png` and `b/page.png` silently overwrites the first file and can create multiple
@@ -249,7 +249,7 @@ Category: code-quality
 
 Evidence: `frontend/src/hooks/useJobProgress.ts:53-66`,
 `frontend/src/hooks/useStageEvents.ts:40-41`,
-`src/pd_prep_for_pgdp/api/gpu/jobs.py:119-163`
+`src/pdomain_prep_for_pgdp/api/gpu/jobs.py:119-163`
 
 Native `EventSource` cannot send the `Authorization` header required by `Depends(get_user)`. In `jwt`
 or `apikey` mode, progress and stage event streams can 401/reconnect or fall back to stale one-shot GET
@@ -266,8 +266,8 @@ Severity: Medium
 Category: code-quality
 
 Evidence: `frontend/src/pages/ProjectListPage.tsx:437-456`,
-`src/pd_prep_for_pgdp/api/data/projects.py:149`,
-`src/pd_prep_for_pgdp/adapters/storage/s3.py:85-95`
+`src/pdomain_prep_for_pgdp/api/data/projects.py:149`,
+`src/pdomain_prep_for_pgdp/adapters/storage/s3.py:85-95`
 
 S3 presigns uploads with `ContentType: application/zip`, but the frontend XHR sends the `File` without
 setting `Content-Type`. Browser-selected `.zip` files can have an empty or different type, causing

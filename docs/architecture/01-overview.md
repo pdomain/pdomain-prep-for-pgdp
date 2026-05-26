@@ -51,7 +51,7 @@ selection differs (driven by env vars, see [`06-deployment.md`](06-deployment.md
 ## Module layout
 
 ```
-src/pd_prep_for_pgdp/
+src/pdomain_prep_for_pgdp/
 ├── __init__.py             # version (hatch-vcs-derived)
 ├── __main__.py             # `pgdp-prep` console entry point
 ├── settings.py             # pydantic-settings — single Settings instance
@@ -72,7 +72,7 @@ src/pd_prep_for_pgdp/
 │   │   ├── page_stage_writer.py    # commit_stage_artifact{,_multi} dual-write (AD-2)
 │   │   ├── crop_for_ocr.py         # ocr_crop stage
 │   │   └── blank_proof.py          # blank_proof_synth stage
-│   ├── ocr.py              # mirrors pd-ocr-cli OCR flow
+│   ├── ocr.py              # mirrors pdomain-ocr-cli OCR flow
 │   ├── illustrations.py    # extract_illustration + auto-detect via layout model
 │   ├── text_postprocess.py # Step 8 — quotes, scannos, hyphenation, regex
 │   ├── packaging.py        # Step 10 — build PGDP zip with manifest
@@ -119,7 +119,7 @@ the FastAPI app. Everything in `core/` and `api/` is shape-agnostic.
 ## Dependency surface
 
 - **Backend** (Python 3.13): FastAPI, uvicorn, pydantic, pydantic-settings,
-  sse-starlette, anyio, huggingface_hub, transformers, **pd-book-tools** (the
+  sse-starlette, anyio, huggingface_hub, transformers, **pdomain-book-tools** (the
   shared OCR/geometry/image-processing primitive lib pinned to v0.9.0).
   Optional extras: `[s3]` boto3, `[postgres]` psycopg + SQLAlchemy,
   `[modal]` modal, `[jwt]` pyjwt, `[cuda]` cupy + nvimgcodec.

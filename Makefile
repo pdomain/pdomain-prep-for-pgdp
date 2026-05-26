@@ -17,15 +17,15 @@ else
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
         run run-cpu frontend-install \
-        frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pd-deps upgrade-pd-book-tools \
+        frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pd-deps upgrade-pdomain-book-tools \
         release-patch release-minor release-major _do-release docker-build docker-run \
         mise-download mise-trust-worktrees mise-setup mise-doctor upgrade-deps
 
 # ---------------------------------------------------------------------------
 # Peer-repo discovery for *-local targets
 # ---------------------------------------------------------------------------
-PEER_BOOK_TOOLS_PATH := ../pd-book-tools
-PEER_BOOK_TOOLS_REPO := https://github.com/ConcaveTrillion/pd-book-tools.git
+PEER_BOOK_TOOLS_PATH := ../pdomain-book-tools
+PEER_BOOK_TOOLS_REPO := https://github.com/pdomain/pdomain-book-tools.git
 PEER_BOOK_TOOLS := $(realpath $(PEER_BOOK_TOOLS_PATH))
 
 define _require_peer_book_tools
@@ -49,14 +49,14 @@ setup: ## Sync deps + install pre-commit hooks + refresh version
 	@echo "✅ Setup complete!"
 
 refresh-version: ## Force hatch-vcs to re-derive `pgdp-prep --version` from current git state
-	@echo "🔄 Reinstalling pd-prep-for-pgdp so hatch-vcs picks up the current HEAD / tags..."
-	@# Hatchling's `force-include` of src/pd_prep_for_pgdp/static refuses to
+	@echo "🔄 Reinstalling pdomain-prep-for-pgdp so hatch-vcs picks up the current HEAD / tags..."
+	@# Hatchling's `force-include` of src/pdomain_prep_for_pgdp/static refuses to
 	@# resolve when the directory is missing (FileNotFoundError during the
 	@# editable build), so make sure it exists before the editable install.
 	@# The wheel-side SPA check (build_hooks/spa_check.py) still gates real
 	@# wheel builds on the bundled index.html being present.
-	@mkdir -p src/pd_prep_for_pgdp/static
-	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pd-prep-for-pgdp
+	@mkdir -p src/pdomain_prep_for_pgdp/static
+	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pdomain-prep-for-pgdp
 	@uv run pgdp-prep --version || true
 
 install: ## Install pgdp-prep as a uv tool from local source (auto-detects CUDA)
@@ -82,7 +82,7 @@ install: ## Install pgdp-prep as a uv tool from local source (auto-detects CUDA)
 	echo "✅ pgdp-prep installed. Run: pgdp-prep --version"
 
 uninstall: ## Remove the installed pgdp-prep uv tool
-	@uv tool uninstall pd-prep-for-pgdp || true
+	@uv tool uninstall pdomain-prep-for-pgdp || true
 	@echo "✅ pgdp-prep uninstalled."
 
 remove-venv: ## Remove the virtual environment
@@ -108,8 +108,8 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 update-pd-deps: ## Bump all sibling pd-* deps (Python + npm) to registry latest; leaves diff for review
 	@./scripts/update-pd-deps.sh
 
-upgrade-pd-book-tools: ## DEPRECATED: use update-pd-deps
-	@echo "warning: 'upgrade-pd-book-tools' is deprecated; use 'make update-pd-deps'"
+upgrade-pdomain-book-tools: ## DEPRECATED: use update-pd-deps
+	@echo "warning: 'upgrade-pdomain-book-tools' is deprecated; use 'make update-pd-deps'"
 	@$(MAKE) --no-print-directory update-pd-deps
 
 # ---------------------------------------------------------------------------
@@ -212,14 +212,14 @@ frontend-install: ## Install frontend dependencies
 	@echo "📦 Installing frontend deps..."
 	@$(call _pnpm,install --frozen-lockfile)
 
-frontend-build: ## Build the SPA into src/pd_prep_for_pgdp/static/ (so the wheel includes it)
+frontend-build: ## Build the SPA into src/pdomain_prep_for_pgdp/static/ (so the wheel includes it)
 	@echo "🛠️  Building frontend..."
 	@$(call _pnpm,install)
 	@$(call _pnpm,run build)
-	@mkdir -p src/pd_prep_for_pgdp/static
-	@rm -rf src/pd_prep_for_pgdp/static/*
-	cp -r frontend/dist/. src/pd_prep_for_pgdp/static/
-	@echo "✅ Frontend bundled into src/pd_prep_for_pgdp/static/"
+	@mkdir -p src/pdomain_prep_for_pgdp/static
+	@rm -rf src/pdomain_prep_for_pgdp/static/*
+	cp -r frontend/dist/. src/pdomain_prep_for_pgdp/static/
+	@echo "✅ Frontend bundled into src/pdomain_prep_for_pgdp/static/"
 
 frontend-dev: ## Run Vite dev server (frontend only)
 	@$(call _pnpm,install)
@@ -272,7 +272,7 @@ openapi-export: ## Regenerate openapi.json + frontend/src/api/types.gen.ts
 # ---------------------------------------------------------------------------
 
 typecheck: ## Run basedpyright at recommended mode (workspace canonical)
-	uv run basedpyright src/pd_prep_for_pgdp --level error
+	uv run basedpyright src/pdomain_prep_for_pgdp --level error
 
 lint: ## Run ruff checks
 	uv run ruff check --select I --fix
@@ -294,7 +294,7 @@ e2e: frontend-build ## Run Playwright E2E tests (requires `playwright install ch
 build: frontend-build ## Build the wheel (with frontend bundled)
 	# `--wheel` skips the sdist step. The build hook in
 	# build_hooks/spa_check.py refuses to build a wheel without
-	# src/pd_prep_for_pgdp/static/index.html, and that directory is
+	# src/pdomain_prep_for_pgdp/static/index.html, and that directory is
 	# .gitignore'd — so the default `uv build` (sdist → wheel-from-sdist)
 	# fails because the unpacked sdist has no SPA. Wheel-only is the
 	# supported path; CI mirrors this in .github/workflows/release.yml.
@@ -305,7 +305,7 @@ clean: ## Clean cache + build artifacts
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf dist/ src/pd_prep_for_pgdp/static/ frontend/dist/ 2>/dev/null || true
+	rm -rf dist/ src/pdomain_prep_for_pgdp/static/ frontend/dist/ 2>/dev/null || true
 
 ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip ## Full CI pipeline
 
@@ -356,7 +356,7 @@ upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
 # ---------------------------------------------------------------------------
 # `make run` — canonical local-mode entry point.
 #
-# Builds the SPA bundle into src/pd_prep_for_pgdp/static/ first (so the
+# Builds the SPA bundle into src/pdomain_prep_for_pgdp/static/ first (so the
 # single FastAPI process serves the React app at `/`), then launches
 # `pgdp-prep`. App comes up at http://127.0.0.1:8765 (or the next free
 # port if 8765 is taken — see L1 fallback in `__main__.py`).

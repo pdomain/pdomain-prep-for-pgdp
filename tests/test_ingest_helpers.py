@@ -17,14 +17,14 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.ingest import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.ingest import (
     THUMBNAIL_MAX_DIM,
     _make_thumbnail_bytes,
     unzip_source,
 )
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
@@ -145,7 +145,7 @@ def test_thumbnail_for_page_returns_success_payload() -> None:
     storage handles — the parent process owns I/O.
     """
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.ingest import thumbnail_for_page
+    from pdomain_prep_for_pgdp.core.ingest import thumbnail_for_page
 
     src = _png(80, 60)
     idx0, stem, jpg, err = thumbnail_for_page(7, "p007", src)
@@ -161,7 +161,7 @@ def test_thumbnail_for_page_returns_error_on_corrupt_bytes() -> None:
     rather than raising — so a failed page in a pool worker doesn't kill
     the whole batch and the orchestrator can record the per-page error."""
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.ingest import thumbnail_for_page
+    from pdomain_prep_for_pgdp.core.ingest import thumbnail_for_page
 
     idx0, stem, jpg, err = thumbnail_for_page(3, "bad", b"not an image at all")
     assert idx0 == 3
@@ -177,7 +177,7 @@ def test_thumbnail_for_page_is_top_level_picklable() -> None:
     """Sanity-check picklability — required for ProcessPoolExecutor dispatch."""
     import pickle
 
-    from pd_prep_for_pgdp.core.ingest import thumbnail_for_page
+    from pdomain_prep_for_pgdp.core.ingest import thumbnail_for_page
 
     blob = pickle.dumps(thumbnail_for_page)
     restored = pickle.loads(blob)

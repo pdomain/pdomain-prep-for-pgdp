@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pd_prep_for_pgdp.__main__ import _parse_args, main
+from pdomain_prep_for_pgdp.__main__ import _parse_args, main
 
 if TYPE_CHECKING:
     import pytest

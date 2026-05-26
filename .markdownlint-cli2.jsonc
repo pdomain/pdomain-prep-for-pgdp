@@ -1,7 +1,7 @@
 {
   // Project-wide markdownlint configuration.
   //
-  // Mirrors pd-ocr-synth — its spec/docs style is closest to this repo's
+  // Mirrors pdomain-ocr-synth — its spec/docs style is closest to this repo's
   // (long-form `specs/00-09` design docs with tables, fenced code, and
   // prose paragraphs that wrap at sentence boundaries).
   "config": {
@@ -23,7 +23,7 @@
     "node_modules/**",
     "frontend/node_modules/**",
     "frontend/dist/**",
-    "src/pd_prep_for_pgdp/static/**",
+    "src/pdomain_prep_for_pgdp/static/**",
     ".pytest_cache/**",
     // Historical context — superseded by specs/00-09. Per CLAUDE.md
     // these are canonical and the proposal is reference-only.

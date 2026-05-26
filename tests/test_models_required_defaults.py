@@ -3,18 +3,18 @@
 Otherwise `openapi-typescript` codegen produces optional (`?:`) frontend
 properties, forcing every consumer to write `if (x !== undefined)` defensively
 even though the API always populates the field. See iter-15 of the /loop work
-on pd-prep-for-pgdp's roadmap for the precipitating discovery.
+on pdomain-prep-for-pgdp's roadmap for the precipitating discovery.
 """
 
 from __future__ import annotations
 
-from pd_ocr_ops.gpu import (
+from pdomain_ocr_ops.gpu import (
     BatchJobItem,
     BatchJobResult,
     OcrPageResponse,
 )
 
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     PageRecord,
     PipelineState,

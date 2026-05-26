@@ -6,8 +6,8 @@
 set -euo pipefail
 
 # Repo-specific: Python siblings + npm siblings.
-PY_SIBLINGS=(pd-book-tools pd-ocr-ops)
-NPM_SIBLINGS=(pd-ui)         # paths relative to ../
+PY_SIBLINGS=(pdomain-book-tools pdomain-ocr-ops)
+NPM_SIBLINGS=(pdomain-ui)         # paths relative to ../
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
@@ -30,12 +30,12 @@ done
 # npm: link (SPAs only)
 if [[ -d "$REPO_ROOT/frontend" ]]; then
   for s in "${NPM_SIBLINGS[@]}"; do
-    # pd-ui needs `make build` for its dist/ to be importable
-    if [[ "$s" == "pd-ui" ]]; then
-      say "→ pre-building pd-ui dist/"
-      (cd "$WORKSPACE_ROOT/pd-ui" && make build)
+    # pdomain-ui needs `make build` for its dist/ to be importable
+    if [[ "$s" == "pdomain-ui" ]]; then
+      say "→ pre-building pdomain-ui dist/"
+      (cd "$WORKSPACE_ROOT/pdomain-ui" && make build)
     fi
-    say "→ linking @concavetrillion/$s from $WORKSPACE_ROOT/$s"
+    say "→ linking @pdomain/$s from $WORKSPACE_ROOT/$s"
     (cd "$REPO_ROOT/frontend" && pnpm link "$WORKSPACE_ROOT/$s")
   done
 fi

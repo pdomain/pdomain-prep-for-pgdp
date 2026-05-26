@@ -26,9 +26,14 @@ import re
 
 import pytest
 
-from pd_prep_for_pgdp.core.models import AlignmentOverride, PageConfigOverrides, PageType, ResolvedPageConfig
-from pd_prep_for_pgdp.core.pipeline.stage_registry import _REAL_CPU_IMPLS
-from pd_prep_for_pgdp.core.pipeline.stage_runner import STAGE_CONFIG_FIELDS, _compute_config_hash
+from pdomain_prep_for_pgdp.core.models import (
+    AlignmentOverride,
+    PageConfigOverrides,
+    PageType,
+    ResolvedPageConfig,
+)
+from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _REAL_CPU_IMPLS
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import STAGE_CONFIG_FIELDS, _compute_config_hash
 
 
 def test_stage_config_fields_are_valid_overrides_field_names() -> None:

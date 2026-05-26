@@ -19,7 +19,7 @@ into the wheel as a static asset directory.
 ## Local
 
 Installed as a `uv tool` via a one-line curl-piped script. Same pattern as
-`pd-ocr-cli`: the script installs `uv` if missing, detects an NVIDIA GPU via
+`pdomain-ocr-cli`: the script installs `uv` if missing, detects an NVIDIA GPU via
 `nvidia-smi`, picks the matching PyTorch wheel index, and runs
 `uv tool install` against the latest GitHub tag.
 
@@ -40,10 +40,10 @@ workbench reruns until the DAG is re-run).
 
 ```
 # Linux / macOS
-$ curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
+$ curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
 
 # Windows (PowerShell)
-PS> irm https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.ps1 | iex
+PS> irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.ps1 | iex
 
 $ pgdp-prep
 GPU detected: NVIDIA GeForce RTX 4070 (12 GB)
@@ -65,7 +65,7 @@ first run (cached under `$HF_HOME` or `~/.cache/huggingface/`).
 | GPU detection at install | `nvidia-smi` → pick `cuXXX` PyTorch index; macOS arm64 → no extra index (MPS in default wheel) |
 | GPU detection at startup | CuPy + CUDA → `local`; macOS arm64 PyTorch → `mps` (DocTR only); else `cpu` |
 | Auth | None (single user) |
-| Frontend | Served from `pd_prep_for_pgdp/static/` inside the installed tool's venv |
+| Frontend | Served from `pdomain_prep_for_pgdp/static/` inside the installed tool's venv |
 | Image CDN | `/cdn/*` served by FastAPI's `StaticFiles` mount over `PGDP_DATA_ROOT` |
 
 CPU mode is **first-class**, not a degraded fallback. A 400-page book takes
@@ -73,7 +73,7 @@ CPU mode is **first-class**, not a degraded fallback. A 400-page book takes
 with the legacy GEGL path). The UI surfaces the difference with a
 "CPU mode — slow" indicator.
 
-### `install.sh` (mirrors pd-ocr-cli/install.sh)
+### `install.sh` (mirrors pdomain-ocr-cli/install.sh)
 
 ```sh
 #!/bin/sh
@@ -103,7 +103,7 @@ else
 fi
 
 # 3. Resolve latest tag
-REPO="ConcaveTrillion/pd-prep-for-pgdp"
+REPO="pdomain/pdomain-prep-for-pgdp"
 LATEST_TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/tags" 2>/dev/null \
     | grep -o '"name": "[^"]*"' | head -1 | grep -o '[^"]*$') || true
 INSTALL_REF="git+https://github.com/${REPO}${LATEST_TAG:+@$LATEST_TAG}"
@@ -124,7 +124,7 @@ falls back to cv2 — DocTR alone still benefits from the CUDA PyTorch wheel
 when `--extra-index-url` is provided.
 
 ``transformers>=4.45`` (RT-DETR support) is a **base dependency** of
-``pd-book-tools`` — the PP-DocLayout_plus-L illustration / caption / header
+``pdomain-book-tools`` — the PP-DocLayout_plus-L illustration / caption / header
 detector (spec 05) is always available without an opt-in extra. The model
 checkpoint itself (~132 MB) is downloaded lazily from Hugging Face on
 first use; the wheel install just provides the inference dep
@@ -138,22 +138,22 @@ first use; the wheel install just provides the inference dep
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # CPU install (layout detector + transformers are base deps — always included)
-uv tool install git+https://github.com/ConcaveTrillion/pd-prep-for-pgdp
+uv tool install git+https://github.com/pdomain/pdomain-prep-for-pgdp
 
 # NVIDIA GPU (replace cuXXX with your CUDA version, e.g. cu124)
-uv tool install "git+https://github.com/ConcaveTrillion/pd-prep-for-pgdp[cuda]" \
+uv tool install "git+https://github.com/pdomain/pdomain-prep-for-pgdp[cuda]" \
     --extra-index-url https://download.pytorch.org/whl/cuXXX
 ```
 
-### Editable / dev install (mirrors pd-ocr-cli `make install-local`)
+### Editable / dev install (mirrors pdomain-ocr-cli `make install-local`)
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-prep-for-pgdp
-cd pd-prep-for-pgdp
-make install-local      # uv tool install --editable . --with-editable ../pd-book-tools
+git clone https://github.com/pdomain/pdomain-prep-for-pgdp
+cd pdomain-prep-for-pgdp
+make install-local      # uv tool install --editable . --with-editable ../pdomain-book-tools
 ```
 
-Tracks local changes to both this repo and `../pd-book-tools` without
+Tracks local changes to both this repo and `../pdomain-book-tools` without
 reinstalling. Reverts via `make uninstall-local && curl ... | sh`.
 
 ### Optional: Modal dispatch from local mode
@@ -171,7 +171,7 @@ local. Useful for "I want to OCR a book on my laptop without buying a GPU."
 ### Uninstall
 
 ```sh
-uv tool uninstall pd-prep-for-pgdp
+uv tool uninstall pdomain-prep-for-pgdp
 # Optional: remove cached models
 rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
 ```
@@ -406,9 +406,9 @@ worker code live in the same module tree so there is no duplication.
 
 ```
 src/
-└── pd_prep_for_pgdp/
+└── pdomain_prep_for_pgdp/
     ├── __init__.py
-    ├── __main__.py            # `python -m pd_prep_for_pgdp` (also `pgdp-prep` script)
+    ├── __main__.py            # `python -m pdomain_prep_for_pgdp` (also `pgdp-prep` script)
     ├── settings.py            # pydantic-settings; reads env vars
     ├── bootstrap.py           # build_app() — one-shot adapter wiring
     │
@@ -467,17 +467,17 @@ The React SPA is built in CI before `python -m build`:
 ```bash
 # CI step
 cd frontend && npm ci && npm run build           # writes to dist/
-cp -r frontend/dist/* src/pd_prep_for_pgdp/static/
+cp -r frontend/dist/* src/pdomain_prep_for_pgdp/static/
 python -m build --wheel                           # static/ included via pyproject.toml
 ```
 
 `pyproject.toml`:
 ```toml
 [tool.hatch.build.targets.wheel]
-packages = ["src/pd_prep_for_pgdp"]
+packages = ["src/pdomain_prep_for_pgdp"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/pd_prep_for_pgdp/static" = "pd_prep_for_pgdp/static"
+"src/pdomain_prep_for_pgdp/static" = "pdomain_prep_for_pgdp/static"
 ```
 
 At runtime FastAPI serves the SPA from package resources:
@@ -488,7 +488,7 @@ import fastapi.staticfiles as staticfiles
 
 app.mount(
     "/",
-    staticfiles.StaticFiles(directory=files("pd_prep_for_pgdp") / "static", html=True),
+    staticfiles.StaticFiles(directory=files("pdomain_prep_for_pgdp") / "static", html=True),
     name="ui",
 )
 ```
@@ -576,7 +576,7 @@ attached to the Fargate task: **~$15/month** + GPU usage.
 ```yaml
 # .github/workflows/release.yml
 - name: Build frontend
-  run: cd frontend && npm ci && npm run build && cp -r dist/* ../src/pd_prep_for_pgdp/static/
+  run: cd frontend && npm ci && npm run build && cp -r dist/* ../src/pdomain_prep_for_pgdp/static/
 
 - name: Tag and push (install.sh resolves latest tag from GitHub API)
   run: |
@@ -593,13 +593,13 @@ attached to the Fargate task: **~$15/month** + GPU usage.
   run: aws ecs update-service --cluster pgdp --service pgdp-prep --force-new-deployment
 
 - name: Deploy Modal functions
-  run: modal deploy src/pd_prep_for_pgdp/adapters/gpu/modal_backend.py
+  run: modal deploy src/pdomain_prep_for_pgdp/adapters/gpu/modal_backend.py
 ```
 
 Local install does **not** publish to PyPI. `install.sh` reads the latest tag
 from the GitHub API and installs directly via `uv tool install
-git+https://github.com/.../pd-prep-for-pgdp@<tag>` (same pattern as
-pd-ocr-cli). Hatchling + hatch-vcs derives the package version from the tag
+git+https://github.com/.../pdomain-prep-for-pgdp@<tag>` (same pattern as
+pdomain-ocr-cli). Hatchling + hatch-vcs derives the package version from the tag
 at install time. No PyPI account, no upload step, no race between tag and
 publish. Hosted-mode ECS still uses the same git ref via the container build.
 

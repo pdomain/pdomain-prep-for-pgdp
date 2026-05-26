@@ -1,4 +1,4 @@
-# pd-prep-for-pgdp Design System
+# pdomain-prep-for-pgdp Design System
 
 ## Brand & Purpose
 

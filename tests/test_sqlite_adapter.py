@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import Job, JobStatus, JobType
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import Job, JobStatus, JobType
 
 
 def test_constructor_rejects_unrecognised_url() -> None:

@@ -1,8 +1,8 @@
 /**
- * Local icon shims for icons not yet in @concavetrillion/pd-ui/icons.
+ * Local icon shims for icons not yet in @pdomain/pdomain-ui/icons.
  *
  * These are thin inline-SVG wrappers that match the lucide-react prop API
- * (size + className + ...rest). When these icons are upstreamed into pd-ui,
+ * (size + className + ...rest). When these icons are upstreamed into pdomain-ui,
  * remove the corresponding shim and update the import site.
  *
  * Gaps to report upstream:

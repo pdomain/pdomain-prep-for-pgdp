@@ -2,7 +2,7 @@
 
 > **Status**: Active
 > **Last updated**: 2026-05-13
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#44
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#44
 
 ## TL;DR
 
@@ -142,8 +142,8 @@ All open questions resolved 2026-05-13:
 
 ## References
 
-- Roadmap: `pd-prep-for-pgdp/docs/plans/roadmap.md` §M3 (lines 312–367)
-- Long-form pipeline spec: `pd-prep-for-pgdp/docs/specs/pipeline-task-model.md` §Workbench UX
+- Roadmap: `pdomain-prep-for-pgdp/docs/plans/roadmap.md` §M3 (lines 312–367)
+- Long-form pipeline spec: `pdomain-prep-for-pgdp/docs/specs/pipeline-task-model.md` §Workbench UX
 - Pipeline-task-model design (this spec set): `2026-05-11-pipeline-task-model-design.md`
 - M2 chip rail commit: `8af4f15` (StageChainRail in PageWorkbench)
 - M2 artifact endpoint commit: `55dbc9d` (GET stage artifact route)

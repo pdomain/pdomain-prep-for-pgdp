@@ -42,8 +42,8 @@ def test_s3_storage_missing_boto3_raises_clear_error(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(builtins, "__import__", block)
 
     # Re-import to get a fresh class definition under the blocked import.
-    sys.modules.pop("pd_prep_for_pgdp.adapters.storage.s3", None)
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    sys.modules.pop("pdomain_prep_for_pgdp.adapters.storage.s3", None)
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     with pytest.raises(RuntimeError, match=r"\[s3\] extra"):
         S3Storage(bucket="b")
@@ -129,13 +129,13 @@ def fake_boto3(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_botocore_exc)
 
     # Ensure the s3 module reloads its lazy import.
-    sys.modules.pop("pd_prep_for_pgdp.adapters.storage.s3", None)
+    sys.modules.pop("pdomain_prep_for_pgdp.adapters.storage.s3", None)
     return fake_client
 
 
 @pytest.mark.asyncio
 async def test_constructor_with_prefix_strips_slashes(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b", prefix="/projects/", cdn_url_base="https://cdn.example/")
     assert s._prefix == "projects"
@@ -144,7 +144,7 @@ async def test_constructor_with_prefix_strips_slashes(fake_boto3: _FakeS3Client)
 
 @pytest.mark.asyncio
 async def test_full_key_honors_prefix(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b", prefix="data")
     assert s._full_key("/foo/bar") == "data/foo/bar"
@@ -154,7 +154,7 @@ async def test_full_key_honors_prefix(fake_boto3: _FakeS3Client) -> None:
 
 @pytest.mark.asyncio
 async def test_put_bytes_forwards_body_and_content_type(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="my-bucket", prefix="proj")
     await s.put_bytes("a/b.png", b"raw-bytes", content_type="image/png")
@@ -168,7 +168,7 @@ async def test_put_bytes_forwards_body_and_content_type(fake_boto3: _FakeS3Clien
 
 @pytest.mark.asyncio
 async def test_get_bytes_reads_streaming_body(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
     out = await s.get_bytes("k")
@@ -177,7 +177,7 @@ async def test_get_bytes_reads_streaming_body(fake_boto3: _FakeS3Client) -> None
 
 @pytest.mark.asyncio
 async def test_presign_get_uses_cdn_when_configured(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b", cdn_url_base="https://cdn.example")
     url = await s.presign_get("foo/bar.png")
@@ -188,7 +188,7 @@ async def test_presign_get_uses_cdn_when_configured(fake_boto3: _FakeS3Client) -
 
 @pytest.mark.asyncio
 async def test_presign_get_falls_back_to_boto_when_no_cdn(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
     url = await s.presign_get("foo/bar.png")
@@ -198,7 +198,7 @@ async def test_presign_get_falls_back_to_boto_when_no_cdn(fake_boto3: _FakeS3Cli
 
 @pytest.mark.asyncio
 async def test_exists_returns_true_when_head_succeeds(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
     assert await s.exists("k") is True
@@ -207,7 +207,7 @@ async def test_exists_returns_true_when_head_succeeds(fake_boto3: _FakeS3Client)
 
 @pytest.mark.asyncio
 async def test_exists_returns_false_on_no_such_key(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -221,7 +221,7 @@ async def test_exists_returns_false_on_no_such_key(fake_boto3: _FakeS3Client) ->
 @pytest.mark.asyncio
 async def test_exists_reraises_non_nosuchkey_errors(fake_boto3: _FakeS3Client) -> None:
     """Credentials/throttling errors must propagate from exists(), not return False."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -235,7 +235,7 @@ async def test_exists_reraises_non_nosuchkey_errors(fake_boto3: _FakeS3Client) -
 
 @pytest.mark.asyncio
 async def test_delete_calls_boto_delete_object(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b", prefix="proj")
     await s.delete("k")
@@ -248,7 +248,7 @@ async def test_list_prefix_walks_continuation_tokens(fake_boto3: _FakeS3Client) 
     token until IsTruncated becomes False."""
     from datetime import datetime as _dt
 
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     pages = [
         {
@@ -282,7 +282,7 @@ async def test_list_prefix_walks_continuation_tokens(fake_boto3: _FakeS3Client) 
 
 @pytest.mark.asyncio
 async def test_presign_put_calls_boto_with_content_type(fake_boto3: _FakeS3Client) -> None:
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
     url = await s.presign_put("foo/bar.zip", "application/zip", expires_in=900)
@@ -302,7 +302,7 @@ async def test_presign_put_calls_boto_with_content_type(fake_boto3: _FakeS3Clien
 async def test_exists_returns_false_on_client_error_nosuchkey(fake_boto3: _FakeS3Client) -> None:
     """head_object raising ClientError with Code=NoSuchKey must return False,
     not propagate as a 500."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -317,7 +317,7 @@ async def test_exists_returns_false_on_client_error_nosuchkey(fake_boto3: _FakeS
 async def test_exists_returns_false_on_client_error_404_status(fake_boto3: _FakeS3Client) -> None:
     """head_object raising ClientError with HTTP 404 (some S3-compatible stores
     use a numeric code rather than NoSuchKey) must return False."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -332,7 +332,7 @@ async def test_exists_returns_false_on_client_error_404_status(fake_boto3: _Fake
 async def test_exists_reraises_client_error_non_404(fake_boto3: _FakeS3Client) -> None:
     """ClientError with a non-missing code (e.g. AccessDenied) must propagate,
     not be swallowed as False."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -348,7 +348,7 @@ async def test_exists_reraises_client_error_non_404(fake_boto3: _FakeS3Client) -
 async def test_get_bytes_raises_file_not_found_on_nosuchkey(fake_boto3: _FakeS3Client) -> None:
     """get_object raising ClientError with Code=NoSuchKey must surface as
     FileNotFoundError so the cdn_get route maps it to HTTP 404."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 
@@ -364,7 +364,7 @@ async def test_get_bytes_raises_file_not_found_on_nosuchkey(fake_boto3: _FakeS3C
 async def test_get_bytes_reraises_client_error_non_404(fake_boto3: _FakeS3Client) -> None:
     """ClientError that is NOT a missing-object error must propagate unchanged
     from get_bytes (so it surfaces as a 500, not a misleading 404)."""
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     s = S3Storage(bucket="b")
 

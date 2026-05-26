@@ -131,7 +131,7 @@ model could not express this.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  pd-prep-for-pgdp  /  belloc-the-four-men  /  p045 (idx 49)        │
+│  pdomain-prep-for-pgdp  /  belloc-the-four-men  /  p045 (idx 49)        │
 │  [◄ p044]  [p045]  [p046 ►]          [Commit to project]  [Close ×]│
 │                                                                      │
 │  ┌── Controls ─────────┐  ┌── Canvas ──────────────────────────┐   │

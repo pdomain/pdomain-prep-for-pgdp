@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pd_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.bootstrap import build_app
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COMMITTED_SPEC = REPO_ROOT / "openapi.json"

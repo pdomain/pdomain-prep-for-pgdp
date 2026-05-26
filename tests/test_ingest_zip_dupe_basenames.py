@@ -23,35 +23,35 @@ import pytest
 
 def test_stem_from_zip_path_flat_name() -> None:
     """A flat filename (no directory) returns just the stem."""
-    from pd_prep_for_pgdp.core.ingest import _stem_from_zip_path
+    from pdomain_prep_for_pgdp.core.ingest import _stem_from_zip_path
 
     assert _stem_from_zip_path("page0001.png") == "page0001"
 
 
 def test_stem_from_zip_path_single_dir() -> None:
     """A single-directory prefix is preserved, joined with ``__``."""
-    from pd_prep_for_pgdp.core.ingest import _stem_from_zip_path
+    from pdomain_prep_for_pgdp.core.ingest import _stem_from_zip_path
 
     assert _stem_from_zip_path("imgs/page0001.png") == "imgs__page0001"
 
 
 def test_stem_from_zip_path_multiple_dirs() -> None:
     """Multiple directory components are all preserved."""
-    from pd_prep_for_pgdp.core.ingest import _stem_from_zip_path
+    from pdomain_prep_for_pgdp.core.ingest import _stem_from_zip_path
 
     assert _stem_from_zip_path("vol1/ch2/page0001.jpg") == "vol1__ch2__page0001"
 
 
 def test_stem_from_zip_path_backslash_separator() -> None:
     """Windows-style backslash separators are normalised to forward slashes."""
-    from pd_prep_for_pgdp.core.ingest import _stem_from_zip_path
+    from pdomain_prep_for_pgdp.core.ingest import _stem_from_zip_path
 
     assert _stem_from_zip_path("imgs\\page0001.png") == "imgs__page0001"
 
 
 def test_stem_from_zip_path_no_extension() -> None:
     """Entries without an extension keep the full sanitised path."""
-    from pd_prep_for_pgdp.core.ingest import _stem_from_zip_path
+    from pdomain_prep_for_pgdp.core.ingest import _stem_from_zip_path
 
     assert _stem_from_zip_path("scans/raw_scan") == "scans__raw_scan"
 
@@ -88,8 +88,8 @@ async def test_enumerate_zip_duplicate_basenames_preserved(tmp_path) -> None:
     pytest.importorskip("cv2")
     import numpy as np
 
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-    from pd_prep_for_pgdp.core.ingest import _enumerate_zip
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.core.ingest import _enumerate_zip
 
     def _png(h: int, w: int, fill: int) -> bytes:
         cv2 = pytest.importorskip("cv2")
@@ -132,8 +132,8 @@ async def test_enumerate_zip_no_regression_flat_zip(tmp_path) -> None:
     pytest.importorskip("cv2")
     import numpy as np
 
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-    from pd_prep_for_pgdp.core.ingest import _enumerate_zip
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.core.ingest import _enumerate_zip
 
     def _png(h: int, w: int) -> bytes:
         cv2 = pytest.importorskip("cv2")
@@ -170,8 +170,8 @@ async def test_enumerate_zip_collision_suffix_fallback(tmp_path) -> None:
     pytest.importorskip("cv2")
     import numpy as np
 
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-    from pd_prep_for_pgdp.core.ingest import _enumerate_zip
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.core.ingest import _enumerate_zip
 
     def _png() -> bytes:
         cv2 = pytest.importorskip("cv2")

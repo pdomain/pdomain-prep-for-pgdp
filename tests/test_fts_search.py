@@ -22,15 +22,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.cli.reindex import _parse_args, _run
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.cli.reindex import _parse_args, _run
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -189,8 +189,8 @@ async def test_rerun_text_postprocess_replaces_fts_row(tmp_path: Path, db: Sqlit
 @pytest.mark.asyncio
 async def test_reindex_heal_repairs_missing_fts_entry(tmp_path: Path) -> None:
     """--heal populates FTS for pages with clean text_postprocess artifacts but no FTS row."""
-    import pd_prep_for_pgdp.cli.reindex as _reindex_mod
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as _reindex_mod
+    from pdomain_prep_for_pgdp.settings import Settings
 
     data_root = tmp_path / "data"
     data_root.mkdir(parents=True, exist_ok=True)

@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageType,
     PipelineState,
@@ -64,7 +64,7 @@ async def db(tmp_path) -> SqliteDatabase:
 
 @pytest.mark.asyncio
 async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatabase) -> None:
-    from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
         proof_start_idx0=0,
@@ -97,7 +97,7 @@ async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatab
 async def test_assign_prefixes_marks_pages_outside_range_ignored(
     db: SqliteDatabase,
 ) -> None:
-    from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
         proof_start_idx0=2,
@@ -125,7 +125,7 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(
 
 @pytest.mark.asyncio
 async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
-    from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
         proof_start_idx0=0,
@@ -159,7 +159,7 @@ async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
 
 @pytest.mark.asyncio
 async def test_assign_prefixes_is_idempotent(db: SqliteDatabase) -> None:
-    from pd_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
         proof_start_idx0=0,

@@ -85,9 +85,9 @@ export function TextReviewPage() {
     null,
   );
 
-  // Phase 2.2: imgEl ref removed — pd-ui PageImageCanvas (inside
+  // Phase 2.2: imgEl ref removed — pdomain-ui PageImageCanvas (inside
   // WordBboxOverlay) manages the <img> element. naturalSize is still
-  // tracked here so we can pass page.width/height to pd-ui's canvas;
+  // tracked here so we can pass page.width/height to pdomain-ui's canvas;
   // we preload the image via useEffect + new Image() instead of <img onLoad>.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const selectDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -213,9 +213,9 @@ export function TextReviewPage() {
   );
 
   // Phase 2.2: Preload the page image to discover its natural dimensions
-  // so we can pass page.width/height to pd-ui's PageImageCanvas (via
+  // so we can pass page.width/height to pdomain-ui's PageImageCanvas (via
   // WordBboxOverlay). We can't use <img onLoad> any more because the
-  // <img> element is now managed internally by pd-ui's canvas.
+  // <img> element is now managed internally by pdomain-ui's canvas.
   // naturalSize.w===0 means "not yet loaded" — WordBboxOverlay early-
   // returns null in that case, which is the same guard it had before.
   useEffect(() => {
@@ -599,9 +599,9 @@ export function TextReviewPage() {
       )}
 
       <div className="grid gap-3 lg:grid-cols-2">
-        {/* Left pane: pd-ui PageImageCanvas + word bbox overlay.
+        {/* Left pane: pdomain-ui PageImageCanvas + word bbox overlay.
             Phase 2.2: the separate <img> + absolutely-positioned Konva
-            Stage are replaced by WordBboxOverlay which wraps pd-ui's
+            Stage are replaced by WordBboxOverlay which wraps pdomain-ui's
             PageImageCanvas (image layer + slot fills). */}
         <Card className="overflow-hidden" style={{ minHeight: 400 }}>
           {imageKey ? (

@@ -23,8 +23,8 @@ import httpx
 import pytest
 import uvicorn
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -76,7 +76,7 @@ def _free_port() -> int:
 
 def _spa_built() -> bool:
     """`make e2e` runs `frontend-build` first; this is just the safety net."""
-    static = Path(__file__).resolve().parents[2] / "src" / "pd_prep_for_pgdp" / "static"
+    static = Path(__file__).resolve().parents[2] / "src" / "pdomain_prep_for_pgdp" / "static"
     return static.is_dir() and any(static.iterdir())
 
 

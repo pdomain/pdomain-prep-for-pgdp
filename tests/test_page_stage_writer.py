@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import PageStageState, PageStageStatus
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     HashMismatch,
     MissingFile,
     OrphanFile,
@@ -420,7 +420,7 @@ async def test_commit_stage_artifacts_multi_writes_all_files(
     db: SqliteDatabase,
 ) -> None:
     """Multi-artifact writer writes every file in the `files` dict to disk."""
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
 
     await db.init_page_stages_for_page("p1", "0000")
     files = {"words.json": b'[{"text":"hello"}]', "raw.txt": b"hello"}
@@ -448,7 +448,7 @@ async def test_commit_stage_artifacts_multi_db_row_points_to_primary(
     db: SqliteDatabase,
 ) -> None:
     """DB `artifact_key` should point to the primary file."""
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
 
     await db.init_page_stages_for_page("p1", "0000")
     files = {"words.json": b"[]", "raw.txt": b""}
@@ -474,7 +474,7 @@ async def test_commit_stage_artifacts_multi_replaces_prior_files(
     db: SqliteDatabase,
 ) -> None:
     """Re-running multi-artifact writer overwrites previous files."""
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifacts_multi
 
     await db.init_page_stages_for_page("p1", "0000")
     stage_dir = tmp_path / "projects" / "p1" / "pages" / "0000" / "stages" / "ocr"

@@ -14,7 +14,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_stage_subscriber_receives_published_event() -> None:
-    from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+    from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
     broker = StageEventBroker()
     key = stage_events_key("proj-1", "page-1")
@@ -35,7 +35,7 @@ async def test_stage_subscriber_receives_published_event() -> None:
 
 @pytest.mark.asyncio
 async def test_stage_fanout_to_multiple_subscribers() -> None:
-    from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+    from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
     broker = StageEventBroker()
     key = stage_events_key("proj-x", "page-x")
@@ -57,7 +57,7 @@ async def test_stage_fanout_to_multiple_subscribers() -> None:
 
 @pytest.mark.asyncio
 async def test_stage_publish_before_subscribe_does_not_buffer() -> None:
-    from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+    from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
     broker = StageEventBroker()
     key = stage_events_key("proj-late", "page-late")
@@ -81,7 +81,7 @@ async def test_stage_publish_before_subscribe_does_not_buffer() -> None:
 @pytest.mark.asyncio
 async def test_stage_events_isolated_by_key() -> None:
     """Events published for page-A do not reach listeners on page-B."""
-    from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+    from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
     broker = StageEventBroker()
     key_a = stage_events_key("proj", "page-a")

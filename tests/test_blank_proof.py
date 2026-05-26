@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.pipeline.blank_proof import create_blank_proof
+from pdomain_prep_for_pgdp.core.pipeline.blank_proof import create_blank_proof
 
 
 def test_blank_proof_decodes_to_canonical_aspect() -> None:

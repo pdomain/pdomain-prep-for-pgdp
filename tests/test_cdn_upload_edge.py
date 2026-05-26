@@ -17,9 +17,9 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 
-from pd_prep_for_pgdp.adapters.auth.base import UserContext
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.api.cdn import cdn_put
+from pdomain_prep_for_pgdp.adapters.auth.base import UserContext
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.api.cdn import cdn_put
 
 # Minimal authenticated user for direct-call tests.
 _DEFAULT_USER = UserContext()

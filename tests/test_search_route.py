@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 
 
 def _create_project(client: TestClient) -> str:
@@ -44,8 +44,8 @@ def test_search_returns_result_shape(client: TestClient, tmp_path) -> None:
     """Index a page via search_index_page, then search for it."""
     import asyncio
 
-    from pd_prep_for_pgdp.bootstrap import build_app
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.settings import Settings
 
     settings = Settings(
         host="127.0.0.1",
@@ -94,8 +94,8 @@ def test_search_returns_result_shape(client: TestClient, tmp_path) -> None:
 def test_search_pagination(client: TestClient, tmp_path) -> None:
     import asyncio
 
-    from pd_prep_for_pgdp.bootstrap import build_app
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.settings import Settings
 
     settings = Settings(
         host="127.0.0.1",
@@ -149,9 +149,9 @@ def test_search_cross_user_isolation(tmp_path) -> None:
     import asyncio
     from datetime import UTC, datetime
 
-    from pd_prep_for_pgdp.bootstrap import build_app
-    from pd_prep_for_pgdp.core.models import PipelineState, Project, ProjectConfig, ProjectStatus
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.core.models import PipelineState, Project, ProjectConfig, ProjectStatus
+    from pdomain_prep_for_pgdp.settings import Settings
 
     settings = Settings(
         host="127.0.0.1",

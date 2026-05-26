@@ -18,14 +18,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pd_prep_for_pgdp.api.data.projects import (
+from pdomain_prep_for_pgdp.api.data.projects import (
     FULL_DAG_RATIO,
     _compute_source_zip_bytes,
     _compute_stage_artifacts_bytes,
 )
 
 if TYPE_CHECKING:
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.settings import Settings
 
 # ─── Unit tests for filesystem helpers ──────────────────────────────────────
 
@@ -121,7 +121,10 @@ def test_stage_artifacts_bytes_oserror_returns_partial_sum(tmp_path: Path, caplo
                 raise OSError("permission denied")
         return _real_stat(self, *args, **kwargs)
 
-    with caplog.at_level(logging.WARNING, logger="pd_prep_for_pgdp"), patch.object(Path, "stat", _mock_stat):
+    with (
+        caplog.at_level(logging.WARNING, logger="pdomain_prep_for_pgdp"),
+        patch.object(Path, "stat", _mock_stat),
+    ):
         result = _compute_stage_artifacts_bytes(data_root, "proj1")
 
     # Function must not raise; returns partial sum (100 bytes from good file only).

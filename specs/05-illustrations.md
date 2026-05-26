@@ -98,7 +98,7 @@ workbench's stage rail or fanned out via
 **Processing per region:**
 
 ```python
-from pd_book_tools.image_processing.cv2_processing import (
+from pdomain_book_tools.image_processing.cv2_processing import (
     read_image, crop_to_rectangle, write_jpg, write_png,
     cv2_convert_to_grayscale,
 )
@@ -150,10 +150,10 @@ interface and several backends; new models can be added without touching
 pipeline code.
 
 ```python
-# Imported from pd_book_tools.layout — the detector protocol and adapters
+# Imported from pdomain_book_tools.layout — the detector protocol and adapters
 # live in the shared library so OCR (Step 7) and illustration extraction
 # (Step 4.5) consume the same PageLayout.
-from pd_book_tools.layout import LayoutDetector, PageLayout, get_detector
+from pdomain_book_tools.layout import LayoutDetector, PageLayout, get_detector
 ```
 
 The detector returns a :class:`PageLayout` (list of typed regions plus
@@ -174,7 +174,7 @@ Model files are cached in `$HF_HOME` (or `~/.cache/huggingface/`) the same way
 DocTR models are. First detection on a fresh install pulls the chosen model
 once; subsequent runs are local.
 
-``transformers>=4.45`` is a **base dependency** of ``pd-book-tools`` — the
+``transformers>=4.45`` is a **base dependency** of ``pdomain-book-tools`` — the
 RT-DETR inference path is always available, no opt-in extra. All other deps
 (``torch``, ``torchvision``, ``opencv-python``, ``pillow``,
 ``huggingface_hub``) were already required.
@@ -188,13 +188,13 @@ A single well-supported model keeps the adapter surface small.
 ### Category mapping
 
 PP-DocLayout_plus-L emits 20 native labels; the adapter maps them to the
-:class:`pd_book_tools.layout.types.RegionType` enum
+:class:`pdomain_book_tools.layout.types.RegionType` enum
 (``figure`` / ``decoration`` / ``caption`` / ``header`` / ``footer`` /
 ``text`` / ``table`` / etc.) via :data:`PP_DOCLAYOUT_TO_PGDP` in
-``pd_book_tools/layout/_mappings.py``:
+``pdomain_book_tools/layout/_mappings.py``:
 
 ```python
-# pd_book_tools/layout/_mappings.py
+# pdomain_book_tools/layout/_mappings.py
 PP_DOCLAYOUT_TO_PGDP = {
     "paragraph_title":     "section",
     "doc_title":           "title",
@@ -235,13 +235,13 @@ DocLayNet for the PGDP use case.
 
 ### Backend implementations
 
-All adapters live in ``pd_book_tools/layout/``. The module ships a
+All adapters live in ``pdomain_book_tools/layout/``. The module ships a
 ``contour`` heuristic (no model deps) and one model adapter:
 ``pp-doclayout-plus-l``. The full source is in
-``pd_book_tools/layout/adapters/pp_doclayout.py`` — the relevant excerpt:
+``pdomain_book_tools/layout/adapters/pp_doclayout.py`` — the relevant excerpt:
 
 ```python
-# pd_book_tools/layout/adapters/pp_doclayout.py
+# pdomain_book_tools/layout/adapters/pp_doclayout.py
 from transformers import RTDetrForObjectDetection, RTDetrImageProcessor
 
 class PPDocLayoutPlusLDetector:
@@ -272,7 +272,7 @@ pd-ocr --layout-aware \
 ### Detector selection
 
 ```python
-# pd_book_tools/layout/registry.py
+# pdomain_book_tools/layout/registry.py
 def get_detector(key, device="cpu", confidence=0.5, checkpoint_path=None):
     if key == "none":              return NullDetector()
     if key == "contour":           return ContourDetector()
@@ -282,7 +282,7 @@ def get_detector(key, device="cpu", confidence=0.5, checkpoint_path=None):
         except ImportError as e:
             raise ImportError(
                 "Layout detection requires `transformers`. "
-                "Install with: uv tool install 'pd-book-tools[layout]'"
+                "Install with: uv tool install 'pdomain-book-tools[layout]'"
             ) from e
         return PPDocLayoutPlusLDetector(device, confidence, checkpoint_path)
     raise ValueError(f"Unknown layout detector: {key!r}")

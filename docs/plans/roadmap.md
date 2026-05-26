@@ -90,7 +90,7 @@ None of these are in scope for daily-use rollout.
 
 ### D1. Modal app S3 wiring
 
-`src/pd_prep_for_pgdp/adapters/gpu/modal_app.py` — `process_page` /
+`src/pdomain_prep_for_pgdp/adapters/gpu/modal_app.py` — `process_page` /
 `run_ocr` / `run_batch` raise `NotImplementedError`. Needs S3
 storage config wiring + Modal-side function bodies + a real account
 for end-to-end tests.
@@ -109,7 +109,7 @@ SQLite).
 `install.sh` / `install.ps1` / `Makefile.install` are authored but
 the curl-pipe-sh path has never been exercised in a clean shell.
 Note: long-term strategy is the self-hosted PEP 503 index
-(AD-10); fix the latent wheel-METADATA bug pre-fixed in pd-ocr-cli
+(AD-10); fix the latent wheel-METADATA bug pre-fixed in pdomain-ocr-cli
 before exercising.
 
 ### D4. CI container push
@@ -123,7 +123,7 @@ Today every `STAGE_IMPL[stage_id]` only has a `"cpu"` entry. A
 real GPU host would benefit from CUDA primitives for the
 proofing-chain stages (`grayscale`, `threshold`,
 `find_content_edges`, `auto_deskew`, `morph_fill`, `rescale`,
-`canvas_map`) backed by `pd_book_tools.image_processing.cupy_processing`,
+`canvas_map`) backed by `pdomain_book_tools.image_processing.cupy_processing`,
 behind a `[cuda]` extra so the wheel install stays slim. Track as
 a slice when the registry is the only call path (already true
 post-M6).

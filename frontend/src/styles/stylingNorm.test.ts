@@ -1,7 +1,7 @@
 /**
  * Styling normalisation contract tests (ocr-container-meta #331 — Phase 2.7d).
  *
- * Mirrors the pd-ocr-labeler-spa Phase 2.5b contract (meta #264):
+ * Mirrors the pdomain-ocr-labeler-spa Phase 2.5b contract (meta #264):
  *   1. No class-variance-authority in package.json.
  *   2. No direct `lucide-react` imports in production source.
  *   3. Key shell components use design-system tokens, not raw Tailwind palette.

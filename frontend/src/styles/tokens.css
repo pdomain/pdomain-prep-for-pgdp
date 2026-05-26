@@ -1,4 +1,4 @@
-/* ── Base design tokens — imported from pd-ui canonical token set ──────────────
+/* ── Base design tokens — imported from pdomain-ui canonical token set ──────────────
  * Provides: --bg-page, --bg-surface, --bg-raised, --bg-sunk,
  *           --border-1/2/3, --ink-1/2/3/4,
  *           --accent, --accent-ink,
@@ -6,15 +6,15 @@
  *           --block, --para, --line, --word (canvas layer tokens)
  *           --ui-font, --mono-font, --shadow-floating, --overlay-scrim
  *
- * Theme convention (from pd-ui): :root = dark (warm charcoal), [data-theme="light"] = light.
+ * Theme convention (from pdomain-ui): :root = dark (warm charcoal), [data-theme="light"] = light.
  * uiPrefs.ts applies data-theme on load from localStorage (default "light"),
  * so the dark :root values are never visible on a fresh install.
  * ─────────────────────────────────────────────────────────────────────────── */
-@import "@concavetrillion/pd-ui/theme/tokens.css";
+@import "@pdomain/pdomain-ui/theme/tokens.css";
 
-/* ── PGDP-specific extensions (not in pd-ui token set) ─────────────────────
+/* ── PGDP-specific extensions (not in pdomain-ui token set) ─────────────────────
  * These extend both themes with domain tokens for submission-pipeline status
- * and page-stage state that have no pd-ui equivalent.
+ * and page-stage state that have no pdomain-ui equivalent.
  *
  * Local extensions retained:
  *   --brand / --brand-ink           amber accent used on ProjectListPage hero
@@ -25,7 +25,7 @@
  * Note: Sonner toast stripe overrides reference these vars and are kept here.
  * ─────────────────────────────────────────────────────────────────────────── */
 
-/* Dark default (matches pd-ui :root dark palette) */
+/* Dark default (matches pdomain-ui :root dark palette) */
 :root {
   /* brand (amber) */
   --brand: #d97706;

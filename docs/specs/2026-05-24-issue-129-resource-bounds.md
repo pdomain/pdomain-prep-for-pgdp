@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#129
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#129
 
 ## TL;DR
 
@@ -107,7 +107,7 @@ zip and image limits still need inline checks.
 
 **Option B** for all five sites, plus a `content-length` guard in the CDN PUT handler.
 
-**Changes in `src/pd_prep_for_pgdp/settings.py`:**
+**Changes in `src/pdomain_prep_for_pgdp/settings.py`:**
 
 Add limit fields with the defaults from the table above:
 
@@ -120,7 +120,7 @@ max_total_uncompressed_bytes: int = 5 * 1024 * 1024 * 1024
 max_image_pixels: int = 200_000_000
 ```
 
-**Changes in `src/pd_prep_for_pgdp/api/cdn.py` (upload body limit):**
+**Changes in `src/pdomain_prep_for_pgdp/api/cdn.py` (upload body limit):**
 
 Before `await request.body()`:
 
@@ -133,7 +133,7 @@ if len(body) > settings.max_cdn_upload_bytes:
     raise HTTPException(413, "upload too large")
 ```
 
-**Changes in `src/pd_prep_for_pgdp/core/ingest.py` (`_enumerate_zip`):**
+**Changes in `src/pdomain_prep_for_pgdp/core/ingest.py` (`_enumerate_zip`):**
 
 After `raw = await storage.get_bytes(source_key)`:
 
@@ -157,7 +157,7 @@ for info in zf.infolist():
     ...
 ```
 
-**Changes in `src/pd_prep_for_pgdp/core/ingest.py` (`_make_thumbnail_bytes`):**
+**Changes in `src/pdomain_prep_for_pgdp/core/ingest.py` (`_make_thumbnail_bytes`):**
 
 Before `cv2.imdecode`:
 

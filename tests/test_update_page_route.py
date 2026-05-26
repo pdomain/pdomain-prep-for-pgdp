@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageType,
     PipelineState,
@@ -32,7 +32,7 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

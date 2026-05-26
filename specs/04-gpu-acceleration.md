@@ -76,7 +76,7 @@ single GPU box.
 The framework dispatches each stage through `STAGE_IMPL[stage_id][device]`,
 where each stage's CPU implementation is a thin wrapper around `cv2` /
 NumPy primitives and each CUDA implementation is a wrapper around
-`pd_book_tools.image_processing.cupy_processing`:
+`pdomain_book_tools.image_processing.cupy_processing`:
 
 ```python
 # Conceptual snippet — see core/pipeline/registry.py for the real one.
@@ -122,7 +122,7 @@ This is the **only** place the GPU-vs-CPU split happens in pipeline
 code; pre-existing `core/pipeline/_dispatch.py` import-table tricks
 are removed in M5.
 
-### Existing pd-book-tools GPU functions
+### Existing pdomain-book-tools GPU functions
 
 | Function | Module | CPU equivalent it replaces |
 |---|---|---|
@@ -133,11 +133,11 @@ are removed in M5.
 | `crop_to_rectangle`, `crop_edges` | `cupy_processing/crop.py` | NumPy slicing |
 | DocTR predictor | `ocr/doctr_support.py` | Tesseract |
 
-### New GPU functions required (still owed to pd-book-tools)
+### New GPU functions required (still owed to pdomain-book-tools)
 
 #### `find_edges_gpu`
 
-**File:** `pd_book_tools/image_processing/cupy_processing/edge_finding.py`
+**File:** `pdomain_book_tools/image_processing/cupy_processing/edge_finding.py`
 **CPU reference:** `cv2_processing/edge_finding.py`
 
 Direct CuPy port of the CPU algorithm with one substitution:
@@ -170,7 +170,7 @@ to GPU, runs `find_edges_gpu`, returns the tuple.
 
 #### `auto_deskew_gpu`
 
-**File:** `pd_book_tools/image_processing/cupy_processing/deskew.py`
+**File:** `pdomain_book_tools/image_processing/cupy_processing/deskew.py`
 **CPU reference:** `cv2_processing/perspective_adjustment.py`
 
 Two parts:
@@ -301,7 +301,7 @@ app = modal.App("pgdp-prep-gpu")
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
-    .pip_install_from_pyproject("pyproject.toml")    # installs pgdp-prep + pd-book-tools
+    .pip_install_from_pyproject("pyproject.toml")    # installs pgdp-prep + pdomain-book-tools
     .env({"CUDA_VISIBLE_DEVICES": "0"})
 )
 
@@ -318,8 +318,8 @@ model_volume = modal.Volume.from_name("pd-ml-models", create_if_missing=False)
 def run_stage_remote(req: dict) -> dict:
     """Run one DAG stage on one page. The registry dispatches to the
     CUDA implementation when available, CPU otherwise."""
-    from pd_prep_for_pgdp.core.pipeline.runner import run_stage
-    from pd_prep_for_pgdp.api.gpu.schemas import RunStageRequest
+    from pdomain_prep_for_pgdp.core.pipeline.runner import run_stage
+    from pdomain_prep_for_pgdp.api.gpu.schemas import RunStageRequest
     return run_stage(RunStageRequest(**req)).model_dump()
 
 @app.function(gpu="T4", image=image, volumes={"/opt/pd-ml-models": model_volume},
@@ -329,7 +329,7 @@ def run_batch_remote(items: list[dict]) -> list[dict]:
     dispatcher flush window. The 5-min flush window in managed mode
     collects pages here, then this single Modal invocation processes
     them with one cold start instead of paying it per page."""
-    from pd_prep_for_pgdp.core.pipeline.runner import run_stage_batch
+    from pdomain_prep_for_pgdp.core.pipeline.runner import run_stage_batch
     return [r.model_dump() for r in run_stage_batch(items)]
 ```
 
@@ -368,7 +368,7 @@ modal volume put pd-ml-models ~/.local/share/pd-ml-models/ /
 ```
 
 Mounted at `/opt/pd-ml-models` in every function. `DOCTR_CACHE_DIR` env var
-points pd-book-tools at this path. Updating weights is `modal volume put`
+points pdomain-book-tools at this path. Updating weights is `modal volume put`
 again — no container rebuild.
 
 ### Cold start
@@ -493,7 +493,7 @@ batch fits in one `run_batch_remote` call at the configured timeout).
 ## File layout
 
 ```
-src/pd_prep_for_pgdp/
+src/pdomain_prep_for_pgdp/
 ├── core/                          ← mode-agnostic; same code on every adapter
 │   ├── pipeline/
 │   │   ├── dag.py                 ← STAGE_DAG, descendants(), STAGE_VERSIONS
@@ -515,11 +515,11 @@ src/pd_prep_for_pgdp/
     └── shared_container.py        ← HTTP client to GPU worker
 ```
 
-CUDA primitives that still need to land in pd-book-tools (image-processing
+CUDA primitives that still need to land in pdomain-book-tools (image-processing
 fast paths):
 
 ```
-pd-book-tools/pd_book_tools/image_processing/cupy_processing/
+pdomain-book-tools/pdomain_book_tools/image_processing/cupy_processing/
 ├── __init__.py                    ← export find_edges_gpu, auto_deskew_gpu
 ├── edge_finding.py                ← NEW
 └── deskew.py                      ← NEW

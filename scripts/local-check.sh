@@ -4,8 +4,8 @@
 # Exit 0 always (informational).
 set -euo pipefail
 
-PY_SIBLINGS=(pd-book-tools pd-ocr-ops)
-NPM_SIBLINGS=(pd-ui)
+PY_SIBLINGS=(pdomain-book-tools pdomain-ocr-ops)
+NPM_SIBLINGS=(pdomain-ui)
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
@@ -47,15 +47,15 @@ say ""
 if [[ -d "$REPO_ROOT/frontend" ]]; then
   say "npm siblings:"
   for s in "${NPM_SIBLINGS[@]}"; do
-    pkg_dir="$REPO_ROOT/frontend/node_modules/@concavetrillion/$s"
+    pkg_dir="$REPO_ROOT/frontend/node_modules/@pdomain/$s"
     if [[ -L "$pkg_dir" ]]; then
       target=$(readlink -f "$pkg_dir")
-      say "  ✓ @concavetrillion/$s linked → $target"
+      say "  ✓ @pdomain/$s linked → $target"
     elif [[ -d "$pkg_dir" ]]; then
       ver=$(jq -r .version "$pkg_dir/package.json" 2>/dev/null || echo "unknown")
-      say "  → @concavetrillion/$s registry version $ver"
+      say "  → @pdomain/$s registry version $ver"
     else
-      say "  ✗ @concavetrillion/$s — NOT installed"
+      say "  ✗ @pdomain/$s — NOT installed"
     fi
   done
 fi

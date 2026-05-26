@@ -1,19 +1,19 @@
 ---
-title: pd-ui design handoff — feature implementation in pd-prep-for-pgdp
+title: pdomain-ui design handoff — feature implementation in pdomain-prep-for-pgdp
 date: 2026-05-24
 status: draft
 owner: ConcaveTrillion
 related:
-  - pd-ui/docs/templates/design_handoff_pd_ui/README.md
-  - pd-ui/docs/templates/design_handoff_pd_ui/PROMPT.md
-  - pd-prep-for-pgdp/docs/specs/2026-05-15-hifi-redesign-plan.md
-  - pd-prep-for-pgdp/docs/specs/design-brief-index.md
+  - pdomain-ui/docs/templates/design_handoff_pdomain_ui/README.md
+  - pdomain-ui/docs/templates/design_handoff_pdomain_ui/PROMPT.md
+  - pdomain-prep-for-pgdp/docs/specs/2026-05-15-hifi-redesign-plan.md
+  - pdomain-prep-for-pgdp/docs/specs/design-brief-index.md
 ---
 
 ## TL;DR
 
-The `pd-ui/docs/templates/design_handoff_pd_ui/` bundle is the design
-source-of-truth for the **entire pd-prep-for-pgdp pipeline UI**: four
+The `pdomain-ui/docs/templates/design_handoff_pdomain_ui/` bundle is the design
+source-of-truth for the **entire pdomain-prep-for-pgdp pipeline UI**: four
 fully-wired stages (`Source`, `Grayscale`, `Crop`, `Hyphen Join`), a
 new Stage 11 (`Page order` auto-detect), the Projects landing page, a
 shared Pipeline shell, plus six placeholder stages with canonical
@@ -23,25 +23,25 @@ Page Workbench cross-cutting primitives, Folder upload).
 This spec catalogues **every user-facing feature** found in the bundle
 and maps each to:
 
-1. The pd-ui export it expects to import (the **parallel pd-ui port** —
-   tracked in `pd-ui/MIGRATION_NOTES.md` once it lands — is the source
+1. The pdomain-ui export it expects to import (the **parallel pdomain-ui port** —
+   tracked in `pdomain-ui/MIGRATION_NOTES.md` once it lands — is the source
    of those exports).
-2. The pd-prep-for-pgdp route / page / store that hosts it.
+2. The pdomain-prep-for-pgdp route / page / store that hosts it.
 3. The backend contract (existing route, new route needed, or n/a).
 
 The companion plan
-(`docs/plans/pd-ui-design-handoff-implementation.md`) breaks
-implementation into slices each gated on the pd-ui exports they
+(`docs/plans/pdomain-ui-design-handoff-implementation.md`) breaks
+implementation into slices each gated on the pdomain-ui exports they
 consume.
 
 ## Context
 
 - A separate Claude Code session is executing `PROMPT.md` against the
-  `pd-ui` repo. That session will land typed React+TS components and
+  `pdomain-ui` repo. That session will land typed React+TS components and
   Storybook entries for every primitive, molecule, template, and
   stage-specific component referenced in this spec. We **do not block**
   that work; we describe what we expect to consume.
-- pd-prep-for-pgdp already ships a working FastAPI + React/Vite/TS
+- pdomain-prep-for-pgdp already ships a working FastAPI + React/Vite/TS
   pipeline. Existing pages (`ProjectListPage`, `ProjectConfigurePage`,
   `PageWorkbenchPage`, `TextReviewPage`, `CropsGridPage`,
   `ProjectReviewQueuePage`, `JobsPage`, `SettingsPage`, `LoginPage`)
@@ -54,7 +54,7 @@ consume.
   stages, panels, controls, and data displays wired up.
 - The handoff bundle was authored as **plain JSX prototypes loaded via
   Babel-standalone**. Treat the JSX as a *specification*; the actual
-  typed React+TS implementations live in pd-ui.
+  typed React+TS implementations live in pdomain-ui.
 
 ### Catalog provenance
 
@@ -78,26 +78,26 @@ can be implemented without re-reading every `.jsx` prototype.
 ### Goals
 
 - Implement every feature shown in `final/` (4 wired stages, Projects,
-  Pipeline shell) in pd-prep-for-pgdp.
+  Pipeline shell) in pdomain-prep-for-pgdp.
 - Implement every feature shown in `wf02`, `wf03`, `wf05b`, `wf09` (new
   Stage 11), `wf-pw` (cross-cutting Page Workbench primitives), and
   `wf01` (folder-upload modal variants) since these are canonical for
   pipeline stages still marked placeholder in `final/index.html`.
-- Each implementation consumes pd-ui primitives/molecules; no design
+- Each implementation consumes pdomain-ui primitives/molecules; no design
   tokens or stage-component logic is duplicated inside
-  pd-prep-for-pgdp.
+  pdomain-prep-for-pgdp.
 - Preserve every `data-testid` / `data-comment-anchor` /
   `data-screen-label` attribute the JSX prototypes expose so existing
   Playwright e2e tests stay valid (see also the e2e-acceptance memory
   in `.claude/agent-memory/`).
 - Acceptance is per stage: a user can complete the stage's task using
-  only pd-ui imports + thin glue (data fetching, store wiring,
+  only pdomain-ui imports + thin glue (data fetching, store wiring,
   routing).
 
 ### Non-Goals
 
 - We do **not** port `DesignCanvas`, `DCSection`, `DCArtboard`, or any
-  Babel-standalone scaffolding — pd-ui is using Storybook for that.
+  Babel-standalone scaffolding — pdomain-ui is using Storybook for that.
 - We do **not** invent backend routes for stages that have no design
   yet (Dewarp, Deskew, Threshold, Denoise, Canvas map, Text zones,
   OCR, Spellcheck, Illustrations, Regex, Page split, Proof pack, Zip,
@@ -122,9 +122,9 @@ can be implemented without re-reading every `.jsx` prototype.
 - SPA serving contract tests (`test_spa_fallback.py`) must keep
   passing — any new React Router paths must not be shadowed by the
   catch-all.
-- pd-ui consumption is via `@concavetrillion/pd-ui` from
-  pd-index-npm — slices that depend on a pd-ui export **must**
-  blockedBy that export's PR landing in pd-ui.
+- pdomain-ui consumption is via `@pdomain/pdomain-ui` from
+  pdomain-index-npm — slices that depend on a pdomain-ui export **must**
+  blockedBy that export's PR landing in pdomain-ui.
 - Stage 11 (`page_order`) is **new**; it must integrate with the
   existing pipeline-task model without breaking the M1–M6 contracts
   already shipped (see `docs/architecture/03-pipeline.md`).
@@ -140,32 +140,32 @@ can be implemented without re-reading every `.jsx` prototype.
 
 Port everything at once, single PR. Rejected: too large to review,
 high risk of token-system regressions to working pages, no way to
-ship incrementally if pd-ui exports stagger in.
+ship incrementally if pdomain-ui exports stagger in.
 
-### O-B · Stage-by-stage slices with pd-ui gating (chosen)
+### O-B · Stage-by-stage slices with pdomain-ui gating (chosen)
 
 Each slice maps to one stage (or one cross-cutting molecule set), is
-~200-400 LOC, lists its pd-ui import dependencies, and `blockedBy` the
+~200-400 LOC, lists its pdomain-ui import dependencies, and `blockedBy` the
 PRs that land those imports. Allows independent shipping; matches
 existing `2026-05-15-hifi-redesign-plan.md` cadence.
 
-### O-C · Wait for full pd-ui release before starting
+### O-C · Wait for full pdomain-ui release before starting
 
-Rejected: stretches calendar. pd-ui will land primitives → molecules →
+Rejected: stretches calendar. pdomain-ui will land primitives → molecules →
 templates → stage components in passes; we can start consuming the
 moment a pass lands.
 
 ## Decision
 
-Adopt **O-B**. Companion plan groups slices by stage and lists pd-ui
+Adopt **O-B**. Companion plan groups slices by stage and lists pdomain-ui
 dependencies. Slices that consume **only** primitives can start as
-soon as pd-ui's Pass 2 (atoms reconciliation) lands; slices that
-consume stage components must wait until pd-ui's Pass 3 lands the
+soon as pdomain-ui's Pass 2 (atoms reconciliation) lands; slices that
+consume stage components must wait until pdomain-ui's Pass 3 lands the
 relevant stage folder.
 
 ## Implementation Plan
 
-See `docs/plans/pd-ui-design-handoff-implementation.md` for the full
+See `docs/plans/pdomain-ui-design-handoff-implementation.md` for the full
 slice plan. This section enumerates the **catalog of features** the
 plan implements, organized by stage.
 
@@ -191,7 +191,7 @@ plan implements, organized by stage.
 
 **Panels / regions:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `SourceBanner` (generating / selection states) | `final/source/source.jsx:238-341` | `pdUi/Source/SourceBanner` |
 | `FileToolbar` (filter chips + density + "Insert page") | `:344-406` | `pdUi/Source/FileToolbar` |
@@ -220,9 +220,9 @@ plan implements, organized by stage.
   slider 1–8, Re-generate thumbnails, Auto-confirm toggle.
 
 **Density toggle note:** The S/M/L thumbnail size toggle is consumer-owned
-local state — pd-ui ships `ThumbSizeToggle` (the UI control) and
+local state — pdomain-ui ships `ThumbSizeToggle` (the UI control) and
 `ThumbGrid` (CSS grid primitive); the consumer wires the toggle's state
-value and derives the grid's column count from it. pd-ui does not own the
+value and derives the grid's column count from it. pdomain-ui does not own the
 selected size state.
 
 **Backend contract:**
@@ -250,7 +250,7 @@ selected size state.
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `BackendChip` (GPU/CPU) | `final/grayscale/grayscale.jsx:43-63` | `pdUi/atoms/BackendChip` |
 | `AutoDetectBanner` (rationale + re-detect) | `:70-112` | `pdUi/Grayscale/AutoDetectBanner` |
@@ -262,7 +262,7 @@ selected size state.
 | `StageControlsLeft` (per-page drawer) | `:673-823` | `pdUi/Grayscale/StageControlsLeft` |
 
 **WF11 variants** (`wf11/wf11-variations.jsx`) provide six exploratory
-designs for the same control panel — pd-ui ships **Variant F** (auto-detect,
+designs for the same control panel — pdomain-ui ships **Variant F** (auto-detect,
 visual chooser, advanced accordion, CPU-fallback warning, cached note) as
 the production component. The remaining variants are Storybook stories only.
 
@@ -302,7 +302,7 @@ the production component. The remaining variants are Storybook stories only.
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `CropBanner` (running / review / done) | `final/crop/crop.jsx:268-384` | `pdUi/Crop/CropBanner` |
 | `CropToolbar` (filter + per-flag drill-down + density) | `:387-476` | `pdUi/Crop/CropToolbar` |
@@ -363,7 +363,7 @@ nearEdge    (near edge)     tone fuzzy
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `ReorderScansBanner` (detected vs clean) | `wf09/pages-tab.jsx:530-578` | `pdUi/PageReorder/ReorderScansBanner` |
 | `SwapRow` list | `:414-487` | `pdUi/PageReorder/SwapRow` |
@@ -422,7 +422,7 @@ detail — the spec lists every screen, control, and molecule)*
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `ScannoToken` (underlined span) | `wf05b/scanno-capture.jsx:77-92` | `pdUi/Scannos/ScannoToken` |
 | `InlineMarkPopover` | `:366-413` | `pdUi/Scannos/InlineMarkPopover` |
@@ -492,7 +492,7 @@ download package or fix errors.
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `SummaryHeader` (pass/warn/error banner) | `wf02/validation-panel.jsx:102-148` | `pdUi/Validation/SummaryHeader` |
 | `PanelToolbar` (re-validate + last-run) | `:150-168` | `pdUi/Validation/PanelToolbar` |
@@ -520,7 +520,7 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `QualityBanner` (extreme / moderate tones) | `wf03/wf03-variations.jsx:75-129` | `pdUi/QualityFlags/QualityBanner` |
 | `StageContextStrip` (variant=`configure`) | `:375-451` | `pdUi/molecules/StageContextStrip` |
@@ -543,7 +543,7 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 - **Cross-stage**: `errored` (mismatch).
 
 **Density toggle note:** As in the Source stage, the thumb size toggle
-(S/M/L) is consumer-owned local state. pd-ui ships `ThumbSizeToggle` and
+(S/M/L) is consumer-owned local state. pdomain-ui ships `ThumbSizeToggle` and
 `ThumbGrid`; the consumer wires state and column count.
 
 **Backend contract:**
@@ -562,13 +562,13 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `PWHeader` (breadcrumb + Prev/Next + edit-mode + actions) | `wf-pw/wf-pw-variations.jsx:19-52` | `pdUi/PageWorkbench/PWHeader` |
 | `EditModeSelector` (View/Split/Illustration/Rotate) | `:54-83` | `pdUi/PageWorkbench/EditModeSelector` |
 | `PageAttributesBar` + `AttrEditorPopover` | `:100-223` | `pdUi/PageWorkbench/PageAttributesBar` |
-| `ArtifactViewer` + `ArtifactPlate` + `PaperRender` | `:264-444` | `pdUi/PageWorkbench/ArtifactViewer` (pd-ui export) |
-| `SplitOverlay` / `IllustOverlay` / `WordBboxOverlay` | `:340-398` | `pdUi/PageWorkbench/overlays/*` (pd-ui export) |
+| `ArtifactViewer` + `ArtifactPlate` + `PaperRender` | `:264-444` | `pdUi/PageWorkbench/ArtifactViewer` (pdomain-ui export) |
+| `SplitOverlay` / `IllustOverlay` / `WordBboxOverlay` | `:340-398` | `pdUi/PageWorkbench/overlays/*` (pdomain-ui export) |
 | `StageControlsPanel` + per-stage controls | `:457-668` | `pdUi/PageWorkbench/StageControlsPanel` (with sub-export per stage) |
 | `LabelerCanvas` + `LayerToggle` | `:1132-1287` | `pdUi/PageWorkbench/LabelerCanvas` |
 | `HierarchyTreePanel` + `TreeRow` | `:1296-1414` | `pdUi/PageWorkbench/HierarchyTreePanel` |
@@ -587,18 +587,18 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
   center | right drawer (760px wide for OCR workbench).
 - `TextReviewPane`: 280px when open, 44px collapsed.
 
-**Per-stage controls** (each is its own pd-ui export):
+**Per-stage controls** (each is its own pdomain-ui export):
 `ThresholdControls`, `CanvasMapControls`, `GrayscaleControls`,
 `DeskewControls`, `InitialCropControls`, `OcrControls`.
 
 **Note on ArtifactViewer ownership:** `ArtifactViewer` is the shared
-pd-* image-annotation viewer (used by pd-prep-for-pgdp PageWorkbench AND
-pd-ocr-labeler-spa). It is a pd-ui export, not a consumer-owned component.
+pd-* image-annotation viewer (used by pdomain-prep-for-pgdp PageWorkbench AND
+pdomain-ocr-labeler-spa). It is a pdomain-ui export, not a consumer-owned component.
 `ArtifactViewer` + `ArtifactPlate` + `PaperRender` + `SplitOverlay` +
-`IllustOverlay` + `WordBboxOverlay` all compose on top of pd-ui's
+`IllustOverlay` + `WordBboxOverlay` all compose on top of pdomain-ui's
 lower-level `PageImageCanvas` (Konva stage with 6-slot API). These exports
-land in pd-ui Phase 2 (see follow-up spec
-`pd-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md` —
+land in pdomain-ui Phase 2 (see follow-up spec
+`pdomain-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md` —
 referenced but not yet filed at edit time).
 
 ---
@@ -609,7 +609,7 @@ referenced but not yet filed at edit time).
 
 **Panels:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `ProjectsPage` (sidebar + detail) | `final/projects/projects.jsx:292-649` | `pdUi/Projects/ProjectsPage` |
 | `CoverPlaceholder` (initials avatar) | `:119-133` | `pdUi/atoms/CoverPlaceholder` |
@@ -636,7 +636,7 @@ delete (with 2-step confirmation for delete).
 **Route:** Triggered from `ProjectListPage` "Create new project" CTA.
 
 The handoff offers **five modal variants** (`ModalA` through `ModalE`).
-Per the parallel pd-ui work, the production component will be
+Per the parallel pdomain-ui work, the production component will be
 **ModalC** (right-side sheet with 4-step left rail) for desktop and
 fall back to ModalB (compact drop target) below 768px. The other
 variants are Storybook stories only.
@@ -653,7 +653,7 @@ variants are Storybook stories only.
    bar with mono stats (% · part N of M · speed · ETA), "Do not
    close this tab" note.
 
-**Existing implementation:** pd-prep-for-pgdp already ships
+**Existing implementation:** pdomain-prep-for-pgdp already ships
 client-side JSZip folder upload (P0.3 shipped 2026-05-16). This slice
 replaces the modal chrome and surfaces the manifest review step.
 
@@ -670,7 +670,7 @@ Sources: `final/template/`, `final/pipeline/`, `design-system/template.jsx`
 
 **Components:**
 
-| Region | Source (file:line) | pd-ui export expected |
+| Region | Source (file:line) | pdomain-ui export expected |
 |---|---|---|
 | `AppHeader` (logo + search + jobs pill + bell + avatar) | `design-system/template.jsx:10-98` | `pdUi/shell/AppHeader` |
 | `JobsPill` + `JobsDrawer` + `JobRow` | `:100-194, :304-547` | `pdUi/shell/Jobs*` |
@@ -682,14 +682,14 @@ Sources: `final/template/`, `final/pipeline/`, `design-system/template.jsx`
 | `CanvasNav` (theme toggle + stage shortcuts) | `final/canvas-nav.jsx` | **NOT PORTED** — design-only |
 
 `CanvasNav` is design-canvas chrome, not production. Theme handling
-in pd-prep-for-pgdp uses pd-ui's existing theme provider.
+in pdomain-prep-for-pgdp uses pdomain-ui's existing theme provider.
 
 `AppShell` (generic) + `PipelineTemplate` (per-project) compose the full
 page chrome. `AppShell` wraps the top-level app frame (header, nav rail,
 theme); `PipelineTemplate` slots in the pipeline-specific chrome
 (`ProjectInfoBand`, `StageStrip`, `TabsBand`) for project-scoped routes.
 
-pd-ui's `getTabsForStage(stageId)` has defaults for `source`, `ocr`,
+pdomain-ui's `getTabsForStage(stageId)` has defaults for `source`, `ocr`,
 `text_review`, `build_package`, and `hyphen_join` only. All other stages
 fall back to a generic 4-tab default (Overview / Pages / Workbench /
 Settings). Consumer must pass an explicit `tabsSlot` override per stage
@@ -699,21 +699,21 @@ requires a `tabsSlot` override rather than relying on the default.
 
 ---
 
-### Atoms & molecules to consume from pd-ui
+### Atoms & molecules to consume from pdomain-ui
 
 The full list of atoms is in `design-system/ui-base.jsx` (`Icon`,
 `Button`, `Input`, `Badge`, `KeyCap`, `Divider`, `StepDots`, `TopNav`,
 `ServerFooter`, `PageHeader`, `ProjectListBackdrop`, `AppFrame`) and
 the molecule frequency table in `COMPONENT_INDEX.md`. All atoms are
-imported through `@concavetrillion/pd-ui`; pd-prep-for-pgdp keeps no
+imported through `@pdomain/pdomain-ui`; pdomain-prep-for-pgdp keeps no
 ad-hoc duplicates.
 
-**Badge `tone` prop status:** `Badge` ships in pd-ui Phase 1 with
+**Badge `tone` prop status:** `Badge` ships in pdomain-ui Phase 1 with
 structural variants (`default` / `primary` / `danger`). The semantic
 `tone` prop (`clean` / `fuzzy` / `mismatch` / etc.) that this spec assumes
 is declared as a TypeScript type (`BadgeTone`) at `Badge.tsx:16-29` but is
-**not yet wired into the component** (tracked in pd-ui issue #339).
-Consumer must not pass `tone` until pd-ui issue #339 lands; use `variant`
+**not yet wired into the component** (tracked in pdomain-ui issue #339).
+Consumer must not pass `tone` until pdomain-ui issue #339 lands; use `variant`
 for structural styling and inline color tokens for status indicators until
 then.
 
@@ -728,7 +728,7 @@ then.
 - Canvas layers: `--block`, `--para`, `--line`, `--word`
 - Typefaces: `--ui-font` (Inter), `--mono-font` (JetBrains Mono)
 
-Existing `pd-prep-for-pgdp/frontend/src/styles/tokens.css` (introduced
+Existing `pdomain-prep-for-pgdp/frontend/src/styles/tokens.css` (introduced
 by the 2026-05-15 hi-fi plan) is the implementation surface; the
 design handoff is canonical for any new tokens.
 
@@ -748,29 +748,29 @@ Per-slice acceptance:
   added in this spec (`/projects/:id/source`, `/projects/:id/grayscale`,
   `/projects/:id/page-order`, `/projects/:id/hyphen-join`) must each
   have an entry exercising the catch-all without shadowing `/api/*`.
-- **Visual:** Storybook snapshot tests for each new pd-ui consumer
-  (pd-ui is the snapshot owner; pd-prep-for-pgdp consumes).
+- **Visual:** Storybook snapshot tests for each new pdomain-ui consumer
+  (pdomain-ui is the snapshot owner; pdomain-prep-for-pgdp consumes).
 
 ## Decisions (resolved 2026-05-24)
 
-1. **Stage 11 heuristic — pd-book-tools owns it.** A new
-   `pd_book_tools.page_order.detect_out_of_order_pages(...)` helper
+1. **Stage 11 heuristic — pdomain-book-tools owns it.** A new
+   `pdomain_book_tools.page_order.detect_out_of_order_pages(...)` helper
    consumes filename-sequence + OCR-page-number + thumbnail-similarity
    signals. Pd-prep-for-pgdp's
    `/api/projects/{id}/page-order/detect` endpoint is a thin wrapper.
    **Sequencing:** S11-A (manual drag) ships unblocked; S11-B is
-   `blockedBy` a pd-book-tools spec for the helper (filed separately).
+   `blockedBy` a pdomain-book-tools spec for the helper (filed separately).
 2. **Hyphen-join ngrams — JSON-first, SQLite later.** S15-* consumes
    Google Books unofficial JSON through a thin adapter
    (`HyphenNgramsClient` interface). A follow-up spec covers
-   migrating to a pre-indexed ~50MB SQLite in pd-book-tools. Adapter
+   migrating to a pre-indexed ~50MB SQLite in pdomain-book-tools. Adapter
    shape is stable across both backends.
-3. **Scanno rule + candidate store — pd-book-tools owns it.** A new
-   `pd_book_tools.scannos` module owns both `ScannoRule` (global
+3. **Scanno rule + candidate store — pdomain-book-tools owns it.** A new
+   `pdomain_book_tools.scannos` module owns both `ScannoRule` (global
    library) and `ScannoCandidate` (per-book triage) schemas + storage.
    Pd-prep-for-pgdp's scanno API routes are thin wrappers.
-   **Sequencing:** every S13-* slice is `blockedBy` the pd-book-tools
-   spec for `pd_book_tools.scannos` (filed separately).
+   **Sequencing:** every S13-* slice is `blockedBy` the pdomain-book-tools
+   spec for `pdomain_book_tools.scannos` (filed separately).
 4. **Validation auto-fix — safe-rename whitelist only.** v1 ships
    auto-fix for cosmetic / mechanical checks only: filename
    normalisation (NFC), prefix renumbering (non-contiguous), trailing
@@ -780,7 +780,7 @@ Per-slice acceptance:
    whitelist precisely; semantic auto-fix deferred to a sibling spec.
 5. **WF11 grayscale — Variant F (combined).** Auto-detect banner +
    visual chooser + advanced accordion + cached note + CPU-fallback
-   warning. Other variants stay as Storybook stories in pd-ui.
+   warning. Other variants stay as Storybook stories in pdomain-ui.
 6. **Upload modal — ModalC desktop + ModalB mobile.** Right-side
    sheet with 4-step left rail above 768px; compact drop target
    below. The other variants (A, D, E) stay as Storybook stories.
@@ -793,34 +793,34 @@ Per-slice acceptance:
 
 ## Implementation status (audit 2026-05-24)
 
-The 4-way audit (pd-ui repo state vs. this spec) found the following:
+The 4-way audit (pdomain-ui repo state vs. this spec) found the following:
 
-- **Foundation layer shipped.** pd-ui milestone #333 landed 61 components
+- **Foundation layer shipped.** pdomain-ui milestone #333 landed 61 components
   covering atoms, molecules, shell, `AppShell`, `PipelineTemplate`, token
   system, `PageImageCanvas` (Konva stage with 6-slot API), `ThumbSizeToggle`,
   `ThumbGrid`, and all structural `Badge` variants.
 - **Per-stage component layer deferred.** 43 stage-specific components
   (across Source, Grayscale, Crop, Scannos, Validation, Quality flags,
-  Page Workbench overlays, ArtifactViewer family) are deferred to pd-ui
+  Page Workbench overlays, ArtifactViewer family) are deferred to pdomain-ui
   Phase 2. See follow-up spec
-  `pd-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md`
+  `pdomain-ui/docs/specs/2026-05-24-design-handoff-stages-phase-2.md`
   (referenced but not yet filed at edit time).
 - **Slice readiness split.** Of the 46 slices in the companion plan
-  (`docs/plans/pd-ui-design-handoff-implementation.md`):
+  (`docs/plans/pdomain-ui-design-handoff-implementation.md`):
   - **15 ready-to-start** — foundation, Projects landing page, Folder
     upload modal, Quality flags (banner + filter, primitives-only),
     Routing + React Router registration, Storybook consumer entries.
-  - **31 blocked** on pd-ui Phase 2 exports landing (per-stage components,
+  - **31 blocked** on pdomain-ui Phase 2 exports landing (per-stage components,
     ArtifactViewer family, stage-specific overlays).
-  - Slices marked blocked may be co-located in pd-prep-for-pgdp using
-    pd-ui primitives + canvas slots as a stopgap if Phase 2 stretches;
-    the components would be refactored into pd-ui exports in a later pass.
+  - Slices marked blocked may be co-located in pdomain-prep-for-pgdp using
+    pdomain-ui primitives + canvas slots as a stopgap if Phase 2 stretches;
+    the components would be refactored into pdomain-ui exports in a later pass.
 
 ## Open Questions
 
 None blocking. Filed as separate specs:
 
-- `pd-book-tools/docs/specs/<date>-page-order-detection.md` (gates S11-B)
-- `pd-book-tools/docs/specs/<date>-scanno-rule-library.md` (gates all S13-*)
-- `pd-book-tools/docs/specs/<date>-hyphen-ngrams-sqlite.md` (post-v1 follow-up to Decision #2)
-- `pd-prep-for-pgdp/docs/specs/<date>-validation-semantic-autofix.md` (post-v1 follow-up to Decision #4)
+- `pdomain-book-tools/docs/specs/<date>-page-order-detection.md` (gates S11-B)
+- `pdomain-book-tools/docs/specs/<date>-scanno-rule-library.md` (gates all S13-*)
+- `pdomain-book-tools/docs/specs/<date>-hyphen-ngrams-sqlite.md` (post-v1 follow-up to Decision #2)
+- `pdomain-prep-for-pgdp/docs/specs/<date>-validation-semantic-autofix.md` (post-v1 follow-up to Decision #4)

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path, **kw) -> Settings:

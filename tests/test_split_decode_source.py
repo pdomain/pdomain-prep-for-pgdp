@@ -22,14 +22,14 @@ import cv2
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import PageRecord, PageStageStatus
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import PageRecord, PageStageStatus
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
-from pd_prep_for_pgdp.core.pipeline.stage_runner import (
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     run_stage,
 )

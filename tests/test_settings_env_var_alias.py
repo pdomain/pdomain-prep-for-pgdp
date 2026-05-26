@@ -1,4 +1,4 @@
-"""Tests for PGDP_GPU_BACKEND → PD_GPU_BACKEND env-var alias.
+"""Tests for PGDP_GPU_BACKEND → PDOMAIN_GPU_BACKEND env-var alias.
 
 §7 Phase 1.7 renames the GPU backend selector to the cross-cut PD_*
 prefix; the old name keeps working for one release cycle and emits a
@@ -13,18 +13,18 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def test_new_env_var_pd_gpu_backend_is_read(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PGDP_GPU_BACKEND", raising=False)
-    monkeypatch.setenv("PD_GPU_BACKEND", "cpu")
+    monkeypatch.setenv("PDOMAIN_GPU_BACKEND", "cpu")
     s = Settings()
     assert s.gpu_backend == "cpu"
 
 
 def test_legacy_env_var_pgdp_gpu_backend_still_works(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PD_GPU_BACKEND", raising=False)
+    monkeypatch.delenv("PDOMAIN_GPU_BACKEND", raising=False)
     monkeypatch.setenv("PGDP_GPU_BACKEND", "cpu")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -37,7 +37,7 @@ def test_legacy_env_var_pgdp_gpu_backend_still_works(monkeypatch: pytest.MonkeyP
 
 
 def test_new_env_var_wins_when_both_set(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("PD_GPU_BACKEND", "cpu")
+    monkeypatch.setenv("PDOMAIN_GPU_BACKEND", "cpu")
     monkeypatch.setenv("PGDP_GPU_BACKEND", "modal")
     s = Settings()
     assert s.gpu_backend == "cpu"
@@ -45,7 +45,7 @@ def test_new_env_var_wins_when_both_set(monkeypatch: pytest.MonkeyPatch):
 
 def test_no_warning_when_only_new_var_set(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PGDP_GPU_BACKEND", raising=False)
-    monkeypatch.setenv("PD_GPU_BACKEND", "cpu")
+    monkeypatch.setenv("PDOMAIN_GPU_BACKEND", "cpu")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         Settings()
@@ -54,7 +54,7 @@ def test_no_warning_when_only_new_var_set(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_no_warning_when_neither_var_set(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("PD_GPU_BACKEND", raising=False)
+    monkeypatch.delenv("PDOMAIN_GPU_BACKEND", raising=False)
     monkeypatch.delenv("PGDP_GPU_BACKEND", raising=False)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

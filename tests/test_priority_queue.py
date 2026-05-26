@@ -26,7 +26,7 @@ async def test_interactive_preempts_batch_in_window() -> None:
     """Multiple BATCH items + an INTERACTIVE item submitted in the same
     window: the INTERACTIVE item should run first.
     """
-    from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
     order: list[str] = []
 
@@ -54,7 +54,7 @@ async def test_interactive_preempts_batch_in_window() -> None:
 @pytest.mark.asyncio
 async def test_work_runs_serialised() -> None:
     """Two long-running submissions never overlap (single-thread executor)."""
-    from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
     ex = SingleExecutor(batch_window_s=0.01)
     drain = asyncio.create_task(ex.run_drain_loop())
@@ -84,7 +84,7 @@ async def test_work_runs_serialised() -> None:
 @pytest.mark.asyncio
 async def test_submit_returns_work_result() -> None:
     """Awaiting the future yields the work function's return value."""
-    from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
     def work(x: int, y: int) -> int:
         return x + y
@@ -102,7 +102,7 @@ async def test_submit_returns_work_result() -> None:
 
 @pytest.mark.asyncio
 async def test_work_exception_propagates_to_caller() -> None:
-    from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
     def boom(_: Any) -> None:
         raise RuntimeError("expected")
@@ -120,7 +120,7 @@ async def test_work_exception_propagates_to_caller() -> None:
 
 @pytest.mark.asyncio
 async def test_drain_loop_cancellation_is_clean() -> None:
-    from pd_prep_for_pgdp.core.queue.single_executor import SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import SingleExecutor
 
     ex = SingleExecutor()
     drain = asyncio.create_task(ex.run_drain_loop())
@@ -144,7 +144,7 @@ def test_keyboard_interrupt_not_trapped_as_future_exception() -> None:
     We use a plain synchronous test with an isolated ``asyncio.run()`` call so
     that pytest itself is not disrupted by the propagating interrupt.
     """
-    from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+    from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
     def raise_ki() -> None:
         raise KeyboardInterrupt

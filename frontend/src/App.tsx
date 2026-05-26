@@ -1,13 +1,13 @@
 // App.tsx — SPA root: router, QueryClient provider, and route table.
 //
-// Phase 2.4: replaced local AppShell wrapper with pd-ui AppShell (#266).
-// Phase 2.7b: wired real pd-ocr-ops suite routes (#329). GAP-2/GAP-3/GAP-4
+// Phase 2.4: replaced local AppShell wrapper with pdomain-ui AppShell (#266).
+// Phase 2.7b: wired real pdomain-ocr-ops suite routes (#329). GAP-2/GAP-3/GAP-4
 //              resolved; /api/suite/* is now mounted by bootstrap.py via
-//              pd_ocr_ops.mount_routes(). UIPrefsConfig load/persist uses
+//              pdomain_ocr_ops.mount_routes(). UIPrefsConfig load/persist uses
 //              GET/PUT /api/suite/prefs with localStorage fallback.
 // Phase 2.7c: searchOpen moved from uiPrefs store to local React state (#330).
 //              SearchModal now accepts explicit open/onOpenChange props.
-// Task #155 (s0-c): adopted pd-ui AppHeader + JobsPill in header slot.
+// Task #155 (s0-c): adopted pdomain-ui AppHeader + JobsPill in header slot.
 //              AppHeader replaces custom TopNav + OpenTasksBell.
 //              UserMenu kept in headerActions slot for auth-mode handling.
 //              activeJobs fed from /api/jobs polling (running jobs only).
@@ -16,18 +16,18 @@
 //   header        ← AppHeader (replaces custom TopNav)
 //   headerActions ← UserMenu (auth modes: none/apikey/jwt)
 //   main          ← Routes block + banners + SearchModal + HotkeyHelpModal
-//   footer        — pd-ui AppShell has no footer zone (GAP-1); ServerInfoFooter
+//   footer        — pdomain-ui AppShell has no footer zone (GAP-1); ServerInfoFooter
 //                   is kept app-local inside the main slot using flex-col layout.
 //
-// GAP-1: pd-ui AppShell has no footer zone. ServerInfoFooter (formerly in
+// GAP-1: pdomain-ui AppShell has no footer zone. ServerInfoFooter (formerly in
 //         the 32px footer grid row of components/shell/AppShell.tsx) is
 //         kept app-local: rendered as a flex-col sibling of the routes div
-//         inside the `main` slot. Resolve if pd-ui adds a footer zone.
+//         inside the `main` slot. Resolve if pdomain-ui adds a footer zone.
 //
-// GAP-5 (from uiPrefs.ts): pd-ui's UIPrefs.theme is 'dark' | 'light' (no
+// GAP-5 (from uiPrefs.ts): pdomain-ui's UIPrefs.theme is 'dark' | 'light' (no
 //         'system'). The local store supports 'system'; when theme is 'system'
-//         the pd-ui AppShell receives the resolved effective value.
-//         Resolve when pd-ui's UIPrefs gains 'system' theme support.
+//         the pdomain-ui AppShell receives the resolved effective value.
+//         Resolve when pdomain-ui's UIPrefs gains 'system' theme support.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -47,7 +47,7 @@ import {
   type InstalledApp,
   type LaunchResult,
   type ActiveJob,
-} from "@concavetrillion/pd-ui/shell";
+} from "@pdomain/pdomain-ui/shell";
 import { api, getAuthToken } from "./api/client";
 import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
@@ -67,16 +67,16 @@ import { ProjectReviewQueuePage } from "./pages/ProjectReviewQueuePage";
 import { TextReviewPage } from "./pages/TextReviewPage";
 import { CropsGridPage } from "./pages/CropsGridPage";
 
-// ── Phase 2.7b: UIPrefsConfig — real pd-ocr-ops wiring (resolves GAP-2/GAP-3) ─
+// ── Phase 2.7b: UIPrefsConfig — real pdomain-ocr-ops wiring (resolves GAP-2/GAP-3) ─
 //
-// pd-ocr-ops mounts GET /api/suite/prefs and PUT /api/suite/prefs/common.
+// pdomain-ocr-ops mounts GET /api/suite/prefs and PUT /api/suite/prefs/common.
 // load() calls the backend first; falls back to localStorage on error.
 // persistCommon() writes to the backend and mirrors theme to localStorage
 // so the local uiPrefs.ts store stays in sync.
 //
-// GAP-5 (from uiPrefs.ts, remaining after Phase 2.7c): pd-ui's UIPrefs.theme
+// GAP-5 (from uiPrefs.ts, remaining after Phase 2.7c): pdomain-ui's UIPrefs.theme
 // is 'dark' | 'light' (no 'system'). The local store supports 'system'; when
-// theme is 'system' the pd-ui AppShell receives the resolved effective value.
+// theme is 'system' the pdomain-ui AppShell receives the resolved effective value.
 
 /** Resolve 'system' theme preference to an effective 'dark' | 'light' value. */
 function resolveTheme(): "dark" | "light" {
@@ -91,11 +91,11 @@ function resolveTheme(): "dark" | "light" {
 
 const UI_PREFS_CONFIG: UIPrefsConfig = {
   load: async () => {
-    // Try real backend first (pd-ocr-ops GET /api/suite/prefs).
+    // Try real backend first (pdomain-ocr-ops GET /api/suite/prefs).
     try {
       const res = await fetch("/api/suite/prefs");
       if (res.ok) {
-        // pd-ocr-ops returns: {"common": {"theme": "dark", "density": "normal",
+        // pdomain-ocr-ops returns: {"common": {"theme": "dark", "density": "normal",
         //   "font_scale": 1.0, ...}, "apps": {...}}
         const body = (await res.json()) as {
           common?: { theme?: string; density?: string; font_scale?: number };
@@ -131,12 +131,12 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
     return { theme, density: "normal", fontScale: 1.0 };
   },
   persistCommon: async (prefs) => {
-    // Write to backend (pd-ocr-ops PUT /api/suite/prefs/common).
+    // Write to backend (pdomain-ocr-ops PUT /api/suite/prefs/common).
     try {
       await fetch("/api/suite/prefs/common", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        // pd-ocr-ops CommonUIPrefs uses snake_case: font_scale.
+        // pdomain-ocr-ops CommonUIPrefs uses snake_case: font_scale.
         body: JSON.stringify({
           theme: prefs.theme,
           density: prefs.density,
@@ -158,9 +158,9 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
     }
   },
   persistApp: async (appPrefs) => {
-    // Write app-specific prefs to backend (pd-ocr-ops PUT /api/suite/prefs/apps/{id}).
+    // Write app-specific prefs to backend (pdomain-ocr-ops PUT /api/suite/prefs/apps/{id}).
     try {
-      await fetch("/api/suite/prefs/apps/pd-prep-for-pgdp", {
+      await fetch("/api/suite/prefs/apps/pdomain-prep-for-pgdp", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(appPrefs),
@@ -171,16 +171,16 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
   },
 };
 
-// ── Phase 2.7b: SuiteSiblings — real pd-ocr-ops wiring (resolves GAP-4) ──────
+// ── Phase 2.7b: SuiteSiblings — real pdomain-ocr-ops wiring (resolves GAP-4) ──────
 //
-// pd-ocr-ops mounts GET /api/suite/installed and POST /api/suite/launch.
-// Adapter maps pd-ocr-ops InstalledApp shape (snake_case) to pd-ui shape.
+// pdomain-ocr-ops mounts GET /api/suite/installed and POST /api/suite/launch.
+// Adapter maps pdomain-ocr-ops InstalledApp shape (snake_case) to pdomain-ui shape.
 //
-// pd-ocr-ops shape:  { app_id, display_name, default_port, icon, enabled, ... }
-// pd-ui shape:       { id, displayName, launchUrl, iconUrl?, url?, pid? }
+// pdomain-ocr-ops shape:  { app_id, display_name, default_port, icon, enabled, ... }
+// pdomain-ui shape:       { id, displayName, launchUrl, iconUrl?, url?, pid? }
 //
 // launchUrl: http://localhost:{default_port} (local mode).
-// iconUrl: /api/icons/32?app_id={app_id} (served by pd-ocr-ops icons router).
+// iconUrl: /api/icons/32?app_id={app_id} (served by pdomain-ocr-ops icons router).
 
 interface OcrOpsInstalledApp {
   app_id: string;
@@ -225,7 +225,7 @@ async function postLaunch(id: string): Promise<LaunchResult> {
   }
 }
 
-// ── Task #155 (s0-c): useActiveJobs — feeds pd-ui AppHeader's JobsPill ────────
+// ── Task #155 (s0-c): useActiveJobs — feeds pdomain-ui AppHeader's JobsPill ────────
 //
 // Polls /api/jobs every 5 s and maps running/queued jobs to the ActiveJob
 // shape expected by AppHeader. "running" jobs are primary; "queued" jobs
@@ -280,8 +280,8 @@ export default function App() {
     <TooltipProvider>
       {/*
        * Phase 2.4: SuiteSiblingsProvider supplies the launcher context
-       * that pd-ui AppShell's LauncherSlot reads via useSuiteSiblingsContext().
-       * fetchInstalled / postLaunch are shims (GAP-4) until pd-ocr-ops
+       * that pdomain-ui AppShell's LauncherSlot reads via useSuiteSiblingsContext().
+       * fetchInstalled / postLaunch are shims (GAP-4) until pdomain-ocr-ops
        * mounts /api/suite/* in the FastAPI app.
        */}
       <SuiteSiblingsProvider value={{ fetchInstalled, postLaunch }}>
@@ -291,7 +291,7 @@ export default function App() {
          */}
         <div data-testid="app-shell" className="h-screen w-full">
           <AppShell
-            appId="pd-prep-for-pgdp"
+            appId="pdomain-prep-for-pgdp"
             appDisplayName="pgdp-prep"
             appIconUrl="/static/icon.svg"
             launcherSlot="header"
@@ -299,7 +299,7 @@ export default function App() {
             uiPrefsConfig={UI_PREFS_CONFIG}
             header={
               /*
-               * Task #155 (s0-c): pd-ui AppHeader replaces custom TopNav.
+               * Task #155 (s0-c): pdomain-ui AppHeader replaces custom TopNav.
                *
                * activeJobs → feeds the built-in JobsPill indicator.
                * onSearchClick → opens the app-level SearchModal.
@@ -325,7 +325,7 @@ export default function App() {
             }
             main={
               /*
-               * GAP-1: pd-ui AppShell has no footer zone. ServerInfoFooter
+               * GAP-1: pdomain-ui AppShell has no footer zone. ServerInfoFooter
                * is kept app-local as a flex-col sibling of the routes div,
                * pinned to the bottom of the main zone via flex layout.
                */

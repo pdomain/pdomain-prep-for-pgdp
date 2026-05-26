@@ -12,9 +12,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -60,7 +60,7 @@ def storage(tmp_path) -> FilesystemStorage:
 
 @pytest.mark.asyncio
 async def test_build_package_handler_writes_zip(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)

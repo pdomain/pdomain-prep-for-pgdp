@@ -22,9 +22,9 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
@@ -82,7 +82,7 @@ def storage(tmp_path) -> FilesystemStorage:
 
 @pytest.mark.asyncio
 async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -121,7 +121,7 @@ async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage:
 
 @pytest.mark.asyncio
 async def test_unzip_leaves_project_in_ingesting(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -146,7 +146,7 @@ async def test_unzip_leaves_project_in_ingesting(db: SqliteDatabase, storage: Fi
 
 @pytest.mark.asyncio
 async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -174,7 +174,7 @@ async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: Filesy
 async def test_unzip_local_folder_lists_storage_prefix(
     db: SqliteDatabase, storage: FilesystemStorage
 ) -> None:
-    from pd_prep_for_pgdp.core.ingest import unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -200,7 +200,7 @@ async def test_unzip_local_folder_lists_storage_prefix(
 async def test_thumbnails_generates_jpgs_for_every_page(
     db: SqliteDatabase, storage: FilesystemStorage
 ) -> None:
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -222,7 +222,7 @@ async def test_thumbnails_generates_jpgs_for_every_page(
 
 @pytest.mark.asyncio
 async def test_thumbnails_advances_project_status(db: SqliteDatabase, storage: FilesystemStorage) -> None:
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -243,7 +243,7 @@ async def test_thumbnails_advances_project_status(db: SqliteDatabase, storage: F
 async def test_thumbnails_records_corrupt_entries_as_errors(
     db: SqliteDatabase, storage: FilesystemStorage
 ) -> None:
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -274,7 +274,7 @@ async def test_thumbnail_source_read_error_appears_in_ingest_errors(
     the failure must appear in IngestResult.errors (not swallowed silently)."""
     from unittest.mock import patch
 
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)

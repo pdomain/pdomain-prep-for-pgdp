@@ -1,10 +1,10 @@
 """Tests for ``scripts/detect_dev_local.py``.
 
-The script exits 0 when a dev-local install of ``pd-book-tools`` is
+The script exits 0 when a dev-local install of ``pdomain-book-tools`` is
 detected and 1 otherwise. Detection precedence (per
 ``docs/architecture/dev-local-upgrade-flow.md``):
 
-1. ``uv pip show pd-book-tools`` reports an ``Editable project location:`` line.
+1. ``uv pip show pdomain-book-tools`` reports an ``Editable project location:`` line.
 2. Marker file at ``.venv/.dev-local`` exists.
 3. Env var ``PD_DEV_LOCAL=1``.
 
@@ -66,7 +66,7 @@ def test_exit_1_when_no_signals(tmp_path: Path) -> None:
 
     fake_uv = (
         "#!/usr/bin/env bash\n"
-        "echo 'Name: pd-book-tools'\n"
+        "echo 'Name: pdomain-book-tools'\n"
         "echo 'Version: 0.9.0'\n"
         "echo 'Location: /opt/site-packages'\n"
     )
@@ -78,10 +78,10 @@ def test_exit_1_when_no_signals(tmp_path: Path) -> None:
 def test_exit_0_when_uv_reports_editable(tmp_path: Path) -> None:
     fake_uv = (
         "#!/usr/bin/env bash\n"
-        "echo 'Name: pd-book-tools'\n"
+        "echo 'Name: pdomain-book-tools'\n"
         "echo 'Version: 0.9.0'\n"
         "echo 'Location: /workspaces/foo/.venv/lib/python3.13/site-packages'\n"
-        "echo 'Editable project location: /workspaces/pd-book-tools'\n"
+        "echo 'Editable project location: /workspaces/pdomain-book-tools'\n"
     )
     env = _base_env(tmp_path, fake_uv=fake_uv)
     result = _run(env, cwd=tmp_path)
@@ -91,7 +91,7 @@ def test_exit_0_when_uv_reports_editable(tmp_path: Path) -> None:
 def test_exit_0_when_marker_file_present(tmp_path: Path) -> None:
     """Marker fallback: even if uv reports canonical, the marker file wins."""
 
-    fake_uv = "#!/usr/bin/env bash\necho 'Name: pd-book-tools'\necho 'Location: /opt/site-packages'\n"
+    fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
     venv = tmp_path / ".venv"
     venv.mkdir()
     (venv / ".dev-local").write_text("")
@@ -104,7 +104,7 @@ def test_exit_0_when_marker_file_present(tmp_path: Path) -> None:
 def test_exit_0_when_env_var_set(tmp_path: Path) -> None:
     """Last-resort override: PD_DEV_LOCAL=1 forces dev-local detection."""
 
-    fake_uv = "#!/usr/bin/env bash\necho 'Name: pd-book-tools'\necho 'Location: /opt/site-packages'\n"
+    fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
     env = _base_env(tmp_path, fake_uv=fake_uv)
     env["PD_DEV_LOCAL"] = "1"
     result = _run(env, cwd=tmp_path)
@@ -114,7 +114,7 @@ def test_exit_0_when_env_var_set(tmp_path: Path) -> None:
 def test_env_var_zero_does_not_trigger(tmp_path: Path) -> None:
     """``PD_DEV_LOCAL=0`` must not be read as truthy."""
 
-    fake_uv = "#!/usr/bin/env bash\necho 'Name: pd-book-tools'\necho 'Location: /opt/site-packages'\n"
+    fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
     env = _base_env(tmp_path, fake_uv=fake_uv)
     env["PD_DEV_LOCAL"] = "0"
     result = _run(env, cwd=tmp_path)

@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import zipfile
 
-from pd_prep_for_pgdp.core.ingest import peek_zip_image_names
+from pdomain_prep_for_pgdp.core.ingest import peek_zip_image_names
 
 
 def _make_zip(entries: list[tuple[str, bytes]]) -> bytes:

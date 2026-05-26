@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Detect whether the current venv has an editable / dev-local install of
-``pd-book-tools``.
+``pdomain-book-tools``.
 
 Exit code:
     0 — dev-local detected (editable sibling install / marker file / env override).
@@ -8,7 +8,7 @@ Exit code:
 
 Detection precedence (per ``docs/architecture/dev-local-upgrade-flow.md``):
 
-1. ``uv pip show pd-book-tools`` reports an ``Editable project location:`` line.
+1. ``uv pip show pdomain-book-tools`` reports an ``Editable project location:`` line.
 2. Marker file at ``.venv/.dev-local`` exists.
 3. Env var ``PD_DEV_LOCAL`` is set to a truthy value (``1``/``true``/``yes``/``on``).
 
@@ -34,7 +34,7 @@ def _uv_reports_editable() -> bool:
         return False
     try:
         result = subprocess.run(
-            [uv, "pip", "show", "pd-book-tools"],
+            [uv, "pip", "show", "pdomain-book-tools"],
             capture_output=True,
             text=True,
             check=False,

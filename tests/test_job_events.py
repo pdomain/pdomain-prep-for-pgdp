@@ -20,7 +20,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_subscriber_receives_published_event() -> None:
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
+    from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 
     broker = JobEventBroker()
     received: list[dict] = []
@@ -43,7 +43,7 @@ async def test_subscriber_receives_published_event() -> None:
 
 @pytest.mark.asyncio
 async def test_fanout_to_multiple_subscribers() -> None:
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
+    from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 
     broker = JobEventBroker()
 
@@ -63,7 +63,7 @@ async def test_fanout_to_multiple_subscribers() -> None:
 
 @pytest.mark.asyncio
 async def test_publish_before_subscribe_does_not_buffer() -> None:
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
+    from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 
     broker = JobEventBroker()
     await broker.publish("job-late", {"status": "running"})
@@ -86,7 +86,7 @@ async def test_publish_before_subscribe_does_not_buffer() -> None:
 
 @pytest.mark.asyncio
 async def test_close_terminates_iterator() -> None:
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
+    from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 
     broker = JobEventBroker()
     received: list[dict] = []
@@ -107,7 +107,7 @@ async def test_close_terminates_iterator() -> None:
 
 @pytest.mark.asyncio
 async def test_publishing_to_no_subscribers_is_a_noop() -> None:
-    from pd_prep_for_pgdp.core.job_events import JobEventBroker
+    from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 
     broker = JobEventBroker()
     # No exception even though nobody is listening.

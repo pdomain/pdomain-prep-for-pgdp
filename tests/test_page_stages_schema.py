@@ -23,8 +23,8 @@ import time
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import (
     PageStageState,
     PageStageStatus,
     Project,
@@ -277,7 +277,7 @@ async def test_delete_project_cascades_page_stages(db: SqliteDatabase) -> None:
     """delete_project must drop page_stages rows for that project."""
     from datetime import UTC, datetime
 
-    from pd_prep_for_pgdp.core.models import (
+    from pdomain_prep_for_pgdp.core.models import (
         PipelineState,
         ProjectConfig,
         ProjectStatus,

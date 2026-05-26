@@ -14,8 +14,8 @@ content rectangle on every page; non-normal pages have their own treatment.
 
 from __future__ import annotations
 
-from pd_prep_for_pgdp.core.config_resolver import ocr_crop_skip_idxs
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.config_resolver import ocr_crop_skip_idxs
+from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     PageConfigOverrides,
     PageRecord,

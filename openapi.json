@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "pd-prep-for-pgdp",
+    "title": "pdomain-prep-for-pgdp",
     "description": "Convert a folder/zip of scanned book images into a PGDP-ready submission package.",
     "version": "0.1.0"
   },

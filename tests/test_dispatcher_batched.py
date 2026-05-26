@@ -13,9 +13,9 @@ Locks in:
 from __future__ import annotations
 
 import pytest
-from pd_ocr_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
+from pdomain_ocr_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
-from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
+from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 
 class _OkBackend(GPUBackend):

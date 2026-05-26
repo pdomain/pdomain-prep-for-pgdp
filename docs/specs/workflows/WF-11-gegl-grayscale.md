@@ -12,7 +12,7 @@ for historical books with age-stained, yellowed, or multi-toned pages. The curre
 uses standard grayscale. This is a quality regression that affects thresholding quality
 downstream.
 
-pd-book-tools already has this algorithm in
+pdomain-book-tools already has this algorithm in
 `image_processing/cupy_processing/color_to_gray.py` as `np_uint8_color_to_gray()` —
 a GPU-accelerated perceptual color-to-grayscale via random neighbourhood envelope
 sampling (analogous to GEGL `c2g`).
@@ -22,7 +22,7 @@ sampling (analogous to GEGL `c2g`).
 Add a grayscale mode selector to the grayscale stage controls, offering:
 
 - Standard (luminosity-weighted) — current behavior, fast
-- Perceptual (pd-book-tools `np_uint8_color_to_gray`) — better on color scans, slower
+- Perceptual (pdomain-book-tools `np_uint8_color_to_gray`) — better on color scans, slower
 
 ## Happy Path Mockup Spec
 

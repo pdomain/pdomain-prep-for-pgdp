@@ -20,7 +20,7 @@ from contextlib import closing
 
 import pytest
 
-from pd_prep_for_pgdp.__main__ import _pick_port
+from pdomain_prep_for_pgdp.__main__ import _pick_port
 
 
 def _bind_blocker(port: int = 0) -> socket.socket:

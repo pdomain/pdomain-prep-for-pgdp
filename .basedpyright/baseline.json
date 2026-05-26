@@ -1,6 +1,6 @@
 {
     "files": {
-        "./src/pd_prep_for_pgdp/adapters/gpu/__init__.py": [
+        "./src/pdomain_prep_for_pgdp/adapters/gpu/__init__.py": [
             {
                 "code": "reportMissingTypeStubs",
                 "range": {
@@ -10,7 +10,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/adapters/storage/s3.py": [
+        "./src/pdomain_prep_for_pgdp/adapters/storage/s3.py": [
             {
                 "code": "reportAny",
                 "range": {
@@ -60,7 +60,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/auth/__init__.py": [
+        "./src/pdomain_prep_for_pgdp/api/auth/__init__.py": [
             {
                 "code": "reportUnknownParameterType",
                 "range": {
@@ -86,7 +86,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/auth/me.py": [
+        "./src/pdomain_prep_for_pgdp/api/auth/me.py": [
             {
                 "code": "reportCallInDefaultInitializer",
                 "range": {
@@ -96,7 +96,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/cdn.py": [
+        "./src/pdomain_prep_for_pgdp/api/cdn.py": [
             {
                 "code": "reportUnusedParameter",
                 "range": {
@@ -202,7 +202,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/data/__init__.py": [
+        "./src/pdomain_prep_for_pgdp/api/data/__init__.py": [
             {
                 "code": "reportUnknownParameterType",
                 "range": {
@@ -228,7 +228,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/data/assets.py": [
+        "./src/pdomain_prep_for_pgdp/api/data/assets.py": [
             {
                 "code": "reportCallInDefaultInitializer",
                 "range": {
@@ -278,7 +278,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/data/jobs.py": [
+        "./src/pdomain_prep_for_pgdp/api/data/jobs.py": [
             {
                 "code": "reportCallInDefaultInitializer",
                 "range": {
@@ -328,7 +328,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/data/search.py": [
+        "./src/pdomain_prep_for_pgdp/api/data/search.py": [
             {
                 "code": "reportCallInDefaultInitializer",
                 "range": {
@@ -370,7 +370,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/env_js.py": [
+        "./src/pdomain_prep_for_pgdp/api/env_js.py": [
             {
                 "code": "reportAny",
                 "range": {
@@ -428,7 +428,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/gpu/__init__.py": [
+        "./src/pdomain_prep_for_pgdp/api/gpu/__init__.py": [
             {
                 "code": "reportUnknownParameterType",
                 "range": {
@@ -454,7 +454,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/gpu/ingest.py": [
+        "./src/pdomain_prep_for_pgdp/api/gpu/ingest.py": [
             {
                 "code": "reportCallInDefaultInitializer",
                 "range": {
@@ -472,7 +472,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/middleware/error_handler.py": [
+        "./src/pdomain_prep_for_pgdp/api/middleware/error_handler.py": [
             {
                 "code": "reportExplicitAny",
                 "range": {
@@ -522,7 +522,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/api/middleware/request_id.py": [
+        "./src/pdomain_prep_for_pgdp/api/middleware/request_id.py": [
             {
                 "code": "reportUnknownParameterType",
                 "range": {
@@ -564,7 +564,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/bootstrap.py": [
+        "./src/pdomain_prep_for_pgdp/bootstrap.py": [
             {
                 "code": "reportMissingTypeStubs",
                 "range": {
@@ -742,7 +742,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/cli/migrate_projects.py": [
+        "./src/pdomain_prep_for_pgdp/cli/migrate_projects.py": [
             {
                 "code": "reportPrivateUsage",
                 "range": {
@@ -776,7 +776,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/cli/reindex.py": [
+        "./src/pdomain_prep_for_pgdp/cli/reindex.py": [
             {
                 "code": "reportPrivateUsage",
                 "range": {
@@ -866,7 +866,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/auto_detect.py": [
+        "./src/pdomain_prep_for_pgdp/core/auto_detect.py": [
             {
                 "code": "reportUnnecessaryTypeIgnoreComment",
                 "range": {
@@ -988,7 +988,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/illustrations.py": [
+        "./src/pdomain_prep_for_pgdp/core/illustrations.py": [
             {
                 "code": "reportExplicitAny",
                 "range": {
@@ -1166,7 +1166,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/ingest.py": [
+        "./src/pdomain_prep_for_pgdp/core/ingest.py": [
             {
                 "code": "reportImplicitStringConcatenation",
                 "range": {
@@ -1232,7 +1232,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/job_events.py": [
+        "./src/pdomain_prep_for_pgdp/core/job_events.py": [
             {
                 "code": "reportExplicitAny",
                 "range": {
@@ -1290,7 +1290,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/job_runner.py": [
+        "./src/pdomain_prep_for_pgdp/core/job_runner.py": [
             {
                 "code": "reportUnusedCallResult",
                 "range": {
@@ -1396,7 +1396,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/logging_config.py": [
+        "./src/pdomain_prep_for_pgdp/core/logging_config.py": [
             {
                 "code": "reportImplicitOverride",
                 "range": {
@@ -1422,7 +1422,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/models.py": [
+        "./src/pdomain_prep_for_pgdp/core/models.py": [
             {
                 "code": "reportUnannotatedClassAttribute",
                 "range": {
@@ -1456,7 +1456,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/ocr.py": [
+        "./src/pdomain_prep_for_pgdp/core/ocr.py": [
             {
                 "code": "reportExplicitAny",
                 "range": {
@@ -1818,7 +1818,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/ocr_artifacts.py": [
+        "./src/pdomain_prep_for_pgdp/core/ocr_artifacts.py": [
             {
                 "code": "reportAny",
                 "range": {
@@ -1836,7 +1836,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/pipeline/blank_proof.py": [
+        "./src/pdomain_prep_for_pgdp/core/pipeline/blank_proof.py": [
             {
                 "code": "reportUnnecessaryTypeIgnoreComment",
                 "range": {
@@ -1854,7 +1854,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/queue/single_executor.py": [
+        "./src/pdomain_prep_for_pgdp/core/queue/single_executor.py": [
             {
                 "code": "reportUnusedCallResult",
                 "range": {
@@ -1952,7 +1952,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/core/stage_events.py": [
+        "./src/pdomain_prep_for_pgdp/core/stage_events.py": [
             {
                 "code": "reportUnannotatedClassAttribute",
                 "range": {
@@ -1970,7 +1970,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/dispatcher/batched.py": [
+        "./src/pdomain_prep_for_pgdp/dispatcher/batched.py": [
             {
                 "code": "reportUnannotatedClassAttribute",
                 "range": {
@@ -2004,7 +2004,7 @@
                 }
             }
         ],
-        "./src/pd_prep_for_pgdp/dispatcher/immediate.py": [
+        "./src/pdomain_prep_for_pgdp/dispatcher/immediate.py": [
             {
                 "code": "reportUnannotatedClassAttribute",
                 "range": {

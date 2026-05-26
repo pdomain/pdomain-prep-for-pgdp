@@ -1,6 +1,6 @@
 # Refactor Proposal — From Notebook Config to Project Manager
 
-This document captures proposed changes to the pd-prep-for-pgdp specs to reframe
+This document captures proposed changes to the pdomain-prep-for-pgdp specs to reframe
 the tool as a project-manager-style application with a simple local install path
 and an optional hosted path.
 
@@ -207,7 +207,7 @@ small/CPU-only.
 
 ### Implementation note
 
-Frontend bundle goes into `pd_prep_for_pgdp/static/` inside the Python package.
+Frontend bundle goes into `pdomain_prep_for_pgdp/static/` inside the Python package.
 FastAPI mounts:
 
 ```python

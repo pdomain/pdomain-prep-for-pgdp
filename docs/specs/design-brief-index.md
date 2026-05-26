@@ -1,6 +1,6 @@
-# pd-prep-for-pgdp — Design Brief for Claude Design
+# pdomain-prep-for-pgdp — Design Brief for Claude Design
 
-**App:** pd-prep-for-pgdp — converts scanned book images into PGDP submission packages.
+**App:** pdomain-prep-for-pgdp — converts scanned book images into PGDP submission packages.
 **Stack:** FastAPI + React 19 + Vite + TypeScript + TanStack Query + Konva + Tailwind.
 **Design system:** See `design-system.md` for full token reference.
 **Codebase:** Available for import to understand brand context.

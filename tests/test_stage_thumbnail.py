@@ -20,9 +20,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
     PipelineState,
@@ -30,11 +30,11 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_thumbnail_path,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -260,7 +260,7 @@ def test_thumbnail_programmer_error_propagates(monkeypatch: pytest.MonkeyPatch) 
     """
     monkeypatch.setattr(cv2, "imdecode", lambda *a, **kw: (_ for _ in ()).throw(TypeError("bad arg")))
 
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import make_stage_thumbnail_bytes
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import make_stage_thumbnail_bytes
 
     # TypeError must propagate, not be swallowed and return None.
     with pytest.raises(TypeError):

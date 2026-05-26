@@ -1,6 +1,6 @@
-"""Phase 2.7b: Tests for pd-ocr-ops suite routes mounted via mount_routes().
+"""Phase 2.7b: Tests for pdomain-ocr-ops suite routes mounted via mount_routes().
 
-Verifies that the pd-ocr-ops suite router is mounted in pd-prep-for-pgdp
+Verifies that the pdomain-ocr-ops suite router is mounted in pdomain-prep-for-pgdp
 so the frontend AppShell SuiteSiblingsProvider can call real endpoints
 instead of the GAP-4 shims.
 
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path, **kw) -> Settings:

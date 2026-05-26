@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from pd_prep_for_pgdp.core.config_resolver import (
+from pdomain_prep_for_pgdp.core.config_resolver import (
     blank_page_idxs,
     resolve_page_config,
     split_source_idxs,
 )
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     PageConfigOverrides,
     PageRecord,
@@ -16,7 +16,7 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     SystemDefaults,
 )
-from pd_prep_for_pgdp.core.prefix import compute_prefix
+from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
 
 def _page(idx0: int, **kwargs) -> PageRecord:

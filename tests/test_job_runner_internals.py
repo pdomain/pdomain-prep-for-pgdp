@@ -17,12 +17,12 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from pd_ocr_ops.gpu import BatchJobResult
+from pdomain_ocr_ops.gpu import BatchJobResult
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -172,7 +172,7 @@ async def test_run_forever_circuit_breaker_resets_on_success(
     db: SqliteDatabase, storage: FilesystemStorage, monkeypatch
 ) -> None:
     """A successful iteration resets the consecutive-failure counter."""
-    from pd_prep_for_pgdp.core.job_runner import _CIRCUIT_BREAKER_MAX
+    from pdomain_prep_for_pgdp.core.job_runner import _CIRCUIT_BREAKER_MAX
 
     runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.01)
 

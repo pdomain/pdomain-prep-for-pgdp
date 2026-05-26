@@ -1,13 +1,13 @@
-# pd-prep-for-pgdp UI Redesign — Implementation Plan
+# pdomain-prep-for-pgdp UI Redesign — Implementation Plan
 
 **Source:** Sibling repo's hi-fi plan
-(`../pd-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md`) plus
+(`../pdomain-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md`) plus
 this repo's own design mock at `docs/M5 Hi-Fi.html`.
 **Date:** 2026-05-15
 **Scope:** Transforms the existing M0–M4 surface area (ProjectList,
 ProjectConfigure, PageWorkbench, TextReview, ProjectReviewQueue, Jobs,
 Settings, Login) into a shared design language with
-`pd-ocr-labeler-spa` so a user moving between the two apps feels they
+`pdomain-ocr-labeler-spa` so a user moving between the two apps feels they
 are in the same product family.
 **Out of scope:** Postgres adapter, S3 storage, JWT auth UI changes
 beyond styling, Konva rotate (separate spec), search panel
@@ -31,7 +31,7 @@ Each slice targets one subagent session (~200–400 LOC). Run
 
 ## TL;DR
 
-Adopt the same five-layer design stack `pd-ocr-labeler-spa` is moving
+Adopt the same five-layer design stack `pdomain-ocr-labeler-spa` is moving
 to:
 
 1. **Token layer** — CSS custom properties for colour/spacing/typography,
@@ -54,7 +54,7 @@ to:
 
 ## Context
 
-`pd-ocr-labeler-spa` is undergoing its M2→M7 hi-fi redesign right now,
+`pdomain-ocr-labeler-spa` is undergoing its M2→M7 hi-fi redesign right now,
 driven by `design_handoff_hifi/`. The shell, token system, and
 primitive set are documented in five sibling specs:
 
@@ -64,7 +64,7 @@ primitive set are documented in five sibling specs:
 - `2026-05-12-header-bar-design.md`
 - `2026-05-12-toolbar-actions-design.md`
 
-`pd-prep-for-pgdp` is the *structural* reference for that work
+`pdomain-prep-for-pgdp` is the *structural* reference for that work
 (FastAPI + Vite + single-wheel pattern) but its own UI is still
 unstyled — Tailwind `theme.extend = {}`, body font is system sans, no
 token layer, no shadcn primitives beyond the four already added
@@ -282,7 +282,7 @@ all live under `frontend/src/components/ui/`.
 #### 3.3 Cross-app component parity (not built now)
 
 The following components share names + APIs with labeler-spa for a
-later extraction into a shared `pd-ui` package:
+later extraction into a shared `pdomain-ui` package:
 
 - `ui/Button`, `ui/IconButton`, `ui/Badge`, `ui/StatusPip`,
   `ui/KeyCap`, `ui/Progress`, `ui/Separator`, `ui/Card`,
@@ -668,7 +668,7 @@ at the row/card level (not individual text spans).
 
 #### 6.3 Cross-app component sharing — out of scope here, noted for later
 
-The following primitives could move into a shared `pd-ui` workspace
+The following primitives could move into a shared `pdomain-ui` workspace
 package once both apps land their hi-fi. Naming and APIs match by
 design (this spec + labeler-spa hi-fi spec) so the extraction is
 mechanical:
@@ -738,8 +738,8 @@ From prep that does *not* apply to labeler:
 - `ui/Tabs`, `ui/Select`, `ui/Tooltip`, `ui/Popover`, `ui/Dialog`,
   `ui/AlertDialog`, `ui/Collapsible`, `ui/Badge` consume token
   utilities only (no raw `slate-*` left in their source).
-- A user navigating between `pd-ocr-labeler-spa` (in dark mode) and
-  `pd-prep-for-pgdp` (in dark mode) reads them as the same product
+- A user navigating between `pdomain-ocr-labeler-spa` (in dark mode) and
+  `pdomain-prep-for-pgdp` (in dark mode) reads them as the same product
   family: identical header shape, identical Button/Badge/Progress/
   StatusPip shapes, identical Card chrome, identical empty-state
   pattern.
@@ -807,12 +807,12 @@ All previously open questions are resolved (2026-05-15):
 
 ## References
 
-- `../pd-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md` —
+- `../pdomain-ocr-labeler-spa/docs/specs/2026-05-15-hifi-redesign-plan.md` —
   sibling hi-fi plan; slice numbering, primitive APIs, token
   names match by design.
-- `../pd-ocr-labeler-spa/docs/specs/2026-05-12-frontend-shell-design.md`
-- `../pd-ocr-labeler-spa/docs/specs/2026-05-12-header-bar-design.md`
-- `../pd-ocr-labeler-spa/docs/specs/2026-05-12-toolbar-actions-design.md`
+- `../pdomain-ocr-labeler-spa/docs/specs/2026-05-12-frontend-shell-design.md`
+- `../pdomain-ocr-labeler-spa/docs/specs/2026-05-12-header-bar-design.md`
+- `../pdomain-ocr-labeler-spa/docs/specs/2026-05-12-toolbar-actions-design.md`
 - `docs/M5 Hi-Fi.html` — prep's own visual baseline; the palette,
   Badge, StageCell, PageRow, PageDrawer, and ReviewBanner are all
   lifted from here.

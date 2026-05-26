@@ -132,5 +132,5 @@ git push origin main --follow-tags
 
 echo ""
 echo "✅ Released $VERSION."
-echo "   Watch the release workflow: https://github.com/ConcaveTrillion/pd-prep-for-pgdp/actions"
-echo "   Release page (once workflow finishes): https://github.com/ConcaveTrillion/pd-prep-for-pgdp/releases/tag/$VERSION"
+echo "   Watch the release workflow: https://github.com/pdomain/pdomain-prep-for-pgdp/actions"
+echo "   Release page (once workflow finishes): https://github.com/pdomain/pdomain-prep-for-pgdp/releases/tag/$VERSION"

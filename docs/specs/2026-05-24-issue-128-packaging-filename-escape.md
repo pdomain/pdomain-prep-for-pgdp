@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#128
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#128
 
 ## TL;DR
 
@@ -15,7 +15,7 @@ under the project's `for_zip/` prefix.
 
 ## Context
 
-**Vulnerable code — packaging:** `src/pd_prep_for_pgdp/core/packaging.py:151`
+**Vulnerable code — packaging:** `src/pdomain_prep_for_pgdp/core/packaging.py:151`
 
 ```python
 package_key = f"projects/{project.id}/for_zip/{project.config.book_name}.zip"
@@ -25,7 +25,7 @@ await storage.put_bytes(package_key, package_bytes, "application/zip")
 `book_name` is accepted from the client via `PUT /api/data/projects/{id}/config` (see
 `api/data/projects.py:199-211`), validated only by Pydantic as a non-empty string.
 
-**Vulnerable code — model:** `src/pd_prep_for_pgdp/core/models.py:68`
+**Vulnerable code — model:** `src/pdomain_prep_for_pgdp/core/models.py:68`
 
 ```python
 book_name: str
@@ -107,7 +107,7 @@ the assertion catches it.
 **Option C.**
 
 Add `_safe_package_slug(book_name: str, fallback: str) -> str` to
-`src/pd_prep_for_pgdp/core/packaging.py`:
+`src/pdomain_prep_for_pgdp/core/packaging.py`:
 
 ```python
 import re
@@ -143,7 +143,7 @@ def _safe_package_slug(book_name: str, fallback: str) -> str:
 Replace line 151 in `packaging.py`:
 
 ```python
-from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
+from pdomain_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 
 slug = _safe_package_slug(project.config.book_name, fallback=project.id)
 package_key = f"projects/{project.id}/for_zip/{slug}.zip"
@@ -249,7 +249,7 @@ collapse step make the correct output `"evil"`, not `"__evil"` or `"_.._evil"`.
 Both #128 and #127 need to assert that a storage key is scoped to a specific project prefix.
 Rather than duplicating the logic, both specs share a single helper module:
 
-**Shared module: `src/pd_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
+**Shared module: `src/pdomain_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
 
 ```python
 def assert_project_scoped_key(project_id: str, key: str) -> None:

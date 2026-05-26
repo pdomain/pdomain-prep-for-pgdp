@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     PageRecord,
     PageType,
@@ -63,7 +63,7 @@ def _page(idx0: int) -> PageRecord:
 
 def test_blank_detection() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
+    from pdomain_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     out = detect_page_attributes(_png_blank())
     assert out.suggested_type == PageType.blank
@@ -71,7 +71,7 @@ def test_blank_detection() -> None:
 
 def test_normal_page_is_not_blank_or_plate() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
+    from pdomain_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     out = detect_page_attributes(_png_with_text(content_pct=0.6))
     assert out.suggested_type == PageType.normal
@@ -79,7 +79,7 @@ def test_normal_page_is_not_blank_or_plate() -> None:
 
 def test_color_page_suggests_plate_p() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
+    from pdomain_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     out = detect_page_attributes(_png_color())
     assert out.suggested_type == PageType.plate_p
@@ -87,7 +87,7 @@ def test_color_page_suggests_plate_p() -> None:
 
 def test_narrow_content_suggests_center_alignment() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
+    from pdomain_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     out = detect_page_attributes(_png_with_text(content_pct=0.3))
     assert out.suggested_alignment == AlignmentOverride.center
@@ -95,7 +95,7 @@ def test_narrow_content_suggests_center_alignment() -> None:
 
 def test_full_width_content_keeps_default_alignment() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import detect_page_attributes
+    from pdomain_prep_for_pgdp.core.auto_detect import detect_page_attributes
 
     out = detect_page_attributes(_png_with_text(content_pct=0.7))
     assert out.suggested_alignment == AlignmentOverride.default
@@ -103,7 +103,7 @@ def test_full_width_content_keeps_default_alignment() -> None:
 
 def test_median_aspect_across_pages() -> None:
     pytest.importorskip("cv2")
-    from pd_prep_for_pgdp.core.auto_detect import median_aspect_ratio
+    from pdomain_prep_for_pgdp.core.auto_detect import median_aspect_ratio
 
     # Three images: aspect ratios 1.5, 1.65, 2.0.
     pngs = [_png_at_aspect(1.5), _png_at_aspect(1.65), _png_at_aspect(2.0)]

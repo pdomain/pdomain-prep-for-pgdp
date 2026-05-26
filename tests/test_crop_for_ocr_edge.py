@@ -12,14 +12,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     PageRecord,
     PageSplit,
     PageType,
     ResolvedPageConfig,
 )
-from pd_prep_for_pgdp.core.pipeline.crop_for_ocr import crop_for_ocr
+from pdomain_prep_for_pgdp.core.pipeline.crop_for_ocr import crop_for_ocr
 
 
 def _png(h: int, w: int, fill: int = 200) -> bytes:

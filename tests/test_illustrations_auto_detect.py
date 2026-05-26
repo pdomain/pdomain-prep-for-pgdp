@@ -2,12 +2,12 @@
 
 `auto_detect_illustrations` runs a layout detector and converts the
 resulting regions into spec-05 IllustrationRegions. Locks in:
-  - layout_detector=None returns [] without touching pd-book-tools,
+  - layout_detector=None returns [] without touching pdomain-book-tools,
   - regions of the wrong type are filtered out,
   - regions below the confidence threshold are filtered out,
   - kept regions get sequential 1-based `index` values,
   - non-LayoutRegion objects in page_layout.regions raise TypeError,
-  - missing pd_book_tools raises RuntimeError (not silent []),
+  - missing pdomain_book_tools raises RuntimeError (not silent []),
   - corrupt source bytes for `extract_illustration` raise a clear ValueError.
 """
 
@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from pd_prep_for_pgdp.core.illustrations import (
+from pdomain_prep_for_pgdp.core.illustrations import (
     auto_detect_illustrations,
     extract_illustration,
 )
-from pd_prep_for_pgdp.core.models import IllustrationRegion
+from pdomain_prep_for_pgdp.core.models import IllustrationRegion
 
 # ─── Fakes used by tests ──────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ def test_none_detector_returns_empty(tmp_path: Path) -> None:
 def test_filters_by_type_and_confidence(tmp_path: Path) -> None:
     # Use real LayoutRegion / RegionType instances — the new implementation
     # does isinstance(region, LayoutRegion) and requires typed access.
-    from pd_book_tools.layout.types import LayoutRegion, RegionType
+    from pdomain_book_tools.layout.types import LayoutRegion, RegionType
 
     regions = [
         LayoutRegion(type=RegionType.figure, L=10, T=20, R=110, B=220, confidence=0.9),
@@ -69,32 +69,32 @@ def test_filters_by_type_and_confidence(tmp_path: Path) -> None:
     assert out[1].R == 5
 
 
-def test_raises_runtime_error_if_pd_book_tools_missing(
+def test_raises_runtime_error_if_pdomain_book_tools_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No pd_book_tools installed → auto_detect_illustrations must raise RuntimeError
+    """No pdomain_book_tools installed → auto_detect_illustrations must raise RuntimeError
     rather than silently returning []. The caller must know the detector can't work."""
     import builtins
 
     real_import = builtins.__import__
 
     def block(name: str, globals=None, locals=None, fromlist=(), level=0):
-        if name.startswith("pd_book_tools"):
-            raise ImportError("pd_book_tools blocked")
+        if name.startswith("pdomain_book_tools"):
+            raise ImportError("pdomain_book_tools blocked")
         return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", block)
 
     detector = _FakeDetector([])  # type: ignore[arg-type]
-    with pytest.raises(RuntimeError, match="pd_book_tools layout types are not available"):
+    with pytest.raises(RuntimeError, match="pdomain_book_tools layout types are not available"):
         auto_detect_illustrations(tmp_path / "img.png", layout_detector=detector, confidence_threshold=0.5)
 
 
 def test_map_region_type_unknown_value_raises() -> None:
     """_map_region_type must not silently map unknown enum values to 'illustration'."""
-    from pd_book_tools.layout.types import RegionType
+    from pdomain_book_tools.layout.types import RegionType
 
-    from pd_prep_for_pgdp.core.illustrations import _map_region_type
+    from pdomain_prep_for_pgdp.core.illustrations import _map_region_type
 
     # Known mappings must still work.
     assert _map_region_type(RegionType.figure) == "illustration"
@@ -110,9 +110,9 @@ def test_auto_detect_raises_on_non_layout_region() -> None:
     """A non-LayoutRegion object in page_layout.regions must raise TypeError."""
     from unittest.mock import MagicMock
 
-    from pd_book_tools.layout.types import RegionType
+    from pdomain_book_tools.layout.types import RegionType
 
-    from pd_prep_for_pgdp.core.illustrations import auto_detect_illustrations
+    from pdomain_prep_for_pgdp.core.illustrations import auto_detect_illustrations
 
     fake_layout = MagicMock()
     bad_region = MagicMock(spec=[])  # has no LayoutRegion fields

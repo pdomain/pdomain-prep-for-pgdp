@@ -15,7 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-from pd_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.bootstrap import build_app
 
 
 def main() -> None:

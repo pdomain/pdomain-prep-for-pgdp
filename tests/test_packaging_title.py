@@ -17,8 +17,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     PageOutput,
     PageRecord,
     PipelineState,
@@ -26,7 +26,7 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.packaging import build_package
+from pdomain_prep_for_pgdp.core.packaging import build_package
 
 
 @pytest.fixture

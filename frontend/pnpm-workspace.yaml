@@ -5,7 +5,7 @@ allowBuilds:
   esbuild: true
   msw: true
 # minimumReleaseAgeExclude: pin our own scope (any version) so freshly
-# published @concavetrillion/* packages don't block CI within the 24h policy
+# published @pdomain/* packages don't block CI within the 24h policy
 # window. Other packages still respect the 1440-minute default.
 minimumReleaseAgeExclude:
-  - "@concavetrillion/*"
+  - "@pdomain/*"

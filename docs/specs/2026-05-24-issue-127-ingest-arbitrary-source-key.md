@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#127
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#127
 
 ## TL;DR
 
@@ -15,7 +15,7 @@ The fix is to bind `source_key` to the authenticated project's storage prefix be
 
 ## Context
 
-**Vulnerable code — ingest route:** `src/pd_prep_for_pgdp/api/gpu/ingest.py:28-49`
+**Vulnerable code — ingest route:** `src/pdomain_prep_for_pgdp/api/gpu/ingest.py:28-49`
 
 ```python
 job = Job(
@@ -28,7 +28,7 @@ await db.put_job(job)
 `body.source_key` is user-controlled. The route checks `project.owner_id == user.user_id` but
 never checks whether `body.source_key` starts with the project's storage prefix.
 
-**Vulnerable code — unzip handler:** `src/pd_prep_for_pgdp/core/job_runner.py:340-344`
+**Vulnerable code — unzip handler:** `src/pdomain_prep_for_pgdp/core/job_runner.py:340-344`
 
 ```python
 source_key = job.progress.message
@@ -37,7 +37,7 @@ source_type = "zip" if source_key.endswith(".zip") else "local_folder"
 
 The handler derives `source_type` from the key suffix and calls `ingest_source` with the raw key.
 
-**Vulnerable code — enumerate_zip:** `src/pd_prep_for_pgdp/core/ingest.py:361-376`
+**Vulnerable code — enumerate_zip:** `src/pdomain_prep_for_pgdp/core/ingest.py:361-376`
 
 ```python
 raw = await storage.get_bytes(source_key)
@@ -125,7 +125,7 @@ bypass the check. Prefer enforcement at the API boundary.
 
 **Option B**, enforced at the API boundary, with Option C as additional defence-in-depth.
 
-**Changes in `src/pd_prep_for_pgdp/api/gpu/ingest.py`:**
+**Changes in `src/pdomain_prep_for_pgdp/api/gpu/ingest.py`:**
 
 Add a `_validate_source_key(project_id, source_key)` helper:
 
@@ -146,7 +146,7 @@ Call this after the ownership check and before creating the job:
 _validate_source_key(body.project_id, body.source_key)
 ```
 
-**Defence-in-depth in `src/pd_prep_for_pgdp/core/job_runner.py`:**
+**Defence-in-depth in `src/pdomain_prep_for_pgdp/core/job_runner.py`:**
 
 In `_handle_unzip`, after resolving `project_id` and `source_key`:
 
@@ -205,7 +205,7 @@ Before the fix the route returns `202`; after the fix it returns `400`.
 Both #127 and #128 need to assert that a storage key is scoped to a specific project prefix.
 Rather than duplicating the logic, both specs share a single helper module:
 
-**Shared module: `src/pd_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
+**Shared module: `src/pdomain_prep_for_pgdp/api/data/storage_keys.py`** (shipped by #128 on 2026-05-24)
 
 ```python
 def assert_project_scoped_key(project_id: str, key: str) -> None:
@@ -230,7 +230,7 @@ re-implementing the check.
 `assert_project_scoped_key` and re-raises as `HTTPException(400, ...)`:
 
 ```python
-from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
+from pdomain_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 
 def _validate_source_key(project_id: str, source_key: str) -> None:
     try:

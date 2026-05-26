@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING, Protocol, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

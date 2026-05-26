@@ -1,4 +1,4 @@
-# pd-prep-for-pgdp
+# pdomain-prep-for-pgdp
 
 Web app that converts a folder or zip of scanned book images (e.g. from
 Internet Archive) into a PGDP-ready submission package: standard proofing
@@ -13,10 +13,10 @@ all three; only the storage / database / auth / GPU adapters change.
 
 ```sh
 # Linux / macOS
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.ps1 | iex
 
 pgdp-prep
 ```
@@ -68,7 +68,7 @@ make run        # auto-detects GPU; CUDA host -> cuda:0, else CPU
 make run-cpu    # forces PGDP_GPU_BACKEND=cpu (debugging / weak GPU / CUDA OOM)
 ```
 
-Both targets build the SPA bundle into `src/pd_prep_for_pgdp/static/`
+Both targets build the SPA bundle into `src/pdomain_prep_for_pgdp/static/`
 first, then launch `pgdp-prep` as a single FastAPI process at
 <http://127.0.0.1:8765> (next free port if 8765 is taken). Watch the
 startup log for `local backend on cuda:0` vs `local backend on cpu`
@@ -79,7 +79,7 @@ already includes the SPA bundle, so no `make run` step is needed.
 
 ## Development
 
-Contributor workflows (Node, mise, local-dev with `pd-book-tools`, CI,
+Contributor workflows (Node, mise, local-dev with `pdomain-book-tools`, CI,
 release tags) live in [`DEVELOPMENT.md`](DEVELOPMENT.md). Architecture deep
 dive is in [`docs/`](docs/).
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 
 
 @pytest.fixture

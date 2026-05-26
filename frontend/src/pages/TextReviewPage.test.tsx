@@ -46,9 +46,9 @@ type PageRecord = components["schemas"]["PageRecord"];
 import { server } from "../test/server";
 import { TextReviewPage } from "./TextReviewPage";
 
-// Phase 2.2: WordBboxOverlay now wraps @concavetrillion/pd-ui's
+// Phase 2.2: WordBboxOverlay now wraps @pdomain/pdomain-ui's
 // PageImageCanvas rather than rendering its own raw Konva Stage.
-// We mock pd-ui/canvas so that:
+// We mock pdomain-ui/canvas so that:
 //  1. No real canvas context is needed in jsdom.
 //  2. The slot-fill children (selection + tool) are invoked and rendered
 //     as plain DOM elements for inspection by the §9a select-and-delete tests.
@@ -61,7 +61,7 @@ import { TextReviewPage } from "./TextReviewPage";
 // naturalSize stays {0,0} until the Image preload effect fires.
 // WordBboxOverlay early-returns null when naturalWidth/naturalHeight are 0,
 // so the §9a save-lifecycle and diff tests are unaffected (no Rects mount).
-vi.mock("@concavetrillion/pd-ui/canvas", () => ({
+vi.mock("@pdomain/pdomain-ui/canvas", () => ({
   PageImageCanvas: ({
     children,
   }: {
@@ -70,7 +70,7 @@ vi.mock("@concavetrillion/pd-ui/canvas", () => ({
       tool?: () => ReactNode;
     };
   }) => (
-    <div data-testid="pd-ui-canvas">
+    <div data-testid="pdomain-ui-canvas">
       {children?.selection?.()}
       {children?.tool?.()}
     </div>
@@ -343,7 +343,7 @@ describe("TextReviewPage save lifecycle", () => {
 
 describe("TextReviewPage §9a delete-words flow", () => {
   // Phase 2.2: WordBboxOverlay no longer renders a <img> element — it
-  // wraps pd-ui's PageImageCanvas (mocked here). The naturalSize state in
+  // wraps pdomain-ui's PageImageCanvas (mocked here). The naturalSize state in
   // TextReviewPage is now driven by a `useEffect` that calls `new Image()`
   // and reads `img.naturalWidth/Height` on load.
   //

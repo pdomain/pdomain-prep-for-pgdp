@@ -48,7 +48,7 @@ def _make_png_header_only(width: int, height: int) -> bytes:
 
 def test_make_thumbnail_bytes_rejects_huge_image() -> None:
     """PNG with claimed 10001x10001 pixels → _CorruptImageError before cv2 runs."""
-    from pd_prep_for_pgdp.core.ingest import _CorruptImageError, _make_thumbnail_bytes
+    from pdomain_prep_for_pgdp.core.ingest import _CorruptImageError, _make_thumbnail_bytes
 
     raw = _make_png_header_only(10001, 10001)
     # Suppress Pillow's own DecompressionBombWarning (we're intentionally
@@ -65,7 +65,7 @@ def test_make_thumbnail_bytes_accepts_image_within_limit() -> None:
     # Use Pillow to generate a real 1x1 PNG
     from PIL import Image
 
-    from pd_prep_for_pgdp.core.ingest import _make_thumbnail_bytes
+    from pdomain_prep_for_pgdp.core.ingest import _make_thumbnail_bytes
 
     buf = io.BytesIO()
     Image.new("RGB", (1, 1), (255, 255, 255)).save(buf, format="PNG")
@@ -81,7 +81,7 @@ def test_make_thumbnail_bytes_with_default_limit_ok_normal_image() -> None:
     """Normal 100x100 image is well below the default 200 MP limit."""
     from PIL import Image
 
-    from pd_prep_for_pgdp.core.ingest import _make_thumbnail_bytes
+    from pdomain_prep_for_pgdp.core.ingest import _make_thumbnail_bytes
 
     buf = io.BytesIO()
     Image.new("RGB", (100, 100), (128, 128, 128)).save(buf, format="PNG")
@@ -93,7 +93,7 @@ def test_make_thumbnail_bytes_with_default_limit_ok_normal_image() -> None:
 
 def test_make_thumbnail_bytes_nonimage_raises_corrupt_error() -> None:
     """Bytes that Pillow cannot identify as an image raise _CorruptImageError."""
-    from pd_prep_for_pgdp.core.ingest import _CorruptImageError, _make_thumbnail_bytes
+    from pdomain_prep_for_pgdp.core.ingest import _CorruptImageError, _make_thumbnail_bytes
 
     with pytest.raises(_CorruptImageError):
         _make_thumbnail_bytes(b"not-an-image", max_image_pixels=200_000_000)

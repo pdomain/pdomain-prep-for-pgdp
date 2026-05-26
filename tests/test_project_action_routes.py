@@ -16,14 +16,14 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path) -> Settings:
@@ -42,7 +42,7 @@ def _settings(tmp_path) -> Settings:
 
 def _seed_project(settings: Settings, project_id: str = "proj1") -> None:
     async def go() -> None:
-        from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+        from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 
         db = SqliteDatabase(settings.derived_database_url)
         await db.initialize()

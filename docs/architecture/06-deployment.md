@@ -8,7 +8,7 @@ vs what still needs work.
 **Status:** ✅ shippable.
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
 pgdp-prep
 ```
 
@@ -127,9 +127,9 @@ Two workflows:
 Spec 09 — the SPA lives inside the Python wheel:
 
 1. `vite build` writes to `frontend/dist/`.
-2. CI copies that into `src/pd_prep_for_pgdp/static/`.
+2. CI copies that into `src/pdomain_prep_for_pgdp/static/`.
 3. `pyproject.toml`'s `[tool.hatch.build.targets.wheel.force-include]`
-   bundles it into the wheel under `pd_prep_for_pgdp/static/`.
+   bundles it into the wheel under `pdomain_prep_for_pgdp/static/`.
 4. At runtime `bootstrap._mount_static_frontend` mounts that directory at
    `/`. `index.html` loads `/env.js` first (FastAPI-served, see backend doc).
 
@@ -142,9 +142,9 @@ on port 5173 owns `/` while FastAPI owns `/api/*` and `/cdn/*`.
 All parked under roadmap "Deferred — remote / cloud mode":
 
 - **Modal app deploy** — the user runs `modal deploy
-  src/pd_prep_for_pgdp/adapters/gpu/modal_app.py` themselves; CI doesn't (§D1).
+  src/pdomain_prep_for_pgdp/adapters/gpu/modal_app.py` themselves; CI doesn't (§D1).
 - **install.sh end-to-end exercise** — `install.sh` carries the same latent
-  wheel-METADATA bug pre-fixed in `pd-ocr-cli`; fix before exercising the
+  wheel-METADATA bug pre-fixed in `pdomain-ocr-cli`; fix before exercising the
   curl-pipe-sh path (AD-10, §D3).
 - **Registry push** — `release.yml`'s `build-container` job builds but
   doesn't push (§D4).

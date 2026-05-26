@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 import pytest
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path: Path, **kw) -> Settings:

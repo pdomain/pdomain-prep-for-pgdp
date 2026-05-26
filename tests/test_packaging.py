@@ -13,9 +13,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-import pd_prep_for_pgdp.core.packaging as packaging_mod
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+import pdomain_prep_for_pgdp.core.packaging as packaging_mod
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     IllustrationRegion,
     PageOutput,
     PageRecord,
@@ -25,7 +25,7 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.packaging import build_package
+from pdomain_prep_for_pgdp.core.packaging import build_package
 
 
 def _now() -> datetime:
@@ -243,7 +243,7 @@ async def test_oxipng_skip_zero_when_optimize_disabled(tmp_path) -> None:
 # Slice 1 — _safe_package_slug unit tests (TDD: written before implementation)
 # ---------------------------------------------------------------------------
 
-from pd_prep_for_pgdp.core.packaging import _safe_package_slug  # noqa: E402
+from pdomain_prep_for_pgdp.core.packaging import _safe_package_slug  # noqa: E402
 
 
 @pytest.mark.parametrize(

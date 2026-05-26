@@ -14,7 +14,7 @@ import asyncio
 
 import pytest
 
-from pd_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
+from pdomain_prep_for_pgdp.core.queue.single_executor import Priority, SingleExecutor
 
 
 @pytest.mark.asyncio
