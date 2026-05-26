@@ -2,26 +2,31 @@ import { describe, it, expect, beforeAll } from "vitest";
 
 describe("tokens.css", () => {
   beforeAll(async () => {
-    // Inject minimal token CSS for test environment
+    // Inject minimal token CSS matching pd-ui's convention:
+    //   :root = dark (default), [data-theme="light"] = light.
+    // uiPrefs.ts applies data-theme at module load time, so in practice the
+    // app always sets data-theme="light" on a fresh install.
     const style = document.createElement("style");
     style.textContent = `
       :root {
-        --bg-page: #f8fafc;
-        --bg-surface: #ffffff;
-        --ink-1: #0f172a;
-        --ink-2: #334155;
-        --status-done: #10b981;
-        --stage-clean: #10b981;
+        --bg-page: #0c0c10;
+        --bg-surface: #15151b;
+        --ink-1: #f0f0f2;
+        --ink-2: #b0b0b8;
+        --status-done: #5fbf6a;
+        --stage-clean: #5fbf6a;
       }
-      [data-theme="dark"] {
-        --bg-page: #020617;
-        --bg-surface: #0f172a;
+      [data-theme="light"] {
+        --bg-page: #f6f4ef;
+        --bg-surface: #ffffff;
       }
     `;
     document.head.appendChild(style);
   });
 
-  it("light default bg-page token is defined", () => {
+  it("dark default bg-page token is defined", () => {
+    // :root = dark default (pd-ui theme convention)
+    document.documentElement.removeAttribute("data-theme");
     const value = getComputedStyle(document.documentElement)
       .getPropertyValue("--bg-page")
       .trim();
@@ -29,15 +34,15 @@ describe("tokens.css", () => {
     expect(value).not.toBe("");
   });
 
-  it("dark theme overrides bg-page", () => {
-    document.documentElement.setAttribute("data-theme", "dark");
-    const dark = getComputedStyle(document.documentElement)
-      .getPropertyValue("--bg-page")
-      .trim();
-    document.documentElement.removeAttribute("data-theme");
+  it("light theme overrides bg-page", () => {
+    document.documentElement.setAttribute("data-theme", "light");
     const light = getComputedStyle(document.documentElement)
       .getPropertyValue("--bg-page")
       .trim();
-    expect(dark).not.toBe(light);
+    document.documentElement.removeAttribute("data-theme");
+    const dark = getComputedStyle(document.documentElement)
+      .getPropertyValue("--bg-page")
+      .trim();
+    expect(light).not.toBe(dark);
   });
 });

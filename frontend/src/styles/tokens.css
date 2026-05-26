@@ -1,51 +1,86 @@
-/* Light default */
+/* ── Base design tokens — imported from pd-ui canonical token set ──────────────
+ * Provides: --bg-page, --bg-surface, --bg-raised, --bg-sunk,
+ *           --border-1/2/3, --ink-1/2/3/4,
+ *           --accent, --accent-ink,
+ *           --exact, --fuzzy, --mismatch, --ocr, --gt (labeler status tokens)
+ *           --block, --para, --line, --word (canvas layer tokens)
+ *           --ui-font, --mono-font, --shadow-floating, --overlay-scrim
+ *
+ * Theme convention (from pd-ui): :root = dark (warm charcoal), [data-theme="light"] = light.
+ * uiPrefs.ts applies data-theme on load from localStorage (default "light"),
+ * so the dark :root values are never visible on a fresh install.
+ * ─────────────────────────────────────────────────────────────────────────── */
+@import "@concavetrillion/pd-ui/theme/tokens.css";
+
+/* ── PGDP-specific extensions (not in pd-ui token set) ─────────────────────
+ * These extend both themes with domain tokens for submission-pipeline status
+ * and page-stage state that have no pd-ui equivalent.
+ *
+ * Local extensions retained:
+ *   --brand / --brand-ink           amber accent used on ProjectListPage hero
+ *   --status-{done,running,queued,error,review}         job state colours
+ *   --status-{done,running,queued,error,review}-bg      tinted bg per state
+ *   --stage-{clean,dirty,not-run,running,failed,na}     pipeline stage dots
+ *
+ * Note: Sonner toast stripe overrides reference these vars and are kept here.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Dark default (matches pd-ui :root dark palette) */
 :root {
-  /* bg */
-  --bg-page: #f8fafc;
-  --bg-surface: #ffffff;
-  --bg-raised: #f1f5f9;
-  --bg-sunk: #e2e8f0;
-
-  /* border */
-  --border-1: #e2e8f0;
-  --border-2: #cbd5e1;
-  --border-3: #94a3b8;
-
-  /* ink */
-  --ink-1: #0f172a;
-  --ink-2: #334155;
-  --ink-3: #64748b;
-  --ink-4: #94a3b8;
-
-  /* accent (primary action surface) */
-  --accent: #0f172a;
-  --accent-ink: #ffffff;
-
   /* brand (amber) */
-  --brand: #f59e0b;
-  --brand-ink: #0f172a;
+  --brand: #d97706;
+  --brand-ink: #0c0c10;
 
-  /* status */
-  --status-done: #10b981;
-  --status-running: #3b82f6;
-  --status-queued: #94a3b8;
-  --status-error: #ef4444;
-  --status-review: #f59e0b;
+  /* job status colours */
+  --status-done: #5fbf6a;
+  --status-running: #5d9fdf;
+  --status-queued: #7a7a85;
+  --status-error: #dc6555;
+  --status-review: #e8a83a;
 
-  /* status-bg */
+  /* job status tinted backgrounds */
+  --status-done-bg: rgb(14 72 24 / 0.35);
+  --status-running-bg: rgb(18 48 90 / 0.35);
+  --status-queued-bg: rgb(28 28 38 / 0.35);
+  --status-error-bg: rgb(80 24 18 / 0.35);
+  --status-review-bg: rgb(80 54 10 / 0.35);
+
+  /* pipeline stage dot colours */
+  --stage-clean: #5fbf6a;
+  --stage-dirty: #e8a83a;
+  --stage-not-run: #3f3f49;
+  --stage-running: #5d9fdf;
+  --stage-failed: #dc6555;
+  --stage-na: #222229;
+}
+
+/* Light theme extensions — activates when [data-theme="light"] is set */
+[data-theme="light"] {
+  /* brand (amber, warmer for light) */
+  --brand: #b45309;
+  --brand-ink: #ffffff;
+
+  /* job status colours */
+  --status-done: #2d8c3a;
+  --status-running: #2d6fb5;
+  --status-queued: #7c7665;
+  --status-error: #b13d32;
+  --status-review: #b87b1f;
+
+  /* job status tinted backgrounds */
   --status-done-bg: #ecfdf5;
   --status-running-bg: #eff6ff;
-  --status-queued-bg: #f8fafc;
+  --status-queued-bg: #f6f5f0;
   --status-error-bg: #fef2f2;
   --status-review-bg: #fffbeb;
 
-  /* stage */
-  --stage-clean: #10b981;
-  --stage-dirty: #f59e0b;
-  --stage-not-run: #cbd5e1;
-  --stage-running: #3b82f6;
-  --stage-failed: #ef4444;
-  --stage-na: #e2e8f0;
+  /* pipeline stage dot colours */
+  --stage-clean: #2d8c3a;
+  --stage-dirty: #b87b1f;
+  --stage-not-run: #c2bdaf;
+  --stage-running: #2d6fb5;
+  --stage-failed: #b13d32;
+  --stage-na: #d8d4c8;
 }
 
 /* Sonner toast token overrides — left-edge status stripe */
@@ -60,46 +95,4 @@
 }
 [data-sonner-toast]:not([data-type]) {
   border-left: 4px solid var(--accent);
-}
-
-/* Dark override — uses labeler-spa dark values so both apps read as one product */
-[data-theme="dark"] {
-  --bg-page: #020617;
-  --bg-surface: #0f172a;
-  --bg-raised: #1e293b;
-  --bg-sunk: #334155;
-
-  --border-1: #334155;
-  --border-2: #475569;
-  --border-3: #64748b;
-
-  --ink-1: #f8fafc;
-  --ink-2: #e2e8f0;
-  --ink-3: #94a3b8;
-  --ink-4: #64748b;
-
-  --accent: #f1f5f9;
-  --accent-ink: #0f172a;
-
-  --brand: #fbbf24;
-  --brand-ink: #0f172a;
-
-  --status-done: #34d399;
-  --status-running: #60a5fa;
-  --status-queued: #64748b;
-  --status-error: #f87171;
-  --status-review: #fbbf24;
-
-  --status-done-bg: rgb(6 78 59 / 0.3);
-  --status-running-bg: rgb(30 58 138 / 0.3);
-  --status-queued-bg: rgb(30 41 59 / 0.3);
-  --status-error-bg: rgb(127 29 29 / 0.3);
-  --status-review-bg: rgb(120 53 15 / 0.3);
-
-  --stage-clean: #34d399;
-  --stage-dirty: #fbbf24;
-  --stage-not-run: #475569;
-  --stage-running: #60a5fa;
-  --stage-failed: #f87171;
-  --stage-na: #334155;
 }
