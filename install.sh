@@ -13,10 +13,26 @@ set -e
 
 REPO="ConcaveTrillion/pd-prep-for-pgdp"
 
-# 1. Install uv if not already present
+# Shared temp directory; cleaned up on exit, interrupt, or termination.
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT INT TERM
+
+# 1. Install uv if not already present.
+#
+# Security (F-017 Option B): download from a pinned, immutable GitHub
+# Release asset URL rather than piping https://astral.sh/uv/install.sh
+# directly to a shell. GitHub Release assets at tagged URLs are immutable
+# once published; TLS to github.com provides transport integrity. Upstream
+# (astral-sh/uv) does not publish a checksum for the installer script
+# itself (sha256.sum covers binary tarballs only), so the pinned-tag
+# approach is the pragmatic baseline. To upgrade: update UV_VER below.
+UV_VER="0.11.16"
 if ! command -v uv >/dev/null 2>&1; then
-    echo "uv not found — installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    echo "uv not found — installing uv ${UV_VER} from GitHub Releases..."
+    UV_INST="${TMPDIR}/uv-installer.sh"
+    curl -LsSf -o "$UV_INST" \
+        "https://github.com/astral-sh/uv/releases/download/${UV_VER}/uv-installer.sh"
+    sh "$UV_INST"
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
@@ -40,15 +56,21 @@ else
     echo "No GPU detected — installing CPU-only build."
 fi
 
-# 3. Resolve latest tag
-LATEST_TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/tags" 2>/dev/null \
-    | grep '"name"' | head -1 | sed 's/.*"name": "\([^"]*\)".*/\1/') || true
+# 3. Resolve latest published release from the GitHub API.
+#    `/releases/latest` returns the most recent *published* release
+#    (ignoring drafts/prereleases) and embeds asset URLs directly.
+RELEASE_JSON=$(curl -sSf \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null) || true
 
-if [ -z "$LATEST_TAG" ]; then
-    echo "Error: could not resolve the latest release tag from GitHub." >&2
-    echo "       https://api.github.com/repos/${REPO}/tags returned nothing usable." >&2
+if [ -z "$RELEASE_JSON" ]; then
+    echo "Error: could not resolve the latest release from GitHub." >&2
+    echo "       https://api.github.com/repos/${REPO}/releases/latest returned nothing usable." >&2
     exit 1
 fi
+
+LATEST_TAG=$(printf '%s\n' "$RELEASE_JSON" \
+    | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
 
 echo "Installing pgdp-prep ${LATEST_TAG}..."
 
@@ -56,13 +78,6 @@ echo "Installing pgdp-prep ${LATEST_TAG}..."
 #    We don't know the exact wheel filename ahead of time (hatch-vcs derives
 #    it from the tag, e.g. pd_prep_for_pgdp-0.2.0-py3-none-any.whl), so we
 #    glob for any `*.whl` asset on the release.
-RELEASE_JSON=$(curl -sSf \
-    -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPO}/releases/tags/${LATEST_TAG}" 2>/dev/null) || true
-
-# Pull the first .whl browser_download_url out of the release JSON. Stays
-# POSIX-shell friendly (no jq) — the Releases API returns one URL per line
-# in the assets array, and we just grep for the wheel.
 WHEEL_URL=$(printf '%s\n' "$RELEASE_JSON" \
     | grep '"browser_download_url"' \
     | grep -E '\.whl"' \
@@ -84,15 +99,12 @@ if [ -z "$WHEEL_URL" ]; then
     exit 1
 fi
 
-# 5. Download the wheel to a temp dir and install it as a uv tool.
+# 5. Download the wheel to the shared temp dir and install it as a uv tool.
 #    Using a local path lets us attach extras via `<path>[cuda]`, which uv
 #    accepts cleanly. (PEP 508 direct references like
 #    `pd_prep_for_pgdp[cuda] @ <url>` also work, but the local-path form
 #    is simpler to reason about and gives us a real file to reference in
 #    error messages.)
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT INT TERM
-
 WHEEL_FILE="${TMPDIR}/$(basename "$WHEEL_URL")"
 echo "Downloading ${WHEEL_URL}..."
 curl -fsSL -o "$WHEEL_FILE" "$WHEEL_URL"

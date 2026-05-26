@@ -4,17 +4,17 @@
 # stays small and CPU-only. See spec 09.
 
 # ──────────────────────────── Stage 1: build frontend ───────────────────────
-FROM node:24-slim AS frontend-build
+FROM node:24.15.0-bookworm-slim AS frontend-build
 WORKDIR /app
 # Enable corepack so pnpm is available without a separate install step.
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.3.0 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/.npmrc ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm run build
 
 # ──────────────────────────── Stage 2: install Python ───────────────────────
-FROM python:3.13-slim AS runtime
+FROM python:3.13.13-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -31,7 +31,7 @@ RUN apt-get update \
 # uv (fast resolver/installer). Pull the binary from astral's official
 # image — `python:3.13-slim` has no curl/wget, so the install.sh path
 # (used in the local installer) doesn't work here.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /usr/local/bin/uv
 
 # Non-root user for runtime security. UID/GID 1000 matches the default
 # user on most Linux distros; override at build time if the host bind-mount
