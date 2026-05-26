@@ -7,12 +7,17 @@
 //              GET/PUT /api/suite/prefs with localStorage fallback.
 // Phase 2.7c: searchOpen moved from uiPrefs store to local React state (#330).
 //              SearchModal now accepts explicit open/onOpenChange props.
+// Task #155 (s0-c): adopted pd-ui AppHeader + JobsPill in header slot.
+//              AppHeader replaces custom TopNav + OpenTasksBell.
+//              UserMenu kept in headerActions slot for auth-mode handling.
+//              activeJobs fed from /api/jobs polling (running jobs only).
 //
 // Slot mapping vs former local layout (components/shell/AppShell.tsx):
-//   header   ← TopNav (was header slot of custom AppShell)
-//   main     ← Routes block + banners + SearchModal + HotkeyHelpModal
-//   footer   — pd-ui AppShell has no footer zone (GAP-1); ServerInfoFooter
-//              is kept app-local inside the main slot using flex-col layout.
+//   header        ← AppHeader (replaces custom TopNav)
+//   headerActions ← UserMenu (auth modes: none/apikey/jwt)
+//   main          ← Routes block + banners + SearchModal + HotkeyHelpModal
+//   footer        — pd-ui AppShell has no footer zone (GAP-1); ServerInfoFooter
+//                   is kept app-local inside the main slot using flex-col layout.
 //
 // GAP-1: pd-ui AppShell has no footer zone. ServerInfoFooter (formerly in
 //         the 32px footer grid row of components/shell/AppShell.tsx) is
@@ -29,7 +34,6 @@ import { useEffect, useState } from "react";
 import {
   Route,
   Routes,
-  Link,
   useLocation,
   useMatch,
   useNavigate,
@@ -37,23 +41,22 @@ import {
 import { useHotkeys } from "react-hotkeys-hook";
 import {
   AppShell,
+  AppHeader,
   SuiteSiblingsProvider,
   type UIPrefsConfig,
   type InstalledApp,
   type LaunchResult,
+  type ActiveJob,
 } from "@concavetrillion/pd-ui/shell";
 import { api, getAuthToken } from "./api/client";
-import type { components } from "./api/types.gen";
 import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
 import { TooltipProvider } from "./components/ui/Tooltip";
 import { HotkeyHelpModal } from "./components/shell/HotkeyHelpModal";
 import { SearchModal } from "./components/shell/SearchModal";
-import { TopNav } from "./components/shell/TopNav";
 import { UserMenu } from "./components/shell/UserMenu";
 import { THEME_STORAGE_KEY } from "./stores/uiPrefs";
 
-type ReviewStatusResponse = components["schemas"]["ReviewStatusResponse"];
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
@@ -222,12 +225,54 @@ async function postLaunch(id: string): Promise<LaunchResult> {
   }
 }
 
+// ── Task #155 (s0-c): useActiveJobs — feeds pd-ui AppHeader's JobsPill ────────
+//
+// Polls /api/jobs every 5 s and maps running/queued jobs to the ActiveJob
+// shape expected by AppHeader. "running" jobs are primary; "queued" jobs
+// are included so the pill reflects work that is imminent.
+//
+// Mapping:
+//   id      ← job.id
+//   title   ← job.type (e.g. "ingest", "process_page")
+//   phase   ← job.status
+//   pct     ← job.progress.current / job.progress.total * 100 (0 when total=0)
+//   project ← job.project_id
+interface RawJob {
+  id: string;
+  project_id: string;
+  type: string;
+  status: string;
+  progress: { current: number; total: number; message: string };
+}
+
+function useActiveJobs(): ActiveJob[] {
+  const result = useQuery({
+    queryKey: ["active-jobs"],
+    queryFn: () => api.get<RawJob[]>("/api/jobs?status=running&status=queued"),
+    refetchInterval: 5_000,
+    // Treat errors as an empty list — do not surface loading state in the header.
+    throwOnError: false,
+  });
+  const jobs = result.data ?? [];
+  return jobs.map((j) => ({
+    id: j.id,
+    title: j.type,
+    phase: j.status,
+    pct:
+      j.progress.total > 0
+        ? Math.round((j.progress.current / j.progress.total) * 100)
+        : 0,
+    project: j.project_id,
+  }));
+}
+
 export default function App() {
   // Phase 2.7c (#330): searchOpen moved from uiPrefs store to local React
   // state. SearchModal now accepts explicit open/onOpenChange props.
   const [searchOpen, setSearchOpen] = useState(false);
   const projectMatch = useMatch("/projects/:projectId/*");
   const [hotkeyHelpOpen, setHotkeyHelpOpen] = useState(false);
+  const activeJobs = useActiveJobs();
 
   useHotkeys("?", () => setHotkeyHelpOpen(true), { preventDefault: true });
 
@@ -253,26 +298,30 @@ export default function App() {
             deployMode="local"
             uiPrefsConfig={UI_PREFS_CONFIG}
             header={
-              <TopNav
-                centerSlot={
-                  <button
-                    onClick={() => setSearchOpen(true)}
-                    className="flex w-full items-center gap-2 rounded-md border border-border-3 bg-raised px-3 py-1.5 text-sm text-ink-4 hover:border-border-3 hover:text-ink-4 transition-colors"
-                    aria-label="Search (⌘K)"
-                  >
-                    <span className="flex-1 text-left">Search projects…</span>
-                    <kbd className="ml-auto text-xs text-ink-3 font-mono">
-                      ⌘K
-                    </kbd>
-                  </button>
-                }
-                rightSlot={
-                  <>
-                    <OpenTasksBell />
-                    <UserMenu />
-                  </>
-                }
+              /*
+               * Task #155 (s0-c): pd-ui AppHeader replaces custom TopNav.
+               *
+               * activeJobs → feeds the built-in JobsPill indicator.
+               * onSearchClick → opens the app-level SearchModal.
+               *
+               * The built-in user avatar area (username/initials/onUserClick)
+               * is intentionally left unset — UserMenu handles all three auth
+               * modes (none/apikey/jwt) and is placed in headerActions instead.
+               */
+              <AppHeader
+                appName="pgdp-prep"
+                searchPlaceholder="Search projects…"
+                activeJobs={activeJobs}
+                onSearchClick={() => setSearchOpen(true)}
               />
+            }
+            headerActions={
+              /*
+               * UserMenu owns auth-mode display (none → renders null,
+               * apikey/jwt → user identity + sign-out). Placed in headerActions
+               * so it appears beside the launcher and settings gear.
+               */
+              <UserMenu data-testid="user-menu" />
             }
             main={
               /*
@@ -327,46 +376,6 @@ export default function App() {
         </div>
       </SuiteSiblingsProvider>
     </TooltipProvider>
-  );
-}
-
-/**
- * Bell icon in the navbar showing unreviewed-page count for the active project.
- * Only renders when the user is on a project route and there are pages
- * awaiting review with a parked build_package job.
- */
-function OpenTasksBell() {
-  const match = useMatch("/projects/:projectId/*");
-  const projectId = match?.params?.projectId ?? null;
-
-  const status = useQuery({
-    queryKey: ["review-status", projectId],
-    queryFn: () =>
-      api.get<ReviewStatusResponse>(
-        `/api/data/projects/${projectId}/review-status`,
-      ),
-    refetchInterval: 1000,
-    enabled: projectId !== null,
-  });
-
-  const count = status.data?.awaiting_review_job_id
-    ? status.data.unreviewed_count
-    : 0;
-
-  if (!projectId || count === 0) return null;
-
-  return (
-    <Link
-      to={`/projects/${projectId}/review`}
-      className="relative flex items-center text-ink-2 hover:text-ink-1"
-      title={`${count} page${count === 1 ? "" : "s"} awaiting review`}
-      aria-label={`Open tasks: ${count} page${count === 1 ? "" : "s"} awaiting review`}
-    >
-      <span className="text-base">🔔</span>
-      <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
-        {count}
-      </span>
-    </Link>
   );
 }
 
