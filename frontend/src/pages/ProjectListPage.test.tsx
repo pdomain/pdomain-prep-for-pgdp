@@ -461,6 +461,7 @@ describe("ProjectListPage create-project flow", () => {
   it("submits the name + zip upload and POSTs CreateProjectRequest with source_type=zip", async () => {
     const createCalls: CreateProjectRequest[] = [];
     let ingestCalled = false;
+    let uploadContentType: string | null = null;
 
     server.use(
       // Initial list query the page fires on mount.
@@ -479,10 +480,12 @@ describe("ProjectListPage create-project flow", () => {
       }),
 
       // The XHR PUT upload — msw's XMLHttpRequestInterceptor catches
-      // this in jsdom. Empty 200 is enough for `xhr.onload` to resolve.
-      http.put("/cdn/uploads/prj_abc123/source.zip", () =>
-        HttpResponse.text("", { status: 200 }),
-      ),
+      // this in jsdom. Capture Content-Type to assert it is pinned to
+      // application/zip (matching the pre-signed URL's signed header).
+      http.put("/cdn/uploads/prj_abc123/source.zip", ({ request }) => {
+        uploadContentType = request.headers.get("Content-Type");
+        return HttpResponse.text("", { status: 200 });
+      }),
 
       // Final ingest enqueue. We don't assert its body here — the
       // wire-level contract for /api/gpu/ingest belongs in a future
@@ -527,5 +530,9 @@ describe("ProjectListPage create-project flow", () => {
       source_type: "zip",
     } satisfies CreateProjectRequest);
     expect(ingestCalled).toBe(true);
+    // Verify the XHR PUT pins Content-Type to match the S3 pre-signed header.
+    // Without this, browsers may omit or mangle the type for .zip files,
+    // causing an S3 SignatureDoesNotMatch rejection.
+    expect(uploadContentType).toBe("application/zip");
   });
 });
