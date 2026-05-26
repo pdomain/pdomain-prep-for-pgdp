@@ -14,7 +14,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-frontend:
@@ -47,6 +47,8 @@ jobs:
     name: build wheel
     runs-on: ubuntu-latest
     needs: [build-frontend]
+    permissions:
+      contents: write  # required to upload assets to the GitHub Release
     steps:
       - uses: actions/checkout@v4
         with:
