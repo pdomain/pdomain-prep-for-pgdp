@@ -438,11 +438,17 @@ async function uploadFile(
   url: string,
   file: File,
   onProgress: (pct: number) => void,
+  contentType = "application/zip",
 ): Promise<void> {
   // XHR is the only API with progress events in the browser.
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url);
+    // Pin Content-Type to match the pre-signed URL's signed ContentType header.
+    // Without this, the browser may send an empty or wrong MIME type for .zip
+    // files, causing S3 signature mismatch (SignatureDoesNotMatch) or wrong
+    // object metadata.
+    xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
         onProgress(Math.round((e.loaded / e.total) * 100));
