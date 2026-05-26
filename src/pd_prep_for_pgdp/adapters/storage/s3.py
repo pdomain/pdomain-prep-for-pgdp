@@ -1,7 +1,19 @@
 """S3-backed IStorage implementation.
 
-Lazy-imports `boto3` so the dependency stays optional (only the `[s3]` extra
-needs it).
+Lazy-imports `boto3` and `botocore` so the dependency stays optional (only
+the `[s3]` extra needs them).
+
+Missing-object handling
+-----------------------
+boto3's ``head_object`` and ``get_object`` can raise
+``botocore.exceptions.ClientError`` with ``response['Error']['Code']`` equal
+to ``'NoSuchKey'`` (standard S3) or a numeric ``'404'`` (some S3-compatible
+stores).  The adapter normalises these to ``FileNotFoundError`` so callers and
+route handlers that already catch ``FileNotFoundError`` receive a meaningful
+typed exception rather than an opaque 500-class ``ClientError``.
+
+Other ``ClientError`` codes (e.g. ``AccessDenied``, ``InternalError``) are
+re-raised unchanged so they still surface as HTTP 500s.
 """
 
 from __future__ import annotations
@@ -16,6 +28,27 @@ from .base import IStorage, ObjectInfo
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+_MISSING_CODES: frozenset[str] = frozenset({"NoSuchKey", "NotFound", "404"})
+
+
+def _is_missing_object_error(exc: Exception) -> bool:
+    """Return True if *exc* is a botocore ClientError that means 'object not found'.
+
+    Checks ``response['Error']['Code']`` against known missing-object codes
+    and also falls back to ``response['ResponseMetadata']['HTTPStatusCode'] == 404``.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        return False
+    error_code: str = response.get("Error", {}).get("Code", "")
+    if error_code in _MISSING_CODES:
+        return True
+    http_status: int = response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+    return http_status == 404
 
 
 class _S3Body(Protocol):
@@ -93,7 +126,12 @@ class S3Storage(IStorage):
     @override
     async def get_bytes(self, key: str) -> bytes:
         def _get() -> bytes:
-            response = self._client.get_object(Bucket=self._bucket, Key=self._full_key(key))
+            try:
+                response = self._client.get_object(Bucket=self._bucket, Key=self._full_key(key))
+            except Exception as exc:
+                if _is_missing_object_error(exc):
+                    raise FileNotFoundError(self._full_key(key)) from exc
+                raise
             return response["Body"].read()
 
         return await anyio.to_thread.run_sync(_get)
@@ -106,6 +144,10 @@ class S3Storage(IStorage):
                 return True
             except self._client.exceptions.NoSuchKey:
                 return False
+            except Exception as exc:
+                if _is_missing_object_error(exc):
+                    return False
+                raise
 
         return await anyio.to_thread.run_sync(_head)
 

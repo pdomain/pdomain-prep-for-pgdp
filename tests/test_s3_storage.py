@@ -9,6 +9,10 @@ Locks in:
   - `_full_key` honors the prefix,
   - `put_bytes` forwards Body + ContentType,
   - `get_bytes` decodes the streaming Body,
+  - `get_bytes` raises FileNotFoundError on ClientError NoSuchKey,
+  - `get_bytes` re-raises ClientError for non-missing errors,
+  - `exists` returns False on ClientError NoSuchKey or HTTP 404,
+  - `exists` re-raises ClientError for non-missing errors,
   - `presign_get` returns the CDN URL when cdn_url_base is set,
   - `presign_get` calls boto3 when cdn_url_base is unset.
 
@@ -47,6 +51,21 @@ def test_s3_storage_missing_boto3_raises_clear_error(monkeypatch: pytest.MonkeyP
 
 # Below tests need a fake boto3 in sys.modules — ground them so they
 # only run when we can replace the real boto3 (or none is installed).
+
+
+class _FakeClientError(Exception):
+    """Minimal stand-in for ``botocore.exceptions.ClientError``.
+
+    Real ClientError stores the error shape in ``self.response['Error']['Code']``
+    and optionally ``self.response['ResponseMetadata']['HTTPStatusCode']``.
+    """
+
+    def __init__(self, code: str, http_status: int = 500) -> None:
+        self.response: dict[str, Any] = {
+            "Error": {"Code": code},
+            "ResponseMetadata": {"HTTPStatusCode": http_status},
+        }
+        super().__init__(f"ClientError: {code}")
 
 
 class _FakeS3Client:
@@ -88,13 +107,27 @@ class _FakeS3Client:
 
 @pytest.fixture
 def fake_boto3(monkeypatch: pytest.MonkeyPatch):
-    """Inject a fake `boto3` module so S3Storage can be exercised."""
+    """Inject fake ``boto3`` and ``botocore.exceptions`` modules so S3Storage
+    can be exercised without a real AWS installation.
+
+    Also wires ``_FakeClientError`` into ``botocore.exceptions.ClientError``
+    so the adapter's ``ClientError`` import resolves to the fake class.
+    """
     import types
 
     fake_client = _FakeS3Client()
     fake_module = types.ModuleType("boto3")
     fake_module.client = lambda _name: fake_client
     monkeypatch.setitem(sys.modules, "boto3", fake_module)
+
+    # Inject a fake botocore.exceptions so the adapter's lazy import works.
+    fake_botocore = types.ModuleType("botocore")
+    fake_botocore_exc = types.ModuleType("botocore.exceptions")
+    fake_botocore_exc.ClientError = _FakeClientError  # type: ignore[attr-defined]
+    fake_botocore.exceptions = fake_botocore_exc  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "botocore", fake_botocore)
+    monkeypatch.setitem(sys.modules, "botocore.exceptions", fake_botocore_exc)
+
     # Ensure the s3 module reloads its lazy import.
     sys.modules.pop("pd_prep_for_pgdp.adapters.storage.s3", None)
     return fake_client
@@ -260,3 +293,84 @@ async def test_presign_put_calls_boto_with_content_type(fake_boto3: _FakeS3Clien
     assert kw["op"] == "put_object"
     assert kw["Params"]["ContentType"] == "application/zip"
     assert kw["ExpiresIn"] == 900
+
+
+# ── ClientError → FileNotFoundError mapping (issue #133) ─────────────────────
+
+
+@pytest.mark.asyncio
+async def test_exists_returns_false_on_client_error_nosuchkey(fake_boto3: _FakeS3Client) -> None:
+    """head_object raising ClientError with Code=NoSuchKey must return False,
+    not propagate as a 500."""
+    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+
+    s = S3Storage(bucket="b")
+
+    def _raise(**_kw: object) -> object:
+        raise _FakeClientError("NoSuchKey", http_status=404)
+
+    fake_boto3.head_object = _raise  # type: ignore[method-assign]
+    assert await s.exists("missing/key") is False
+
+
+@pytest.mark.asyncio
+async def test_exists_returns_false_on_client_error_404_status(fake_boto3: _FakeS3Client) -> None:
+    """head_object raising ClientError with HTTP 404 (some S3-compatible stores
+    use a numeric code rather than NoSuchKey) must return False."""
+    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+
+    s = S3Storage(bucket="b")
+
+    def _raise(**_kw: object) -> object:
+        raise _FakeClientError("404", http_status=404)
+
+    fake_boto3.head_object = _raise  # type: ignore[method-assign]
+    assert await s.exists("missing/key") is False
+
+
+@pytest.mark.asyncio
+async def test_exists_reraises_client_error_non_404(fake_boto3: _FakeS3Client) -> None:
+    """ClientError with a non-missing code (e.g. AccessDenied) must propagate,
+    not be swallowed as False."""
+    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+
+    s = S3Storage(bucket="b")
+
+    def _raise(**_kw: object) -> object:
+        raise _FakeClientError("AccessDenied", http_status=403)
+
+    fake_boto3.head_object = _raise  # type: ignore[method-assign]
+    with pytest.raises(_FakeClientError):
+        await s.exists("some/key")
+
+
+@pytest.mark.asyncio
+async def test_get_bytes_raises_file_not_found_on_nosuchkey(fake_boto3: _FakeS3Client) -> None:
+    """get_object raising ClientError with Code=NoSuchKey must surface as
+    FileNotFoundError so the cdn_get route maps it to HTTP 404."""
+    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+
+    s = S3Storage(bucket="b")
+
+    def _raise(**_kw: object) -> object:
+        raise _FakeClientError("NoSuchKey", http_status=404)
+
+    fake_boto3.get_object = _raise  # type: ignore[method-assign]
+    with pytest.raises(FileNotFoundError):
+        await s.get_bytes("missing/key")
+
+
+@pytest.mark.asyncio
+async def test_get_bytes_reraises_client_error_non_404(fake_boto3: _FakeS3Client) -> None:
+    """ClientError that is NOT a missing-object error must propagate unchanged
+    from get_bytes (so it surfaces as a 500, not a misleading 404)."""
+    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+
+    s = S3Storage(bucket="b")
+
+    def _raise(**_kw: object) -> object:
+        raise _FakeClientError("InternalError", http_status=500)
+
+    fake_boto3.get_object = _raise  # type: ignore[method-assign]
+    with pytest.raises(_FakeClientError):
+        await s.get_bytes("some/key")
