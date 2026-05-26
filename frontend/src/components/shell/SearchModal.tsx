@@ -17,7 +17,7 @@
 import { useHotkeys } from "react-hotkeys-hook";
 import { useMatch } from "react-router-dom";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "@concavetrillion/pd-ui/icons";
+import { X } from "@pdomain/pdomain-ui/icons";
 import { SearchPanel } from "@/components/SearchPanel";
 
 interface SearchModalProps {

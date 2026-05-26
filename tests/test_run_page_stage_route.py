@@ -34,9 +34,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
     PageStageState,
@@ -46,8 +46,8 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -246,7 +246,7 @@ def test_run_stage_route_500_when_impl_raises_with_failed_row(
     client, settings = seeded_client
     asyncio.run(_seed_clean_parent(settings, "m2s4", "0000", "manual_deskew_pre", _checkerboard_bgr_png()))
 
-    from pd_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _kaboom(_x, cfg=None):
         raise ValueError("synthetic stage failure for tests")

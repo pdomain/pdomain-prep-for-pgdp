@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from pd_prep_for_pgdp.adapters.auth.apikey import ApiKeyAuth
+from pdomain_prep_for_pgdp.adapters.auth.apikey import ApiKeyAuth
 
 
 def test_empty_key_construction_rejected() -> None:

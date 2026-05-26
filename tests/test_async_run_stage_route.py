@@ -26,9 +26,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     JobStatus,
     JobType,
     PageProcessingStatus,
@@ -39,8 +39,8 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -252,7 +252,7 @@ def test_async_job_runs_to_completion_and_stage_is_clean(
     """
     import json
 
-    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry as reg_module
 
     fake_words = [
         {

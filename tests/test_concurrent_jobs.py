@@ -20,9 +20,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -76,7 +76,7 @@ async def _make_slow_handler(duration: float) -> tuple:
 @pytest.mark.asyncio
 async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: FilesystemStorage) -> None:
     """Without a max_concurrency override, jobs run one-at-a-time."""
-    from pd_prep_for_pgdp.core import job_runner as jr
+    from pdomain_prep_for_pgdp.core import job_runner as jr
 
     project = _project()
     await db.put_project(project)
@@ -112,7 +112,7 @@ async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: Fi
 @pytest.mark.asyncio
 async def test_max_concurrency_runs_jobs_in_parallel(db: SqliteDatabase, storage: FilesystemStorage) -> None:
     """`max_concurrency=3` lets all three jobs run at once."""
-    from pd_prep_for_pgdp.core import job_runner as jr
+    from pdomain_prep_for_pgdp.core import job_runner as jr
 
     project = _project()
     await db.put_project(project)
@@ -153,7 +153,7 @@ async def test_run_pending_waits_for_all_concurrent_jobs(
     db: SqliteDatabase, storage: FilesystemStorage
 ) -> None:
     """`run_pending` doesn't return until every spawned job has settled."""
-    from pd_prep_for_pgdp.core import job_runner as jr
+    from pdomain_prep_for_pgdp.core import job_runner as jr
 
     project = _project()
     await db.put_project(project)

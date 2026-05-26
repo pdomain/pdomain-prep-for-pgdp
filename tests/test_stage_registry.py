@@ -9,7 +9,7 @@ flat `STAGE_IMPL[stage_id][device]` callable map. M2 ships:
 - Every canonical stage_id registered for `"cpu"` (placeholders raise
   `StageNotImplemented` until extracted).
 - Three simple stages with real implementations: `grayscale`, `threshold`,
-  `invert`. These are pure cv2 / pd_book_tools wrappers; the runner in
+  `invert`. These are pure cv2 / pdomain_book_tools wrappers; the runner in
   Slice 3 will fan them out and dual-write their artifacts.
 
 Auto-bridging (Q10) between numpy and cupy at type boundaries is the
@@ -30,8 +30,8 @@ import shutil
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS
-from pd_prep_for_pgdp.core.pipeline.stage_registry import (
+from pdomain_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
     STAGE_IMPL,
     StageNotImplemented,
     get_stage_impl,
@@ -683,8 +683,8 @@ def test_auto_detect_illustrations_import_error_returns_empty(monkeypatch: pytes
     import sys
 
     # Remove cached module so the inner import re-runs.
-    sys.modules.pop("pd_book_tools.layout", None)
-    sys.modules.pop("pd_book_tools.layout.get_layout_detector", None)
+    sys.modules.pop("pdomain_book_tools.layout", None)
+    sys.modules.pop("pdomain_book_tools.layout.get_layout_detector", None)
 
     with monkeypatch.context() as m:
         # Make the import fail as if the optional package is missing.
@@ -693,8 +693,8 @@ def test_auto_detect_illustrations_import_error_returns_empty(monkeypatch: pytes
         real_import = builtins.__import__
 
         def _block_layout(name, *args, **kwargs):
-            if name == "pd_book_tools.layout":
-                raise ImportError("pd_book_tools.layout not installed")
+            if name == "pdomain_book_tools.layout":
+                raise ImportError("pdomain_book_tools.layout not installed")
             return real_import(name, *args, **kwargs)
 
         m.setattr(builtins, "__import__", _block_layout)
@@ -713,13 +713,13 @@ def test_auto_detect_illustrations_non_import_error_propagates(monkeypatch: pyte
     # Ensure the import itself succeeds but get_layout_detector raises.
     import types
 
-    fake_layout_mod = types.ModuleType("pd_book_tools.layout")
+    fake_layout_mod = types.ModuleType("pdomain_book_tools.layout")
 
     def _boom():
         raise RuntimeError("CUDA init failed")
 
     fake_layout_mod.get_layout_detector = _boom  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "pd_book_tools.layout", fake_layout_mod)
+    monkeypatch.setitem(sys.modules, "pdomain_book_tools.layout", fake_layout_mod)
 
     fn = get_stage_impl("auto_detect_illustrations", "cpu")
     img = _solid_color_bgr(h=200, w=150)

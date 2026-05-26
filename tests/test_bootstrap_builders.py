@@ -18,13 +18,13 @@ import platform
 
 import pytest
 
-from pd_prep_for_pgdp.bootstrap import (
+from pdomain_prep_for_pgdp.bootstrap import (
     _autodetect_gpu_backend,
     build_auth,
     build_gpu_backend,
     build_storage,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -155,7 +155,7 @@ def test_autodetect_gpu_logs_non_import_cupy_error(
 
     import logging
 
-    with caplog.at_level(logging.ERROR, logger="pd_prep_for_pgdp.bootstrap"):
+    with caplog.at_level(logging.ERROR, logger="pdomain_prep_for_pgdp.bootstrap"):
         result = _autodetect_gpu_backend()
 
     # Falls through to cpu after logging the unexpected error.
@@ -176,25 +176,25 @@ def test_build_storage_s3_returns_s3storage(tmp_path, monkeypatch: pytest.Monkey
     fake_module = types.ModuleType("boto3")
     fake_module.client = lambda _name: object()
     monkeypatch.setitem(sys.modules, "boto3", fake_module)
-    sys.modules.pop("pd_prep_for_pgdp.adapters.storage.s3", None)
+    sys.modules.pop("pdomain_prep_for_pgdp.adapters.storage.s3", None)
 
     # Reimport build_storage so it re-resolves through fake boto3.
     import importlib
 
-    import pd_prep_for_pgdp.bootstrap as bs
+    import pdomain_prep_for_pgdp.bootstrap as bs
 
     importlib.reload(bs)
 
     settings = _settings(tmp_path, storage_backend="s3", s3_data_bucket="my-bucket")
     storage = bs.build_storage(settings)
-    from pd_prep_for_pgdp.adapters.storage.s3 import S3Storage
+    from pdomain_prep_for_pgdp.adapters.storage.s3 import S3Storage
 
     assert isinstance(storage, S3Storage)
 
 
 def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
     """`gpu_backend=modal` with both tokens returns a ModalStageDispatcher."""
-    from pd_ocr_ops.gpu import ModalStageDispatcher
+    from pdomain_ocr_ops.gpu import ModalStageDispatcher
 
     settings = _settings(
         tmp_path,
@@ -207,7 +207,7 @@ def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
 
 
 def test_build_gpu_shared_container_returns_shared_backend(tmp_path) -> None:
-    from pd_ocr_ops.gpu import SharedContainerStageDispatcher
+    from pdomain_ocr_ops.gpu import SharedContainerStageDispatcher
 
     settings = _settings(
         tmp_path,
@@ -220,21 +220,21 @@ def test_build_gpu_shared_container_returns_shared_backend(tmp_path) -> None:
 
 
 def test_build_gpu_backend_cpu_returns_noop(tmp_path) -> None:
-    from pd_prep_for_pgdp.bootstrap import _NoOpGPUBackend
+    from pdomain_prep_for_pgdp.bootstrap import _NoOpGPUBackend
 
     settings = _settings(tmp_path, gpu_backend="cpu")
     assert isinstance(build_gpu_backend(settings), _NoOpGPUBackend)
 
 
 def test_build_gpu_backend_mps_returns_noop(tmp_path) -> None:
-    from pd_prep_for_pgdp.bootstrap import _NoOpGPUBackend
+    from pdomain_prep_for_pgdp.bootstrap import _NoOpGPUBackend
 
     settings = _settings(tmp_path, gpu_backend="mps")
     assert isinstance(build_gpu_backend(settings), _NoOpGPUBackend)
 
 
 def test_build_gpu_backend_local_returns_noop(tmp_path) -> None:
-    from pd_prep_for_pgdp.bootstrap import _NoOpGPUBackend
+    from pdomain_prep_for_pgdp.bootstrap import _NoOpGPUBackend
 
     settings = _settings(tmp_path, gpu_backend="local")
     assert isinstance(build_gpu_backend(settings), _NoOpGPUBackend)
@@ -243,9 +243,9 @@ def test_build_gpu_backend_local_returns_noop(tmp_path) -> None:
 def test_build_dispatcher_returns_batched_when_interval_set(tmp_path) -> None:
     """Non-zero `dispatch_interval_seconds` selects the BatchDispatcher
     (managed mode); zero selects the ImmediateDispatcher (local/self-hosted)."""
-    from pd_prep_for_pgdp.bootstrap import build_dispatcher
-    from pd_prep_for_pgdp.dispatcher.batched import BatchDispatcher
-    from pd_prep_for_pgdp.dispatcher.immediate import ImmediateDispatcher
+    from pdomain_prep_for_pgdp.bootstrap import build_dispatcher
+    from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
+    from pdomain_prep_for_pgdp.dispatcher.immediate import ImmediateDispatcher
 
     fake_gpu = object()  # unused by dispatcher constructor
     settings_managed = _settings(tmp_path, dispatch_interval_seconds=300)

@@ -9,22 +9,22 @@
 // this store. searchOpen is transient UI state (not a preference); it now
 // lives as local React state in App.tsx. The store is now theme-only.
 //
-// GAP-5: Cannot use pd-ui's `createUIPrefsStore()` factory yet.
+// GAP-5: Cannot use pdomain-ui's `createUIPrefsStore()` factory yet.
 //   Sub-gap RESOLVED by Phase 2.7b: async load/persistCommon/persistApp
-//     callbacks are now wired to real pd-ocr-ops routes in App.tsx.
+//     callbacks are now wired to real pdomain-ocr-ops routes in App.tsx.
 //   Remaining blockers:
-//     - pd-ui's UIPrefs.theme is 'dark' | 'light' only — no 'system' variant.
+//     - pdomain-ui's UIPrefs.theme is 'dark' | 'light' only — no 'system' variant.
 //       The local store supports 'system' (via prefers-color-scheme); the
 //       AppShell receives the resolved effective value (Phase 2.7a fix).
-//   Replace with pd-ui factory when: the factory gains 'system' theme support.
+//   Replace with pdomain-ui factory when: the factory gains 'system' theme support.
 //
 // Phase 2.4 GAP-2/GAP-3 reconciliation:
 //   App.tsx's UI_PREFS_CONFIG.load() reads from the same localStorage key
-//   (pgdp.uiPrefs) to seed the pd-ui AppShell store. With Phase 2.5 the
+//   (pgdp.uiPrefs) to seed the pdomain-ui AppShell store. With Phase 2.5 the
 //   local store writes theme directly to that key as a plain string (not
 //   wrapped in zustand persist's {state:{theme}} envelope).
 //   GAP-2/GAP-3 comments in App.tsx remain until server-side persistence
-//   is wired via pd-ocr-ops (resolved in Phase 2.7b — UI_PREFS_CONFIG now
+//   is wired via pdomain-ocr-ops (resolved in Phase 2.7b — UI_PREFS_CONFIG now
 //   calls real endpoints).
 
 import { createStore } from "zustand/vanilla";

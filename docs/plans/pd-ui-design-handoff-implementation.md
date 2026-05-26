@@ -1,88 +1,88 @@
 ---
-title: "pd-ui design handoff \u2014 implementation plan"
+title: "pdomain-ui design handoff \u2014 implementation plan"
 date: 2026-05-24
-repo: ConcaveTrillion/pd-prep-for-pgdp
-spec: docs/specs/2026-05-24-pd-ui-design-handoff-implementation.md
+repo: pdomain/pdomain-prep-for-pgdp
+spec: docs/specs/2026-05-24-pdomain-ui-design-handoff-implementation.md
 status: active
 synced: 2026-05-24
 milestone: 14
 ---
 
-# pd-ui design handoff — implementation plan
+# pdomain-ui design handoff — implementation plan
 
-**Source spec:** `docs/specs/2026-05-24-pd-ui-design-handoff-implementation.md`
+**Source spec:** `docs/specs/2026-05-24-pdomain-ui-design-handoff-implementation.md`
 
-**TL;DR:** Wire pd-ui design-system exports into pd-prep-for-pgdp stage by stage.
+**TL;DR:** Wire pdomain-ui design-system exports into pdomain-prep-for-pgdp stage by stage.
 Each task targets one subagent session. Phases mirror the stage pipeline
 (01=Source → 02=Grayscale → 03=Crop → …). Phase 0 lays the token/atom/shell
 foundation everything else depends on.
 
 **Coordination:** A separate Claude Code session is porting the
-designs into `pd-ui` per its `PROMPT.md`. Every task below lists the
-pd-ui exports it consumes. A task is blocked until its pd-ui exports
-land on `main` of `pd-ui` (or are published to the `pd-index-npm` registry).
+designs into `pdomain-ui` per its `PROMPT.md`. Every task below lists the
+pdomain-ui exports it consumes. A task is blocked until its pdomain-ui exports
+land on `main` of `pdomain-ui` (or are published to the `pdomain-index-npm` registry).
 
 **Sizing:** Each task targets one subagent session (~200–400 LOC of
 TS/TSX + a focused test file). Run `make ci AI=1` after every task.
 
 **Conventions:**
 
-- All paths relative to repo root (`pd-prep-for-pgdp/`).
+- All paths relative to repo root (`pdomain-prep-for-pgdp/`).
 - Slice IDs follow `Sxx-y`: `xx` is the stage (`01`=Source, `02`=
   Grayscale, ..., `15`=HyphenJoin, `19`=Validation, `PW`=Page
   Workbench cross-cutting, `SH`=Shell, `QF`=Quality flags, `S1`=upload).
-- `pd-ui exports` = npm `@concavetrillion/pd-ui` paths.
-- Plan synced to `ConcaveTrillion/pd-prep-for-pgdp` issues via
-  `/decompose-spec --sync docs/plans/pd-ui-design-handoff-implementation.md`.
+- `pdomain-ui exports` = npm `@pdomain/pdomain-ui` paths.
+- Plan synced to `pdomain/pdomain-prep-for-pgdp` issues via
+  `/decompose-spec --sync docs/plans/pdomain-ui-design-handoff-implementation.md`.
 
 ---
 
 ## Phase 0 · Foundation (no stage work yet)
 
-## Task 1 — Token + Tailwind reconciliation against pd-ui  {#s0-a}
+## Task 1 — Token + Tailwind reconciliation against pdomain-ui  {#s0-a}
 
 model: haiku  effort: S  area: tokens
 
 Context: The frontend currently has its own `tokens.css` and Tailwind semantic
 utilities (`frontend/src/styles/tokens.css`, `frontend/tailwind.config.ts`,
-`frontend/src/index.css`) that may diverge from pd-ui's canonical names.
+`frontend/src/index.css`) that may diverge from pdomain-ui's canonical names.
 
 Approach: Replace `frontend/src/styles/tokens.css` with imports from
-`@concavetrillion/pd-ui/tokens.css` and align Tailwind `theme.extend`
-semantic utilities (`bg-surface`, `text-ink-2`, etc.) with pd-ui's
+`@pdomain/pdomain-ui/tokens.css` and align Tailwind `theme.extend`
+semantic utilities (`bg-surface`, `text-ink-2`, etc.) with pdomain-ui's
 canonical names.
 
 Blocked-by: (none internal)
 
-External blockers: pd-ui Pass 2 (atoms + tokens) must land on pd-ui `main` first.
+External blockers: pdomain-ui Pass 2 (atoms + tokens) must land on pdomain-ui `main` first.
 
 Verification: `make ci AI=1`
 
 Acceptance:
 
-- [ ] `frontend/src/styles/tokens.css` re-exports from `@concavetrillion/pd-ui/tokens.css` with no local overrides
-- [ ] Tailwind `theme.extend` semantic utilities match pd-ui canonical names (`bg-surface`, `text-ink-2`, etc.)
+- [ ] `frontend/src/styles/tokens.css` re-exports from `@pdomain/pdomain-ui/tokens.css` with no local overrides
+- [ ] Tailwind `theme.extend` semantic utilities match pdomain-ui canonical names (`bg-surface`, `text-ink-2`, etc.)
 - [ ] `ProjectListPage`, `JobsPage`, `PageWorkbenchPage` render unchanged (visual regression)
 - [ ] `make ci AI=1` passes green
 
 ---
 
-## Task 2 — Adopt pd-ui atom primitives  {#s0-b}
+## Task 2 — Adopt pdomain-ui atom primitives  {#s0-b}
 
 model: haiku  effort: S  area: atoms
 
 Context: Several UI primitives (`Button`, `Badge`, `KeyCap`, `Divider`,
 `StepDots`, `Input`) exist as local implementations in
 `frontend/src/components/ui/*`; after Task 1 lands the token layer, these can
-be replaced with pd-ui imports.
+be replaced with pdomain-ui imports.
 
 Approach: Replace ad-hoc `Button`, `Badge`, `KeyCap`, `Divider`,
-`StepDots`, `Input` usages with pd-ui imports and remove local
+`StepDots`, `Input` usages with pdomain-ui imports and remove local
 re-implementations.
 
 Blocked-by: #s0-a
 
-External blockers: pd-ui Pass 2 (atoms + tokens) must export these primitives.
+External blockers: pdomain-ui Pass 2 (atoms + tokens) must export these primitives.
 
 Verification: `make ci AI=1`
 
@@ -101,7 +101,7 @@ model: sonnet  effort: M  area: shell
 
 Context: `frontend/src/App.tsx` currently defines the root layout and shell
 components; `useJobs.ts` polls `/api/jobs`. After atoms land (Task 2), the
-shell can be replaced with pd-ui's `AppTemplate`/`AppHeader`/`Breadcrumb`/
+shell can be replaced with pdomain-ui's `AppTemplate`/`AppHeader`/`Breadcrumb`/
 `JobsPill`/`JobsDrawer` composition.
 
 Approach: Wire `AppTemplate` + `AppHeader` + `Breadcrumb` + `JobsPill`
@@ -111,7 +111,7 @@ existing job-poll integration.
 
 Blocked-by: #s0-b
 
-External blockers: pd-ui Pass 3 (templates) must export `AppTemplate`, `AppHeader`,
+External blockers: pdomain-ui Pass 3 (templates) must export `AppTemplate`, `AppHeader`,
 `Breadcrumb`, `JobsPill`, `JobsDrawer`, `JobRow`.
 
 Verification: `make ci AI=1`
@@ -140,7 +140,7 @@ and a `ThumbCard` grid backed by the existing pages endpoint.
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `Source/*` exports (`SourceBanner`, `FileToolbar`, `ThumbCard`, `FakeThumb`)
+External blockers: pdomain-ui `Source/*` exports (`SourceBanner`, `FileToolbar`, `ThumbCard`, `FakeThumb`)
 must be available.
 
 Verification: `make ci AI=1`
@@ -214,7 +214,7 @@ Approach: Render `SourcePageWorkbench` under `/projects/:id/source/:prefix` and
 
 Blocked-by: #s01-a
 
-External blockers: pd-ui `Source/Workbench` and `SourceStepSettings` exports must be available.
+External blockers: pdomain-ui `Source/Workbench` and `SourceStepSettings` exports must be available.
 
 Verification: `make ci AI=1`
 
@@ -241,7 +241,7 @@ Approach: Create `/projects/:id/grayscale` route with Overview (stat tiles +
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `Grayscale/*` exports (`GrayscaleOverview`, `AutoDetectBanner`,
+External blockers: pdomain-ui `Grayscale/*` exports (`GrayscaleOverview`, `AutoDetectBanner`,
 `GrayThumb`, `BackendChip`); backend gap — new
 `/api/projects/{id}/grayscale/auto-detect` endpoint must be tracked as a
 separate issue before this slice starts.
@@ -263,14 +263,14 @@ model: sonnet  effort: M  area: grayscale
 
 Context: Task 8 establishes the grayscale overview/pages view; the Step
 Settings tab (Variant F: auto-detect + visual chooser + advanced accordion)
-requires its own page and pd-ui Variant F export.
+requires its own page and pdomain-ui Variant F export.
 
 Approach: Build Step Settings tab using `StageControlsLeft` (Variant F:
 auto-detect + visual chooser + advanced accordion).
 
 Blocked-by: #s02-a
 
-External blockers: pd-ui Variant F export (`StageControlsLeft`, `ModeCard`, `AdvancedParams`,
+External blockers: pdomain-ui Variant F export (`StageControlsLeft`, `ModeCard`, `AdvancedParams`,
 `CachedNote`) must be available.
 
 Verification: `make ci AI=1`
@@ -314,14 +314,14 @@ Acceptance:
 model: sonnet  effort: M  area: crop
 
 Context: An existing `CropsGridPage` exists but uses ad-hoc components; it
-needs refitting to pd-ui's canonical crop components with the new flag taxonomy.
+needs refitting to pdomain-ui's canonical crop components with the new flag taxonomy.
 
-Approach: Migrate existing `CropsGridPage` to pd-ui's `CropCard`,
+Approach: Migrate existing `CropsGridPage` to pdomain-ui's `CropCard`,
 `CropToolbar`, `CropBanner` and adopt the canonical flag taxonomy.
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `Crop/*` exports (`CropCard`, `CropToolbar`, `CropBanner`)
+External blockers: pdomain-ui `Crop/*` exports (`CropCard`, `CropToolbar`, `CropBanner`)
 must be available.
 
 Verification: `make ci AI=1`
@@ -418,7 +418,7 @@ Approach: Add drag-and-drop reorder inside the Source/Pages tab with UndoStrip
 
 Blocked-by: #s01-a
 
-External blockers: pd-ui `PageReorder/*` exports (`PagesToolbar`, `DropIndicator`,
+External blockers: pdomain-ui `PageReorder/*` exports (`PagesToolbar`, `DropIndicator`,
 `DragGhost`, `UndoStrip`, `RowActionsMenu`) must be available.
 
 Verification: `make ci AI=1`
@@ -437,17 +437,17 @@ Acceptance:
 model: sonnet  effort: L  area: page-order
 
 Context: The new `/projects/:id/page-order` route does not exist; the
-auto-detect algorithm for out-of-order pages requires a new `pd-book-tools`
+auto-detect algorithm for out-of-order pages requires a new `pdomain-book-tools`
 spec before the backend can be built.
 
 Approach: Build `/projects/:id/page-order` route with auto-detect
 banner + SwapRow list + per-swap accept/skip, and implement the backing
-`src/pd_prep_for_pgdp/routers/page_order.py` router.
+`src/pdomain_prep_for_pgdp/routers/page_order.py` router.
 
 Blocked-by: #s11-a
 
-External blockers: pd-book-tools spec for `pd_book_tools.page_order.detect_out_of_order_pages`
-(Decision #1 in spec) must be filed as `pd-book-tools/docs/specs/<date>-page-order-detection.md`
+External blockers: pdomain-book-tools spec for `pdomain_book_tools.page_order.detect_out_of_order_pages`
+(Decision #1 in spec) must be filed as `pdomain-book-tools/docs/specs/<date>-page-order-detection.md`
 before this slice starts. See sibling spec Open Question #1.
 
 Verification: `make ci AI=1`
@@ -470,7 +470,7 @@ Each WF-05B surface is one task (pipeline P · capture C1 · promote C2 · confi
 model: sonnet  effort: M  area: scannos
 
 Context: The scannos feature does not exist in the frontend or backend; it
-requires a new `pd-book-tools` spec for the `pd_book_tools.scannos` module before
+requires a new `pdomain-book-tools` spec for the `pdomain_book_tools.scannos` module before
 implementation can begin.
 
 Approach: Build page-level scanno stats + "Re-scan all pages" + per-page
@@ -478,8 +478,8 @@ density bar using `pdUi/Scannos/PipelinePanel` and `pdUi/Scannos/PerPageDensityB
 
 Blocked-by: #s0-c
 
-External blockers: pd-book-tools spec for `pd_book_tools.scannos` (Decision #3 in spec)
-must be filed first. pd-ui `Scannos/*` exports must be available.
+External blockers: pdomain-book-tools spec for `pdomain_book_tools.scannos` (Decision #3 in spec)
+must be filed first. pdomain-ui `Scannos/*` exports must be available.
 
 Verification: `make ci AI=1`
 
@@ -799,11 +799,11 @@ Acceptance:
 model: sonnet  effort: M  area: quality-flags
 
 Context: Task 29 establishes the quality banner; the Pages tab thumbnails need
-to be replaced with pd-ui's `PageThumb`/`PageRow` components with flag pills,
+to be replaced with pdomain-ui's `PageThumb`/`PageRow` components with flag pills,
 thumb-size toggle, and list/thumb view toggle.
 
 Approach: Replace existing Pages tab thumbnails with `PageThumb` / `PageRow`
-from pd-ui; add thumb-size toggle (S/M/L) and list/thumb view toggle.
+from pdomain-ui; add thumb-size toggle (S/M/L) and list/thumb view toggle.
 
 Blocked-by: #sqf-a
 
@@ -849,15 +849,15 @@ Acceptance:
 model: sonnet  effort: M  area: page-workbench
 
 Context: The existing `PageWorkbenchPage` has its own chrome (header,
-attribute display) that diverges from pd-ui's canonical layout; this is the
+attribute display) that diverges from pdomain-ui's canonical layout; this is the
 first PageWorkbench task and unblocks the inline scannos and hyphen workbench.
 
-Approach: Refit existing `PageWorkbenchPage` chrome to pd-ui's header +
+Approach: Refit existing `PageWorkbenchPage` chrome to pdomain-ui's header +
 edit-mode segmented + attribute pills + popover editor.
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `PageWorkbench/*` exports (`PWHeader`, `EditModeSelector`,
+External blockers: pdomain-ui `PageWorkbench/*` exports (`PWHeader`, `EditModeSelector`,
 `PageAttributesBar`, `AttrEditorPopover`) must be available.
 
 Verification: `make ci AI=1`
@@ -876,10 +876,10 @@ Acceptance:
 model: sonnet  effort: M  area: page-workbench
 
 Context: Task 32 establishes the PageWorkbench chrome; the existing
-`ArtifactViewer` component needs replacement with pd-ui's version, which
+`ArtifactViewer` component needs replacement with pdomain-ui's version, which
 supports stage-specific overlays (`SplitOverlay`, `IllustOverlay`, `WordBboxOverlay`).
 
-Approach: Replace existing `ArtifactViewer` component with pd-ui version; wire
+Approach: Replace existing `ArtifactViewer` component with pdomain-ui version; wire
 `SplitOverlay`, `IllustOverlay`, `WordBboxOverlay` based on `EditMode`.
 
 Blocked-by: #spw-a
@@ -888,7 +888,7 @@ Verification: `make ci AI=1`
 
 Acceptance:
 
-- [ ] pd-ui `ArtifactViewer` replaces local implementation
+- [ ] pdomain-ui `ArtifactViewer` replaces local implementation
 - [ ] `SplitOverlay` renders when EditMode is "split"
 - [ ] `IllustOverlay` renders when EditMode is "illust"
 - [ ] `WordBboxOverlay` renders when EditMode is "word-bbox"
@@ -901,7 +901,7 @@ model: sonnet  effort: M  area: page-workbench
 
 Context: Tasks 32–33 establish the workbench chrome and viewer; the left
 drawer with stage-specific controls is the next layer. Each stage's controls
-is a separate pd-ui export consumed through a stage map.
+is a separate pdomain-ui export consumed through a stage map.
 
 Approach: Build left drawer rendering the correct `StageControls` for the
 current stage via a stage map over six per-stage control exports
@@ -999,15 +999,15 @@ Acceptance:
 
 model: sonnet  effort: M  area: projects
 
-Context: The existing `ProjectListPage` is a flat list; pd-ui's `ProjectsPage`
+Context: The existing `ProjectListPage` is a flat list; pdomain-ui's `ProjectsPage`
 is a split-pane layout with sidebar + detail tabs that replaces it.
 
-Approach: Refit existing `ProjectListPage` to pd-ui's split-pane
+Approach: Refit existing `ProjectListPage` to pdomain-ui's split-pane
 `ProjectsPage` (sidebar + detail tabs).
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `Projects/*` exports (`ProjectsPage`, `PipelineMini`,
+External blockers: pdomain-ui `Projects/*` exports (`ProjectsPage`, `PipelineMini`,
 `CoverPlaceholder`) must be available.
 
 Verification: `make ci AI=1`
@@ -1087,7 +1087,7 @@ uses existing endpoint; clean-artifacts and save-copy may need new endpoints
 
 Blocked-by: #spr-a
 
-External blockers: Confirm with pd-ui session that `pdUi/Projects/ManageTab` export is
+External blockers: Confirm with pdomain-ui session that `pdUi/Projects/ManageTab` export is
 available and its interface is finalized.
 
 Verification: `make ci AI=1`
@@ -1116,7 +1116,7 @@ Approach: Replace existing create-project modal with `ModalC`
 
 Blocked-by: #s0-c
 
-External blockers: pd-ui `Upload/*` exports (`ModalC`, `ManifestTable`, `PhaseCard`,
+External blockers: pdomain-ui `Upload/*` exports (`ModalC`, `ManifestTable`, `PhaseCard`,
 `Thumb`) must be available.
 
 Verification: `make ci AI=1`
@@ -1184,12 +1184,12 @@ Acceptance:
 
 model: sonnet  effort: M  area: source
 
-Context: Per `PROMPT.md` Done-when criteria, pd-prep-for-pgdp must demonstrate
-it can replace any `final/<stage>.jsx` with pd-ui imports + thin glue. All
+Context: Per `PROMPT.md` Done-when criteria, pdomain-prep-for-pgdp must demonstrate
+it can replace any `final/<stage>.jsx` with pdomain-ui imports + thin glue. All
 Stage 01 slices (Tasks 4–7) must be complete first.
 
 Approach: Pick `final/source/source.jsx` and produce a side-by-side parity
-comparison demonstrating pd-prep-for-pgdp can replace it with pd-ui imports.
+comparison demonstrating pdomain-prep-for-pgdp can replace it with pdomain-ui imports.
 
 Blocked-by: #s01-a, #s01-b, #s01-c, #s01-d
 
@@ -1198,34 +1198,34 @@ Verification: `make ci AI=1`
 Acceptance:
 
 - [ ] Side-by-side parity comparison produced for `final/source/source.jsx`
-- [ ] All source stage behaviors covered by pd-ui imports with thin glue
+- [ ] All source stage behaviors covered by pdomain-ui imports with thin glue
 - [ ] Any divergences are filed as new issues
 - [ ] `make ci AI=1` passes green
 
 ---
 
-## Task 46 — MIGRATION_NOTES.md in pd-ui  {#scr-c}
+## Task 46 — MIGRATION_NOTES.md in pdomain-ui  {#scr-c}
 
 model: sonnet  effort: S  area: routing
 
-Context: Per `PROMPT.md` Pass 6, the pd-ui session writes migration notes;
+Context: Per `PROMPT.md` Pass 6, the pdomain-ui session writes migration notes;
 this slice confirms our consumer assumptions match what landed and surfaces
 any divergences.
 
-Approach: Consume the `MIGRATION_NOTES.md` written by the pd-ui session,
+Approach: Consume the `MIGRATION_NOTES.md` written by the pdomain-ui session,
 confirm consumer assumptions match what landed, and surface divergences as
 new issues.
 
 Blocked-by: (none internal)
 
-External blockers: pd-ui Pass 6 must complete and publish `MIGRATION_NOTES.md` first.
+External blockers: pdomain-ui Pass 6 must complete and publish `MIGRATION_NOTES.md` first.
 
 Verification: `make ci AI=1`
 
 Acceptance:
 
 - [ ] `MIGRATION_NOTES.md` has been read and cross-referenced against our usage
-- [ ] Any divergences between our assumptions and pd-ui's published API are filed as issues
+- [ ] Any divergences between our assumptions and pdomain-ui's published API are filed as issues
 - [ ] A brief confirmation comment or note is added to this task's issue
 - [ ] `make ci AI=1` passes green
 
@@ -1249,7 +1249,7 @@ S0-A → S0-B → S0-C → most stage slices
 
 ## Sync to issues
 
-Run `/decompose-spec --sync docs/plans/pd-ui-design-handoff-implementation.md`
-once the parallel pd-ui session has named its first set of exports —
+Run `/decompose-spec --sync docs/plans/pdomain-ui-design-handoff-implementation.md`
+once the parallel pdomain-ui session has named its first set of exports —
 slice labels and `blockedBy` edges will be created in
-`ConcaveTrillion/pd-prep-for-pgdp` issues.
+`pdomain/pdomain-prep-for-pgdp` issues.

@@ -58,11 +58,11 @@ repos:
 
     -   id: basedpyright
         name: basedpyright type check (recommended mode; workspace canonical)
-        entry: uv run basedpyright src/pd_prep_for_pgdp --level error
+        entry: uv run basedpyright src/pdomain_prep_for_pgdp --level error
         language: system
         stages: [pre-commit]
         pass_filenames: false
-        files: ^src/pd_prep_for_pgdp/.*\.py$
+        files: ^src/pdomain_prep_for_pgdp/.*\.py$
 
     -   id: frontend-tsc
         name: frontend tsc -b --noEmit

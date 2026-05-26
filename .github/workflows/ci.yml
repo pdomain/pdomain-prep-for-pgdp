@@ -19,7 +19,7 @@ jobs:
       # via anyio + sqlite3 worker threads. Drop this once anyio + SQLite
       # are 3.14-clean.
       UV_PYTHON: "3.13"
-      # Prevent CUDA from initialising on CPU-only CI runners. pd-book-tools
+      # Prevent CUDA from initialising on CPU-only CI runners. pdomain-book-tools
       # depends on cupy-cuda12x; conftest._detect_gpu() imports cupy at
       # collection time, which triggers CUDA library init. Without a GPU the
       # CUDA driver teardown segfaults at process exit (exit code 139).

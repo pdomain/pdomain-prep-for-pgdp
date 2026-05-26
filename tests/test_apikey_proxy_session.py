@@ -21,8 +21,8 @@ from fastapi.testclient import TestClient
 if TYPE_CHECKING:
     from pathlib import Path
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 _SENTINEL = "super-secret-sentinel-xyzzy-apikey"
 _SESSION_SECRET = "test-session-secret-abc123"

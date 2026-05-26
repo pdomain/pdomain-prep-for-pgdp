@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import pytest
 
-from pd_prep_for_pgdp.core.models import PAGE_STAGE_IDS
-from pd_prep_for_pgdp.core.pipeline.stage_dag import (
+from pdomain_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import (
     STAGE_DAG,
     Stage,
     compute_dirty_descendants,
@@ -211,7 +211,7 @@ def test_stage_lookup_helpers_match() -> None:
 
 def test_stage_versions_covers_all_22_stages() -> None:
     """STAGE_VERSIONS must contain an entry for every canonical stage ID."""
-    from pd_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
+    from pdomain_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
 
     assert set(STAGE_VERSIONS.keys()) == set(PAGE_STAGE_IDS), (
         "STAGE_VERSIONS keys must match PAGE_STAGE_IDS exactly"
@@ -220,7 +220,7 @@ def test_stage_versions_covers_all_22_stages() -> None:
 
 def test_stage_versions_all_positive_ints() -> None:
     """Every STAGE_VERSIONS value must be a positive integer (>= 1)."""
-    from pd_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
+    from pdomain_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
 
     for stage_id, ver in STAGE_VERSIONS.items():
         assert isinstance(ver, int) and ver >= 1, (
@@ -234,7 +234,7 @@ def test_stage_dag_module_docstring_documents_bump_procedure() -> None:
     Spec: issue #59 acceptance — dag.py docstring documents the manual bump
     procedure so developers know where to look.
     """
-    import pd_prep_for_pgdp.core.pipeline.stage_dag as _mod
+    import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _mod
 
     doc = _mod.__doc__ or ""
     assert "STAGE_VERSIONS" in doc, "module docstring must mention STAGE_VERSIONS"

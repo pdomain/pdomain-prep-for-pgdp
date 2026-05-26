@@ -1,4 +1,4 @@
-# CLAUDE — pd-prep-for-pgdp
+# CLAUDE — pdomain-prep-for-pgdp
 
 Web app that converts a folder/zip of scanned book images into a PGDP-ready
 submission package. Single Python wheel ships everywhere — solo proofer on a
@@ -11,16 +11,16 @@ as historical context.
 
 ## Quick orientation
 
-- **Backend:** FastAPI + uvicorn, Python 3.13. `src/pd_prep_for_pgdp/`.
+- **Backend:** FastAPI + uvicorn, Python 3.13. `src/pdomain_prep_for_pgdp/`.
 - **Frontend:** React 19 + Vite + TS + TanStack Query + Konva + Tailwind. `frontend/`.
-- **Pipeline core:** `src/pd_prep_for_pgdp/core/` — mode-agnostic, used by every adapter.
-- **Adapters:** `src/pd_prep_for_pgdp/adapters/` — `IStorage` (filesystem/S3),
+- **Pipeline core:** `src/pdomain_prep_for_pgdp/core/` — mode-agnostic, used by every adapter.
+- **Adapters:** `src/pdomain_prep_for_pgdp/adapters/` — `IStorage` (filesystem/S3),
   `IDatabase` (SQLite/Postgres), `IAuth` (none/apikey/jwt), `GPUBackend`
   (cpu/local/modal/shared_container). Selected at startup by `Settings`.
-- **OCR:** `core/ocr.py` mirrors `pd-ocr-cli`'s flow verbatim: load DocTR
+- **OCR:** `core/ocr.py` mirrors `pdomain-ocr-cli`'s flow verbatim: load DocTR
   predictor (process-singleton) → load layout detector → run page →
   `page.reorganize_page(layout=...)` → optional `validate_word_preservation`.
-  Canonical reference: `pd-ocr-cli/pd_ocr_cli/ocr_to_txt.py:307-540`.
+  Canonical reference: `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307-540`.
 - **Pipeline steps:** spec 02. Step IDs: 0/1/2 ingest, 4 process page,
   4.5 illustrations, 6 OCR crop, 7 OCR, 8 text post-process, 10 package.
 
@@ -49,7 +49,7 @@ make update-pd-deps     # bump pd-* sibling deps to registry latest; leaves diff
 Legacy `dev-local`, `install-local`, `uninstall-local`,
 `check-local-editable`, `upgrade-deps-local`, `run-local` are kept as
 deprecation aliases.
-Legacy `upgrade-pd-book-tools` delegates to `update-pd-deps`.
+Legacy `upgrade-pdomain-book-tools` delegates to `update-pd-deps`.
 
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose
@@ -78,7 +78,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
   manifests, scannos, etc). Test with concrete expected output, then the
   implementation. Pattern: `tests/test_text_postprocess.py`.
 - **Stub-shaped work** (route stubs, adapter Protocols) is exempt — just write the stub.
-- **Pipeline modules** that depend on cv2 / pd-book-tools get integration-shaped
+- **Pipeline modules** that depend on cv2 / pdomain-book-tools get integration-shaped
   tests on synthetic inputs (e.g. `test_process_page.py`'s black-on-white
   round-trip through Step 4).
 
@@ -96,7 +96,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
   Not config on `ocr_crop`.
 - **Local-first:** active work = SQLite + filesystem + CPU. Cloud/remote
   items parked in `docs/plans/roadmap.md §Deferred`.
-- `pd-book-tools` pinned to `v0.9.0`. Upgrade: `make upgrade-pd-book-tools`.
+- `pdomain-book-tools` pinned to `v0.9.0`. Upgrade: `make upgrade-pdomain-book-tools`.
 - `gpu_backend="cpu"` is the test default. `LocalBackend` subclasses
   `CpuBackend`; Modal/SharedContainer require real config.
 - `make build` runs `frontend-build` first so the wheel ships with the SPA bundle.
@@ -107,8 +107,8 @@ Targeted runs: `uv run pytest -k <pattern>`.
 
 In `/workspaces/ocr-container/` (when present):
 
-- `pd-book-tools/` — shared OCR/geometry/image-processing primitives.
-- `pd-ocr-cli/` — the `install.sh` + uv-tool pattern this repo mirrors.
+- `pdomain-book-tools/` — shared OCR/geometry/image-processing primitives.
+- `pdomain-ocr-cli/` — the `install.sh` + uv-tool pattern this repo mirrors.
 - `pd-ocr-labeler/` — separate labeler UI (DocTR labels).
 - `pd-ocr-trainer/` — DocTR training, out of scope here.
 

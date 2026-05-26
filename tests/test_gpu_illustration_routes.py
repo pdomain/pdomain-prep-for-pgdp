@@ -18,10 +18,10 @@ from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.bootstrap import build_app
 
 if TYPE_CHECKING:
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.settings import Settings
 
 
 def test_suggest_splits_returns_empty_list(client: TestClient) -> None:

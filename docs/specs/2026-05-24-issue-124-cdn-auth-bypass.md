@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#124
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#124
 
 ## TL;DR
 
@@ -18,12 +18,12 @@ modes.
 
 **Vulnerable code surface:**
 
-- `src/pd_prep_for_pgdp/bootstrap.py:344-354` — mounts `StaticFiles(directory=data_root)` at
+- `src/pdomain_prep_for_pgdp/bootstrap.py:344-354` — mounts `StaticFiles(directory=data_root)` at
   `/cdn` with no auth middleware; Starlette's `StaticFiles` serves any file under that tree to
   any client.
-- `src/pd_prep_for_pgdp/api/cdn.py:22-39` — `PUT /cdn/{key:path}` has no auth dependency
+- `src/pdomain_prep_for_pgdp/api/cdn.py:22-39` — `PUT /cdn/{key:path}` has no auth dependency
   (`Depends(get_user)` is absent); any client can overwrite any key.
-- `src/pd_prep_for_pgdp/adapters/storage/filesystem.py:80-87` — `presign_put` and `presign_get`
+- `src/pdomain_prep_for_pgdp/adapters/storage/filesystem.py:80-87` — `presign_put` and `presign_get`
   return plain `/cdn/<key>` URLs, so "presigned" is a misnomer; there is no signature.
 
 **Auth modes and impact:**
@@ -99,7 +99,7 @@ Deferred to a future hardening pass.
 
 **Option B.**
 
-**Changes in `src/pd_prep_for_pgdp/api/cdn.py`:**
+**Changes in `src/pdomain_prep_for_pgdp/api/cdn.py`:**
 
 Add `Depends(get_user)` to `cdn_put` so all auth modes enforce a valid session on writes.
 
@@ -136,7 +136,7 @@ Extract `_check_project_ownership(key, user, db)` helper:
 - `project = await db.get_project(project_id)` — 404 if not found.
 - Assert `project.owner_id == user.user_id` — 403 if mismatch.
 
-**Changes in `src/pd_prep_for_pgdp/bootstrap.py`:**
+**Changes in `src/pdomain_prep_for_pgdp/bootstrap.py`:**
 
 - In `auth_mode=none`: keep `StaticFiles` read mount; add the PUT route with auth (no-op for
   none-mode since `get_user` returns a fixed user).
@@ -150,21 +150,21 @@ is installed.
 
 **Slice 1 — Add `Depends(get_user)` to `cdn_put` + `_validate_cdn_key` helper (auth on writes):**
 
-- `src/pd_prep_for_pgdp/api/cdn.py`: add `UserDep` to `cdn_put`, extract `_validate_cdn_key`.
+- `src/pdomain_prep_for_pgdp/api/cdn.py`: add `UserDep` to `cdn_put`, extract `_validate_cdn_key`.
 - `tests/test_cdn.py` (new): `PUT /cdn/projects/X/foo.png` without auth in `apikey` mode → 401.
 - `tests/test_cdn.py`: `PUT /cdn/../etc/passwd` → 400 (path traversal rejected).
 
 **Slice 2 — `cdn_get` route + ownership check:**
 
-- `src/pd_prep_for_pgdp/api/cdn.py`: add `cdn_get` and `_check_project_ownership`.
-- `src/pd_prep_for_pgdp/bootstrap.py`: install `cdn_get` instead of `StaticFiles` when
+- `src/pdomain_prep_for_pgdp/api/cdn.py`: add `cdn_get` and `_check_project_ownership`.
+- `src/pdomain_prep_for_pgdp/bootstrap.py`: install `cdn_get` instead of `StaticFiles` when
   `auth_mode != "none"`. Rename `install_cdn_upload` → `install_cdn_routes`.
 - `tests/test_cdn.py`: user A cannot GET project B's key → 403. User A can GET own project key
   → 200 with correct bytes.
 
 **Slice 3 — Upload size limit (also closes part of #129):**
 
-- `src/pd_prep_for_pgdp/api/cdn.py`: read `settings.max_cdn_upload_bytes` (owned and
+- `src/pdomain_prep_for_pgdp/api/cdn.py`: read `settings.max_cdn_upload_bytes` (owned and
   defaulted by #129's Settings table — do **not** define a local `MAX_CDN_UPLOAD_BYTES`
   constant here). Check `request.headers.get("content-length")` before reading body; also
   enforce during streaming read.

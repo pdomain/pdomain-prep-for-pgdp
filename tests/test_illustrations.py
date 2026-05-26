@@ -9,12 +9,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.illustrations import (
+from pdomain_prep_for_pgdp.core.illustrations import (
     extract_illustration,
     regions_for_page,
     synthesise_plate_region,
 )
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     IllustrationRegion,
     PageRecord,
     PageType,

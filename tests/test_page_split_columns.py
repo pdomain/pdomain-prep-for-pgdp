@@ -33,8 +33,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import PageRecord
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import PageRecord
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 

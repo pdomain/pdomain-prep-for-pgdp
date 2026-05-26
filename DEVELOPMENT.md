@@ -1,4 +1,4 @@
-# Developing pd-prep-for-pgdp
+# Developing pdomain-prep-for-pgdp
 
 This document covers contributor workflows. End-user install + usage lives
 in [`README.md`](README.md). Architecture writeup is in [`docs/`](docs/).
@@ -13,7 +13,7 @@ in [`README.md`](README.md). Architecture writeup is in [`docs/`](docs/).
 | [`mise`](https://mise.jdx.dev/) | **Optional** | Pin Node / Python / uv per the repo's `mise.toml`. Make targets dispatch through it when present. See "Optional: pinned tool versions". |
 | NVIDIA GPU + CUDA Toolkit | Optional | For GPU-accelerated processing. CPU mode is first-class. |
 
-A sibling [`../pd-book-tools`](https://github.com/ConcaveTrillion/pd-book-tools)
+A sibling [`../pdomain-book-tools`](https://github.com/pdomain/pdomain-book-tools)
 checkout is required for local-dev workflows that edit both repos at once.
 `make local-setup` clones it for you.
 
@@ -42,31 +42,31 @@ the published wheel ships with the prebuilt SPA bundle.
 
 Two paths depending on what you're doing.
 
-### A. Just developing pd-prep-for-pgdp (no pd-book-tools edits)
+### A. Just developing pdomain-prep-for-pgdp (no pdomain-book-tools edits)
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-prep-for-pgdp.git
-cd pd-prep-for-pgdp
+git clone https://github.com/pdomain/pdomain-prep-for-pgdp.git
+cd pdomain-prep-for-pgdp
 make setup
 ```
 
-Syncs dev deps from `pyproject.toml` (including `pd-book-tools` at the pinned
+Syncs dev deps from `pyproject.toml` (including `pdomain-book-tools` at the pinned
 git tag), installs pre-commit hooks. You can now run `uv run pgdp-prep`
 without a system install.
 
-### B. Editing pd-prep-for-pgdp **and** pd-book-tools side-by-side
+### B. Editing pdomain-prep-for-pgdp **and** pdomain-book-tools side-by-side
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-prep-for-pgdp.git
-cd pd-prep-for-pgdp
+git clone https://github.com/pdomain/pdomain-prep-for-pgdp.git
+cd pdomain-prep-for-pgdp
 make local-setup
 ```
 
-`local-setup` clones `pd-book-tools` to `../pd-book-tools` (or skips if
+`local-setup` clones `pdomain-book-tools` to `../pdomain-book-tools` (or skips if
 present) and runs `make dev-local`, which:
 
 1. `uv sync --group dev` — installs deps from `pyproject.toml`.
-2. `uv pip install -e ../pd-book-tools` — replaces the pinned tag with the
+2. `uv pip install -e ../pdomain-book-tools` — replaces the pinned tag with the
    sibling editable checkout.
 3. `make check-local-editable` — verifies imports resolve to the sibling,
    not the cached tag.
@@ -79,7 +79,7 @@ To revert to the pinned tag:
 
 ```sh
 make uninstall-local
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
 ```
 
 ## Frontend dev
@@ -176,8 +176,8 @@ the wheel.
 ## Repo layout
 
 ```
-pd-prep-for-pgdp/
-├── src/pd_prep_for_pgdp/   # Python backend (FastAPI + pipeline)
+pdomain-prep-for-pgdp/
+├── src/pdomain_prep_for_pgdp/   # Python backend (FastAPI + pipeline)
 │   ├── api/                # routes (data/, gpu/, auth/, cdn, env_js)
 │   ├── core/               # mode-agnostic pipeline + models + OCR
 │   ├── adapters/           # storage / database / auth / gpu (swappable)
@@ -234,4 +234,4 @@ order. Highlights:
 - **P3:** CUDA `LocalBackend`, shared GPU container, retry-with-payload-override.
 
 The live work queue (kept in sync) is at
-`~/.claude/projects/-workspaces-ocr-container-pd-prep-for-pgdp/memory/project_state.md`.
+`~/.claude/projects/-workspaces-ocr-container-pdomain-prep-for-pgdp/memory/project_state.md`.

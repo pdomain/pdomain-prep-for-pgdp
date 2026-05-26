@@ -13,14 +13,14 @@ from __future__ import annotations
 
 # ── _map_region_type ───────────────────────────────────────────────────────
 import pytest
-from pd_book_tools.layout.types import RegionType
+from pdomain_book_tools.layout.types import RegionType
 
-from pd_prep_for_pgdp.core.illustrations import (
+from pdomain_prep_for_pgdp.core.illustrations import (
     _map_region_type,
     regions_for_page,
     synthesise_plate_region,
 )
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     IllustrationRegion,
     PageRecord,
     PageType,

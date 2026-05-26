@@ -14,7 +14,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.api.middleware.error_handler import install_error_handlers
+from pdomain_prep_for_pgdp.api.middleware.error_handler import install_error_handlers
 
 
 def _app_with_routes(*, debug: bool = False) -> FastAPI:

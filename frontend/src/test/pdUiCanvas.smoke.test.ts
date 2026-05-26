@@ -1,10 +1,10 @@
 /**
  * Smoke test for Phase 2.7a (ocr-container-meta #328).
  *
- * Acceptance criteria: pd-prep-for-pgdp uses pd-ui's `PageImageCanvas`
+ * Acceptance criteria: pdomain-prep-for-pgdp uses pdomain-ui's `PageImageCanvas`
  * as its canvas host — no local copy of that component should exist, and
  * both canvas consumers (WordBboxOverlay and CanvasViewer inside
- * PageWorkbenchPage) must import it from `@concavetrillion/pd-ui/canvas`.
+ * PageWorkbenchPage) must import it from `@pdomain/pdomain-ui/canvas`.
  *
  * This test acts as a canary: if someone adds a local `PageImageCanvas.tsx`
  * or changes the import path, the assertion below fails before any runtime
@@ -24,18 +24,18 @@ function srcText(relPath: string): string {
   return readFileSync(resolve(SRC_ROOT, relPath), "utf8");
 }
 
-describe("Phase 2.7a — pd-ui PageImageCanvas adoption (meta #328)", () => {
-  it("WordBboxOverlay imports PageImageCanvas from @concavetrillion/pd-ui/canvas", () => {
+describe("Phase 2.7a — pdomain-ui PageImageCanvas adoption (meta #328)", () => {
+  it("WordBboxOverlay imports PageImageCanvas from @pdomain/pdomain-ui/canvas", () => {
     const src = srcText("components/WordBboxOverlay.tsx");
     expect(src).toMatch(
-      /import\s+\{[^}]*PageImageCanvas[^}]*\}\s+from\s+["']@concavetrillion\/pd-ui\/canvas["']/,
+      /import\s+\{[^}]*PageImageCanvas[^}]*\}\s+from\s+["']@pdomain\/pdomain-ui\/canvas["']/,
     );
   });
 
-  it("PageWorkbenchPage imports PageImageCanvas from @concavetrillion/pd-ui/canvas", () => {
+  it("PageWorkbenchPage imports PageImageCanvas from @pdomain/pdomain-ui/canvas", () => {
     const src = srcText("pages/PageWorkbenchPage.tsx");
     expect(src).toMatch(
-      /import\s+\{[^}]*PageImageCanvas[^}]*\}\s+from\s+["']@concavetrillion\/pd-ui\/canvas["']/,
+      /import\s+\{[^}]*PageImageCanvas[^}]*\}\s+from\s+["']@pdomain\/pdomain-ui\/canvas["']/,
     );
   });
 

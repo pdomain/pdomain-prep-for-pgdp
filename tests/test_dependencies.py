@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from pd_prep_for_pgdp.api.dependencies import (
+from pdomain_prep_for_pgdp.api.dependencies import (
     get_auth,
     get_database,
     get_dispatcher,

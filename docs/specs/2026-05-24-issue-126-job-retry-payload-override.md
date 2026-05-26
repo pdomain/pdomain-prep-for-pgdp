@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#126
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#126
 
 ## TL;DR
 
@@ -15,7 +15,7 @@ identity/path fields from being overridden.
 
 ## Context
 
-**Vulnerable code — retry route:** `src/pd_prep_for_pgdp/api/gpu/jobs.py:89-93`
+**Vulnerable code — retry route:** `src/pdomain_prep_for_pgdp/api/gpu/jobs.py:89-93`
 
 ```python
 new_payload = dict(job.payload)
@@ -26,7 +26,7 @@ if body is not None and body.payload_override:
 No key filtering. `body.payload_override` is typed as `dict[str, object] | None` with no field
 constraints in the request model.
 
-**Vulnerable code — handler:** `src/pd_prep_for_pgdp/core/job_runner.py:449-456`
+**Vulnerable code — handler:** `src/pdomain_prep_for_pgdp/core/job_runner.py:449-456`
 
 ```python
 project_id = payload.get("project_id") or job.project_id
@@ -112,7 +112,7 @@ this use case requires at least `device` to be overridable. Option B preserves t
 
 **Option B** plus defence-in-depth handler hardening.
 
-**Retry route changes** (`src/pd_prep_for_pgdp/api/gpu/jobs.py`):
+**Retry route changes** (`src/pdomain_prep_for_pgdp/api/gpu/jobs.py`):
 
 Add `_RETRY_SAFE_KEYS` dict as above. In `retry_job`:
 
@@ -135,7 +135,7 @@ if job.project_id:
         raise HTTPException(403, "not authorised to retry this job")
 ```
 
-**Handler hardening** (`src/pd_prep_for_pgdp/core/job_runner.py`, `_handle_run_page_stage`):
+**Handler hardening** (`src/pdomain_prep_for_pgdp/core/job_runner.py`, `_handle_run_page_stage`):
 
 - Use `job.project_id` as the authoritative project id; do not fall back to `payload["project_id"]`.
 - Derive `data_root` from `runner._storage` (filesystem adapter exposes `_root`) or from

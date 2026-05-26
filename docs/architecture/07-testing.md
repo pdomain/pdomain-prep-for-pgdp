@@ -56,7 +56,7 @@ run it (green). Examples:
 **Stub-shaped work** (route stubs, adapter Protocols) is exempt — just
 write the stub when no behaviour exists yet.
 
-**Pipeline modules** that depend on cv2 / pd-book-tools get
+**Pipeline modules** that depend on cv2 / pdomain-book-tools get
 integration-shaped tests on synthetic inputs (e.g. the proofing-chain
 stages get a black-on-white round-trip asserting canonical aspect ratio).
 

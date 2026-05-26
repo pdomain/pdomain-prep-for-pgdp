@@ -4,14 +4,14 @@ set -e
 # Install pgdp-prep as a standalone tool using uv.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-prep-for-pgdp/main/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
 #
 # This script downloads the prebuilt wheel attached to the latest GitHub
 # Release and runs `uv tool install` against it. The wheel ships with the
 # React SPA already bundled, so end users do NOT need Node, npm, or a
 # JavaScript toolchain — only `uv` (which this script will install for you).
 
-REPO="ConcaveTrillion/pd-prep-for-pgdp"
+REPO="pdomain/pdomain-prep-for-pgdp"
 
 # Shared temp directory; cleaned up on exit, interrupt, or termination.
 TMPDIR=$(mktemp -d)
@@ -76,7 +76,7 @@ echo "Installing pgdp-prep ${LATEST_TAG}..."
 
 # 4. Find the wheel asset attached to the GitHub Release for this tag.
 #    We don't know the exact wheel filename ahead of time (hatch-vcs derives
-#    it from the tag, e.g. pd_prep_for_pgdp-0.2.0-py3-none-any.whl), so we
+#    it from the tag, e.g. pdomain_prep_for_pgdp-0.2.0-py3-none-any.whl), so we
 #    glob for any `*.whl` asset on the release.
 WHEEL_URL=$(printf '%s\n' "$RELEASE_JSON" \
     | grep '"browser_download_url"' \
@@ -102,7 +102,7 @@ fi
 # 5. Download the wheel to the shared temp dir and install it as a uv tool.
 #    Using a local path lets us attach extras via `<path>[cuda]`, which uv
 #    accepts cleanly. (PEP 508 direct references like
-#    `pd_prep_for_pgdp[cuda] @ <url>` also work, but the local-path form
+#    `pdomain_prep_for_pgdp[cuda] @ <url>` also work, but the local-path form
 #    is simpler to reason about and gives us a real file to reference in
 #    error messages.)
 WHEEL_FILE="${TMPDIR}/$(basename "$WHEEL_URL")"

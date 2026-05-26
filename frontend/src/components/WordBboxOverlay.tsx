@@ -2,31 +2,31 @@
  * Image viewport with clickable word bounding-box overlay for
  * `TextReviewPage`.
  *
- * Phase 2.2 — migrated from raw-Konva-Stage-over-img to pd-ui
+ * Phase 2.2 — migrated from raw-Konva-Stage-over-img to pdomain-ui
  * PageImageCanvas as the canvas host. Slot mapping:
  *
- *   image     — page bitmap (managed entirely by pd-ui)
+ *   image     — page bitmap (managed entirely by pdomain-ui)
  *   selection — word bbox Rects (visual only; listening=false on layer)
  *   tool      — marquee drag-preview Rect
  *
  * Pointer behaviour is handled via a DOM event-capture overlay div
- * (the same GAP-1 shim pattern used by pd-ocr-labeler-spa). pd-ui's
+ * (the same GAP-1 shim pattern used by pdomain-ocr-labeler-spa). pdomain-ui's
  * internal Stage drag is overridden because the event-capture div sits
  * above it and captures all mouse events first.
  *
  * Parent API change from Phase 2.2:
  *   - NEW:     `imageUrl` prop (was rendered by parent as a separate <img>)
- *   - REMOVED: `trackElement` prop (pd-ui handles ResizeObserver internally)
+ *   - REMOVED: `trackElement` prop (pdomain-ui handles ResizeObserver internally)
  *   - REMOVED: `naturalWidth` / `naturalHeight` are now passed as `page`
- *              dimensions to pd-ui, not used for manual scale math.
+ *              dimensions to pdomain-ui, not used for manual scale math.
  *
  * Capability gaps vs plain local implementation:
- *   GAP-1: pd-ui's Stage has listening event handlers for its own
+ *   GAP-1: pdomain-ui's Stage has listening event handlers for its own
  *          internal drag. We override them entirely via the event-capture
  *          overlay div that sits above the Stage and captures all mouse
- *          events. pd-ui's internal drag never fires.
- *          TODO: when pd-ui adds an `onDragComplete(rect)` callback, remove
- *          the event-capture div and wire callbacks through pd-ui instead.
+ *          events. pdomain-ui's internal drag never fires.
+ *          TODO: when pdomain-ui adds an `onDragComplete(rect)` callback, remove
+ *          the event-capture div and wire callbacks through pdomain-ui instead.
  *   GAP-2: Word bbox Rects are in the `selection` slot (Layer listening=false),
  *          so Konva hit detection does not apply. Click and hover are resolved
  *          via DOM coordinates on the event-capture overlay. Cursor changes and
@@ -34,7 +34,7 @@
  */
 import { useRef, useState } from "react";
 import { Rect } from "react-konva";
-import { PageImageCanvas } from "@concavetrillion/pd-ui/canvas";
+import { PageImageCanvas } from "@pdomain/pdomain-ui/canvas";
 import {
   computeMarqueeSelection,
   normaliseMarquee,
@@ -43,7 +43,7 @@ import {
 import type { OcrWord } from "../lib/wordOffsets";
 
 interface Props {
-  /** URL of the page image — rendered by pd-ui's image layer. */
+  /** URL of the page image — rendered by pdomain-ui's image layer. */
   imageUrl: string;
   /** Pixel width of the underlying image at OCR time. */
   naturalWidth: number;
@@ -98,7 +98,7 @@ function hitTestWord(
  * Image viewport with clickable word bbox overlay for TextReviewPage.
  *
  * Phase 2.2: Replaces the `<img>` + absolute-positioned raw-Konva-Stage
- * pattern with a single pd-ui PageImageCanvas that hosts both the image
+ * pattern with a single pdomain-ui PageImageCanvas that hosts both the image
  * layer and the word-overlay slot fills. Mouse events are handled via a
  * DOM event-capture overlay (GAP-1 shim — see file header).
  */
@@ -168,10 +168,10 @@ export function WordBboxOverlay({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* ── pd-ui PageImageCanvas — Konva Stage host ──────────────────────
+      {/* ── pdomain-ui PageImageCanvas — Konva Stage host ──────────────────────
           Provides: image layer, Stage setup, ResizeObserver for container
           size, focus management. The word Rects go in the selection slot
-          (visual only; Layer listening=false per pd-ui implementation).
+          (visual only; Layer listening=false per pdomain-ui implementation).
           The marquee drag-preview Rect goes in the tool slot. */}
       <PageImageCanvas
         src={imageUrl}
@@ -182,7 +182,7 @@ export function WordBboxOverlay({
         {{
           // ── selection slot: word bbox Rects (visual) ──────────────────
           // Rendered inside Layer name="selection" (listening=false).
-          // Coordinates are in natural-pixel space — pd-ui's Stage applies
+          // Coordinates are in natural-pixel space — pdomain-ui's Stage applies
           // scaleX/scaleY so natural coords display at the right size.
           // Click/hover events are handled by the DOM overlay (GAP-2).
           selection: () => (
@@ -226,7 +226,7 @@ export function WordBboxOverlay({
           ),
 
           // ── tool slot: marquee drag-preview Rect ──────────────────────
-          // Rendered inside Layer name="tool" by pd-ui.
+          // Rendered inside Layer name="tool" by pdomain-ui.
           // Coordinates in natural-pixel space.
           tool: () =>
             previewRect ? (
@@ -246,7 +246,7 @@ export function WordBboxOverlay({
 
       {/* ── Event-capture overlay (GAP-1 shim) ─────────────────────────────
           Absolutely positioned over the entire canvas area. Captures all
-          mouse events so pd-ui's internal Stage drag never fires.
+          mouse events so pdomain-ui's internal Stage drag never fires.
           Handles:
             - Word click dispatch (hit-test in natural-pixel space)
             - Cursor pointer when over a word bbox

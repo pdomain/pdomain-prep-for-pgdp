@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path) -> Settings:
@@ -38,7 +38,7 @@ def _settings(tmp_path) -> Settings:
 
 
 def _spa_built() -> bool:
-    static = Path(__file__).resolve().parents[1] / "src" / "pd_prep_for_pgdp" / "static"
+    static = Path(__file__).resolve().parents[1] / "src" / "pdomain_prep_for_pgdp" / "static"
     return static.is_dir() and (static / "index.html").is_file()
 
 

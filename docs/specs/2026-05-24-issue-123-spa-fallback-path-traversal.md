@@ -2,7 +2,7 @@
 
 > **Status**: Draft
 > **Last updated**: 2026-05-24
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#123
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#123
 
 ## TL;DR
 
@@ -15,7 +15,7 @@ before serving it.
 
 ## Context
 
-**Vulnerable code:** `src/pd_prep_for_pgdp/bootstrap.py:392-397`
+**Vulnerable code:** `src/pdomain_prep_for_pgdp/bootstrap.py:392-397`
 
 ```python
 @app.get("/{full_path:path}", include_in_schema=False)

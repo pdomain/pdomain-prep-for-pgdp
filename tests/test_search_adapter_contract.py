@@ -11,7 +11,7 @@ from __future__ import annotations
 import inspect
 from typing import get_type_hints
 
-from pd_prep_for_pgdp.adapters.database.base import IDatabase, SearchResult, SearchResultList
+from pdomain_prep_for_pgdp.adapters.database.base import IDatabase, SearchResult, SearchResultList
 
 
 def test_search_result_has_required_fields() -> None:

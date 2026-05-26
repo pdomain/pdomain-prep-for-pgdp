@@ -1,4 +1,4 @@
-# pd-prep-for-pgdp — managed-mode container (CPU-only Fargate task).
+# pdomain-prep-for-pgdp — managed-mode container (CPU-only Fargate task).
 #
 # GPU work dispatches out to Modal (or a shared GPU container) so this image
 # stays small and CPU-only. See spec 09.
@@ -61,7 +61,7 @@ COPY README.md ./
 
 # Bring in the built frontend before installing — pyproject.toml's
 # force-include needs the directory to exist at install time.
-COPY --from=frontend-build /app/dist/ ./src/pd_prep_for_pgdp/static/
+COPY --from=frontend-build /app/dist/ ./src/pdomain_prep_for_pgdp/static/
 
 # Replace `dynamic = ["version"]` with a literal version line. The
 # [tool.hatch.version] block in pyproject.toml becomes inert when version
@@ -92,5 +92,5 @@ ENV PGDP_PORT=8765 \
     PGDP_GPU_BACKEND=modal \
     PGDP_DISPATCH_INTERVAL_SECONDS=300
 
-CMD ["uvicorn", "pd_prep_for_pgdp.bootstrap:build_app", "--factory", \
+CMD ["uvicorn", "pdomain_prep_for_pgdp.bootstrap:build_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8765"]

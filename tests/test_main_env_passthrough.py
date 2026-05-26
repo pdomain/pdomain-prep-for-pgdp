@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import os
 
-from pd_prep_for_pgdp.__main__ import _export_bound_env
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.__main__ import _export_bound_env
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def test_export_bound_env_writes_host_and_port(monkeypatch) -> None:

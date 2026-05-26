@@ -1,14 +1,14 @@
 /**
  * Component-mount tests for `WordBboxOverlay` (Phase 2.2).
  *
- * Phase 2.2 migration: The component now wraps pd-ui's PageImageCanvas
+ * Phase 2.2 migration: The component now wraps pdomain-ui's PageImageCanvas
  * rather than rendering its own raw Konva Stage. Pointer events are
  * handled via a DOM event-capture overlay (GAP-1 shim, see component
  * header). Word bboxes are rendered as Konva Rects in the `selection`
  * slot (visual only; hit detection is DOM-based).
  *
  * Test strategy (unchanged from pre-Phase-2.2 spirit):
- *   - Mock `@concavetrillion/pd-ui/canvas` so that the `selection` and
+ *   - Mock `@pdomain/pdomain-ui/canvas` so that the `selection` and
  *     `tool` slot fills are invoked and rendered as plain DOM elements.
  *   - Mock `react-konva` with div-based stubs so jsdom can render the
  *     Konva primitives inside the slot fills.
@@ -31,11 +31,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { OcrWord } from "../lib/wordOffsets";
 import { WordBboxOverlay } from "./WordBboxOverlay";
 
-// ── Mock @concavetrillion/pd-ui/canvas ──────────────────────────────────────
-// The PageImageCanvas from pd-ui hosts the Stage. We stub it with a minimal
+// ── Mock @pdomain/pdomain-ui/canvas ──────────────────────────────────────
+// The PageImageCanvas from pdomain-ui hosts the Stage. We stub it with a minimal
 // div that invokes the `selection` and `tool` slot fills so their Konva
 // content renders into the DOM for inspection.
-vi.mock("@concavetrillion/pd-ui/canvas", () => {
+vi.mock("@pdomain/pdomain-ui/canvas", () => {
   return {
     PageImageCanvas: ({
       children,
@@ -49,11 +49,11 @@ vi.mock("@concavetrillion/pd-ui/canvas", () => {
         tool?: () => ReactNode;
       };
     }) => (
-      <div data-testid="pd-ui-canvas">
-        <div data-testid="pd-ui-canvas-selection">
+      <div data-testid="pdomain-ui-canvas">
+        <div data-testid="pdomain-ui-canvas-selection">
           {children?.selection?.()}
         </div>
-        <div data-testid="pd-ui-canvas-tool">{children?.tool?.()}</div>
+        <div data-testid="pdomain-ui-canvas-tool">{children?.tool?.()}</div>
       </div>
     ),
   };
@@ -171,7 +171,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
   });
 
   it("renders word bbox Rects in natural-pixel space (no sx/sy scaling needed)", () => {
-    // Phase 2.2: pd-ui's Stage applies scaleX/scaleY at the Stage level,
+    // Phase 2.2: pdomain-ui's Stage applies scaleX/scaleY at the Stage level,
     // so word bbox coordinates are passed straight through to Rect x/y/w/h
     // without any sx/sy multiplication in the slot fill.
     const words: OcrWord[] = [
@@ -199,7 +199,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
     const rect0 = rects[0]!;
     const rect1 = rects[1]!;
 
-    // Natural-pixel coords — no scaling (pd-ui handles it).
+    // Natural-pixel coords — no scaling (pdomain-ui handles it).
     expect(rect0.dataset["x"]).toBe("200");
     expect(rect0.dataset["y"]).toBe("600");
     expect(rect0.dataset["width"]).toBe("100");
@@ -380,7 +380,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
     expect(onMarqueeSelect).toHaveBeenCalledWith(["w0"], true);
   });
 
-  it("renders pd-ui PageImageCanvas with the image URL and page dimensions", () => {
+  it("renders pdomain-ui PageImageCanvas with the image URL and page dimensions", () => {
     const words: OcrWord[] = [
       makeWord({
         id: "w0",
@@ -399,10 +399,12 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
       />,
     );
 
-    // The pd-ui canvas mock renders this testid.
-    expect(screen.getByTestId("pd-ui-canvas")).toBeInTheDocument();
+    // The pdomain-ui canvas mock renders this testid.
+    expect(screen.getByTestId("pdomain-ui-canvas")).toBeInTheDocument();
     // Selection slot renders the word Rects.
-    expect(screen.getByTestId("pd-ui-canvas-selection")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("pdomain-ui-canvas-selection"),
+    ).toBeInTheDocument();
     expect(screen.getAllByTestId("konva-rect")).toHaveLength(1);
   });
 

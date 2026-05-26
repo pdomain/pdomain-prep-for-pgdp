@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pd_prep_for_pgdp.core.models import ProjectConfig, SystemDefaults
-from pd_prep_for_pgdp.core.text_postprocess import (
+from pdomain_prep_for_pgdp.core.models import ProjectConfig, SystemDefaults
+from pdomain_prep_for_pgdp.core.text_postprocess import (
     apply_custom_regex_passes,
     apply_scannos,
     join_hyphenated_lines,

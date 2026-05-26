@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 
 describe("tokens.css", () => {
   beforeAll(async () => {
-    // Inject minimal token CSS matching pd-ui's convention:
+    // Inject minimal token CSS matching pdomain-ui's convention:
     //   :root = dark (default), [data-theme="light"] = light.
     // uiPrefs.ts applies data-theme at module load time, so in practice the
     // app always sets data-theme="light" on a fresh install.
@@ -25,7 +25,7 @@ describe("tokens.css", () => {
   });
 
   it("dark default bg-page token is defined", () => {
-    // :root = dark default (pd-ui theme convention)
+    // :root = dark default (pdomain-ui theme convention)
     document.documentElement.removeAttribute("data-theme");
     const value = getComputedStyle(document.documentElement)
       .getPropertyValue("--bg-page")

@@ -15,7 +15,7 @@
 
 import type { ReactNode } from "react";
 
-vi.mock("@concavetrillion/pd-ui/canvas", () => ({
+vi.mock("@pdomain/pdomain-ui/canvas", () => ({
   PageImageCanvas: ({
     children,
   }: {
@@ -31,7 +31,7 @@ vi.mock("@concavetrillion/pd-ui/canvas", () => ({
       hud?: () => ReactNode;
     };
   }) => (
-    <div data-testid="pd-ui-canvas">
+    <div data-testid="pdomain-ui-canvas">
       {children?.selection?.()}
       {children?.tool?.()}
     </div>

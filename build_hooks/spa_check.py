@@ -1,6 +1,6 @@
 """Hatchling build hook that fails the build when the SPA bundle is missing.
 
-The wheel `force-include`s `src/pd_prep_for_pgdp/static/` so the published
+The wheel `force-include`s `src/pdomain_prep_for_pgdp/static/` so the published
 distribution can serve the React SPA without Node at install time. If a
 contributor runs ``uv build`` (or ``hatch build``, ``pip wheel .``, etc.)
 without first running ``make frontend-build``, the hatchling
@@ -34,9 +34,9 @@ class SpaBundleCheckHook(BuildHookInterface):
     PLUGIN_NAME = "custom"
 
     # Path (relative to the project root) that must exist and be non-empty
-    # for the wheel's force-include of ``src/pd_prep_for_pgdp/static`` to
+    # for the wheel's force-include of ``src/pdomain_prep_for_pgdp/static`` to
     # actually ship the SPA.
-    SPA_INDEX_REL = Path("src") / "pd_prep_for_pgdp" / "static" / "index.html"
+    SPA_INDEX_REL = Path("src") / "pdomain_prep_for_pgdp" / "static" / "index.html"
 
     def initialize(self, version: str, build_data: dict) -> None:
         """Abort the wheel build if the SPA bundle is absent or empty."""
@@ -64,7 +64,7 @@ class SpaBundleCheckHook(BuildHookInterface):
         index = Path(self.root) / self.SPA_INDEX_REL
         if not index.is_file() or index.stat().st_size == 0:
             raise RuntimeError(
-                "pd-prep-for-pgdp: SPA bundle is missing — refusing to "
+                "pdomain-prep-for-pgdp: SPA bundle is missing — refusing to "
                 f"build a wheel without {self.SPA_INDEX_REL}.\n"
                 "Run `make frontend-build` first (or `make build`, which "
                 "chains the frontend build before `uv build`).\n"

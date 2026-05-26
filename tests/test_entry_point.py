@@ -15,7 +15,7 @@ import pytest
 
 
 def test_version_prints_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    from pd_prep_for_pgdp.__main__ import main
+    from pdomain_prep_for_pgdp.__main__ import main
 
     rc = main(["--version"])
     assert rc == 0
@@ -29,7 +29,7 @@ def test_version_prints_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> No
 def test_help_exits_zero_and_lists_spec_flags(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from pd_prep_for_pgdp.__main__ import main
+    from pdomain_prep_for_pgdp.__main__ import main
 
     with pytest.raises(SystemExit) as exc:
         main(["--help"])

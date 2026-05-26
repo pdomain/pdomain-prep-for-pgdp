@@ -18,7 +18,7 @@
     "knip": "knip"
   },
   "dependencies": {
-    "@concavetrillion/pd-ui": "^0.2.1",
+    "@pdomain/pdomain-ui": "file:/workspaces/ocr-container/pd-ui/.claude/worktrees/rename-pdomain",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@radix-ui/react-accordion": "^1.2.12",

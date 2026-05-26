@@ -20,15 +20,15 @@ from typing import TYPE_CHECKING
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -234,7 +234,7 @@ async def test_cdn_get_path_traversal_rejected_directly() -> None:
     """_validate_cdn_key must reject '..' segments and absolute paths."""
     from fastapi import HTTPException
 
-    from pd_prep_for_pgdp.api.cdn import _validate_cdn_key
+    from pdomain_prep_for_pgdp.api.cdn import _validate_cdn_key
 
     with pytest.raises(HTTPException) as exc:
         _validate_cdn_key("projects/../etc/passwd")

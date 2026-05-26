@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from pd_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
+from pdomain_prep_for_pgdp.api.data.storage_keys import assert_project_scoped_key
 
 
 def test_valid_key_passes() -> None:

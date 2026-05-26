@@ -1,7 +1,7 @@
-// TODO(s0-b): replace with pd-ui KeyCap when pd-ui's API matches local usage.
-// pd-ui KeyCap uses keys: string | string[] prop (renders <kbd> elements internally).
+// TODO(s0-b): replace with pdomain-ui KeyCap when pdomain-ui's API matches local usage.
+// pdomain-ui KeyCap uses keys: string | string[] prop (renders <kbd> elements internally).
 // This app calls <KeyCap>{k}</KeyCap> with children: ReactNode — incompatible.
-// Callers would need to change to <KeyCap keys={k} /> to adopt pd-ui's version.
+// Callers would need to change to <KeyCap keys={k} /> to adopt pdomain-ui's version.
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 

@@ -37,16 +37,16 @@ import cv2
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import (
     PageStageState,
     PageStageStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
-from pd_prep_for_pgdp.core.pipeline.stage_runner import (
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageRunFailed,
     _call_impl,
@@ -314,7 +314,7 @@ async def test_run_stage_records_failure_when_impl_raises(
     )
 
     # Patch the cpu impl for grayscale to raise.
-    from pd_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _kaboom(_x, cfg=None):
         raise ValueError("synthetic stage failure for tests")
@@ -354,7 +354,7 @@ async def test_run_stage_handles_stage_not_implemented(
     or async event loop scope.
     """
 
-    from pd_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     project_id, page_id = "p1", "0000"
 
@@ -408,7 +408,7 @@ async def test_run_stage_compound_output_no_longer_raises_unsupported(
     (using a monkeypatched impl to avoid loading DocTR weights in CI).
     """
 
-    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry as reg_module
 
     fake_result = {"words.json": b"[]", "raw.txt": b""}
     monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
@@ -481,7 +481,7 @@ async def test_run_stage_ingest_source_writes_canonical_artifact(
     seeding. Carving it out is the load-bearing "no SQLite seeding"
     change for M2.
     """
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 
     project_id, page_id = "p1", "0000"
     storage = FilesystemStorage(tmp_path)
@@ -548,7 +548,7 @@ async def test_run_stage_full_chain_to_invert_no_manual_seeding(
 
     This is the M2 smoke-test pass criterion (no manual SQLite seeding).
     """
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 
     project_id, page_id = "p1", "0000"
     storage = FilesystemStorage(tmp_path)
@@ -1146,7 +1146,7 @@ async def test_run_stage_text_postprocess_normalises_curly_quotes(
     ocr_dir.mkdir(parents=True, exist_ok=True)
     (ocr_dir / "output.txt").write_bytes(text_bytes)
 
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
 
     await db.put_page_stage(
         PageStageState(
@@ -1190,7 +1190,7 @@ async def test_run_stage_full_chain_through_canvas_map(
     clean artifact at every step. `find_content_edges` produces a JSON
     artifact; `crop_to_content` reads both image and JSON parents.
     """
-    from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 
     project_id, page_id = "p1", "0000"
     storage = FilesystemStorage(tmp_path)
@@ -1297,7 +1297,7 @@ async def test_run_stage_auto_detect_attrs_marks_ocr_chain_not_applicable_for_pl
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After `auto_detect_attrs` detects plate_p, ocr/text stages are not-applicable."""
-    from pd_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _fake_plate_p(img: np.ndarray, cfg=None) -> dict:
         h, w = img.shape[:2]
@@ -1342,7 +1342,7 @@ async def test_run_stage_auto_detect_attrs_no_not_applicable_for_normal_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """auto_detect_attrs on a normal page leaves all descendant stages as not-run."""
-    from pd_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _fake_normal(img: np.ndarray, cfg=None) -> dict:
         h, w = img.shape[:2]
@@ -1398,7 +1398,7 @@ async def test_run_stage_ocr_produces_multi_artifact_dir(
     """
     import json
 
-    from pd_prep_for_pgdp.core.pipeline import stage_registry as reg_module
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry as reg_module
 
     fake_words = [
         {"id": "w0", "text": "Hello", "confidence": 0.9, "bounding_box": {"x": 0, "y": 0, "w": 10, "h": 10}}
@@ -1445,7 +1445,7 @@ async def test_run_stage_text_review_produces_multi_artifact_dir(
     import json
     from time import time
 
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
 
     project_id, page_id = "p1", "0000"
     text_content = b"Hello world."
@@ -1503,7 +1503,7 @@ async def test_run_stage_updates_stage_version(
 
     Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
     """
-    import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
+    import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
 
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
@@ -1548,7 +1548,7 @@ async def _seed_split_child(
     payload: bytes,
 ) -> None:
     """Create a split-child PageRecord and seed some stages as clean."""
-    from pd_prep_for_pgdp.core.models import PageRecord
+    from pdomain_prep_for_pgdp.core.models import PageRecord
 
     suffix = chr(ord("a") + child_idx0 - 1)
     child = PageRecord(

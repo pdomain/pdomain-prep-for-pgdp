@@ -22,8 +22,8 @@ import sys
 
 import pytest
 
-from pd_prep_for_pgdp.bootstrap import build_database
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.bootstrap import build_database
+from pdomain_prep_for_pgdp.settings import Settings
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -54,17 +54,17 @@ def test_build_database_postgres_extra_missing_raises_runtime_error(
     ImportError that doesn't tell them how to fix it.
 
     We force the failure mode by intercepting __import__ for the
-    `pd_prep_for_pgdp.adapters.database.postgres` module so we don't
+    `pdomain_prep_for_pgdp.adapters.database.postgres` module so we don't
     need to manipulate the venv.
     """
     # Drop any previously imported postgres module so the next import
     # actually goes through __import__ and our patched loader fires.
-    monkeypatch.delitem(sys.modules, "pd_prep_for_pgdp.adapters.database.postgres", raising=False)
+    monkeypatch.delitem(sys.modules, "pdomain_prep_for_pgdp.adapters.database.postgres", raising=False)
 
     real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
 
     def block_postgres_module(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "pd_prep_for_pgdp.adapters.database.postgres" or (
+        if name == "pdomain_prep_for_pgdp.adapters.database.postgres" or (
             fromlist and "PostgresDatabase" in fromlist and name.endswith("postgres")
         ):
             raise ImportError("simulated: psycopg not installed")
@@ -90,7 +90,7 @@ def postgres_module():
     a single skip point for everything below.
     """
     try:
-        return importlib.import_module("pd_prep_for_pgdp.adapters.database.postgres")
+        return importlib.import_module("pdomain_prep_for_pgdp.adapters.database.postgres")
     except ImportError as e:
         pytest.skip(f"[postgres] extra not installed: {e}")
 

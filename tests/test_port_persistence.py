@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pd_prep_for_pgdp.__main__ import (
+from pdomain_prep_for_pgdp.__main__ import (
     _pick_port,
     _read_last_port,
     _write_last_port,

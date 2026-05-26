@@ -17,10 +17,10 @@ from typing import TYPE_CHECKING
 import pytest
 from fastapi.testclient import TestClient
 
-import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
     PageProcessingStatus,
     PageRecord,
@@ -31,8 +31,8 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.stage_dag import topological_order
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import topological_order
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -8,7 +8,7 @@
 > `STAGE_IMPL[stage_id][device]` in `core/pipeline/stage_registry.py`
 > is the only execution path. This doc is a code-level guide to where
 > each stage's implementation lives today and how OCR mirrors
-> `pd-ocr-cli`.
+> `pdomain-ocr-cli`.
 
 ## Stage-to-code map
 
@@ -21,11 +21,11 @@ orchestration tasks. Today's code lives at:
 | `thumbnail` | `core/ingest._make_thumbnail_bytes()` (in-memory, `ProcessPoolExecutor` per AD-9) |
 | `auto_detect_attrs` | `core/auto_detect.detect_page_attributes` |
 | `auto_detect_illustrations` | `core/illustrations.auto_detect_illustrations` |
-| Proofing-chain stages (`decode_source` → `initial_crop` → `manual_deskew_pre` → `grayscale` → `threshold` → `invert` → `find_content_edges` → `crop_to_content` → `auto_deskew` → `morph_fill` → `rescale` → `canvas_map`) | Individual entries in `STAGE_IMPL[stage_id]["cpu"]` (`core/pipeline/stage_registry.py`); each calls a `pd_book_tools.image_processing.cv2_processing` primitive |
+| Proofing-chain stages (`decode_source` → `initial_crop` → `manual_deskew_pre` → `grayscale` → `threshold` → `invert` → `find_content_edges` → `crop_to_content` → `auto_deskew` → `morph_fill` → `rescale` → `canvas_map`) | Individual entries in `STAGE_IMPL[stage_id]["cpu"]` (`core/pipeline/stage_registry.py`); each calls a `pdomain_book_tools.image_processing.cv2_processing` primitive |
 | `blank_proof_synth` | `core/pipeline/blank_proof.py` |
 | `ocr_crop` | `core/pipeline/crop_for_ocr.py` |
 | `extract_illustrations` | `core/illustrations.py` (extract + auto-detect) |
-| `ocr` | `core/ocr.py` (mirrors pd-ocr-cli) |
+| `ocr` | `core/ocr.py` (mirrors pdomain-ocr-cli) |
 | `text_postprocess` | `core/text_postprocess.py` |
 | `text_review` (gate) | `PATCH /api/data/projects/{id}/pages/{idx0}/text` (edit), `DELETE .../words` + `POST .../words/restore` (word edits), then attest via `text_review` stage run |
 | `project.build_package` | `core/packaging.py`; parks in `awaiting_review` job state when any proof-range page is un-attested, auto-resumes when the gate clears (canonical spec Q7) |
@@ -48,7 +48,7 @@ For each entry `_build_page_records`:
    on the source bytes to suggest `page_type` (blank / plate_p / normal) and
    `alignment` (default / center).
 3. If a `layout_detector` is supplied, calls `auto_detect_illustrations`
-   (writes a tempfile so pd-book-tools' detector can take a path) and
+   (writes a tempfile so pdomain-book-tools' detector can take a path) and
    filters to figure / decoration / table regions above the confidence
    threshold.
 4. Constructs a `PageRecord` and appends. After each page, `progress_cb`
@@ -82,7 +82,7 @@ For `page_type ∈ {blank, plate_b, plate_r}` the registry short-circuits to
 
 A GPU fast path is not yet shipped: every `STAGE_IMPL[stage_id]` only has a
 `"cpu"` entry today. A `"cuda"` device key backed by
-`pd_book_tools.image_processing.cupy_processing` primitives is parked under
+`pdomain_book_tools.image_processing.cupy_processing` primitives is parked under
 roadmap §D5 (Deferred — remote / cloud mode); the registry is already the
 only call path so wiring it would be additive.
 
@@ -94,17 +94,17 @@ each child page runs its own `ocr_crop` independently — the legacy
 "yield one crop per split" inner loop is gone. Each page (root or
 split-child) produces exactly one `ocr_image` artifact.
 
-## Step 7 — OCR (mirrors pd-ocr-cli)
+## Step 7 — OCR (mirrors pdomain-ocr-cli)
 
-`core/ocr.py` follows `pd-ocr-cli/pd_ocr_cli/ocr_to_txt.py:307–540` verbatim
-(see `feedback_ocr_follows_pd_ocr_cli.md` in memory):
+`core/ocr.py` follows `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307–540` verbatim
+(see `feedback_ocr_follows_pdomain_ocr_cli.md` in memory):
 
 1. **Resolve models** (`core/hf_models.py`):
    - `resolve_ocr_models(repo, det_filename, reco_filename, ...)` — local
      paths or HF Hub download with `(.arch, .vocab)` sidecars.
    - `resolve_layout_source(layout_model, layout_checkpoint)` — for
      `pp-doclayout-plus-l`, looks up the HF repo + revision exposed by
-     `pd_book_tools.layout.adapters.pp_doclayout.PPDocLayoutPlusLDetector`.
+     `pdomain_book_tools.layout.adapters.pp_doclayout.PPDocLayoutPlusLDetector`.
    - `prefetch_layout_files()` pre-downloads transformers files so the later
      `from_pretrained()` is a cache hit.
 2. **Process-singleton predictors** (`get_predictor()`, `get_layout_detector()`)
@@ -116,7 +116,7 @@ split-child) produces exactly one `ocr_image` artifact.
    - `page.reorganize_page(layout=page_layout)` (or no kwarg if no detector).
    - When `validate_reorg`: `validate_word_preservation(pre, post)` → log a
      warning if any words were dropped.
-4. **Adapt** the resulting `pd_book_tools.ocr.word.Word` objects to spec-08
+4. **Adapt** the resulting `pdomain_book_tools.ocr.word.Word` objects to spec-08
    `OcrWord` (`_to_ocr_word`).
 5. **Tesseract path** (`engine="tesseract"`) bypasses DocTR + layout entirely
    and uses `pytesseract.image_to_string` + `image_to_data` for word boxes.

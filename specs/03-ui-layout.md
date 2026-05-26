@@ -35,7 +35,7 @@ boundaries show skeletons during load.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  pd-prep-for-pgdp  /  belloc-the-four-men    [🔔 3]  [Settings ⚙] │
+│  pdomain-prep-for-pgdp  /  belloc-the-four-men    [🔔 3]  [Settings ⚙] │
 │  ──────────────────────────────────────────────────────────────  │
 │  [Configure]  [Pipeline]  [Package]         current: Configure  │
 └──────────────────────────────────────────────────────────────────┘

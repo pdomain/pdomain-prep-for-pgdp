@@ -21,9 +21,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.cli.reindex import _parse_args, _run
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.cli.reindex import _parse_args, _run
+from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageStageStatus,
     PipelineState,
@@ -31,7 +31,7 @@ from pd_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
@@ -108,8 +108,8 @@ async def test_reindex_clean_exits_zero(tmp_path: Path) -> None:
     args = _parse_args([])
     args.data_root = data_root
     # Override the settings-derived db url so we point at the seed DB.
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -145,8 +145,8 @@ async def test_reindex_drift_exits_two(tmp_path: Path) -> None:
 
     args = _parse_args([])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -189,8 +189,8 @@ async def test_reindex_heal_marks_missing_failed_and_cascades_dirty(tmp_path: Pa
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -245,8 +245,8 @@ async def test_reindex_heal_cascades_descendants_dirty(tmp_path: Path) -> None:
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -288,8 +288,8 @@ async def test_reindex_after_heal_is_clean(tmp_path: Path) -> None:
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -327,8 +327,8 @@ async def test_reindex_heal_quarantines_orphans(tmp_path: Path) -> None:
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -378,8 +378,8 @@ async def test_reindex_heal_marks_hash_mismatch_dirty_keeps_file(tmp_path: Path)
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -424,8 +424,8 @@ async def test_reindex_project_id_argument_scopes_scan(tmp_path: Path) -> None:
 
     args = _parse_args(["proj1"])
     args.data_root = data_root
-    import pd_prep_for_pgdp.cli.reindex as r
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.settings import Settings
 
     monkey_settings = Settings(
         data_root=data_root,
@@ -452,7 +452,7 @@ async def test_reindex_project_id_argument_scopes_scan(tmp_path: Path) -> None:
 
 def test_main_dispatches_reindex_subcommand(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`pgdp-prep reindex` from the top-level entry must reach reindex.main."""
-    from pd_prep_for_pgdp import __main__ as m
+    from pdomain_prep_for_pgdp import __main__ as m
 
     called: dict[str, list[str]] = {}
 
@@ -460,7 +460,7 @@ def test_main_dispatches_reindex_subcommand(tmp_path: Path, monkeypatch: pytest.
         called["argv"] = argv
         return 7
 
-    monkeypatch.setattr("pd_prep_for_pgdp.cli.reindex.main", _fake_main)
+    monkeypatch.setattr("pdomain_prep_for_pgdp.cli.reindex.main", _fake_main)
     rc = m.main(["reindex", "--heal", "proj1"])
     assert rc == 7
     assert called["argv"] == ["--heal", "proj1"]
@@ -470,7 +470,7 @@ def test_main_dispatches_unknown_subcommand_falls_through(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`pgdp-prep --version` (no subcommand) still works after dispatcher addition."""
-    from pd_prep_for_pgdp import __main__ as m
+    from pdomain_prep_for_pgdp import __main__ as m
 
     rc = m.main(["--version"])
     assert rc == 0
@@ -488,9 +488,9 @@ async def test_reindex_heal_marks_stale_version_rows_dirty(
 
     Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
     """
-    import pd_prep_for_pgdp.cli.reindex as r
-    import pd_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
-    from pd_prep_for_pgdp.settings import Settings
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
+    from pdomain_prep_for_pgdp.settings import Settings
 
     db, data_root = await _prep_clean_state(tmp_path)
     # _prep_clean_state seeds "threshold" as clean at stage_version=1.

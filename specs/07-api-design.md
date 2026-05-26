@@ -415,7 +415,7 @@ across language stacks. Pydantic is the source of truth; TypeScript follows.
 ## File layout
 
 ```
-src/pd_prep_for_pgdp/api/
+src/pdomain_prep_for_pgdp/api/
 ├── auth/
 │   └── routes.py
 ├── data/

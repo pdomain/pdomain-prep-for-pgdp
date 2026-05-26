@@ -11,7 +11,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -74,7 +74,7 @@ class _FakeRequest:
 
 def test_check_upload_size_raises_413_on_oversized_content_length() -> None:
     """Content-length header larger than limit → HTTPException 413."""
-    from pd_prep_for_pgdp.api.cdn import _check_upload_size
+    from pdomain_prep_for_pgdp.api.cdn import _check_upload_size
 
     req: Any = _FakeRequest(content_length=101)
     with pytest.raises(HTTPException) as exc:
@@ -84,7 +84,7 @@ def test_check_upload_size_raises_413_on_oversized_content_length() -> None:
 
 def test_check_upload_size_passes_when_within_limit() -> None:
     """Content-length at limit → no exception."""
-    from pd_prep_for_pgdp.api.cdn import _check_upload_size
+    from pdomain_prep_for_pgdp.api.cdn import _check_upload_size
 
     req: Any = _FakeRequest(content_length=100)
     _check_upload_size(req, max_bytes=100)  # no exception
@@ -92,7 +92,7 @@ def test_check_upload_size_passes_when_within_limit() -> None:
 
 def test_check_upload_size_passes_when_no_content_length() -> None:
     """No content-length header → no exception (body check deferred to post-read)."""
-    from pd_prep_for_pgdp.api.cdn import _check_upload_size
+    from pdomain_prep_for_pgdp.api.cdn import _check_upload_size
 
     req: Any = _FakeRequest()
     _check_upload_size(req, max_bytes=100)  # no exception
@@ -104,7 +104,7 @@ def test_check_upload_size_passes_when_no_content_length() -> None:
 @pytest.fixture
 def tight_client(tmp_path: Path) -> TestClient:
     """TestClient with max_cdn_upload_bytes=100 for limit integration tests."""
-    from pd_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.bootstrap import build_app
 
     s = Settings(
         data_root=tmp_path / "data",

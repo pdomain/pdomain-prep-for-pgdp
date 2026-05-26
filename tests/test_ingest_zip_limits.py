@@ -55,7 +55,7 @@ def _make_zip(entries: list[tuple[str, bytes, int | None]] | None = None) -> byt
 
 def test_source_zip_too_large_raises() -> None:
     """raw bytes > max_source_zip_bytes raises ValueError."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     big = b"x" * 1001
     limits = _ZipLimits(max_source_zip_bytes=1000)
@@ -65,7 +65,7 @@ def test_source_zip_too_large_raises() -> None:
 
 def test_source_zip_within_size_limit_ok() -> None:
     """raw bytes == max is not rejected."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     raw = _make_zip([("page0001.png", b"data", None)])
     limits = _ZipLimits(max_source_zip_bytes=len(raw))
@@ -77,7 +77,7 @@ def test_source_zip_within_size_limit_ok() -> None:
 
 def test_zip_too_many_entries_raises() -> None:
     """len(infolist()) > max_zip_entries raises ValueError."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     entries = [(f"page{i:04d}.png", b"x", None) for i in range(11)]
     raw = _make_zip(entries)
@@ -88,7 +88,7 @@ def test_zip_too_many_entries_raises() -> None:
 
 def test_zip_entry_count_at_limit_ok() -> None:
     """Exactly max_zip_entries entries is allowed."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     entries = [(f"page{i:04d}.png", b"x", None) for i in range(10)]
     raw = _make_zip(entries)
@@ -101,7 +101,7 @@ def test_zip_entry_count_at_limit_ok() -> None:
 
 def test_zip_single_entry_too_large_raises() -> None:
     """An entry claiming file_size > max_entry_uncompressed_bytes raises."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     limit = 100 * 1024 * 1024  # 100 MB
     entries = [("page0001.png", b"fake", limit + 1)]
@@ -113,7 +113,7 @@ def test_zip_single_entry_too_large_raises() -> None:
 
 def test_zip_single_entry_at_limit_ok() -> None:
     """Entry exactly at max_entry_uncompressed_bytes is allowed."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     limit = 100
     entries = [("page0001.png", b"x" * limit, None)]
@@ -127,7 +127,7 @@ def test_zip_single_entry_at_limit_ok() -> None:
 
 def test_zip_total_uncompressed_too_large_raises() -> None:
     """Sum of file_size across entries exceeding limit raises ValueError."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     limit = 200
     # 3 entries each claiming 100 bytes → 300 total > 200
@@ -146,7 +146,7 @@ def test_zip_total_uncompressed_too_large_raises() -> None:
 
 def test_zip_total_uncompressed_at_limit_ok() -> None:
     """Sum exactly at limit is allowed."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     limit = 300
     entries = [(f"page{i:04d}.png", b"x" * 100, None) for i in range(3)]
@@ -160,7 +160,7 @@ def test_zip_total_uncompressed_at_limit_ok() -> None:
 
 def test_normal_zip_passes_all_guards() -> None:
     """A well-formed 3-page zip with tiny images passes all checks."""
-    from pd_prep_for_pgdp.core.ingest import _check_zip_limits
+    from pdomain_prep_for_pgdp.core.ingest import _check_zip_limits
 
     entries = [(f"page{i:04d}.png", b"x" * 1024, None) for i in range(3)]
     raw = _make_zip(entries)

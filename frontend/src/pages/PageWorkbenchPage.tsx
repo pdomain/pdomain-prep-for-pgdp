@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Rect, Transformer } from "react-konva";
 import type Konva from "konva";
-import { PageImageCanvas } from "@concavetrillion/pd-ui/canvas";
+import { PageImageCanvas } from "@pdomain/pdomain-ui/canvas";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
@@ -583,25 +583,25 @@ export function PageWorkbenchPage() {
 
 // ─── Canvas (Konva) — view + drag-to-create ─────────────────────────────────
 //
-// Phase 2.2: Migrated from raw Konva Stage + KonvaImage to pd-ui's
+// Phase 2.2: Migrated from raw Konva Stage + KonvaImage to pdomain-ui's
 // PageImageCanvas as the canvas host. Slot mapping:
 //
-//   image     — page bitmap (managed entirely by pd-ui)
+//   image     — page bitmap (managed entirely by pdomain-ui)
 //   tool      — split/illustration Rects + Transformer + drag-preview Rect
 //               (tool layer has listening=true → Konva hit detection works)
 //
 // Pointer events for drag-to-create-rect use a DOM event-capture overlay
-// (same GAP-1 shim pattern as pd-ocr-labeler-spa and WordBboxOverlay).
+// (same GAP-1 shim pattern as pdomain-ocr-labeler-spa and WordBboxOverlay).
 //
 // Capability gaps vs plain local implementation:
 //   GAP-1: Rotate mode's Konva Transformer-on-image is NOT ported.
-//          pd-ui manages the image Layer internally and does not expose
+//          pdomain-ui manages the image Layer internally and does not expose
 //          the image node ref, so we cannot attach a Transformer to it.
 //          The discrete rotate buttons (90° CW, 90° CCW, 180°) and the
 //          PATCH-based Apply/Reset path work unchanged — only the
 //          drag-rotate interaction is unavailable in rotate mode.
-//          TODO: when pd-ui exposes `imageNodeRef`, wire Transformer there.
-//   GAP-2: pd-ui's Stage applies scaleX/scaleY at the Stage level. Konva
+//          TODO: when pdomain-ui exposes `imageNodeRef`, wire Transformer there.
+//   GAP-2: pdomain-ui's Stage applies scaleX/scaleY at the Stage level. Konva
 //          node positions inside slot fills are therefore in natural-pixel
 //          space. rectFromNode now uses scale=1 (natural coords are already
 //          natural). Drag-to-create rect math is also in natural-pixel space
@@ -665,7 +665,7 @@ function CanvasViewer({
   } | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
 
-  // Preload the image to get natural dimensions for pd-ui's page prop.
+  // Preload the image to get natural dimensions for pdomain-ui's page prop.
   useEffect(() => {
     const el = new Image();
     el.crossOrigin = "anonymous";
@@ -689,7 +689,7 @@ function CanvasViewer({
     const tr = transformerRef.current;
     if (!tr) return;
     if (editMode === "rotate" || editMode === "flip") {
-      // GAP-1: Cannot attach Transformer to pd-ui's internal image node.
+      // GAP-1: Cannot attach Transformer to pdomain-ui's internal image node.
       // Clear any previously attached rect so the transformer is idle.
       tr.nodes([]);
       tr.rotateEnabled(false);
@@ -765,7 +765,7 @@ function CanvasViewer({
       className="rounded border bg-surface relative"
       style={{ minHeight: 400, ...rotateStyle }}
     >
-      {/* ── pd-ui PageImageCanvas — Konva Stage host ──────────────────────
+      {/* ── pdomain-ui PageImageCanvas — Konva Stage host ──────────────────────
           Provides: image layer, Stage setup, ResizeObserver for container
           size. Split/illustration Rects + Transformer + drag-preview go
           in the tool slot (has listening=true → Konva events work). */}
@@ -779,7 +779,7 @@ function CanvasViewer({
           // ── tool slot: interactive Rects + Transformer + drag-preview ──
           // Layer name="tool" has no listening=false, so Konva hit
           // detection fires on Rects here (click, drag, transform).
-          // Coordinates are in natural-pixel space (pd-ui scales the Stage).
+          // Coordinates are in natural-pixel space (pdomain-ui scales the Stage).
           tool: () => (
             <>
               {(page.illustration_regions as IllustrationRegion[]).map(
@@ -879,7 +879,7 @@ function CanvasViewer({
                 }}
                 onTransform={() => {
                   // GAP-1: Transformer is never attached to the image node
-                  // in rotate mode (pd-ui owns the image). onRotate is not
+                  // in rotate mode (pdomain-ui owns the image). onRotate is not
                   // called here; it fires only via RotateToolbar buttons.
                   // This handler is intentionally a no-op for the rotate
                   // case. For rect transforms it does not need to call
@@ -914,7 +914,7 @@ function CanvasViewer({
 
       {/* ── Event-capture overlay (GAP-1 shim) ───────────────────────────────
           Absolutely positioned over the entire canvas area. Captures all
-          mouse events for drag-to-create-rect so pd-ui's internal Stage
+          mouse events for drag-to-create-rect so pdomain-ui's internal Stage
           drag never fires. Handles drawing in split / illustration /
           create-sibling modes. In view and rotate modes it is transparent
           (pointer-events:none) so Konva events reach the tool slot Rects. */}
@@ -1465,7 +1465,7 @@ function selectionKey(s: NonNullable<Selection>): string {
 /**
  * Read natural-pixel rect from a Konva.Rect node.
  *
- * Phase 2.2: pd-ui's Stage applies scaleX/scaleY at the Stage level, so
+ * Phase 2.2: pdomain-ui's Stage applies scaleX/scaleY at the Stage level, so
  * node.x() / node.y() / node.width() / node.height() already return values
  * in natural-pixel space. No division by `scale` is needed.
  */

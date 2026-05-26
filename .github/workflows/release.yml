@@ -59,13 +59,13 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: frontend-dist
-          path: src/pd_prep_for_pgdp/static/
+          path: src/pdomain_prep_for_pgdp/static/
       # `--wheel` skips the sdist step. Default `uv build` produces an sdist
       # *and* rebuilds the wheel from inside the unpacked sdist; that fails
-      # because src/pd_prep_for_pgdp/static/ is .gitignore'd, so the sdist
+      # because src/pdomain_prep_for_pgdp/static/ is .gitignore'd, so the sdist
       # omits the SPA, and the wheel-from-sdist build trips the SPA-bundle
       # guard in build_hooks/spa_check.py. The downloaded `frontend-dist`
-      # artifact above places the SPA at src/pd_prep_for_pgdp/static/, and
+      # artifact above places the SPA at src/pdomain_prep_for_pgdp/static/, and
       # `--wheel` consumes it directly.
       - name: Build
         run: uv build --wheel
@@ -81,8 +81,8 @@ jobs:
           fi
           for whl in "${wheels[@]}"; do
             echo "checking $whl"
-            if ! python -m zipfile -l "$whl" | grep -q 'pd_prep_for_pgdp/static/index\.html'; then
-              echo "::error::$whl is missing pd_prep_for_pgdp/static/index.html — run 'make frontend-build' before building"
+            if ! python -m zipfile -l "$whl" | grep -q 'pdomain_prep_for_pgdp/static/index\.html'; then
+              echo "::error::$whl is missing pdomain_prep_for_pgdp/static/index.html — run 'make frontend-build' before building"
               python -m zipfile -l "$whl"
               exit 1
             fi
@@ -110,7 +110,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: frontend-dist
-          path: src/pd_prep_for_pgdp/static/
+          path: src/pdomain_prep_for_pgdp/static/
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build image (no push — wire up your registry)
         run: |

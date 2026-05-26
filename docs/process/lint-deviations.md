@@ -1,4 +1,4 @@
-# Lint-rule Deviations — pd-prep-for-pgdp
+# Lint-rule Deviations — pdomain-prep-for-pgdp
 
 Standing suppressions and per-file rule overrides in this repo.
 Each entry records: the rule, the tool, the file(s) affected, and
@@ -107,7 +107,7 @@ cannot be on simultaneously; the formatter wins.
 **Justification.** Deferred imports are a legitimate pattern here: used to
 break circular dependency chains (FastAPI dependencies, bootstrap↔adapters)
 and to avoid loading optional-heavy modules (`cv2`, `torch`, `cupy`,
-`numpy`, `pd_book_tools`) until the pipeline stage that needs them actually
+`numpy`, `pdomain_book_tools`) until the pipeline stage that needs them actually
 runs. Loading all of these at import time would make the CLI sluggish on
 CPU-only installs where most GPU/vision modules are absent.
 
@@ -149,7 +149,7 @@ incrementally on new code only.
 
 **Suppression form:** `# noqa: T201` inline.
 
-**Files:** `src/pd_prep_for_pgdp/__main__.py` — three call sites:
+**Files:** `src/pdomain_prep_for_pgdp/__main__.py` — three call sites:
 
 - line 147: CLI fallback notice when browser cannot open.
 - line 209: `--version` flag; version output goes to stdout by convention.
@@ -167,8 +167,8 @@ breaking the convention for version flags and startup notices.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/core/ingest.py` — `ZipImageEntryNotFound(LookupError)`
-- `src/pd_prep_for_pgdp/core/pipeline/stage_registry.py` — `StageNotImplemented(RuntimeError)`
+- `src/pdomain_prep_for_pgdp/core/ingest.py` — `ZipImageEntryNotFound(LookupError)`
+- `src/pdomain_prep_for_pgdp/core/pipeline/stage_registry.py` — `StageNotImplemented(RuntimeError)`
 
 **Justification.** These exception names are intentionally non-`Error`
 suffixed: `ZipImageEntryNotFound` maps semantically to HTTP 404 (not an
@@ -182,7 +182,7 @@ marker, not a runtime error). The names are more descriptive than the
 
 **Suppression form:** `# noqa: ERA001` inline.
 
-**Files:** `src/pd_prep_for_pgdp/core/models.py` (3 occurrences, lines 417, 420, 423)
+**Files:** `src/pdomain_prep_for_pgdp/core/models.py` (3 occurrences, lines 417, 420, 423)
 
 **Justification.** These are inline payload-schema comments for the
 `JobType` enum variants — they document what `payload` dict structure each
@@ -218,35 +218,35 @@ keeps the suppression narrowly scoped to this one site.
 | `scripts/*.py` | `T201, D, ANN, S603, S607, PLW1510` | Developer-only helper scripts: print() is the output mechanism; no docstrings/annotations required; partial executable paths fine |
 | `**/__init__.py` | `D104, F401, TC` | Re-export modules; `F401` is the public API surface mechanism |
 | `**/_*.py` | `D` | Private modules; docstring debt deferred |
-| `src/pd_prep_for_pgdp/core/illustrations.py` | `E741, N806, ANN, D, G003, G004, BLE001, TRY, PLW0603` | Coord names; annotation/docstring debt; `PLW0603` global lazy-cache memoisation pattern |
-| `src/pd_prep_for_pgdp/core/pipeline/*.py` | `E741, N806, ANN, D, G003, G004, BLE001, TRY, PERF401, S101` | Coord names; annotation/docstring debt; S101 asserts used as guard preconditions |
-| `src/pd_prep_for_pgdp/core/models.py` | `E741, ANN, D, TC` | Coord names; annotation debt; TC suppressed (Pydantic models need runtime imports — see entry §18) |
-| `src/pd_prep_for_pgdp/api/data/pages.py` | `E741, ANN, D, G003, G004, BLE001, TRY, TC` | Coord names; annotation/docstring debt; TC (Pydantic) |
-| `src/pd_prep_for_pgdp/core/ocr.py` | `N806, ANN, D, G003, G004, BLE001, TRY, TC` | L/R/T/B coord locals adapting arbitrary bbox shapes from pd-book-tools |
-| `src/pd_prep_for_pgdp/api/gpu/jobs.py` | `E402, ANN, D, TC` | Lazy imports inside functions (cycle-breaking + optional-dep) |
-| `src/pd_prep_for_pgdp/core/job_runner.py` | `E402, ANN, D, G003, G004, BLE001, TRY, PERF401, TC` | Same pattern |
-| `src/pd_prep_for_pgdp/core/ingest.py` | `ANN, D, G003, G004, BLE001, TRY, PERF401, S101, TC` | Annotation/docstring debt; S101 precondition guards |
-| `src/pd_prep_for_pgdp/core/auto_detect.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/bootstrap.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Adapter bootstrap wiring; annotation/docstring debt |
-| `src/pd_prep_for_pgdp/adapters/**/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Adapter layer annotation/docstring debt |
-| `src/pd_prep_for_pgdp/adapters/database/sqlite.py` | `S101, S608` | S101 precondition guard; S608 SQL uses enum literals (not user input) |
-| `src/pd_prep_for_pgdp/api/**/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | API layer annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/config_resolver.py` | `ANN, D, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/text_postprocess.py` | `ANN, D, G003, G004, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/dispatcher/*.py` | `ANN, D, G003, G004, BLE001, TRY, PERF401, TC` | Protocol-like classes; docstring/annotation debt |
-| `src/pd_prep_for_pgdp/core/job_events.py` | `ANN, D, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/logging_config.py` | `ANN, D, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/packaging.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/queue/single_executor.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/core/stage_events.py` | `ANN, D, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/settings.py` | `ANN, D, TC` | Annotation/docstring debt |
-| `src/pd_prep_for_pgdp/cli/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | CLI subcommands; docstrings serve as help text (not Google-style) |
+| `src/pdomain_prep_for_pgdp/core/illustrations.py` | `E741, N806, ANN, D, G003, G004, BLE001, TRY, PLW0603` | Coord names; annotation/docstring debt; `PLW0603` global lazy-cache memoisation pattern |
+| `src/pdomain_prep_for_pgdp/core/pipeline/*.py` | `E741, N806, ANN, D, G003, G004, BLE001, TRY, PERF401, S101` | Coord names; annotation/docstring debt; S101 asserts used as guard preconditions |
+| `src/pdomain_prep_for_pgdp/core/models.py` | `E741, ANN, D, TC` | Coord names; annotation debt; TC suppressed (Pydantic models need runtime imports — see entry §18) |
+| `src/pdomain_prep_for_pgdp/api/data/pages.py` | `E741, ANN, D, G003, G004, BLE001, TRY, TC` | Coord names; annotation/docstring debt; TC (Pydantic) |
+| `src/pdomain_prep_for_pgdp/core/ocr.py` | `N806, ANN, D, G003, G004, BLE001, TRY, TC` | L/R/T/B coord locals adapting arbitrary bbox shapes from pdomain-book-tools |
+| `src/pdomain_prep_for_pgdp/api/gpu/jobs.py` | `E402, ANN, D, TC` | Lazy imports inside functions (cycle-breaking + optional-dep) |
+| `src/pdomain_prep_for_pgdp/core/job_runner.py` | `E402, ANN, D, G003, G004, BLE001, TRY, PERF401, TC` | Same pattern |
+| `src/pdomain_prep_for_pgdp/core/ingest.py` | `ANN, D, G003, G004, BLE001, TRY, PERF401, S101, TC` | Annotation/docstring debt; S101 precondition guards |
+| `src/pdomain_prep_for_pgdp/core/auto_detect.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/bootstrap.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Adapter bootstrap wiring; annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/adapters/**/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Adapter layer annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/adapters/database/sqlite.py` | `S101, S608` | S101 precondition guard; S608 SQL uses enum literals (not user input) |
+| `src/pdomain_prep_for_pgdp/api/**/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | API layer annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/config_resolver.py` | `ANN, D, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/text_postprocess.py` | `ANN, D, G003, G004, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/dispatcher/*.py` | `ANN, D, G003, G004, BLE001, TRY, PERF401, TC` | Protocol-like classes; docstring/annotation debt |
+| `src/pdomain_prep_for_pgdp/core/job_events.py` | `ANN, D, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/logging_config.py` | `ANN, D, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/packaging.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/queue/single_executor.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/core/stage_events.py` | `ANN, D, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/settings.py` | `ANN, D, TC` | Annotation/docstring debt |
+| `src/pdomain_prep_for_pgdp/cli/*.py` | `ANN, D, G003, G004, BLE001, TRY, TC` | CLI subcommands; docstrings serve as help text (not Google-style) |
 
 ---
 
 ### 19. `TC` — ruff (type-checking imports)
 
-**Config:** suppressed on all `src/pd_prep_for_pgdp/**/*.py` that define
+**Config:** suppressed on all `src/pdomain_prep_for_pgdp/**/*.py` that define
 Pydantic models or are in the adapter/API/core layers.
 
 **Justification.** ruff's `TC` auto-fix moves runtime imports into
@@ -267,17 +267,17 @@ until the Pydantic models are migrated. See inline comment in `pyproject.toml`.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/bootstrap.py` — `import cupy`
-- `src/pd_prep_for_pgdp/adapters/auth/jwt_.py` — `import jwt as pyjwt`, `from jwt import PyJWKClient`
-- `src/pd_prep_for_pgdp/adapters/storage/s3.py` — `import boto3`
-- `src/pd_prep_for_pgdp/adapters/database/postgres.py` — `from psycopg import AsyncConnection`
-- `src/pd_prep_for_pgdp/core/illustrations.py` — `pd_book_tools.layout.types`, `numpy`, `cv2`
-- `src/pd_prep_for_pgdp/core/ocr.py` — `torch`, `torch.backends.mps`, `pd_book_tools.*`, `pytesseract`, `PIL.Image`
-- `src/pd_prep_for_pgdp/core/ingest.py` — `numpy`, `cv2`
-- `src/pd_prep_for_pgdp/core/auto_detect.py` — `numpy`, `cv2`
-- `src/pd_prep_for_pgdp/core/pipeline/blank_proof.py` — `numpy`, `cv2`
-- `src/pd_prep_for_pgdp/core/pipeline/crop_for_ocr.py` — `numpy`, `cv2`
-- `src/pd_prep_for_pgdp/core/pipeline/stage_registry.py` — `pd_book_tools.image_processing.cv2_processing`
+- `src/pdomain_prep_for_pgdp/bootstrap.py` — `import cupy`
+- `src/pdomain_prep_for_pgdp/adapters/auth/jwt_.py` — `import jwt as pyjwt`, `from jwt import PyJWKClient`
+- `src/pdomain_prep_for_pgdp/adapters/storage/s3.py` — `import boto3`
+- `src/pdomain_prep_for_pgdp/adapters/database/postgres.py` — `from psycopg import AsyncConnection`
+- `src/pdomain_prep_for_pgdp/core/illustrations.py` — `pdomain_book_tools.layout.types`, `numpy`, `cv2`
+- `src/pdomain_prep_for_pgdp/core/ocr.py` — `torch`, `torch.backends.mps`, `pdomain_book_tools.*`, `pytesseract`, `PIL.Image`
+- `src/pdomain_prep_for_pgdp/core/ingest.py` — `numpy`, `cv2`
+- `src/pdomain_prep_for_pgdp/core/auto_detect.py` — `numpy`, `cv2`
+- `src/pdomain_prep_for_pgdp/core/pipeline/blank_proof.py` — `numpy`, `cv2`
+- `src/pdomain_prep_for_pgdp/core/pipeline/crop_for_ocr.py` — `numpy`, `cv2`
+- `src/pdomain_prep_for_pgdp/core/pipeline/stage_registry.py` — `pdomain_book_tools.image_processing.cv2_processing`
 
 **Justification.** These are optional-extra or deployment-specific
 dependencies:
@@ -286,7 +286,7 @@ dependencies:
 - `jwt` / `boto3` / `psycopg` / `modal` — deployment-specific extras
   (`[jwt]`, `[s3]`, `[postgres]`, `[modal]`). Each adapter import is wrapped
   in a `try/except ImportError` with a clear diagnostic.
-- `pd_book_tools`, `numpy`, `cv2`, `torch`, `PIL`, `pytesseract` —
+- `pdomain_book_tools`, `numpy`, `cv2`, `torch`, `PIL`, `pytesseract` —
   not installed in the basedpyright dev venv (49 such suppressions, as
   noted in the `pyproject.toml` comment). These are runtime deps that
   work fine when the full package is installed; the stubs are absent only
@@ -303,11 +303,11 @@ code); `# pyright: ignore[reportMissingImports]` is the correct form.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/bootstrap.py:73` — `PostgresDatabase` partial impl;
+- `src/pdomain_prep_for_pgdp/bootstrap.py:73` — `PostgresDatabase` partial impl;
   `page_stage` methods are pending.
-- `src/pd_prep_for_pgdp/bootstrap.py:146` — `_NoOpGPUBackend` partial stub;
+- `src/pdomain_prep_for_pgdp/bootstrap.py:146` — `_NoOpGPUBackend` partial stub;
   never called in the real pipeline.
-- `src/pd_prep_for_pgdp/api/data/pages.py:919` — `JSONResponse` wraps a
+- `src/pdomain_prep_for_pgdp/api/data/pages.py:919` — `JSONResponse` wraps a
   `JobState` but the route return type is `JobState`; the `JSONResponse`
   short-circuit path carries the same payload shape.
 
@@ -323,8 +323,8 @@ stubs are placeholders for real implementations.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/adapters/storage/filesystem.py:64`
-- `src/pd_prep_for_pgdp/adapters/storage/s3.py:67`
+- `src/pdomain_prep_for_pgdp/adapters/storage/filesystem.py:64`
+- `src/pdomain_prep_for_pgdp/adapters/storage/s3.py:67`
 
 **Justification.** Both override `list_prefix` which is typed as returning
 `AsyncIterator[ObjectInfo]`. The implementations use `AsyncGenerator` (which
@@ -340,7 +340,7 @@ compatible.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/adapters/database/postgres.py:84`
+- `src/pdomain_prep_for_pgdp/adapters/database/postgres.py:84`
 
 **Justification.** `self._conn` may be `None` in the Protocol interface but
 is guaranteed to be set before any method that uses it is called, via
@@ -354,9 +354,9 @@ is guaranteed to be set before any method that uses it is called, via
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/bootstrap.py:125` — `_NoOpGPUBackend.run_batch`
+- `src/pdomain_prep_for_pgdp/bootstrap.py:125` — `_NoOpGPUBackend.run_batch`
   `items: list` (no type argument).
-- `src/pd_prep_for_pgdp/adapters/database/sqlite.py:668` —
+- `src/pdomain_prep_for_pgdp/adapters/database/sqlite.py:668` —
   `_row_to_page_stage(row: tuple)`.
 
 **Justification.** Both are stub/adapter implementations where the concrete
@@ -372,7 +372,7 @@ change; deferred to the annotation backlog.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/core/illustrations.py:41` — `_REGION_TYPE_MAP`
+- `src/pdomain_prep_for_pgdp/core/illustrations.py:41` — `_REGION_TYPE_MAP`
   reassigned inside a lazy-init `if` block.
 
 **Justification.** Module-level `_REGION_TYPE_MAP = {}` is initialised as an
@@ -389,7 +389,7 @@ per-file-ignores for the same module.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/core/logging_config.py:139` — `handler._pgdp_managed = True`
+- `src/pdomain_prep_for_pgdp/core/logging_config.py:139` — `handler._pgdp_managed = True`
 
 **Justification.** Dynamic attribute injected onto a `StreamHandler` to mark
 it as managed by this logging config (so it can be idempotently removed on
@@ -402,12 +402,12 @@ the injection is intentional and narrowly scoped.
 
 **Suppression form:** `# pyright: ignore[reportArgumentType]` inline.
 
-**Files:** `src/pd_prep_for_pgdp/core/illustrations.py:90` and
-`src/pd_prep_for_pgdp/core/ocr.py` (multiple lines, 324–356).
+**Files:** `src/pdomain_prep_for_pgdp/core/illustrations.py:90` and
+`src/pdomain_prep_for_pgdp/core/ocr.py` (multiple lines, 324–356).
 
 **Justification.**
 
-- `illustrations.py`: `region.type` from `pd_book_tools` stubs is typed
+- `illustrations.py`: `region.type` from `pdomain_book_tools` stubs is typed
   as a wider union than `_map_region_type` accepts; at runtime only valid
   values reach that call.
 - `ocr.py`: `pytesseract.image_to_data` returns `bytes|str|dict` in the
@@ -421,7 +421,7 @@ the injection is intentional and narrowly scoped.
 
 **Suppression form:** `# pyright: ignore[reportGeneralTypeIssues]` inline.
 
-**Files:** `src/pd_prep_for_pgdp/core/ingest.py:378`
+**Files:** `src/pdomain_prep_for_pgdp/core/ingest.py:378`
 
 **Justification.** `storage.list_prefix(prefix)` returns `AsyncIterator` but
 the concrete implementations return `AsyncGenerator`. basedpyright flags the
@@ -435,7 +435,7 @@ the concrete implementations return `AsyncGenerator`. basedpyright flags the
 
 **Suppression form:** `# pyright: ignore[reportAssignmentType]` inline.
 
-**Files:** `src/pd_prep_for_pgdp/core/models.py:118` — `center = "center"`
+**Files:** `src/pdomain_prep_for_pgdp/core/models.py:118` — `center = "center"`
 in a `str, Enum` subclass.
 
 **Justification.** The enum member `center = "center"` shadows `str.center`
@@ -453,18 +453,18 @@ correct and intentional: the enum semantics are unambiguous.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/__main__.py:191` — `return mod.main(argv[1:])`
-- `src/pd_prep_for_pgdp/adapters/database/sqlite.py:199` — `_run` helper
-- `src/pd_prep_for_pgdp/api/server_info.py:42` — `install_server_info`
-- `src/pd_prep_for_pgdp/api/healthz.py:78` — `install_healthz`
-- `src/pd_prep_for_pgdp/api/env_js.py:50` — `install_env_js`
-- `src/pd_prep_for_pgdp/api/dependencies.py` — six `get_*` accessors and two
+- `src/pdomain_prep_for_pgdp/__main__.py:191` — `return mod.main(argv[1:])`
+- `src/pdomain_prep_for_pgdp/adapters/database/sqlite.py:199` — `_run` helper
+- `src/pdomain_prep_for_pgdp/api/server_info.py:42` — `install_server_info`
+- `src/pdomain_prep_for_pgdp/api/healthz.py:78` — `install_healthz`
+- `src/pdomain_prep_for_pgdp/api/env_js.py:50` — `install_env_js`
+- `src/pdomain_prep_for_pgdp/api/dependencies.py` — six `get_*` accessors and two
   `get_job_*` functions
-- `src/pd_prep_for_pgdp/api/gpu/__init__.py:10` — `install_gpu_routes`
-- `src/pd_prep_for_pgdp/api/cdn.py:43` — `install_cdn_upload`
-- `src/pd_prep_for_pgdp/api/data/__init__.py:14` — `install_data_routes`
-- `src/pd_prep_for_pgdp/api/auth/__init__.py:8` — `install_auth_routes`
-- `src/pd_prep_for_pgdp/bootstrap.py:117` — `_NoOpGPUBackend.name`
+- `src/pdomain_prep_for_pgdp/api/gpu/__init__.py:10` — `install_gpu_routes`
+- `src/pdomain_prep_for_pgdp/api/cdn.py:43` — `install_cdn_upload`
+- `src/pdomain_prep_for_pgdp/api/data/__init__.py:14` — `install_data_routes`
+- `src/pdomain_prep_for_pgdp/api/auth/__init__.py:8` — `install_auth_routes`
+- `src/pdomain_prep_for_pgdp/bootstrap.py:117` — `_NoOpGPUBackend.name`
 
 **Status — needs review / annotation backlog.** These are mypy-style
 suppressions (`# type: ignore[...]` with mypy rule codes). basedpyright uses
@@ -490,16 +490,16 @@ the sqlite adapter annotation pass.
 
 **Files:**
 
-- `src/pd_prep_for_pgdp/bootstrap.py:304` — `from pd_ocr_ops import SuiteAdapters, mount_routes`
+- `src/pdomain_prep_for_pgdp/bootstrap.py:304` — `from pdomain_ocr_ops import SuiteAdapters, mount_routes`
 
-**Justification.** `pd_ocr_ops` ships no `py.typed` marker and no stub
+**Justification.** `pdomain_ocr_ops` ships no `py.typed` marker and no stub
 files. The package is a first-party workspace dependency installed from the
-`pd-index-pip` wheel; its types are correct at runtime but basedpyright
-cannot verify them statically. Until `pd_ocr_ops` adds a `py.typed` marker
+`pdomain-index-pip` wheel; its types are correct at runtime but basedpyright
+cannot verify them statically. Until `pdomain_ocr_ops` adds a `py.typed` marker
 (or stubs are generated), suppress the warning at the point of import.
 
-Note: `pd_ocr_ops.gpu` top-level imports in bootstrap.py (lines 19–20, 38)
-are grandfathered in the basedpyright baseline. The inner `from pd_ocr_ops`
+Note: `pdomain_ocr_ops.gpu` top-level imports in bootstrap.py (lines 19–20, 38)
+are grandfathered in the basedpyright baseline. The inner `from pdomain_ocr_ops`
 import at line 304 is a new site that cannot use the baseline; the inline
 suppression is required instead.
 
@@ -520,7 +520,7 @@ suppression is required instead.
 - `frontend/src/pages/LoginPage.tsx:31` — `__ENV__` runtime injection
 
 **Justification.** `__ENV__` is injected at runtime by the backend-served
-`env.js` script (see `src/pd_prep_for_pgdp/api/env_js.py`). It is an untyped
+`env.js` script (see `src/pdomain_prep_for_pgdp/api/env_js.py`). It is an untyped
 global that varies per deployment; there is no compile-time type for it.
 The `QueryCacheNotifyEvent` suppression covers a type that is internal to
 `@tanstack/react-query` and not re-exported in its public API.

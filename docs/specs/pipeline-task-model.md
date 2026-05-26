@@ -3,7 +3,7 @@
 > **Status:** locked (2026-05-07). Spec-only — implementation lands in M1–M6
 > per `docs/plans/roadmap.md` §P0.5.
 >
-> **Spec-Issue**: ConcaveTrillion/pd-prep-for-pgdp#17
+> **Spec-Issue**: pdomain/pdomain-prep-for-pgdp#17
 >
 > **Supersedes (in intent):** the coarse-grained `JobType` set
 > (`batch_process_pages`, `batch_extract_illustrations`, `batch_ocr`,
@@ -669,7 +669,7 @@ STAGE_VERSIONS = {
 }
 ```
 
-Bump by hand when the stage's algorithm changes (e.g. a `pd-book-tools`
+Bump by hand when the stage's algorithm changes (e.g. a `pdomain-book-tools`
 upgrade rewrites `auto_deskew`). On read of a `page_stages` row, if
 `stage_version < STAGE_VERSIONS[stage_id]`, the row is treated as
 `dirty` regardless of stored status. The next stage rerun overwrites

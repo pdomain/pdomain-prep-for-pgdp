@@ -1,8 +1,8 @@
-// TODO(s0-b): replace with pd-ui Badge when pd-ui exports a domain status variant.
-// pd-ui Badge uses variant: "default"|"primary"|"danger" + tone prop (generic).
+// TODO(s0-b): replace with pdomain-ui Badge when pdomain-ui exports a domain status variant.
+// pdomain-ui Badge uses variant: "default"|"primary"|"danger" + tone prop (generic).
 // This component uses a domain-specific status prop ("running", "complete", etc.)
 // with colour semantics tied to PGDP pipeline states. Cannot be swapped without
-// either migrating all callers to pd-ui's generic API or pd-ui adding status awareness.
+// either migrating all callers to pdomain-ui's generic API or pdomain-ui adding status awareness.
 
 /**
  * Badge — lightweight status indicator (M5 hi-fi adoption).

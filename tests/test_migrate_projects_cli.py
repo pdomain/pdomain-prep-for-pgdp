@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.cli.migrate_projects import _parse_args, _run
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.cli.migrate_projects import _parse_args, _run
+from pdomain_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
     PageProcessingStatus,
     PageRecord,
@@ -99,7 +99,7 @@ async def _seed_db(
 
 
 def _make_settings(tmp_path: Path, db_path: Path, data_root: Path):
-    from pd_prep_for_pgdp.settings import Settings
+    from pdomain_prep_for_pgdp.settings import Settings
 
     return Settings(
         data_root=data_root,
@@ -139,7 +139,7 @@ async def test_force_rebuild_deletes_rows_and_reinits_dirty(tmp_path: Path) -> N
     db, data_root = await _seed_db(tmp_path)
     await db.close()
 
-    import pd_prep_for_pgdp.cli.migrate_projects as m
+    import pdomain_prep_for_pgdp.cli.migrate_projects as m
 
     settings = _make_settings(tmp_path, tmp_path / "state.db", data_root)
     saved = m.Settings
@@ -171,7 +171,7 @@ async def test_force_rebuild_stages_dir_deleted(tmp_path: Path) -> None:
     db, data_root = await _seed_db(tmp_path)
     await db.close()
 
-    import pd_prep_for_pgdp.cli.migrate_projects as m
+    import pdomain_prep_for_pgdp.cli.migrate_projects as m
 
     settings = _make_settings(tmp_path, tmp_path / "state.db", data_root)
     saved = m.Settings
@@ -195,7 +195,7 @@ async def test_force_rebuild_summary_line(tmp_path: Path) -> None:
     db, data_root = await _seed_db(tmp_path, page_count=2)
     await db.close()
 
-    import pd_prep_for_pgdp.cli.migrate_projects as m
+    import pdomain_prep_for_pgdp.cli.migrate_projects as m
 
     settings = _make_settings(tmp_path, tmp_path / "state.db", data_root)
     saved = m.Settings
@@ -224,7 +224,7 @@ async def test_force_rebuild_page_idx_narrows(tmp_path: Path) -> None:
     db, data_root = await _seed_db(tmp_path, page_count=2, processing_status=PageProcessingStatus.pending)
     await db.close()
 
-    import pd_prep_for_pgdp.cli.migrate_projects as m
+    import pdomain_prep_for_pgdp.cli.migrate_projects as m
 
     settings = _make_settings(tmp_path, tmp_path / "state.db", data_root)
     saved = m.Settings
@@ -277,7 +277,7 @@ async def test_force_rebuild_all_projects(tmp_path: Path) -> None:
 
     await db.close()
 
-    import pd_prep_for_pgdp.cli.migrate_projects as m
+    import pdomain_prep_for_pgdp.cli.migrate_projects as m
 
     settings = _make_settings(tmp_path, db_path, data_root)
     saved = m.Settings

@@ -14,9 +14,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -73,7 +73,7 @@ async def test_project_run_dirty_parent_and_child_rows(
     db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
     """Acceptance 1 + 2: 1 parent job + N child rows; progress ticks 0 → N."""
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("proj1")
     await db.put_project(project)
@@ -104,7 +104,7 @@ async def test_project_run_dirty_parent_and_child_rows(
     runner = InProcessJobRunner(database=db, storage=storage)
 
     with patch(
-        "pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
+        "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
         new_callable=AsyncMock,
     ):
         await runner.run_pending(max_jobs=1)
@@ -125,7 +125,7 @@ async def test_project_run_dirty_no_dirty_stages(
     db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
     """Acceptance 3: project with all-clean stages → 0 pages affected, no error."""
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("proj2")
     await db.put_project(project)
@@ -172,7 +172,7 @@ async def test_project_run_dirty_stage_filter(
     db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
     """Acceptance 4: stage_filter restricts both page selection and stage execution."""
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("proj3")
     await db.put_project(project)
@@ -215,7 +215,7 @@ async def test_project_run_dirty_stage_filter(
     runner = InProcessJobRunner(database=db, storage=storage)
 
     with patch(
-        "pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
+        "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
         new_callable=AsyncMock,
     ) as mock_run:
         await runner.run_pending(max_jobs=1)
@@ -241,7 +241,7 @@ async def test_project_run_dirty_stage_filter(
 @pytest.mark.asyncio
 async def test_project_run_stage_all_pages(db: SqliteDatabase, storage: FilesystemStorage, tmp_path) -> None:
     """project_run_stage_all_pages runs one stage on every page that needs it."""
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("proj4")
     await db.put_project(project)
@@ -272,7 +272,7 @@ async def test_project_run_stage_all_pages(db: SqliteDatabase, storage: Filesyst
     runner = InProcessJobRunner(database=db, storage=storage)
 
     with patch(
-        "pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
+        "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
         new_callable=AsyncMock,
     ) as mock_run:
         await runner.run_pending(max_jobs=1)
@@ -299,7 +299,7 @@ async def test_project_run_dirty_stage_failure_surfaces_error(
 ) -> None:
     """Acceptance: when run_stage raises, child job lands in error and
     parent job's error_message records the failure (not silently complete)."""
-    from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project("proj5")
     await db.put_project(project)
@@ -331,7 +331,7 @@ async def test_project_run_dirty_stage_failure_surfaces_error(
 
     # Raise on every call so every page/stage fails.
     with patch(
-        "pd_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
+        "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
         new_callable=AsyncMock,
         side_effect=RuntimeError("simulated stage failure"),
     ):

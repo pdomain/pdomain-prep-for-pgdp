@@ -7,7 +7,7 @@
  * Hidden (no layout shift) when `stage_artifacts_bytes === 0`.
  * Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §Disk-cost banner
  */
-import { X } from "@concavetrillion/pd-ui/icons";
+import { X } from "@pdomain/pdomain-ui/icons";
 import { HardDrive } from "@/icons/local-shims";
 import { useState } from "react";
 import type { components } from "../api/types.gen";

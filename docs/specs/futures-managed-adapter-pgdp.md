@@ -213,7 +213,7 @@ this audience.
 - **`pd-png-optimizer`** — the CPU-side optimizer that stays on PM
   laptops. Don't centralize PNG optimization on the GPU side; the
   laptops are free compute and the Rust core is fast.
-- **`pd-ocr-labeler-spa`** — recording a parallel future-possibility
+- **`pdomain-ocr-labeler-spa`** — recording a parallel future-possibility
   note for an OCR-batch-prior-to-labeling pattern that uses the same
   Modal scheduled-drain shape. Worth keeping the two designs aligned
   if both eventually get built.

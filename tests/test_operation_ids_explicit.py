@@ -20,7 +20,7 @@ from collections import Counter
 
 from fastapi.routing import APIRoute
 
-from pd_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.bootstrap import build_app
 
 # FastAPI's auto-derived operation_id pattern is "<func_name>_<path>_<method>",
 # but the simplest reliable signal is the trailing "_<lowercase-method>".

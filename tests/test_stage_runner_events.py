@@ -17,10 +17,10 @@ import cv2
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
-from pd_prep_for_pgdp.core.pipeline.stage_runner import run_stage
-from pd_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_stage
+from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -146,6 +146,6 @@ async def test_run_stage_without_events_broker_is_unchanged(tmp_path: Path, db: 
         page_id=page_id,
         stage_id="grayscale",
     )
-    from pd_prep_for_pgdp.core.models import PageStageStatus
+    from pdomain_prep_for_pgdp.core.models import PageStageStatus
 
     assert state.status == PageStageStatus.clean

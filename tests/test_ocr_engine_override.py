@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     PageType,
     ResolvedPageConfig,
@@ -59,7 +59,7 @@ def _cfg(*, engine: str = "doctr") -> ResolvedPageConfig:
 
 
 def test_engine_kwarg_overrides_resolved_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     captured: dict[str, Any] = {}
 
@@ -82,7 +82,7 @@ def test_engine_kwarg_overrides_resolved_config(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_no_engine_kwarg_uses_resolved_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     captured: dict[str, Any] = {}
 
@@ -108,14 +108,14 @@ def test_detect_torch_device_returns_cpu_on_cuda_runtime_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """RuntimeError from cuda.is_available() must be logged at WARNING, not silently swallowed."""
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     mock_torch = MagicMock()
     mock_torch.cuda.is_available.side_effect = RuntimeError("CUDA driver not loaded")
 
     with (
         patch.dict(sys.modules, {"torch": mock_torch}),
-        caplog.at_level(logging.WARNING, logger="pd_prep_for_pgdp.core.ocr"),
+        caplog.at_level(logging.WARNING, logger="pdomain_prep_for_pgdp.core.ocr"),
     ):
         result = ocr_module._detect_torch_device()
 
@@ -127,7 +127,7 @@ def test_detect_torch_device_returns_cpu_on_cuda_runtime_error(
 
 def test_detect_torch_device_import_error_returns_cpu() -> None:
     """If torch is not importable, _detect_torch_device must return 'cpu' silently."""
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     # Temporarily hide torch from sys.modules.
     saved = sys.modules.pop("torch", None)
@@ -143,7 +143,7 @@ def test_detect_torch_device_import_error_returns_cpu() -> None:
 
 def test_ocr_page_result_has_words_error_field() -> None:
     """OcrPageResult must expose a words_error field (None by default)."""
-    from pd_prep_for_pgdp.core.ocr import OcrPageResult
+    from pdomain_prep_for_pgdp.core.ocr import OcrPageResult
 
     r = OcrPageResult(text="hello", words=[], page=None)
     assert r.words_error is None
@@ -154,7 +154,7 @@ def test_tesseract_image_to_data_failure_sets_words_error(
     tmp_path: Path,
 ) -> None:
     """When image_to_data raises, the result must carry words_error and words=[]."""
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     # Create a tiny real image so PIL.Image.open succeeds.
     img_path = tmp_path / "test.png"
@@ -201,7 +201,7 @@ def test_ocr_cpu_stage_logs_words_error(
 ) -> None:
     """When ocr_page returns a result with words_error set, _ocr_cpu must emit
     a WARNING so the user knows why words.json will be empty."""
-    from pd_prep_for_pgdp.core import ocr as ocr_module
+    from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     error_msg = "TestError: something failed"
 
@@ -227,8 +227,8 @@ def test_ocr_cpu_stage_logs_words_error(
     # Patch cv2.imwrite so no real file I/O is needed for the temp PNG.
     monkeypatch.setattr(cv2, "imwrite", lambda path, img: True)
 
-    with caplog.at_level(logging.WARNING, logger="pd_prep_for_pgdp.core.pipeline.stage_registry"):
-        from pd_prep_for_pgdp.core.pipeline.stage_registry import _ocr_cpu
+    with caplog.at_level(logging.WARNING, logger="pdomain_prep_for_pgdp.core.pipeline.stage_registry"):
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _ocr_cpu
 
         _ocr_cpu(blank_image, cfg=cfg)
 

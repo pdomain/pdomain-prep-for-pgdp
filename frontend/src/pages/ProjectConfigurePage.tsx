@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Loader2, AlertCircle } from "@concavetrillion/pd-ui/icons";
+import { Loader2, AlertCircle } from "@pdomain/pdomain-ui/icons";
 import { Download } from "@/icons/local-shims";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";

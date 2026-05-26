@@ -29,8 +29,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.api.middleware.request_id import RequestIdMiddleware
-from pd_prep_for_pgdp.core.logging_config import (
+from pdomain_prep_for_pgdp.api.middleware.request_id import RequestIdMiddleware
+from pdomain_prep_for_pgdp.core.logging_config import (
     JsonFormatter,
     RequestIdFilter,
     configure_logging,
@@ -83,7 +83,7 @@ def test_plain_format_renders_request_id_placeholder() -> None:
     buf, _ = _capture_log("plain")
     token = request_id_var.set("rid-abc")
     try:
-        logging.getLogger("pd_prep_for_pgdp.test").info("hello world")
+        logging.getLogger("pdomain_prep_for_pgdp.test").info("hello world")
     finally:
         request_id_var.reset(token)
 
@@ -100,7 +100,7 @@ def test_plain_format_renders_request_id_placeholder() -> None:
 
 def test_json_format_emits_documented_schema() -> None:
     buf, _ = _capture_log("json")
-    logger = logging.getLogger("pd_prep_for_pgdp.test_json")
+    logger = logging.getLogger("pdomain_prep_for_pgdp.test_json")
 
     token = request_id_var.set("rid-xyz")
     try:
@@ -113,7 +113,7 @@ def test_json_format_emits_documented_schema() -> None:
 
     # Documented schema keys
     assert payload["level"] == "INFO"
-    assert payload["logger"] == "pd_prep_for_pgdp.test_json"
+    assert payload["logger"] == "pdomain_prep_for_pgdp.test_json"
     assert payload["msg"] == "ingest started"
     assert payload["request_id"] == "rid-xyz"
     assert "ts" in payload
@@ -123,7 +123,7 @@ def test_json_format_emits_documented_schema() -> None:
 
 def test_json_format_includes_exception_traceback() -> None:
     buf, _ = _capture_log("json")
-    logger = logging.getLogger("pd_prep_for_pgdp.test_json_exc")
+    logger = logging.getLogger("pdomain_prep_for_pgdp.test_json_exc")
 
     try:
         raise ValueError("boom")

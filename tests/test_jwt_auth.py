@@ -15,7 +15,7 @@ from typing import Protocol, cast
 import pytest
 from fastapi import HTTPException
 
-from pd_prep_for_pgdp.adapters.auth.jwt_ import JwtAuth
+from pdomain_prep_for_pgdp.adapters.auth.jwt_ import JwtAuth
 
 
 class _HttpxResponseLike(Protocol):

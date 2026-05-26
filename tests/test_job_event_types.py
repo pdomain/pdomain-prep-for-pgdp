@@ -12,11 +12,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.job_events import JobEventBroker
-from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
+from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
@@ -108,7 +108,7 @@ async def test_runner_emits_progress_then_complete(db: SqliteDatabase, storage: 
 @pytest.mark.asyncio
 async def test_runner_emits_error_event_on_failure(db: SqliteDatabase, storage: FilesystemStorage) -> None:
     """A handler that throws produces an `error`-typed event."""
-    from pd_prep_for_pgdp.core import job_runner as jr
+    from pdomain_prep_for_pgdp.core import job_runner as jr
 
     project = _project()
     await db.put_project(project)

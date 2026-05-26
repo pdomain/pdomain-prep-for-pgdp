@@ -15,11 +15,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.core.auto_detect import (
+from pdomain_prep_for_pgdp.core.auto_detect import (
     detect_page_attributes,
     median_aspect_ratio,
 )
-from pd_prep_for_pgdp.core.models import AlignmentOverride, PageType
+from pdomain_prep_for_pgdp.core.models import AlignmentOverride, PageType
 
 
 def _png(h: int, w: int, fill: int = 255) -> bytes:

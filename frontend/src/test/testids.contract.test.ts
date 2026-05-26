@@ -1,11 +1,11 @@
 /**
- * Testid contract for pd-prep-for-pgdp after the full pd-ui migration (Phases 2.7a–2.7d).
+ * Testid contract for pdomain-prep-for-pgdp after the full pdomain-ui migration (Phases 2.7a–2.7d).
  *
  * ocr-container-meta #332 — Phase 2.7e: Playwright driver pass.
  *
  * Two layers of contract:
  *
- * 1. pd-ui shell testids — The real AppShell (from @concavetrillion/pd-ui/shell)
+ * 1. pdomain-ui shell testids — The real AppShell (from @pdomain/pdomain-ui/shell)
  *    emits `data-testid="app-shell"`, `app-shell-header`, `app-shell-main`, etc.
  *    These are the strings Playwright drivers must use to anchor on the shell root.
  *    pgdp wraps AppShell in an additional `data-testid="app-shell"` div (Phase 2.4
@@ -56,10 +56,10 @@ const allProdSource = prodFiles.map((p) => readFileSync(p, "utf8")).join("\n");
 
 // ── 1. App.tsx outer-wrapper contract ─────────────────────────────────────
 //
-// Phase 2.4 preserved data-testid="app-shell" on the div that wraps the pd-ui
-// AppShell. This is the Playwright anchor for the shell root. The real pd-ui
+// Phase 2.4 preserved data-testid="app-shell" on the div that wraps the pdomain-ui
+// AppShell. This is the Playwright anchor for the shell root. The real pdomain-ui
 // AppShell also emits this testid — the outer div ensures the selector works
-// even when the pd-ui version changes.
+// even when the pdomain-ui version changes.
 
 describe("App.tsx outer-wrapper testid (Phase 2.4 preservation contract)", () => {
   const appSrc = readFileSync(join(SRC_DIR, "App.tsx"), "utf8");
@@ -68,28 +68,28 @@ describe("App.tsx outer-wrapper testid (Phase 2.4 preservation contract)", () =>
     expect(appSrc).toContain('data-testid="app-shell"');
   });
 
-  it('App.tsx AppShell receives appId="pd-prep-for-pgdp"', () => {
-    expect(appSrc).toContain('appId="pd-prep-for-pgdp"');
+  it('App.tsx AppShell receives appId="pdomain-prep-for-pgdp"', () => {
+    expect(appSrc).toContain('appId="pdomain-prep-for-pgdp"');
   });
 });
 
-// ── 2. pd-ui AppShell mock testid strings in App.test.tsx ────────────────
+// ── 2. pdomain-ui AppShell mock testid strings in App.test.tsx ────────────────
 //
-// The vitest mock renders pd-ui AppShell zones as divs with specific testids.
+// The vitest mock renders pdomain-ui AppShell zones as divs with specific testids.
 // These strings must match what the real AppShell emits so integration tests
 // remain valid when the mock is swapped for the real component.
 //
-// Real AppShell emits (confirmed from pd-ui/src/shell/AppShell.tsx):
+// Real AppShell emits (confirmed from pdomain-ui/src/shell/AppShell.tsx):
 //   app-shell, app-shell-header, app-shell-rail, app-shell-drawer,
 //   app-shell-main, app-shell-right, app-shell-footer
 
-describe("App.test.tsx mock strings match real pd-ui AppShell contract", () => {
+describe("App.test.tsx mock strings match real pdomain-ui AppShell contract", () => {
   const appTestSrc = readFileSync(join(SRC_DIR, "App.test.tsx"), "utf8");
 
   const expectedMockTestIds = [
-    "pd-ui-app-shell",
-    "pd-ui-app-shell-header",
-    "pd-ui-app-shell-main",
+    "pdomain-ui-app-shell",
+    "pdomain-ui-app-shell-header",
+    "pdomain-ui-app-shell-main",
   ] as const;
 
   for (const tid of expectedMockTestIds) {

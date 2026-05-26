@@ -143,10 +143,10 @@ after storage I/O.
 ## AD-10. Release strategy — self-hosted PEP 503 index
 
 Published wheels go to a self-hosted PEP 503 index at
-`ConcaveTrillion/pd-index-pip` (GitHub Pages). Never use PEP 508
+`pdomain/pdomain-index-pip` (GitHub Pages). Never use PEP 508
 direct-URL deps in `pyproject.toml` (would burn the PyPI bridge).
 `install.sh` has the same latent wheel-METADATA bug pre-fixed in
-`pd-ocr-cli`; fix before exercising the curl-pipe-sh path.
+`pdomain-ocr-cli`; fix before exercising the curl-pipe-sh path.
 
 Agent-memory reference: `release_strategy_self_hosted_index.md`.
 

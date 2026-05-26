@@ -13,9 +13,9 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-import pd_prep_for_pgdp.bootstrap as bootstrap_mod
-from pd_prep_for_pgdp.bootstrap import _safe_static_file, build_app
-from pd_prep_for_pgdp.settings import Settings
+import pdomain_prep_for_pgdp.bootstrap as bootstrap_mod
+from pdomain_prep_for_pgdp.bootstrap import _safe_static_file, build_app
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from pathlib import Path

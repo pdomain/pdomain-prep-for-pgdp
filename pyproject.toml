@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pd-prep-for-pgdp"
+name = "pdomain-prep-for-pgdp"
 dynamic = ["version"]
 description = "Web app that converts scanned book images into a PGDP-ready submission package"
 authors = [
@@ -13,8 +13,8 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "pd-book-tools>=0.14.1",
-    "pd-ocr-ops>=0.2.2",
+    "pdomain-book-tools>=0.14.1",
+    "pdomain-ocr-ops>=0.2.2",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
@@ -49,11 +49,11 @@ jwt = [
 ]
 
 [project.scripts]
-pgdp-prep = "pd_prep_for_pgdp.__main__:main"
+pgdp-prep = "pdomain_prep_for_pgdp.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/ConcaveTrillion/pd-prep-for-pgdp"
-Repository = "https://github.com/ConcaveTrillion/pd-prep-for-pgdp"
+Homepage = "https://github.com/pdomain/pdomain-prep-for-pgdp"
+Repository = "https://github.com/pdomain/pdomain-prep-for-pgdp"
 
 [dependency-groups]
 dev = [
@@ -73,22 +73,22 @@ e2e = [
 ]
 
 [[tool.uv.index]]
-name = "pd-index-pip"
-url = "https://concavetrillion.github.io/pd-index-pip/simple/"
+name = "pdomain-index-pip"
+url = "https://pdomain.github.io/pdomain-index-pip/simple/"
 explicit = true
 
 [tool.uv.sources]
-pd-book-tools = { index = "pd-index-pip" }
-pd-ocr-ops = { index = "pd-index-pip" }
+pdomain-book-tools = { path = "/workspaces/ocr-container/pd-book-tools/.claude/worktrees/rename-pdomain", editable = true }
+pdomain-ocr-ops = { path = "/workspaces/ocr-container/pd-ocr-ops/.claude/worktrees/rename-pdomain", editable = true }
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pd_prep_for_pgdp"]
+packages = ["src/pdomain_prep_for_pgdp"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/pd_prep_for_pgdp/static" = "pd_prep_for_pgdp/static"
+"src/pdomain_prep_for_pgdp/static" = "pdomain_prep_for_pgdp/static"
 
 # Local guard mirroring the CI check in `.github/workflows/release.yml`:
 # fail `uv build` / `hatch build` if the SPA bundle is missing, so the
@@ -210,45 +210,45 @@ convention = "google"
 "**/_*.py" = ["D"]
 # `core/illustrations.py` uses coord names (E741/N806) and has annotation/docstring debt.
 # PLW0603 global lazy-cache pattern — intentional memoisation, not a state mutation.
-"src/pd_prep_for_pgdp/core/illustrations.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PLW0603"]
+"src/pdomain_prep_for_pgdp/core/illustrations.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PLW0603"]
 # `core/pipeline/*` use coord names (E741/N806) and have annotation/docstring debt.
 # S101 asserts used as guard preconditions inside the runner (not test asserts).
-"src/pd_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
+"src/pdomain_prep_for_pgdp/core/pipeline/*.py" = ["E741", "N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101"]
 # TC is suppressed globally on Pydantic-model-defining files because ruff's
 # TC auto-fix moves runtime imports into TYPE_CHECKING, which breaks Pydantic
 # model validation when from __future__ import annotations is active (Pydantic
 # needs the actual class, not a forward reference string). Add TC back
 # incrementally to files that use model_rebuild() or have no Pydantic models.
-"src/pd_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-# `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pd-book-tools.
-"src/pd_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+# `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pdomain-book-tools.
+"src/pdomain_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # Lazy imports inside functions (cycle-breaking + optional-dep patterns).
-"src/pd_prep_for_pgdp/api/gpu/jobs.py" = ["E402", "ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/core/job_runner.py" = ["E402", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
+"src/pdomain_prep_for_pgdp/api/gpu/jobs.py" = ["E402", "ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/job_runner.py" = ["E402", "ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
 # Core modules with annotation/docstring debt: add individually as each gets a focused pass.
-"src/pd_prep_for_pgdp/core/ingest.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101", "TC"]
-"src/pd_prep_for_pgdp/core/auto_detect.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-"src/pd_prep_for_pgdp/bootstrap.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-"src/pd_prep_for_pgdp/adapters/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/core/ingest.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "S101", "TC"]
+"src/pdomain_prep_for_pgdp/core/auto_detect.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/bootstrap.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/adapters/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # sqlite.py: S101 assert used as precondition guard (not test); S608 SQL is
 # parameterised with an enum value (not user input — initial_status comes from
 # PageStageStatus literal, never from a request body).
-"src/pd_prep_for_pgdp/adapters/database/sqlite.py" = ["S101", "S608"]
-"src/pd_prep_for_pgdp/api/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-"src/pd_prep_for_pgdp/core/config_resolver.py" = ["ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/core/text_postprocess.py" = ["ANN", "D", "G003", "G004", "TC"]
+"src/pdomain_prep_for_pgdp/adapters/database/sqlite.py" = ["S101", "S608"]
+"src/pdomain_prep_for_pgdp/api/**/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/core/config_resolver.py" = ["ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/text_postprocess.py" = ["ANN", "D", "G003", "G004", "TC"]
 # Dispatcher: small protocol-like classes with no docstrings yet.
-"src/pd_prep_for_pgdp/dispatcher/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
+"src/pdomain_prep_for_pgdp/dispatcher/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "PERF401", "TC"]
 # Core event/queue/logging modules with docstring debt.
-"src/pd_prep_for_pgdp/core/job_events.py" = ["ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/core/logging_config.py" = ["ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/core/packaging.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-"src/pd_prep_for_pgdp/core/queue/single_executor.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
-"src/pd_prep_for_pgdp/core/stage_events.py" = ["ANN", "D", "TC"]
-"src/pd_prep_for_pgdp/settings.py" = ["ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/job_events.py" = ["ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/logging_config.py" = ["ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/packaging.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/core/queue/single_executor.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/core/stage_events.py" = ["ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/settings.py" = ["ANN", "D", "TC"]
 # CLI subcommands use docstrings as help text, not Google-style; ANN backlog.
-"src/pd_prep_for_pgdp/cli/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
+"src/pdomain_prep_for_pgdp/cli/*.py" = ["ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 
 [tool.basedpyright]
 include = ["src", "tests", "scripts"]
@@ -283,7 +283,7 @@ addopts = [
     "-ra",                       # show short summary of all non-pass outcomes
     "--strict-markers",          # fail on unknown markers
     "--strict-config",           # fail on unknown pytest config keys
-    "--cov=pd_prep_for_pgdp",
+    "--cov=pdomain_prep_for_pgdp",
     "--cov-branch",              # measure branch coverage (gates except-path testing)
     "--cov-report=term-missing:skip-covered",
 ]

@@ -6,7 +6,7 @@
  * All data comes from the PageRecord already fetched by the page list — no
  * additional API calls.
  */
-import { X } from "@concavetrillion/pd-ui/icons";
+import { X } from "@pdomain/pdomain-ui/icons";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";

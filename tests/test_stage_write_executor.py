@@ -30,15 +30,15 @@ import cv2
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.core.models import PageStageStatus
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.core.models import PageStageStatus
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
-from pd_prep_for_pgdp.core.pipeline.stage_runner import run_stage
-from pd_prep_for_pgdp.core.pipeline.stage_write_executor import StageWriteExecutor
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_stage
+from pdomain_prep_for_pgdp.core.pipeline.stage_write_executor import StageWriteExecutor
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -78,8 +78,8 @@ async def _seed_clean_in_db_only(
     """
     await db.init_page_stages_for_page(project_id, page_id)
     # Directly upsert a clean row without writing a file.
-    from pd_prep_for_pgdp.core.models import PageStageState
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+    from pdomain_prep_for_pgdp.core.models import PageStageState
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
         compute_content_hash,
         stage_artifact_key,
     )

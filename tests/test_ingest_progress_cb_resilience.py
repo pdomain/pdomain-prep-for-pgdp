@@ -20,10 +20,10 @@ from datetime import UTC, datetime
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PipelineState,
     Project,

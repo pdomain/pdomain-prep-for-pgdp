@@ -11,7 +11,7 @@
 
 ## `Settings` and bootstrap
 
-`src/pd_prep_for_pgdp/settings.py` is a single `pydantic-settings` model that
+`src/pdomain_prep_for_pgdp/settings.py` is a single `pydantic-settings` model that
 reads `PGDP_*` env vars (and `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET`/etc.). It's
 read once per process; `build_app()` accepts an explicit `Settings` instance
 so tests can pass hermetic config.

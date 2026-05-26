@@ -23,9 +23,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.models import (
     PipelineState,
     Project,
     ProjectConfig,
@@ -82,14 +82,14 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 def test_resolve_workers_explicit_override_wins(monkeypatch) -> None:
-    from pd_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
+    from pdomain_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
 
     monkeypatch.setenv("PGDP_THUMBNAIL_WORKERS", "8")
     assert _resolve_thumbnail_workers(override=3) == 3
 
 
 def test_resolve_workers_env_when_no_override(monkeypatch) -> None:
-    from pd_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
+    from pdomain_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
 
     monkeypatch.setenv("PGDP_THUMBNAIL_WORKERS", "5")
     assert _resolve_thumbnail_workers(override=None) == 5
@@ -98,14 +98,14 @@ def test_resolve_workers_env_when_no_override(monkeypatch) -> None:
 def test_resolve_workers_defaults_to_cpu_count(monkeypatch) -> None:
     import os
 
-    from pd_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
+    from pdomain_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
 
     monkeypatch.delenv("PGDP_THUMBNAIL_WORKERS", raising=False)
     assert _resolve_thumbnail_workers(override=None) == max(1, os.cpu_count() or 1)
 
 
 def test_resolve_workers_clamps_below_one_to_one(monkeypatch) -> None:
-    from pd_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
+    from pdomain_prep_for_pgdp.core.ingest import _resolve_thumbnail_workers
 
     monkeypatch.setenv("PGDP_THUMBNAIL_WORKERS", "0")
     assert _resolve_thumbnail_workers(override=None) == 1
@@ -120,8 +120,8 @@ def test_resolve_workers_clamps_below_one_to_one(monkeypatch) -> None:
 async def test_pool_used_when_workers_ge_two(db, storage) -> None:
     """When `thumbnail_workers >= 2`, dispatch goes through
     `ProcessPoolExecutor` with the configured `max_workers`."""
-    from pd_prep_for_pgdp.core import ingest as ingest_mod
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core import ingest as ingest_mod
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -168,8 +168,8 @@ async def test_pool_not_used_when_workers_is_one(db, storage) -> None:
     """`thumbnail_workers=1` keeps the single-thread path — the pool
     constructor is never reached. This is the test-suite default so
     `make test` doesn't fork subprocesses for tiny inputs."""
-    from pd_prep_for_pgdp.core import ingest as ingest_mod
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core import ingest as ingest_mod
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -196,7 +196,7 @@ async def test_pool_preserves_thumbnail_ordering(db, storage) -> None:
     the right `thumbnail_key` (matching its idx0/source_stem) — the
     orchestrator looks up by idx0, so order at storage-write time
     shouldn't smear page identity."""
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)
@@ -237,7 +237,7 @@ async def test_pool_preserves_thumbnail_ordering(db, storage) -> None:
 async def test_pool_progress_cb_fires_per_page(db, storage) -> None:
     """Per-page progress reports stream back from the pool — once per
     completed page, not just once at the end."""
-    from pd_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
     await db.put_project(project)

@@ -8,7 +8,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "./test/server";
 import type * as React from "react";
 
-// Task #155 (s0-c): Mock @concavetrillion/pd-ui/shell so AppShell renders a
+// Task #155 (s0-c): Mock @pdomain/pdomain-ui/shell so AppShell renders a
 // transparent pass-through in jsdom — no Zustand store setup, no real
 // grid layout. The mock preserves the slot-forwarding contract (header,
 // headerActions, main, children) so downstream tests can assert on
@@ -16,7 +16,7 @@ import type * as React from "react";
 //
 // AppHeader mock renders a labelled div with data-testid="app-header" so
 // tests can query for it in the header slot.
-vi.mock("@concavetrillion/pd-ui/shell", () => ({
+vi.mock("@pdomain/pdomain-ui/shell", () => ({
   AppShell: ({
     header,
     headerActions,
@@ -34,12 +34,12 @@ vi.mock("@concavetrillion/pd-ui/shell", () => ({
     deployMode?: string;
     uiPrefsConfig?: unknown;
   }) => (
-    <div data-testid="pd-ui-app-shell">
-      <div data-testid="pd-ui-app-shell-header">
+    <div data-testid="pdomain-ui-app-shell">
+      <div data-testid="pdomain-ui-app-shell-header">
         {header}
         {headerActions}
       </div>
-      <div data-testid="pd-ui-app-shell-main">{main}</div>
+      <div data-testid="pdomain-ui-app-shell-main">{main}</div>
       {children}
     </div>
   ),
@@ -69,10 +69,10 @@ vi.mock("@concavetrillion/pd-ui/shell", () => ({
   // TypeScript import side-effects compile cleanly.
 }));
 
-// Mock @concavetrillion/pd-ui/canvas to prevent the konva/lib/index-node.js
+// Mock @pdomain/pdomain-ui/canvas to prevent the konva/lib/index-node.js
 // -> require("canvas") chain. PageWorkbenchPage transitively imports this
 // module; hoisting the mock here prevents the native addon from loading.
-vi.mock("@concavetrillion/pd-ui/canvas", () => ({
+vi.mock("@pdomain/pdomain-ui/canvas", () => ({
   PageImageCanvas: ({
     children,
   }: {
@@ -87,7 +87,7 @@ vi.mock("@concavetrillion/pd-ui/canvas", () => ({
       hud?: () => React.ReactNode;
     };
   }) => (
-    <div data-testid="pd-ui-canvas">
+    <div data-testid="pdomain-ui-canvas">
       {children?.selection?.()}
       {children?.tool?.()}
     </div>
@@ -174,11 +174,11 @@ describe("App: routing shell", () => {
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
-    // pd-ui AppShell main slot is present with route content.
-    expect(screen.getByTestId("pd-ui-app-shell-main")).toBeInTheDocument();
+    // pdomain-ui AppShell main slot is present with route content.
+    expect(screen.getByTestId("pdomain-ui-app-shell-main")).toBeInTheDocument();
   });
 
-  it("Phase 2.4: pd-ui AppShell wrapper is present (data-testid=app-shell)", async () => {
+  it("Phase 2.4: pdomain-ui AppShell wrapper is present (data-testid=app-shell)", async () => {
     withNoProjects();
     renderApp();
     await waitFor(() => {
@@ -186,8 +186,8 @@ describe("App: routing shell", () => {
     });
     // Outer wrapper preserves data-testid=app-shell for any Playwright selectors.
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
-    // pd-ui AppShell mock renders inside it.
-    expect(screen.getByTestId("pd-ui-app-shell")).toBeInTheDocument();
+    // pdomain-ui AppShell mock renders inside it.
+    expect(screen.getByTestId("pdomain-ui-app-shell")).toBeInTheDocument();
   });
 
   it("Task #155: AppHeader renders inside AppShell header slot", async () => {
@@ -196,7 +196,7 @@ describe("App: routing shell", () => {
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
-    const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
+    const headerSlot = screen.getByTestId("pdomain-ui-app-shell-header");
     // AppHeader mock renders with data-testid="app-header" inside the header slot.
     expect(
       headerSlot.querySelector("[data-testid='app-header']"),
@@ -209,7 +209,7 @@ describe("App: routing shell", () => {
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
-    const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
+    const headerSlot = screen.getByTestId("pdomain-ui-app-shell-header");
     // AppHeader mock renders a Search button wired to onSearchClick.
     const searchBtn = headerSlot.querySelector("[aria-label='Search (⌘K)']");
     expect(searchBtn).not.toBeNull();
@@ -222,7 +222,7 @@ describe("App: routing shell", () => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
     // All route-level content is inside the main slot.
-    expect(screen.getByTestId("pd-ui-app-shell-main")).toBeInTheDocument();
+    expect(screen.getByTestId("pdomain-ui-app-shell-main")).toBeInTheDocument();
   });
 
   it("Phase 2.4: GAP-1 — ServerInfoFooter is app-local inside main slot", async () => {
@@ -231,7 +231,7 @@ describe("App: routing shell", () => {
     await waitFor(() => {
       expect(screen.getByText("pgdp-prep")).toBeInTheDocument();
     });
-    const mainSlot = screen.getByTestId("pd-ui-app-shell-main");
+    const mainSlot = screen.getByTestId("pdomain-ui-app-shell-main");
     // ServerInfoFooter fetches /api/server-info and renders a <footer> element.
     // After data loads it renders inside main (GAP-1: app-local footer zone).
     await waitFor(() => {
@@ -240,23 +240,23 @@ describe("App: routing shell", () => {
     });
   });
 
-  // ── Phase 2.7b: pd-ocr-ops suite routes wired (close #329) ────────────────
+  // ── Phase 2.7b: pdomain-ocr-ops suite routes wired (close #329) ────────────────
   //
-  // AppShell is wired with real pd-ocr-ops fetch callbacks. These tests verify
+  // AppShell is wired with real pdomain-ocr-ops fetch callbacks. These tests verify
   // the DOM-visible contract: correct appId, header wiring, and MSW-intercepted
   // API calls from the SuiteSiblingsProvider (whose mock renders children
   // transparently so the real fetchInstalled callback still fires on mount).
 
-  it("Phase 2.7b / Task #155: AppShell receives appId=pd-prep-for-pgdp and AppHeader is wired", async () => {
+  it("Phase 2.7b / Task #155: AppShell receives appId=pdomain-prep-for-pgdp and AppHeader is wired", async () => {
     // Verify the AppShell wrapper is present and the header slot is wired.
     // The mock AppShell renders slots as data-testid divs; AppHeader mock
     // renders data-testid="app-header" with brand text inside the header slot.
     withNoProjects();
     renderApp();
     await waitFor(() => {
-      expect(screen.getByTestId("pd-ui-app-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("pdomain-ui-app-shell")).toBeInTheDocument();
     });
-    const headerSlot = screen.getByTestId("pd-ui-app-shell-header");
+    const headerSlot = screen.getByTestId("pdomain-ui-app-shell-header");
     expect(headerSlot).toBeInTheDocument();
     // AppHeader renders the app brand inside the header slot.
     expect(headerSlot.textContent).toContain("pgdp-prep");
@@ -283,7 +283,7 @@ describe("App: routing shell", () => {
     renderApp();
     await waitFor(() => {
       // App renders successfully — the suite route MSW handlers are present.
-      expect(screen.getByTestId("pd-ui-app-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("pdomain-ui-app-shell")).toBeInTheDocument();
     });
   });
 
@@ -292,7 +292,7 @@ describe("App: routing shell", () => {
     withNoProjects();
     renderApp();
     await waitFor(() => {
-      const mainSlot = screen.getByTestId("pd-ui-app-shell-main");
+      const mainSlot = screen.getByTestId("pdomain-ui-app-shell-main");
       expect(mainSlot).toBeInTheDocument();
       // Routes render inside main — project list placeholder or heading is present.
       expect(mainSlot.textContent?.length).toBeGreaterThan(0);

@@ -34,9 +34,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.bootstrap import build_app
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.bootstrap import build_app
+from pdomain_prep_for_pgdp.core.models import (
     PageConfigOverrides,
     PageProcessingStatus,
     PageRecord,
@@ -47,15 +47,15 @@ from pd_prep_for_pgdp.core.models import (
     ProjectStatus,
     ResolvedPageConfig,
 )
-from pd_prep_for_pgdp.core.pipeline.page_stage_writer import (
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
-from pd_prep_for_pgdp.core.pipeline.stage_runner import (
+from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     cascade_dirty_for_config_change,
     run_stage,
 )
-from pd_prep_for_pgdp.settings import Settings
+from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -329,7 +329,7 @@ def _make_resolved_config(
     threshold_level: int | None = None,
 ) -> ResolvedPageConfig:
     """Build a minimal ResolvedPageConfig for unit tests."""
-    from pd_prep_for_pgdp.core.models import AlignmentOverride, PageType
+    from pdomain_prep_for_pgdp.core.models import AlignmentOverride, PageType
 
     return ResolvedPageConfig(
         text_threshold=128,
@@ -442,7 +442,7 @@ async def test_initial_crop_with_configured_margins_produces_smaller_image(
     )
 
     assert state.status == PageStageStatus.clean
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
     artifact_path = sap(tmp_path, project_id, page_id, "initial_crop")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
@@ -478,7 +478,7 @@ async def test_initial_crop_no_op_when_no_config(tmp_path: Path, db: SqliteDatab
     )
 
     assert state.status == PageStageStatus.clean
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
     artifact_path = sap(tmp_path, project_id, page_id, "initial_crop")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
@@ -524,7 +524,7 @@ async def test_manual_deskew_pre_rotates_when_angle_configured(tmp_path: Path, d
     )
 
     assert state.status == PageStageStatus.clean
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
     artifact_path = sap(tmp_path, project_id, page_id, "manual_deskew_pre")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
@@ -560,7 +560,7 @@ async def test_manual_deskew_pre_no_op_when_no_angle(tmp_path: Path, db: SqliteD
     )
 
     assert state.status == PageStageStatus.clean
-    from pd_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
     artifact_path = sap(tmp_path, project_id, page_id, "manual_deskew_pre")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)

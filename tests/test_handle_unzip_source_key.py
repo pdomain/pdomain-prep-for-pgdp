@@ -16,10 +16,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from pd_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pd_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-from pd_prep_for_pgdp.core.job_runner import InProcessJobRunner
-from pd_prep_for_pgdp.core.models import (
+from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
+from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobProgress,
     JobStatus,

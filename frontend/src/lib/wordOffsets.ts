@@ -8,7 +8,7 @@
  * isolation, so when the Konva layer lands it can just call
  * `wordToRange` / `offsetToWord` instead of reimplementing the math.
  *
- * Wire shape — mirrors `src/pd_prep_for_pgdp/core/models.py::OcrWord`.
+ * Wire shape — mirrors `src/pdomain_prep_for_pgdp/core/models.py::OcrWord`.
  * Once the OpenAPI export covers the OCR endpoint these can be
  * replaced with the generated types.
  */
@@ -57,7 +57,7 @@ export interface WordOffsetIndex {
  * word's literal `.text` at or after the current cursor.
  *
  * The matcher tolerates intervening whitespace (spaces, tabs, CR/LF)
- * — that's the spacer pd-book-tools inserts between words in the
+ * — that's the spacer pdomain-book-tools inserts between words in the
  * same line, and the double-newline it inserts between blocks. It
  * does NOT skip non-whitespace characters: if a word is fused into a
  * drop cap (`"R'" + "EADER!" → "R'EADER!"`) the second word won't
@@ -66,7 +66,7 @@ export interface WordOffsetIndex {
  *
  * Empty / whitespace-only word.text values are ignored (recorded as
  * null) — those are positionally-tracked OCR artefacts, see
- * `pd_book_tools/ocr/block.py::text`.
+ * `pdomain_book_tools/ocr/block.py::text`.
  */
 export function buildWordOffsetIndex(
   text: string,
