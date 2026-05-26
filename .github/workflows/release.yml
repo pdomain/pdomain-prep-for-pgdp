@@ -101,6 +101,8 @@ jobs:
 
   build-container:
     name: build managed-mode container
+    # Opt-in: set repo var CONTAINER_PUSH_ENABLED=true once a registry is wired. Otherwise skip cleanly.
+    if: vars.CONTAINER_PUSH_ENABLED == 'true'
     runs-on: ubuntu-latest
     needs: [build-frontend]
     steps:
