@@ -33,6 +33,18 @@ RUN apt-get update \
 # (used in the local installer) doesn't work here.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Non-root user for runtime security. UID/GID 1000 matches the default
+# user on most Linux distros; override at build time if the host bind-mount
+# UID differs (e.g. --build-arg APP_UID=1001).
+#
+# Note: bind-mount users must ensure the host directory is owned by the same
+# UID (default 1000) or Docker-mounted with matching permissions. In managed
+# mode (S3 storage) no local bind-mounts are needed.
+ARG APP_UID=1000
+ARG APP_GID=1000
+RUN groupadd -g ${APP_GID} app \
+    && useradd -m -u ${APP_UID} -g app -s /bin/bash app
+
 WORKDIR /app
 
 # hatch-vcs derives the version from git tags. The build context doesn't
@@ -58,6 +70,13 @@ RUN sed -i 's|^dynamic = \["version"\]|version = "'"${VERSION}"'"|' pyproject.to
 
 # Install with the [s3,postgres,modal,jwt] extras for managed mode.
 RUN uv pip install --system ".[s3,postgres,modal,jwt]"
+
+# Transfer ownership of /app to the non-root user so the app can write
+# any local temp files it needs (e.g. SQLite in local mode).
+RUN chown -R app:app /app
+
+# Drop privileges — all subsequent RUN/CMD/ENTRYPOINT run as app (UID 1000).
+USER app
 
 EXPOSE 8765
 ENV PGDP_PORT=8765 \
