@@ -24,6 +24,7 @@ dependencies = [
     "huggingface_hub>=0.23",
     "transformers>=4.45",
     "sse-starlette>=2.1",
+    "starlette>=1.0.1",
     "anyio>=4.4",
     "pyoxipng>=9.1.1",
 ]
