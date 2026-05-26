@@ -1,3 +1,8 @@
+// TODO(s0-b): replace with pd-ui Button when pd-ui exports matching variants.
+// pd-ui Button supports variant: "primary"|"ghost"|"danger" and size: "sm"|"md"|"lg".
+// This app also uses "outline", "secondary", "link", "amber" variants and "xs", "icon",
+// "default" sizes, plus the buttonVariants() helper — none of which pd-ui ships yet.
+// Blocked on pd-ui extending its variant/size set or the app migrating to pd-ui variants.
 import { cn } from "@/lib/utils";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 

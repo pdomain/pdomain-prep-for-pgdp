@@ -1,25 +1,40 @@
+/**
+ * Separator tests — after Task 2 (s0-b) the component is pd-ui's Separator.
+ *
+ * pd-ui Separator renders a <div> with className "separator" (semantic CSS
+ * class from primitives.css) rather than raw Tailwind classes. Tests assert
+ * on the behavioral contract: renders, sets data-orientation, merges className,
+ * and forwards data-testid.
+ */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Separator } from "./Separator";
 
 describe("Separator", () => {
-  it("renders horizontal by default", () => {
+  it("renders an element", () => {
     render(<Separator data-testid="sep" />);
-    const el = screen.getByTestId("sep");
-    expect(el.className).toContain("h-[1px]");
-    expect(el.className).toContain("w-full");
+    expect(screen.getByTestId("sep")).toBeInTheDocument();
   });
 
-  it("renders vertical when orientation='vertical'", () => {
+  it("defaults to horizontal orientation", () => {
+    render(<Separator data-testid="sep" />);
+    expect(screen.getByTestId("sep")).toHaveAttribute(
+      "data-orientation",
+      "horizontal",
+    );
+  });
+
+  it("sets vertical orientation", () => {
     render(<Separator data-testid="sep" orientation="vertical" />);
-    const el = screen.getByTestId("sep");
-    expect(el.className).toContain("h-full");
-    expect(el.className).toContain("w-[1px]");
+    expect(screen.getByTestId("sep")).toHaveAttribute(
+      "data-orientation",
+      "vertical",
+    );
   });
 
-  it("has bg-border-1 class", () => {
+  it("has separator CSS class", () => {
     render(<Separator data-testid="sep" />);
-    expect(screen.getByTestId("sep").className).toContain("bg-border-1");
+    expect(screen.getByTestId("sep").className).toContain("separator");
   });
 
   it("forwards data-testid", () => {

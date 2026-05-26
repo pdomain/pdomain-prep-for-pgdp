@@ -1,27 +1,3 @@
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import { cn } from "@/lib/utils";
-
-interface SeparatorProps {
-  orientation?: "horizontal" | "vertical";
-  className?: string;
-  "data-testid"?: string;
-}
-
-export function Separator({
-  orientation = "horizontal",
-  className,
-  "data-testid": testId,
-}: SeparatorProps) {
-  return (
-    <SeparatorPrimitive.Root
-      data-testid={testId}
-      orientation={orientation}
-      decorative
-      className={cn(
-        "shrink-0 bg-border-1",
-        orientation === "horizontal" ? "h-[1px] w-full" : "h-full w-[1px]",
-        className,
-      )}
-    />
-  );
-}
+// Re-exported from @concavetrillion/pd-ui/primitives (Task 2 — s0-b).
+// Local implementation removed; pd-ui v0.2.1 ships this component.
+export { Separator } from "@concavetrillion/pd-ui/primitives";

@@ -1,3 +1,11 @@
+/**
+ * Input tests — after Task 2 (s0-b) the component is pd-ui's Input.
+ *
+ * pd-ui Input renders an <input> with className "input" (semantic CSS class
+ * from primitives.css) rather than raw Tailwind classes. Tests assert on the
+ * behavioral contract: renders an input element, passes through value/type,
+ * merges className, and forwards data-testid.
+ */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Input } from "./Input";
@@ -8,19 +16,9 @@ describe("Input", () => {
     expect(screen.getByTestId("inp")).toBeInTheDocument();
   });
 
-  it("has border-border-2 class", () => {
+  it("has input CSS class", () => {
     render(<Input data-testid="inp" />);
-    expect(screen.getByTestId("inp").className).toContain("border-border-2");
-  });
-
-  it("has bg-bg-surface class", () => {
-    render(<Input data-testid="inp" />);
-    expect(screen.getByTestId("inp").className).toContain("bg-bg-surface");
-  });
-
-  it("has text-ink-1 class", () => {
-    render(<Input data-testid="inp" />);
-    expect(screen.getByTestId("inp").className).toContain("text-ink-1");
+    expect(screen.getByTestId("inp").className).toContain("input");
   });
 
   it("accepts value prop", () => {
