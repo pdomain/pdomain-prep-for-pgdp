@@ -1521,7 +1521,7 @@ wheels = [
 
 [[package]]
 name = "pdomain-book-tools"
-source = { editable = "/workspaces/ocr-container/pd-book-tools/.claude/worktrees/rename-pdomain" }
+source = { editable = "../pd-book-tools" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "ipython" },
@@ -1586,7 +1586,7 @@ dev = [
 [[package]]
 name = "pdomain-ocr-ops"
 version = "0.2.2"
-source = { editable = "/workspaces/ocr-container/pd-ocr-ops/.claude/worktrees/rename-pdomain" }
+source = { editable = "../pd-ocr-ops" }
 dependencies = [
     { name = "fastapi" },
     { name = "filelock" },
@@ -1605,7 +1605,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.13" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
-    { name = "pdomain-book-tools", editable = "/workspaces/ocr-container/pd-book-tools/.claude/worktrees/rename-pdomain" },
+    { name = "pdomain-book-tools", editable = "../pd-book-tools" },
     { name = "platformdirs", specifier = ">=4.2" },
     { name = "pydantic", specifier = ">=2.5" },
     { name = "tomli", specifier = ">=2.0" },
@@ -1693,8 +1693,8 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
     { name = "nvidia-nvimgcodec-cu12", marker = "extra == 'cuda'", specifier = ">=0.3" },
-    { name = "pdomain-book-tools", editable = "/workspaces/ocr-container/pd-book-tools/.claude/worktrees/rename-pdomain" },
-    { name = "pdomain-ocr-ops", editable = "/workspaces/ocr-container/pd-ocr-ops/.claude/worktrees/rename-pdomain" },
+    { name = "pdomain-book-tools", editable = "../pd-book-tools" },
+    { name = "pdomain-ocr-ops", editable = "../pd-ocr-ops" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.5" },
