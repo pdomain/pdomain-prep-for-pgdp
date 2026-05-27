@@ -11,7 +11,7 @@ import asyncio
 import contextlib
 
 import pytest
-from pdomain_ocr_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
+from pdomain_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
 from pdomain_prep_for_pgdp.dispatcher.immediate import ImmediateDispatcher
 

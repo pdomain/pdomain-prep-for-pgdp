@@ -5,7 +5,7 @@
 set -euo pipefail
 
 TOOL_NAME="pgdp-prep"               # repo-specific
-PY_SIBLINGS=(pdomain-book-tools pdomain-ocr-ops)
+PY_SIBLINGS=(pdomain-book-tools pdomain-ops)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
 CANONICAL_REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"

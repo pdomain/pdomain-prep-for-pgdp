@@ -14,7 +14,7 @@ license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "pdomain-book-tools>=0.14.1",
-    "pdomain-ocr-ops>=0.2.2",
+    "pdomain-ops>=0.3.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
@@ -79,7 +79,7 @@ explicit = true
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-pdomain-ocr-ops = { index = "pdomain-index-pip" }
+pdomain-ops = { path = "/workspaces/ocr-container/pdomain-ops", editable = true }
 
 [tool.hatch.version]
 source = "vcs"

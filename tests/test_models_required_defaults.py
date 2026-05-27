@@ -8,7 +8,7 @@ on pdomain-prep-for-pgdp's roadmap for the precipitating discovery.
 
 from __future__ import annotations
 
-from pdomain_ocr_ops.gpu import (
+from pdomain_ops.gpu import (
     BatchJobItem,
     BatchJobResult,
     OcrPageResponse,

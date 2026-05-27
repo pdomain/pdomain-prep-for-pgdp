@@ -12,7 +12,7 @@ import webbrowser
 from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
-from pdomain_ocr_ops.suite import register_self
+from pdomain_ops.suite import register_self
 
 from .settings import Settings
 

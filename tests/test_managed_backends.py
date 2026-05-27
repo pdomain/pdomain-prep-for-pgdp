@@ -18,13 +18,13 @@ Locks in:
 from __future__ import annotations
 
 import pytest
-from pdomain_ocr_ops.gpu import (
+from pdomain_ops.gpu import (
     BatchJobItem,
     OcrPageRequest,
     ProcessPageRequest,
 )
-from pdomain_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
-from pdomain_ocr_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
+from pdomain_ops.gpu import ModalStageDispatcher as ModalBackend
+from pdomain_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
 
 # ── ModalBackend ───────────────────────────────────────────────────────────
 

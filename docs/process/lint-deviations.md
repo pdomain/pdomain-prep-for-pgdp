@@ -490,16 +490,16 @@ the sqlite adapter annotation pass.
 
 **Files:**
 
-- `src/pdomain_prep_for_pgdp/bootstrap.py:304` — `from pdomain_ocr_ops import SuiteAdapters, mount_routes`
+- `src/pdomain_prep_for_pgdp/bootstrap.py:304` — `from pdomain_ops import SuiteAdapters, mount_routes`
 
-**Justification.** `pdomain_ocr_ops` ships no `py.typed` marker and no stub
+**Justification.** `pdomain_ops` ships no `py.typed` marker and no stub
 files. The package is a first-party workspace dependency installed from the
 `pdomain-index-pip` wheel; its types are correct at runtime but basedpyright
-cannot verify them statically. Until `pdomain_ocr_ops` adds a `py.typed` marker
+cannot verify them statically. Until `pdomain_ops` adds a `py.typed` marker
 (or stubs are generated), suppress the warning at the point of import.
 
-Note: `pdomain_ocr_ops.gpu` top-level imports in bootstrap.py (lines 19–20, 38)
-are grandfathered in the basedpyright baseline. The inner `from pdomain_ocr_ops`
+Note: `pdomain_ops.gpu` top-level imports in bootstrap.py (lines 19–20, 38)
+are grandfathered in the basedpyright baseline. The inner `from pdomain_ops`
 import at line 304 is a new site that cannot use the baseline; the inline
 suppression is required instead.
 

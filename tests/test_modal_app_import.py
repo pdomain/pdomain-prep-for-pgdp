@@ -33,9 +33,9 @@ def test_modal_app_module_imports_without_modal_installed(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(builtins, "__import__", block_modal)
     # Drop any cached modal_app and reload under the blocked import.
-    sys.modules.pop("pdomain_ocr_ops.gpu.modal_app", None)
+    sys.modules.pop("pdomain_ops.gpu.modal_app", None)
 
-    mod = importlib.import_module("pdomain_ocr_ops.gpu.modal_app")
+    mod = importlib.import_module("pdomain_ops.gpu.modal_app")
     assert mod._MODAL_AVAILABLE is False
     assert mod.modal is None
 
@@ -49,7 +49,7 @@ def test_modal_app_module_imports_when_modal_present() -> None:
     import importlib
     import sys
 
-    sys.modules.pop("pdomain_ocr_ops.gpu.modal_app", None)
-    mod = importlib.import_module("pdomain_ocr_ops.gpu.modal_app")
+    sys.modules.pop("pdomain_ops.gpu.modal_app", None)
+    mod = importlib.import_module("pdomain_ops.gpu.modal_app")
     assert mod._MODAL_AVAILABLE is True
     assert hasattr(mod, "app")

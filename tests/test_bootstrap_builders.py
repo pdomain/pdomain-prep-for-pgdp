@@ -194,7 +194,7 @@ def test_build_storage_s3_returns_s3storage(tmp_path, monkeypatch: pytest.Monkey
 
 def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
     """`gpu_backend=modal` with both tokens returns a ModalStageDispatcher."""
-    from pdomain_ocr_ops.gpu import ModalStageDispatcher
+    from pdomain_ops.gpu import ModalStageDispatcher
 
     settings = _settings(
         tmp_path,
@@ -207,7 +207,7 @@ def test_build_gpu_modal_returns_modal_backend(tmp_path) -> None:
 
 
 def test_build_gpu_shared_container_returns_shared_backend(tmp_path) -> None:
-    from pdomain_ocr_ops.gpu import SharedContainerStageDispatcher
+    from pdomain_ops.gpu import SharedContainerStageDispatcher
 
     settings = _settings(
         tmp_path,

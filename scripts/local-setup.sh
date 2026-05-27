@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # Repo-specific: list of sibling pd-* GitHub repo names this repo depends on.
-SIBLINGS=(pdomain-book-tools pdomain-ocr-ops pdomain-ui)
+SIBLINGS=(pdomain-book-tools pdomain-ops pdomain-ui)
 
 # Workspace root = parent of the canonical git repo dir (works in both normal checkouts and worktrees).
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

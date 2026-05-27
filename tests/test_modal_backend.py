@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pdomain_ocr_ops.gpu import (
+from pdomain_ops.gpu import (
     BatchJobItem,
     OcrPageRequest,
     ProcessPageRequest,
@@ -64,7 +64,7 @@ def modal_module(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_process_page_serialises_request_and_validates_response(modal_module) -> None:
-    from pdomain_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
+    from pdomain_ops.gpu import ModalStageDispatcher as ModalBackend
 
     expected_response = {
         "processed_image_key": "projects/p/processed/x.png",
@@ -98,7 +98,7 @@ async def test_process_page_serialises_request_and_validates_response(modal_modu
 
 @pytest.mark.asyncio
 async def test_run_ocr_round_trip(modal_module) -> None:
-    from pdomain_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
+    from pdomain_ops.gpu import ModalStageDispatcher as ModalBackend
 
     fn = FakeFunction(
         return_value={
@@ -118,7 +118,7 @@ async def test_run_ocr_round_trip(modal_module) -> None:
 
 @pytest.mark.asyncio
 async def test_run_batch_sends_list_of_dicts(modal_module) -> None:
-    from pdomain_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
+    from pdomain_ops.gpu import ModalStageDispatcher as ModalBackend
 
     def echo(payload: list[dict]) -> list[dict]:
         return [

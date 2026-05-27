@@ -17,7 +17,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from pdomain_ocr_ops.gpu import BatchJobResult
+from pdomain_ops.gpu import BatchJobResult
 
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage

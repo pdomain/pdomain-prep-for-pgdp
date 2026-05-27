@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING, Protocol, cast
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pdomain_ocr_ops.gpu import ModalStageDispatcher as ModalBackend
-from pdomain_ocr_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
+from pdomain_ops.gpu import ModalStageDispatcher as ModalBackend
+from pdomain_ops.gpu import SharedContainerStageDispatcher as SharedContainerBackend
 
 from .adapters.auth.apikey import ApiKeyAuth
 from .adapters.auth.jwt_ import JwtAuth
@@ -37,7 +37,7 @@ from .dispatcher.immediate import ImmediateDispatcher
 from .settings import Settings
 
 if TYPE_CHECKING:
-    from pdomain_ocr_ops.gpu import GPUBackend
+    from pdomain_ops.gpu import GPUBackend
 
     from .adapters.auth.base import IAuth
     from .adapters.database.base import IDatabase
@@ -294,7 +294,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     install_server_info(app)
 
-    # Phase 2.7b: mount pdomain-ocr-ops suite routes so the frontend AppShell
+    # Phase 2.7b: mount pdomain-ops suite routes so the frontend AppShell
     # SuiteSiblingsProvider can call real endpoints instead of GAP-4 shims.
     # Routes: GET /api/suite/installed, POST /api/suite/launch,
     #         GET /api/suite/prefs, PUT /api/suite/prefs/common,
@@ -302,15 +302,15 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     #
     # Post-mount patches:
     # 1. pdomain-prep-for-pgdp requires explicit operation_id on every schema-visible
-    #    route (test_operation_ids_explicit.py). pdomain-ocr-ops uses auto-generated
+    #    route (test_operation_ids_explicit.py). pdomain-ops uses auto-generated
     #    ids; we patch them after mounting.
-    # 2. pdomain-ocr-ops mount_routes() also registers GET /healthz. pdomain-prep-for-pgdp
+    # 2. pdomain-ops mount_routes() also registers GET /healthz. pdomain-prep-for-pgdp
     #    has its own richer /healthz (registered above via install_healthz) which
-    #    wins on routing (FastAPI serves the first match), but the pdomain-ocr-ops
+    #    wins on routing (FastAPI serves the first match), but the pdomain-ops
     #    /healthz still appears in the OpenAPI schema. We hide it via
     #    include_in_schema=False so the schema stays clean.
     from fastapi.routing import APIRoute
-    from pdomain_ocr_ops import SuiteAdapters, mount_routes  # pyright: ignore[reportMissingTypeStubs]
+    from pdomain_ops import SuiteAdapters, mount_routes  # pyright: ignore[reportMissingTypeStubs]
 
     mount_routes(app, SuiteAdapters.local())
 
@@ -327,7 +327,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         if not isinstance(route, APIRoute):
             continue
         if route.path == "/healthz" and route.include_in_schema:
-            # Hide the pdomain-ocr-ops /healthz from the schema; pdomain-prep-for-pgdp's
+            # Hide the pdomain-ops /healthz from the schema; pdomain-prep-for-pgdp's
             # own /healthz (include_in_schema=False) is already registered above.
             route.include_in_schema = False
             continue

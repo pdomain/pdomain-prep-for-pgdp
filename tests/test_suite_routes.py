@@ -1,6 +1,6 @@
-"""Phase 2.7b: Tests for pdomain-ocr-ops suite routes mounted via mount_routes().
+"""Phase 2.7b: Tests for pdomain-ops suite routes mounted via mount_routes().
 
-Verifies that the pdomain-ocr-ops suite router is mounted in pdomain-prep-for-pgdp
+Verifies that the pdomain-ops suite router is mounted in pdomain-prep-for-pgdp
 so the frontend AppShell SuiteSiblingsProvider can call real endpoints
 instead of the GAP-4 shims.
 
