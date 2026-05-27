@@ -1,7 +1,12 @@
-"""Tests that main() calls register_self with the actual bound port.
+"""Tests that main() calls bootstrap_spa with the actual bound port.
 
-The suite registry records the live port so cross-app linking reads the
-right address. This test verifies the wire-up without starting uvicorn.
+The suite registry (via bootstrap_spa → register_self) records the live port
+so cross-app linking reads the right address. These tests verify the wire-up
+without starting uvicorn.
+
+After refactor to Option B: bootstrap_spa replaces the inline register_self +
+URL-print block. _pick_port still resolves the §L1-aware port; that result is
+passed as preferred= to bootstrap_spa.
 """
 
 from __future__ import annotations
@@ -18,38 +23,39 @@ def _find_free_port() -> int:
         return int(s.getsockname()[1])
 
 
-def test_main_calls_register_self_with_actual_port() -> None:
-    """main() must call register_self(actual_port=<chosen port>)."""
+def test_main_calls_bootstrap_spa_with_actual_port() -> None:
+    """main() must call bootstrap_spa(preferred=<chosen port>)."""
     free_port = _find_free_port()
 
     mock_uvicorn = MagicMock()
-    mock_register_self = MagicMock()
+    mock_bootstrap_spa = MagicMock(return_value=free_port)
 
     with (
         patch("pdomain_prep_for_pgdp.__main__.uvicorn", mock_uvicorn),
-        patch("pdomain_prep_for_pgdp.__main__.register_self", mock_register_self),
+        patch("pdomain_prep_for_pgdp.__main__.bootstrap_spa", mock_bootstrap_spa),
         patch("pdomain_prep_for_pgdp.__main__.webbrowser"),
     ):
         from pdomain_prep_for_pgdp.__main__ import main
 
         main(["--port", str(free_port), "--no-browser"])
 
-    # register_self must have been called with actual_port= equal to the
+    # bootstrap_spa must have been called once with preferred= equal to the
     # chosen port.
-    assert mock_register_self.call_count == 1
-    _, kwargs = mock_register_self.call_args
-    assert kwargs.get("actual_port") == free_port
+    assert mock_bootstrap_spa.call_count == 1
+    _, kwargs = mock_bootstrap_spa.call_args
+    assert kwargs.get("preferred") == free_port
 
 
-def test_main_register_self_called_before_uvicorn() -> None:
-    """register_self must be called before uvicorn.run so the registry
+def test_main_bootstrap_spa_called_before_uvicorn() -> None:
+    """bootstrap_spa must be called before uvicorn.run so the registry
     reflects the port before the server starts accepting connections."""
     free_port = _find_free_port()
 
     call_order: list[str] = []
 
-    def fake_register_self(**kwargs: object) -> None:
-        call_order.append("register_self")
+    def fake_bootstrap_spa(**kwargs: object) -> int:
+        call_order.append("bootstrap_spa")
+        return int(kwargs.get("preferred", free_port))
 
     def fake_uvicorn_run(*args: object, **kwargs: object) -> None:
         call_order.append("uvicorn.run")
@@ -59,21 +65,25 @@ def test_main_register_self_called_before_uvicorn() -> None:
 
     with (
         patch("pdomain_prep_for_pgdp.__main__.uvicorn", mock_uvicorn),
-        patch("pdomain_prep_for_pgdp.__main__.register_self", side_effect=fake_register_self),
+        patch("pdomain_prep_for_pgdp.__main__.bootstrap_spa", side_effect=fake_bootstrap_spa),
         patch("pdomain_prep_for_pgdp.__main__.webbrowser"),
     ):
         from pdomain_prep_for_pgdp.__main__ import main
 
         main(["--port", str(free_port), "--no-browser"])
 
-    assert call_order == ["register_self", "uvicorn.run"], (
-        f"Expected register_self before uvicorn.run, got: {call_order}"
+    assert call_order == ["bootstrap_spa", "uvicorn.run"], (
+        f"Expected bootstrap_spa before uvicorn.run, got: {call_order}"
     )
 
 
-def test_main_register_self_fallback_port() -> None:
-    """When the preferred port is busy (default, non-explicit), register_self
-    receives the OS-assigned fallback port, not the preferred port."""
+def test_main_bootstrap_spa_receives_fallback_port() -> None:
+    """When the preferred port is busy (default, non-explicit), bootstrap_spa
+    receives the OS-assigned fallback port, not the preferred port.
+
+    _pick_port resolves the fallback; the result is passed as preferred= to
+    bootstrap_spa, so the suite registry sees the actual bound address.
+    """
     # Block a port.
     blocker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
@@ -84,13 +94,15 @@ def test_main_register_self_fallback_port() -> None:
     mock_uvicorn = MagicMock()
     captured: list[int] = []
 
-    def fake_register_self(**kwargs: object) -> None:
-        captured.append(int(kwargs.get("actual_port", 0)))
+    def fake_bootstrap_spa(**kwargs: object) -> int:
+        preferred = int(kwargs.get("preferred", 0))
+        captured.append(preferred)
+        return preferred
 
     try:
         with (
             patch("pdomain_prep_for_pgdp.__main__.uvicorn", mock_uvicorn),
-            patch("pdomain_prep_for_pgdp.__main__.register_self", side_effect=fake_register_self),
+            patch("pdomain_prep_for_pgdp.__main__.bootstrap_spa", side_effect=fake_bootstrap_spa),
             patch("pdomain_prep_for_pgdp.__main__.webbrowser"),
             # Override the Settings.port default so the test controls the collision.
             patch("pdomain_prep_for_pgdp.__main__.Settings") as mock_settings_cls,
@@ -107,8 +119,8 @@ def test_main_register_self_fallback_port() -> None:
     finally:
         blocker.close()
 
-    assert len(captured) == 1, "register_self should have been called once"
+    assert len(captured) == 1, "bootstrap_spa should have been called once"
     assert captured[0] != busy_port, (
-        f"register_self received busy_port {busy_port}; expected OS-assigned fallback"
+        f"bootstrap_spa received busy_port {busy_port}; expected OS-assigned fallback"
     )
     assert captured[0] > 0
