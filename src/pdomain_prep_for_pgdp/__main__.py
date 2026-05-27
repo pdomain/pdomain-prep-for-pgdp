@@ -12,7 +12,7 @@ import webbrowser
 from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
-from pdomain_ops.suite import register_self
+from pdomain_ops.suite import bootstrap_spa
 
 from .settings import Settings
 
@@ -233,9 +233,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # --reload re-spawns the process; the child re-runs uvicorn.run and
     # would otherwise duplicate the probe (and could pick a different
-    # ephemeral port on retry). Skip auto-select under --reload — the
+    # ephemeral port on retry). Skip _pick_port under --reload — the
     # user is in dev-loop mode and a hard error is more informative.
-    port = (
+    #
+    # Option B: _pick_port preserves §L1 last-port persistence and
+    # explicit-intent semantics that bootstrap_spa() does not replicate.
+    # We therefore keep _pick_port, resolve the free port first, then
+    # hand its result to bootstrap_spa(preferred=port) for the shared
+    # register_self + URL-print side-effects. bootstrap_spa re-probes the
+    # already-free port — a harmless no-op that returns the same value.
+    picked_port = (
         preferred_port
         if args.reload
         else _pick_port(
@@ -246,21 +253,24 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
+    # Delegates register_self (best-effort) + URL print to the shared
+    # bootstrap_spa helper. Returns the bound port (same as picked_port
+    # in practice; use the returned value so bootstrap_spa's probe wins
+    # on any edge-case TOCTOU).
+    port = bootstrap_spa(
+        preferred=picked_port,
+        caller_package="pdomain_prep_for_pgdp",
+        host=host,
+        url_label="pgdp-prep",
+    )
+
     # Export the bound host/port to the process env so the child workers
     # (and the FastAPI app via `Settings`) see the actual bound values
     # instead of the configured defaults. `GET /api/server-info` reads
     # these — see §L1 step 3.
     _export_bound_env(host, port)
 
-    # Register this app's actual bound port in the suite registry so that
-    # sibling apps can discover and link to the correct address.
-    # Best-effort: a missing pdomain-suite.json or registry write failure
-    # must not prevent the server from starting.
-    with contextlib.suppress(OSError, FileNotFoundError, ValueError, RuntimeError):
-        register_self(actual_port=port)
-
     url = f"http://{host}:{port}"
-    print(f"Listening on {url}")  # noqa: T201  # startup banner intentionally goes to stdout
 
     if not args.no_browser and not args.reload:
         with contextlib.suppress(Exception):
