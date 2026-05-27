@@ -12,6 +12,7 @@ import webbrowser
 from typing import TYPE_CHECKING, Protocol, cast
 
 import uvicorn
+from pdomain_ocr_ops.suite import register_self
 
 from .settings import Settings
 
@@ -250,6 +251,13 @@ def main(argv: list[str] | None = None) -> int:
     # instead of the configured defaults. `GET /api/server-info` reads
     # these — see §L1 step 3.
     _export_bound_env(host, port)
+
+    # Register this app's actual bound port in the suite registry so that
+    # sibling apps can discover and link to the correct address.
+    # Best-effort: a missing pdomain-suite.json or registry write failure
+    # must not prevent the server from starting.
+    with contextlib.suppress(OSError, FileNotFoundError, ValueError, RuntimeError):
+        register_self(actual_port=port)
 
     url = f"http://{host}:{port}"
     print(f"Listening on {url}")  # noqa: T201  # startup banner intentionally goes to stdout

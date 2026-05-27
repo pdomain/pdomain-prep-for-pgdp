@@ -1,0 +1,7 @@
+{
+  "app_id": "pdomain-prep-for-pgdp",
+  "display_name": "PGDP Prep",
+  "package": "pdomain-prep-for-pgdp",
+  "default_port": 8765,
+  "icon": "pgdp-prep"
+}

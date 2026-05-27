@@ -358,8 +358,9 @@ upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
 #
 # Builds the SPA bundle into src/pdomain_prep_for_pgdp/static/ first (so the
 # single FastAPI process serves the React app at `/`), then launches
-# `pgdp-prep`. App comes up at http://127.0.0.1:8765 (or the next free
-# port if 8765 is taken — see L1 fallback in `__main__.py`).
+# `pgdp-prep`. The actual URL is printed by the launcher (defaults to
+# http://127.0.0.1:8765 or the next free port — see L1 fallback in
+# `__main__.py`).
 #
 # GPU is auto-detected: with a working CUDA runtime the autodetect picks
 # `LocalBackend` (which subclasses CpuBackend), and DocTR/PyTorch use
@@ -368,8 +369,7 @@ upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
 #
 # Pass extra args via ARGS, e.g. `make run ARGS="--port 9000"`.
 # ---------------------------------------------------------------------------
-run: frontend-build ## Build the SPA + launch pgdp-prep on :8765 (auto GPU)
-	@echo "🚀 Launching pgdp-prep at http://127.0.0.1:8765 (auto-detect GPU)..."
+run: frontend-build ## Build the SPA + launch pgdp-prep (port auto-selected, printed on startup)
 	uv run pgdp-prep $(ARGS)
 
 # ---------------------------------------------------------------------------
@@ -378,8 +378,7 @@ run: frontend-build ## Build the SPA + launch pgdp-prep on :8765 (auto GPU)
 # Use when a GPU is present but you want to skip CUDA paths: debugging,
 # weak GPU, or working around CUDA OOM on a smaller card.
 # ---------------------------------------------------------------------------
-run-cpu: frontend-build ## Build SPA + launch pgdp-prep with PGDP_GPU_BACKEND=cpu
-	@echo "🚀 Launching pgdp-prep at http://127.0.0.1:8765 (CPU backend forced)..."
+run-cpu: frontend-build ## Build SPA + launch pgdp-prep with PGDP_GPU_BACKEND=cpu (port auto-selected)
 	PGDP_GPU_BACKEND=cpu uv run pgdp-prep $(ARGS)
 
 run-local: ## DEPRECATED: use local-run
