@@ -15,6 +15,7 @@ else
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
         typecheck pre-commit-check test e2e build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
+        local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
         run run-cpu frontend-install \
         frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pd-deps upgrade-pdomain-book-tools \
@@ -329,8 +330,21 @@ local-install: ## Install uv tool with editable siblings (local-mode only)
 local-uninstall: ## Uninstall the uv tool (siblings + venv untouched)
 	@./scripts/local-uninstall.sh
 
-local-run: ## Run the CLI/server against local-dev workspace (local-mode only)
+local-run: ## Run pgdp-prep against local-dev workspace (local-mode only)
 	@./scripts/local-run.sh
+
+local-setup-py: ## Re-apply editable Python siblings (idempotent)
+	@./scripts/local-setup-py.sh
+
+local-frontend-install: ## pnpm install + restore pnpm link overlays for npm siblings
+	@./scripts/local-frontend-install.sh
+
+local-frontend-build: local-frontend-install ## Vite build using local-linked siblings
+	@$(call _pnpm,run build)
+	@mkdir -p src/pdomain_prep_for_pgdp/static
+	@rm -rf src/pdomain_prep_for_pgdp/static/*
+	cp -r frontend/dist/. src/pdomain_prep_for_pgdp/static/
+	@echo "✅ Frontend bundled into src/pdomain_prep_for_pgdp/static/"
 
 # Back-compat aliases for legacy target names (deprecated — use canonical names above)
 dev-local: ## DEPRECATED: use local-dev

@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# scripts/local-run.sh — run repo's CLI/server against the local-dev workspace.
+# scripts/local-run.sh — run pgdp-prep against the local-dev workspace.
 #
-# Requires local-dev mode. Delegates to repo-specific `make run` after the guard.
+# Deliberately does NOT delegate to `make run` — that path runs
+# `frontend-build` → pnpm install (registry path), which discards the
+# `pnpm link` overlay for @pdomain/pdomain-ui and serves a stale registry
+# build of the shared UI library.
+#
+# Instead:
+#   1. Re-apply editable Python siblings (idempotent — safe to repeat).
+#   2. Build the SPA through the local-link-preserving path.
+#   3. Launch pgdp-prep with --no-sync so uv does not revert the siblings.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
 CANONICAL_REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"
-# Marker lives in the canonical repo's .venv (shared across worktrees).
 MARKER="$CANONICAL_REPO_ROOT/.venv/.pd-local-mode"
 
 if [[ ! -f "$MARKER" ]]; then
@@ -15,7 +22,9 @@ if [[ ! -f "$MARKER" ]]; then
   exit 1
 fi
 
-# Repo-specific run target
-# UV_NO_SYNC=1: keep editable pd-* siblings; a plain `make run` re-syncs and
-# reverts them to registry versions, breaking unreleased editable APIs at runtime.
-exec env UV_NO_SYNC=1 make -C "$REPO_ROOT" run
+make -C "$REPO_ROOT" local-setup-py
+make -C "$REPO_ROOT" local-frontend-build
+
+# --no-sync REQUIRED: plain `uv run` re-syncs and reverts the editable pd-*
+# siblings to pinned registry versions, breaking unreleased editable APIs.
+exec uv run --no-sync --project "$CANONICAL_REPO_ROOT" pgdp-prep ${ARGS:-}
