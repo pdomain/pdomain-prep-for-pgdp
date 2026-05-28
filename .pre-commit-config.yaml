@@ -23,7 +23,7 @@ repos:
     -   id: gitleaks
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.15.14
+    rev: v0.15.15
     hooks:
     # Run the linter for imports
     -   id: ruff-check
@@ -69,7 +69,9 @@ repos:
         description: TypeScript project-references type-check for the React SPA.
         # mise-trust-worktrees trusts generated worktree roots so this can use
         # the project tool versions from mise.toml without per-worktree prompts.
-        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise exec -- npx tsc -b --noEmit; else exec npx tsc -b --noEmit; fi'
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
+          exec mise exec -- npx tsc -b --noEmit; else exec npx tsc -b --noEmit;
+          fi'
         language: system
         files:
           ^frontend/(src/.*\.(ts|tsx)|tsconfig.*\.json|package(-lock)?\.json|vite\.config\.ts)$
@@ -77,7 +79,9 @@ repos:
     -   id: frontend-eslint
         name: frontend eslint
         description: ESLint flat-config check for the React SPA.
-        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise exec -- npm run --silent lint; else exec npm run --silent lint; fi'
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
+          exec mise exec -- npm run --silent lint; else exec npm run --silent
+          lint; fi'
         language: system
         # Match what eslint actually lints: SPA source, the flat config
         # itself, and dependency manifests (a new dep can change rules
@@ -89,7 +93,9 @@ repos:
     -   id: frontend-prettier
         name: frontend prettier --check
         description: Prettier format check for the React SPA.
-        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then exec mise exec -- npm run --silent format:check; else exec npm run --silent format:check; fi'
+        entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
+          exec mise exec -- npm run --silent format:check; else exec npm run
+          --silent format:check; fi'
         language: system
         # Prettier covers a broader file set than ESLint (CSS, JSON,
         # config files); keep the path filter wide enough to match.
