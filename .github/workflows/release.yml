@@ -1,123 +1,108 @@
 name: release
 
-# Triggered by an annotated tag push (`v*`). The local pre-flight
-# (`scripts/do-release.sh` → `make ci`) is the primary safety net;
-# this workflow is the build + publish step.
-#
-# This workflow follows spec 09 §"CI/CD". build-wheel uploads the wheel as
-# an asset on the GitHub Release for the pushed tag; install.sh downloads
-# that asset directly (no git+ install, so end users don't need Node/npm).
-# There is no PyPI publish.
+# Dispatch-only release. scripts/do-release.sh pushes the exact tag after
+# local ci-slow passes, then triggers this workflow with the tag input below.
+# Chore: review pinned action SHAs weekly. Update version comments and SHAs together.
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, for example v1.2.3"
+        required: true
 
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  UV_PYTHON: "3.13"
+  CUDA_VISIBLE_DEVICES: ""
+
 jobs:
-  build-frontend:
-    name: build SPA
+  release-ci:
+    name: release CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          fetch-depth: 0  # hatch-vcs needs full history for the version
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.11.16"
+      - name: Set up Python
+        run: uv python install 3.13
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093  # v6.0.8
+        with:
+          version: "11"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: "24"
-      - name: Enable pnpm via corepack
-        run: corepack enable && corepack prepare pnpm@11.3.0 --activate
-      - name: Install (frozen lockfile)
-        run: cd frontend && pnpm install --frozen-lockfile
-      - name: ESLint
-        run: cd frontend && pnpm run lint
-      - name: Prettier (format:check)
-        run: cd frontend && pnpm run format:check
-      - name: Vitest (SPA unit tests)
-        run: cd frontend && pnpm test
-      - name: Build
-        run: cd frontend && pnpm run build
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: frontend-dist
-          path: frontend/dist/
-          retention-days: 7
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Run release CI gate
+        run: make ci-slow
 
-  build-wheel:
-    name: build wheel
+  publish:
+    name: publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-frontend]
+    needs: [release-ci]
     permissions:
-      contents: write  # required to upload assets to the GitHub Release
+      contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          fetch-depth: 0  # hatch-vcs needs full history for the version
-      - uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
         with:
-          name: frontend-dist
-          path: src/pdomain_prep_for_pgdp/static/
-      # `--wheel` skips the sdist step. Default `uv build` produces an sdist
-      # *and* rebuilds the wheel from inside the unpacked sdist; that fails
-      # because src/pdomain_prep_for_pgdp/static/ is .gitignore'd, so the sdist
-      # omits the SPA, and the wheel-from-sdist build trips the SPA-bundle
-      # guard in build_hooks/spa_check.py. The downloaded `frontend-dist`
-      # artifact above places the SPA at src/pdomain_prep_for_pgdp/static/, and
-      # `--wheel` consumes it directly.
-      - name: Build
-        run: uv build --wheel
-      # Roadmap §22: assert the SPA bundle is actually inside the wheel.
-      - name: Verify wheel contains SPA bundle (roadmap §22)
+          version: "0.11.16"
+      - name: Set up Python
+        run: uv python install 3.13
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093  # v6.0.8
+        with:
+          version: "11"
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: "24"
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Build release artifacts
+        run: make build
+
+      - name: List built artifacts
+        run: ls -la dist/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          wheels=(dist/*.whl)
-          if [ ${#wheels[@]} -eq 0 ]; then
-            echo "::error::no wheel produced under dist/"
+          files=(dist/*.whl dist/*.tar.gz)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no release artifacts found under dist/"
             exit 1
           fi
-          for whl in "${wheels[@]}"; do
-            echo "checking $whl"
-            if ! python -m zipfile -l "$whl" | grep -q 'pdomain_prep_for_pgdp/static/index\.html'; then
-              echo "::error::$whl is missing pdomain_prep_for_pgdp/static/index.html — run 'make frontend-build' before building"
-              python -m zipfile -l "$whl"
-              exit 1
-            fi
-          done
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: wheel
-          path: dist/
-          retention-days: 7
-      - name: Publish wheel to GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: dist/*.whl
-          fail_on_unmatched_files: true
+          gh release create "$RELEASE_TAG" "${files[@]}" \
+            --generate-notes \
+            --verify-tag
 
-  build-container:
-    name: build managed-mode container
-    # Opt-in: set repo var CONTAINER_PUSH_ENABLED=true once a registry is wired. Otherwise skip cleanly.
-    if: vars.CONTAINER_PUSH_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    needs: [build-frontend]
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: frontend-dist
-          path: src/pdomain_prep_for_pgdp/static/
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - name: Build image (no push — wire up your registry)
+      - name: Notify pd-index of new release
+        env:
+          GH_TOKEN: ${{ secrets.PDOMAIN_INDEX_DISPATCH }}
+          RELEASE_TAG: ${{ github.event.inputs.tag }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          docker build \
-            --build-arg "VERSION=${VERSION}" \
-            -t "pgdp-prep:${GITHUB_REF_NAME}" .
-          docker images pgdp-prep
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::PDOMAIN_INDEX_DISPATCH is not set; index will catch up via daily cron"
+            exit 0
+          fi
+          gh api -X POST /repos/pdomain/pdomain-index-pip/dispatches \
+            -f event_type=pd-release-published \
+            -F 'client_payload[repo]=pdomain-prep-for-pgdp' \
+            -F "client_payload[tag]=$RELEASE_TAG" || \
+            echo "::warning::pdomain-index-pip dispatch failed; index will catch up via daily cron"
