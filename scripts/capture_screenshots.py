@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Playwright script to capture screenshots of all pdomain-prep-for-pgdp screens.
-Requires: uv run --group e2e python scripts/capture-screenshots.py
+Requires: uv run --group e2e python scripts/capture_screenshots.py
 Server must be running at BASE_URL below.
 """
 
