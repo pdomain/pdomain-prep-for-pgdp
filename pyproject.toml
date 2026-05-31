@@ -78,11 +78,11 @@ url = "https://pdomain.github.io/pdomain-index-pip/simple/"
 explicit = true
 
 [tool.uv]
-required-version = "0.11.16"
+required-version = ">=0.11.16"
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-pdomain-ops = { path = "/workspaces/ocr-container/pdomain-ops", editable = true }
+pdomain-ops = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
