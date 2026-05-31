@@ -77,6 +77,16 @@ def test_ci_test_gate_is_after_openapi_export() -> None:
     )
 
 
+def test_makefile_exposes_pdomain_dep_update_target() -> None:
+    deps = _extract_target_deps("upgrade-pdomain-book-tools")
+    assert "update-pdomain-deps" in deps or "update-pdomain-deps" in _extract_target_body(
+        "upgrade-pdomain-book-tools"
+    )
+    text = MAKEFILE.read_text()
+    old_target = "".join(("update", "-p", "d-deps"))
+    assert old_target not in text
+
+
 def test_openapi_export_target_writes_to_repo_root_openapi_json() -> None:
     body = _extract_target_body("openapi-export")
     # The export script call must target repo-root `openapi.json`, not

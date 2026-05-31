@@ -10,7 +10,7 @@ Detection precedence (per ``docs/architecture/dev-local-upgrade-flow.md``):
 
 1. ``uv pip show pdomain-book-tools`` reports an ``Editable project location:`` line.
 2. Marker file at ``.venv/.dev-local`` exists.
-3. Env var ``PD_DEV_LOCAL`` is set to a truthy value (``1``/``true``/``yes``/``on``).
+3. Env var ``PDOMAIN_DEV_LOCAL`` is set to a truthy value (``1``/``true``/``yes``/``on``).
 
 The script is deliberately tolerant: failures from ``uv`` (missing binary,
 non-zero exit) fall through to the marker + env checks rather than
@@ -48,12 +48,12 @@ def _uv_reports_editable() -> bool:
 
 
 def _marker_file_present() -> bool:
-    # Check both legacy marker (.dev-local) and canonical marker (.pd-local-mode, spec #362)
-    return Path(".venv", ".dev-local").is_file() or Path(".venv", ".pd-local-mode").is_file()
+    # Check both legacy marker (.dev-local) and canonical marker (.pdomain-local-mode, spec #362)
+    return Path(".venv", ".dev-local").is_file() or Path(".venv", ".pdomain-local-mode").is_file()
 
 
 def _env_override() -> bool:
-    raw = os.environ.get("PD_DEV_LOCAL", "")
+    raw = os.environ.get("PDOMAIN_DEV_LOCAL", "")
     return raw.strip().lower() in _TRUTHY
 
 

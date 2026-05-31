@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/local-setup-py.sh — re-apply editable Python siblings (idempotent).
 #
-# Called by local-run.sh before launch so editable pd-* siblings survive
+# Called by local-run.sh before launch so editable pdomain-* siblings survive
 # any uv sync that may have reverted them.
 set -euo pipefail
 
@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
 CANONICAL_REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"
 WORKSPACE_ROOT="$(dirname "$CANONICAL_REPO_ROOT")"
-MARKER="$CANONICAL_REPO_ROOT/.venv/.pd-local-mode"
+MARKER="$CANONICAL_REPO_ROOT/.venv/.pdomain-local-mode"
 
 say() { echo "[local-setup-py] $*"; }
 

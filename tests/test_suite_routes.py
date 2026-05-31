@@ -5,7 +5,7 @@ so the frontend AppShell SuiteSiblingsProvider can call real endpoints
 instead of the GAP-4 shims.
 
 Routes under test:
-  GET  /api/suite/installed   → list installed pd-* siblings
+  GET  /api/suite/installed   → list installed pdomain-* siblings
   POST /api/suite/launch      → launch a sibling app
   GET  /api/suite/prefs       → get UI prefs
   PUT  /api/suite/prefs/common → update common UI prefs (theme/density/fontScale)

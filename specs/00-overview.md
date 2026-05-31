@@ -132,7 +132,7 @@ CPU-only Fargate container is always-on. Local mode never sees Lambda at all.
 | Distribution | `uv tool install git+https://…@<tag>` — no PyPI publish; install.sh resolves the latest tag from GitHub |
 
 `pdomain-book-tools` is the shared library powering image processing and OCR. It is
-used by `pdomain-ocr-cli`, `pd-ocr-labeler`, `pd-ocr-trainer`, and this app.
+used by `pdomain-ocr-cli`, `pdomain-ocr-labeler`, `pdomain-ocr-trainer`, and this app.
 
 ---
 
@@ -278,7 +278,7 @@ split-as-sibling-pages editor, illustration extraction, PGDP package
 assembly with the text-review gate.
 
 **Out of scope:** PGDP project submission (still a manual step on
-distributedproofreaders.org), DocTR model training (lives in `pd-ocr-trainer`).
+distributedproofreaders.org), DocTR model training (lives in `pdomain-ocr-trainer`).
 
 **Stretch goal — multi-user:** the architecture does not block it. `Project`
 and `Job` carry `owner_id` (defaults to `"default"` in single-user mode); auth
@@ -290,6 +290,6 @@ filters by `owner_id`. Swap the auth adapter from `none` to `jwt` and it works.
 ## Relationship to Existing Projects
 
 `pdomain-book-tools` is the shared Python library used here, in `pdomain-ocr-cli`,
-`pd-ocr-labeler`, and `pd-ocr-trainer`. They all consume the same OCR/geometry
+`pdomain-ocr-labeler`, and `pdomain-ocr-trainer`. They all consume the same OCR/geometry
 primitives; this app additionally consumes `core/` (this repo's pipeline
 orchestration on top of pdomain-book-tools).

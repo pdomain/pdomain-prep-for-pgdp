@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # ── Data root ────────────────────────────────────────────────────────────
     data_root: Path = Field(default_factory=lambda: Path.home() / "pgdp-projects")
-    doctr_cache_dir: Path = Field(default_factory=lambda: Path.home() / ".cache" / "pd-ml-models")
+    doctr_cache_dir: Path = Field(default_factory=lambda: Path.home() / ".cache" / "pdomain-ml-models")
     config_dir: Path = Field(default_factory=lambda: Path.home() / ".config" / "pgdp-prep")
 
     # ── Storage adapter ──────────────────────────────────────────────────────

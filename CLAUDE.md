@@ -34,7 +34,7 @@ make run            # builds SPA bundle, then launches pgdp-prep at http://127.0
 make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
 
 # local-dev workflow (spec #362) — reference implementation; see ../docs/process/local-dev.md
-make local-setup        # clone any missing sibling pd-* repos
+make local-setup        # clone any missing sibling pdomain-* repos
 make local-dev          # switch to local-dev mode (Python + npm siblings editable + marker)
 make local-check        # print local-dev mode + per-sibling resolution
 make local-upgrade-deps # upgrade deps then restore editables (local-mode only)
@@ -45,14 +45,14 @@ make local-setup-py         # re-apply editable Python siblings (idempotent; cal
 make local-frontend-install # pnpm install + restore pnpm link overlay for @pdomain/pdomain-ui
 make local-frontend-build   # Vite build using local-linked pdomain-ui (called by local-run)
 
-# sibling-dep refresh (spec #363) — see ../docs/process/update-pd-deps.md
-make update-pd-deps     # bump pd-* sibling deps to registry latest; leaves diff for review
+# sibling-dep refresh (spec #363) — see ../docs/process/update-pdomain-deps.md
+make update-pdomain-deps     # bump pdomain-* sibling deps to registry latest; leaves diff for review
 ```
 
 Legacy `dev-local`, `install-local`, `uninstall-local`,
 `check-local-editable`, `upgrade-deps-local`, `run-local` are kept as
 deprecation aliases.
-Legacy `upgrade-pdomain-book-tools` delegates to `update-pd-deps`.
+Legacy `upgrade-pdomain-book-tools` delegates to `update-pdomain-deps`.
 
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose
@@ -112,8 +112,8 @@ In `/workspaces/ocr-container/` (when present):
 
 - `pdomain-book-tools/` — shared OCR/geometry/image-processing primitives.
 - `pdomain-ocr-cli/` — the `install.sh` + uv-tool pattern this repo mirrors.
-- `pd-ocr-labeler/` — separate labeler UI (DocTR labels).
-- `pd-ocr-trainer/` — DocTR training, out of scope here.
+- `pdomain-ocr-labeler/` — separate labeler UI (DocTR labels).
+- `pdomain-ocr-trainer/` — DocTR training, out of scope here.
 
 ## GH issues
 

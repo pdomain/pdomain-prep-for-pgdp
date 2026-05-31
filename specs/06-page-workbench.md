@@ -407,7 +407,7 @@ Selected: split b
 
 **"Show word boxes"** toggles OCR word bboxes as thin blue rectangles on the
 canvas. Hovering a word box shows the OCR text in a tooltip. Clicking a word
-opens a small inline editor (like pd-ocr-labeler, but without bbox editing).
+opens a small inline editor (like pdomain-ocr-labeler, but without bbox editing).
 
 Word coordinates from DocTR are in the split's local coordinate space;
 the workbench transforms them to the full processed-image space for display.

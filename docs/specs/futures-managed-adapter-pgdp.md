@@ -42,7 +42,7 @@ because it determines whether the free-tier budget holds.
 
 **Stays on the PM laptop (CPU):**
 
-- PNG optimization (handled by the sibling `pd-png-optimizer` Rust core
+- PNG optimization (handled by the sibling `pdomain-png-optimizer` Rust core
   via its Python facade — fast, parallelizable across 50 laptops for
   free, no reason to centralize).
 - Final PGDP package assembly / zip.
@@ -210,14 +210,14 @@ this audience.
 
 ## 7. Cross-references
 
-- **`pd-png-optimizer`** — the CPU-side optimizer that stays on PM
+- **`pdomain-png-optimizer`** — the CPU-side optimizer that stays on PM
   laptops. Don't centralize PNG optimization on the GPU side; the
   laptops are free compute and the Rust core is fast.
 - **`pdomain-ocr-labeler-spa`** — recording a parallel future-possibility
   note for an OCR-batch-prior-to-labeling pattern that uses the same
   Modal scheduled-drain shape. Worth keeping the two designs aligned
   if both eventually get built.
-- **`pd-ocr-trainer`** — *unlikely* to share this path. Training runs
+- **`pdomain-ocr-trainer`** — *unlikely* to share this path. Training runs
   for hours and shouldn't share a 6-hour cron'd function. If trainer
   eventually needs Modal, it should use its own Modal app with
   different scheduling and credit accounting.

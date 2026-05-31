@@ -592,7 +592,7 @@ disabled, "Fix all (N)" CTA) · running (per-check loader) · fixing
 `DeskewControls`, `InitialCropControls`, `OcrControls`.
 
 **Note on ArtifactViewer ownership:** `ArtifactViewer` is the shared
-pd-* image-annotation viewer (used by pdomain-prep-for-pgdp PageWorkbench AND
+pdomain-* image-annotation viewer (used by pdomain-prep-for-pgdp PageWorkbench AND
 pdomain-ocr-labeler-spa). It is a pdomain-ui export, not a consumer-owned component.
 `ArtifactViewer` + `ArtifactPlate` + `PaperRender` + `SplitOverlay` +
 `IllustOverlay` + `WordBboxOverlay` all compose on top of pdomain-ui's

@@ -173,7 +173,7 @@ local. Useful for "I want to OCR a book on my laptop without buying a GPU."
 ```sh
 uv tool uninstall pdomain-prep-for-pgdp
 # Optional: remove cached models
-rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
+rm -rf ~/.cache/huggingface/hub/models--CT2534--pdomain-ocr-models
 ```
 
 ---
@@ -297,7 +297,7 @@ would be ruinous.
 The dispatcher batches:
 
 ```python
-# pd_prep_shared/batch_dispatcher.py
+# pdomain_prep_shared/batch_dispatcher.py
 from datetime import datetime, timedelta
 
 class BatchDispatcher:
@@ -372,7 +372,7 @@ startup. Everything else is shared.
 | Batch dispatch | sync | sync | `BatchDispatcher` (5-min) |
 
 ```python
-# pd_prep_shared/bootstrap.py — picked once at process start
+# pdomain_prep_shared/bootstrap.py — picked once at process start
 def build_app() -> FastAPI:
     settings = Settings()  # reads env
 
@@ -523,7 +523,7 @@ backend handles everything else.
 # All modes
 PGDP_PORT=8765                          # default
 PGDP_DATA_ROOT=/var/lib/pgdp            # local mode default ~/pgdp-projects
-PGDP_DOCTR_CACHE_DIR=/opt/pd-ml-models  # default ~/.cache/pd-ml-models
+PGDP_DOCTR_CACHE_DIR=/opt/pdomain-ml-models  # default ~/.cache/pdomain-ml-models
 
 # Adapter selection (auto-detected when omitted)
 PGDP_STORAGE_BACKEND=filesystem|s3

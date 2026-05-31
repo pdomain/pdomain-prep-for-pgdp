@@ -45,7 +45,7 @@ OCR-correctness work often spans both repos.
       location:` line — primary signal.
    2. Fallback: a marker file in `.venv/` (e.g. `.venv/.dev-local`)
       written by `make dev-local` / `make install-local`.
-   3. Last-resort override: env var `PD_DEV_LOCAL=1`.
+   3. Last-resort override: env var `PDOMAIN_DEV_LOCAL=1`.
 3. **UX:** default `make upgrade-deps` **refuses with a message** when
    dev-local is detected, pointing at the sibling recipe. A new
    `make upgrade-deps-local` target performs `uv lock --upgrade`,
@@ -70,7 +70,7 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
     @if uv run python scripts/detect_dev_local.py >/dev/null 2>&1; then \
       echo "❌ dev-local install detected (editable pdomain-book-tools)."; \
       echo "   Run 'make upgrade-deps-local' to upgrade and restore the editable install."; \
-      echo "   Or set PD_DEV_LOCAL=0 and 'make reset' to switch to canonical."; \
+      echo "   Or set PDOMAIN_DEV_LOCAL=0 and 'make reset' to switch to canonical."; \
       exit 1; \
     fi
     uv lock --upgrade
@@ -87,9 +87,9 @@ The marker file should be written at the end of `dev-local` /
 
 ## Why anchor detection on `pdomain-book-tools`
 
-Every pd-* downstream that has a dev-local concept routes editability
+Every pdomain-* downstream that has a dev-local concept routes editability
 through `pdomain-book-tools`. Probing that one package keeps the contract
-uniform across pdomain-ocr-cli, pdomain-ocr-labeler-spa, pd-ocr-trainer, and
+uniform across pdomain-ocr-cli, pdomain-ocr-labeler-spa, pdomain-ocr-trainer, and
 pdomain-prep-for-pgdp — a single shared detection script could eventually
 live in `pdomain-book-tools` itself or in a workspace-level helper.
 
@@ -104,4 +104,4 @@ by `dev-local` / `install-local` (`Makefile` lines 301–311).
 ## Related
 
 - Workspace decision recorded in agent-memory under
-  `.claude/agent-memory/<agent>/` for each pd-* repo.
+  `.claude/agent-memory/<agent>/` for each pdomain-* repo.

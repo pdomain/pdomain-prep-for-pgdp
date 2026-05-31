@@ -94,10 +94,10 @@ def _detect_torch_device() -> str:
 
 def get_predictor(
     *,
-    repo: str = "CT2534/pd-ocr-models",
+    repo: str = "pdomain/pdomain-ocr-models",
     revision: str | None = None,
-    det_filename: str = "detection/pd-all-detection-model-finetuned.pt",
-    reco_filename: str = "recognition/pd-all-recognition-model-finetuned.pt",
+    det_filename: str = "detection/pdomain-all-detection-model-finetuned.pt",
+    reco_filename: str = "recognition/pdomain-all-recognition-model-finetuned.pt",
     detection_path: Path | None = None,
     recognition_path: Path | None = None,
 ) -> Any:

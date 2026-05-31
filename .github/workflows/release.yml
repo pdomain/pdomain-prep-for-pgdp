@@ -92,7 +92,7 @@ jobs:
             --generate-notes \
             --verify-tag
 
-      - name: Notify pd-index of new release
+      - name: Notify pdomain-index of new release
         env:
           GH_TOKEN: ${{ secrets.PDOMAIN_INDEX_DISPATCH }}
           RELEASE_TAG: ${{ github.event.inputs.tag }}
@@ -102,7 +102,7 @@ jobs:
             exit 0
           fi
           gh api -X POST /repos/pdomain/pdomain-index-pip/dispatches \
-            -f event_type=pd-release-published \
+            -f event_type=pdomain-release-published \
             -F 'client_payload[repo]=pdomain-prep-for-pgdp' \
             -F "client_payload[tag]=$RELEASE_TAG" || \
             echo "::warning::pdomain-index-pip dispatch failed; index will catch up via daily cron"

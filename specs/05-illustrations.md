@@ -264,7 +264,7 @@ A user-supplied fine-tuned checkpoint (HF repo or local directory) plugs in
 via ``checkpoint_path``:
 
 ```bash
-pd-ocr --layout-aware \
+pdomain-ocr --layout-aware \
        --layout-checkpoint ~/my-finetuned-pp-doclayout/ \
        page.png
 ```
@@ -483,7 +483,7 @@ see `specs/01-book-config.md` and `specs/08-data-models.md`.
 
 4. **Fine-tuning a custom detector.** PGDP-specific page layouts (engraved
    chapter heads, decorative initials, marginalia) are underrepresented even
-   in PP-DocLayout's training corpus. A future `pd-ocr-trainer` workflow
+   in PP-DocLayout's training corpus. A future `pdomain-ocr-trainer` workflow
    could fine-tune PP-DocLayout_plus-L on labeled regions captured during
    proofing — same pattern as DocTR fine-tuning for recognition. Output is a
    standard HF checkpoint directory; users select it via

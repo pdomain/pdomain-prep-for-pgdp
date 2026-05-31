@@ -18,7 +18,7 @@ else
         local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
         run run-cpu frontend-install \
-        frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pd-deps upgrade-pdomain-book-tools \
+        frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pdomain-deps upgrade-pdomain-book-tools \
         release-patch release-minor release-major _do-release ci-slow docker-build docker-run \
         mise-download mise-trust-worktrees mise-setup mise-doctor upgrade-deps
 
@@ -97,7 +97,7 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 		echo "❌ local-dev install detected (editable siblings present)."; \
 		echo "   'make upgrade-deps' would silently revert them to pinned registry versions."; \
 		echo "   Use 'make local-upgrade-deps' to upgrade and restore editable siblings."; \
-		echo "   Or remove .venv/.pd-local-mode and run 'make reset' to switch to canonical."; \
+		echo "   Or remove .venv/.pdomain-local-mode and run 'make reset' to switch to canonical."; \
 		exit 1; \
 	fi
 	@echo "⬆️ Upgrading dependency lockfile..."
@@ -106,12 +106,12 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 	uv sync --group dev
 	@echo "✅ Dependencies upgraded and environment synced!"
 
-update-pd-deps: ## Bump all sibling pd-* deps (Python + npm) to registry latest; leaves diff for review
-	@./scripts/update-pd-deps.sh
+update-pdomain-deps: ## Bump all sibling pdomain-* deps (Python + npm) to registry latest; leaves diff for review
+	@./scripts/update-pdomain-deps.sh
 
-upgrade-pdomain-book-tools: ## DEPRECATED: use update-pd-deps
-	@echo "warning: 'upgrade-pdomain-book-tools' is deprecated; use 'make update-pd-deps'"
-	@$(MAKE) --no-print-directory update-pd-deps
+upgrade-pdomain-book-tools: ## DEPRECATED: use update-pdomain-deps
+	@echo "warning: 'upgrade-pdomain-book-tools' is deprecated; use 'make update-pdomain-deps'"
+	@$(MAKE) --no-print-directory update-pdomain-deps
 
 # ---------------------------------------------------------------------------
 # Optional: mise-managed tool versions
@@ -314,7 +314,7 @@ ci-slow: ci build ## Full pre-flight for releases (CI plus wheel build)
 
 # ─── local-dev workflow (spec #362) ─────────────────────────────────────────
 
-local-setup: ## Clone any missing sibling pd-* repos into the workspace
+local-setup: ## Clone any missing sibling pdomain-* repos into the workspace
 	@./scripts/local-setup.sh
 
 local-dev: ## Switch to local-dev mode (siblings editable + marker)

@@ -8,6 +8,7 @@ DeprecationWarning.
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,7 +17,12 @@ if TYPE_CHECKING:
 from pdomain_prep_for_pgdp.settings import Settings
 
 
-def test_new_env_var_pd_gpu_backend_is_read(monkeypatch: pytest.MonkeyPatch):
+def test_default_doctr_cache_dir_uses_pdomain_prefix(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HOME", "/tmp/example-home")
+    assert Settings().doctr_cache_dir == Path("/tmp/example-home/.cache/pdomain-ml-models")
+
+
+def test_new_env_var_pdomain_gpu_backend_is_read(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PGDP_GPU_BACKEND", raising=False)
     monkeypatch.setenv("PDOMAIN_GPU_BACKEND", "cpu")
     s = Settings()

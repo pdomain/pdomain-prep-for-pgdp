@@ -305,12 +305,12 @@ image = (
     .env({"CUDA_VISIBLE_DEVICES": "0"})
 )
 
-model_volume = modal.Volume.from_name("pd-ml-models", create_if_missing=False)
+model_volume = modal.Volume.from_name("pdomain-ml-models", create_if_missing=False)
 
 @app.function(
     gpu="T4",
     image=image,
-    volumes={"/opt/pd-ml-models": model_volume},
+    volumes={"/opt/pdomain-ml-models": model_volume},
     timeout=300,
     retries=1,
     container_idle_timeout=300,    # stay warm 5 min after last call
@@ -322,7 +322,7 @@ def run_stage_remote(req: dict) -> dict:
     from pdomain_prep_for_pgdp.api.gpu.schemas import RunStageRequest
     return run_stage(RunStageRequest(**req)).model_dump()
 
-@app.function(gpu="T4", image=image, volumes={"/opt/pd-ml-models": model_volume},
+@app.function(gpu="T4", image=image, volumes={"/opt/pdomain-ml-models": model_volume},
               timeout=1800, container_idle_timeout=600)
 def run_batch_remote(items: list[dict]) -> list[dict]:
     """Batch entry point — all queued (stage_id, page_id) pairs for one
@@ -363,11 +363,11 @@ class ModalGPUBackend:
 Fine-tuned DocTR `.pt` files are uploaded once:
 
 ```bash
-modal volume create pd-ml-models
-modal volume put pd-ml-models ~/.local/share/pd-ml-models/ /
+modal volume create pdomain-ml-models
+modal volume put pdomain-ml-models ~/.local/share/pdomain-ml-models/ /
 ```
 
-Mounted at `/opt/pd-ml-models` in every function. `DOCTR_CACHE_DIR` env var
+Mounted at `/opt/pdomain-ml-models` in every function. `DOCTR_CACHE_DIR` env var
 points pdomain-book-tools at this path. Updating weights is `modal volume put`
 again — no container rebuild.
 

@@ -21,7 +21,7 @@ env/
 .uv-cache/
 
 # Local-dev mode marker (spec #362)
-.venv/.pd-local-mode
+.venv/.pdomain-local-mode
 
 # Frontend
 frontend/node_modules/
