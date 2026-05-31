@@ -203,7 +203,7 @@ convention = "google"
 "tests/test_s3_storage.py" = ["N803", "N805"]
 # Scripts: print() is the output mechanism; no docstrings required; S603/S607/ANN
 # are fine for developer-only helper scripts.
-"scripts/*.py" = ["T201", "D", "ANN", "S603", "S607", "PLW1510"]
+"scripts/*.py" = ["T201", "D", "ANN", "S603", "S607", "PLW1510", "N999"]
 # __init__.py: re-exports without docstrings; F401 used for public API surface.
 "**/__init__.py" = ["D104", "F401", "TC"]
 # Private modules: internal convention, no docstrings required.
