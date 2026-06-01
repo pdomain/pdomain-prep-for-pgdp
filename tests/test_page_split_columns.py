@@ -31,7 +31,6 @@ also be set. Raise `ValidationError` on partial split rows.
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
 
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.core.models import PageRecord
@@ -138,38 +137,12 @@ async def test_split_child_round_trips_through_db(db: SqliteDatabase) -> None:
     assert fetched.reading_order == 1
 
 
-# ─── Validator: partial split fields rejected ────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    "missing_field",
-    ["source_crop_bbox", "split_index", "split_at_stage", "split_suffix"],
-)
-def test_split_child_missing_required_field_raises(missing_field: str) -> None:
-    """If `parent_page_id` is set but any of the four required peers is None,
-    validation fails."""
-    kwargs = _split_child_kwargs()
-    kwargs[missing_field] = None
-    with pytest.raises(ValidationError) as exc_info:
-        PageRecord(**kwargs)
-    assert missing_field in str(exc_info.value)
-
-
-def test_root_page_with_partial_split_fields_raises() -> None:
-    """Setting any split field on a root (parent_page_id=None) page is also an error.
-
-    The semantic is: split fields are ALL-or-NONE keyed off `parent_page_id`.
-    A root page must keep `parent_page_id`, `source_crop_bbox`, `split_index`,
-    `split_at_stage`, `split_suffix` all None.
-    """
-    with pytest.raises(ValidationError):
-        PageRecord(
-            project_id="p1",
-            idx0=0,
-            prefix="f001",
-            source_stem="img_0001",
-            split_index=1,  # partial — no parent_page_id
-        )
+# ─── Validator: partial split fields — note ──────────────────────────────────
+#
+# The all-or-none split validator has been MOVED to PrepPageExtension
+# (src/pdomain_prep_for_pgdp/core/prep_extension.py).
+# PageRecord is now a pure wire/API-response model with no business-logic validator.
+# See tests/test_prep_extension.py for split validator tests.
 
 
 # ─── Recursive splits: child of a child ─────────────────────────────────────

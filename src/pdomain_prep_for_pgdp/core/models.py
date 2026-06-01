@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 
 def _empty_str_to_none(v: str | None) -> str | None:
@@ -266,37 +266,9 @@ class PageRecord(ApiModel):
     """Determines output sort order across siblings. Inherited from the
     user's split definition. Defaults to 0 for root pages."""
 
-    @model_validator(mode="after")
-    def _validate_split_fields_all_or_none(self) -> PageRecord:
-        """Enforce that split fields are all-or-none, keyed off `parent_page_id`.
-
-        - If `parent_page_id` is set: `source_crop_bbox`, `split_index`,
-          `split_at_stage`, `split_suffix` must ALL be set (non-None).
-        - If `parent_page_id` is None: NONE of the four peers may be set.
-
-        `reading_order` is exempt — it has a real default (0) and applies
-        to every page.
-        """
-        peers = {
-            "source_crop_bbox": self.source_crop_bbox,
-            "split_index": self.split_index,
-            "split_at_stage": self.split_at_stage,
-            "split_suffix": self.split_suffix,
-        }
-        missing = [name for name, value in peers.items() if value is None]
-        present = [name for name, value in peers.items() if value is not None]
-
-        if self.parent_page_id is not None:
-            if missing:
-                raise ValueError(
-                    f"split-child PageRecord (parent_page_id={self.parent_page_id!r}) "
-                    f"requires all split fields; missing: {missing}"
-                )
-        elif present:
-            raise ValueError(
-                f"root PageRecord (parent_page_id=None) must not set split fields; got: {present}"
-            )
-        return self
+    # Note: the all-or-none split validator has been removed from PageRecord.
+    # PageRecord is a wire-shape model only (API response); the invariant is
+    # now enforced by PrepPageExtension (src/pdomain_prep_for_pgdp/core/prep_extension.py).
 
 
 # ─── Pipeline state ──────────────────────────────────────────────────────────
