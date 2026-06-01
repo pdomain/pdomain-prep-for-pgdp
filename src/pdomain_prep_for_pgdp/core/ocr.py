@@ -241,7 +241,7 @@ def ocr_page(
 
     from pdomain_book_tools.ocr.document import Document  # pyright: ignore[reportMissingImports]
 
-    doc = Document.from_image_ocr_via_doctr(
+    doc, _rotation_degrees = Document.from_image_ocr_via_doctr(
         image_path,
         source_identifier=image_path.name,
         predictor=predictor,
