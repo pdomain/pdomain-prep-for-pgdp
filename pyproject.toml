@@ -224,6 +224,7 @@ convention = "google"
 # needs the actual class, not a forward reference string). Add TC back
 # incrementally to files that use model_rebuild() or have no Pydantic models.
 "src/pdomain_prep_for_pgdp/core/models.py" = ["E741", "ANN", "D", "TC"]
+"src/pdomain_prep_for_pgdp/core/prep_extension.py" = ["ANN", "D", "TC"]
 "src/pdomain_prep_for_pgdp/api/data/pages.py" = ["E741", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
 # `core/ocr.py` uses L/R/T/B locals to adapt arbitrary bbox shapes from pdomain-book-tools.
 "src/pdomain_prep_for_pgdp/core/ocr.py" = ["N806", "ANN", "D", "G003", "G004", "BLE001", "TRY", "TC"]
