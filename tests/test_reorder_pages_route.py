@@ -26,6 +26,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -73,7 +74,9 @@ def _seed_three_page_project(settings: Settings, owner_id: str = "default") -> N
                 storage_prefix="projects/ro1/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "ro1",
             [
                 PageRecord(
                     project_id="ro1",
@@ -96,7 +99,7 @@ def _seed_three_page_project(settings: Settings, owner_id: str = "default") -> N
                     source_stem="src3",
                     page_type=PageType.normal,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -134,11 +137,13 @@ def _seed_two_user_projects(settings: Settings) -> None:
                 storage_prefix="projects/ro1/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "ro1",
             [
                 PageRecord(project_id="ro1", idx0=0, prefix="p000", source_stem="src1"),
                 PageRecord(project_id="ro1", idx0=1, prefix="p001", source_stem="src2"),
-            ]
+            ],
         )
         await db.put_project(
             Project(
@@ -164,11 +169,13 @@ def _seed_two_user_projects(settings: Settings) -> None:
                 storage_prefix="projects/ro2/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "ro2",
             [
                 PageRecord(project_id="ro2", idx0=0, prefix="p000", source_stem="src1"),
                 PageRecord(project_id="ro2", idx0=1, prefix="p001", source_stem="src2"),
-            ]
+            ],
         )
         await db.close()
 

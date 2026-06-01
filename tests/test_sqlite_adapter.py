@@ -14,6 +14,7 @@ import pytest
 
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.core.models import Job, JobStatus, JobType
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def test_constructor_rejects_unrecognised_url() -> None:
@@ -23,12 +24,12 @@ def test_constructor_rejects_unrecognised_url() -> None:
 
 @pytest.mark.asyncio
 async def test_put_pages_empty_list_is_noop(tmp_path) -> None:
-    """`put_pages([])` must not crash and must not require a connection —
-    short-circuits before touching the cursor."""
+    """`seed_pages_in_store(data_root, project_id, [])` must not crash and
+    must not write any events to the event store."""
     db = SqliteDatabase(f"sqlite:///{(tmp_path / 's.db').as_posix()}")
     await db.initialize()
     # Should NOT raise.
-    await db.put_pages([])
+    seed_pages_in_store(tmp_path / "data", "test-proj", [])
     await db.close()
 
 

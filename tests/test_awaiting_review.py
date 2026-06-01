@@ -10,6 +10,7 @@ Acceptance bullets (issue #69):
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -27,6 +28,10 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from tests.fixtures.seed_pages import seed_page_in_store, seed_pages_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _project(project_id: str = "p1") -> Project:
@@ -92,19 +97,19 @@ async def test_awaiting_review_status_value() -> None:
 
 
 async def test_build_package_parks_when_page_unreviewed(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_page(_page(project.id, 0))
+    seed_page_in_store(tmp_path / "data", project.id, _page(project.id, 0))
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.not_run))
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")
@@ -114,20 +119,20 @@ async def test_build_package_parks_when_page_unreviewed(
 
 
 async def test_build_package_parks_when_page_has_no_review_row(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     """A page with no text_review row at all counts as unreviewed."""
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_page(_page(project.id, 0))
+    seed_page_in_store(tmp_path / "data", project.id, _page(project.id, 0))
     # No text_review stage row inserted at all
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")
@@ -136,19 +141,19 @@ async def test_build_package_parks_when_page_has_no_review_row(
 
 
 async def test_build_package_proceeds_when_all_pages_reviewed(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_page(_page(project.id, 0))
+    seed_page_in_store(tmp_path / "data", project.id, _page(project.id, 0))
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.clean))
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")
@@ -156,7 +161,9 @@ async def test_build_package_proceeds_when_all_pages_reviewed(
     assert refreshed.status == JobStatus.complete
 
 
-async def test_build_package_proceeds_with_no_pages(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_build_package_proceeds_with_no_pages(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     """Project with zero pages has nothing to review — should proceed."""
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
@@ -166,7 +173,7 @@ async def test_build_package_proceeds_with_no_pages(db: SqliteDatabase, storage:
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")
@@ -175,19 +182,19 @@ async def test_build_package_proceeds_with_no_pages(db: SqliteDatabase, storage:
 
 
 async def test_awaiting_review_auto_resumes_after_all_reviewed(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_page(_page(project.id, 0))
+    seed_page_in_store(tmp_path / "data", project.id, _page(project.id, 0))
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.not_run))
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
     assert (await db.get_job("j1")).status == JobStatus.awaiting_review
 
@@ -201,19 +208,19 @@ async def test_awaiting_review_auto_resumes_after_all_reviewed(
 
 
 async def test_awaiting_review_persists_across_restart(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_page(_page(project.id, 0))
+    seed_page_in_store(tmp_path / "data", project.id, _page(project.id, 0))
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.not_run))
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner1 = InProcessJobRunner(database=db, storage=storage)
+    runner1 = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner1.run_pending(max_jobs=1)
     assert (await db.get_job("j1")).status == JobStatus.awaiting_review
 
@@ -221,27 +228,29 @@ async def test_awaiting_review_persists_across_restart(
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.clean))
 
     # Simulate server restart: new runner, no in-memory state
-    runner2 = InProcessJobRunner(database=db, storage=storage)
+    runner2 = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner2.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")
     assert refreshed.status == JobStatus.complete
 
 
-async def test_partial_review_keeps_job_parked(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_partial_review_keeps_job_parked(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     """Two pages: reviewing one is not enough; job stays parked until both clean."""
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
     await db.put_project(project)
-    await db.put_pages([_page(project.id, 0), _page(project.id, 1)])
+    seed_pages_in_store(tmp_path / "data", project.id, [_page(project.id, 0), _page(project.id, 1)])
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.not_run))
     await db.put_page_stage(_stage(project.id, "0001", PageStageStatus.not_run))
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
     assert (await db.get_job("j1")).status == JobStatus.awaiting_review
 
@@ -256,7 +265,9 @@ async def test_partial_review_keeps_job_parked(db: SqliteDatabase, storage: File
     assert (await db.get_job("j1")).status == JobStatus.complete
 
 
-async def test_ignored_page_not_counted_for_review(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_ignored_page_not_counted_for_review(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     """Ignored pages don't need text_review; only non-ignored pages gate the job."""
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
@@ -272,14 +283,14 @@ async def test_ignored_page_not_counted_for_review(db: SqliteDatabase, storage: 
         source_stem="page_001",
         ignore=True,
     )
-    await db.put_pages([normal, ignored])
+    seed_pages_in_store(tmp_path / "data", project.id, [normal, ignored])
     await db.put_page_stage(_stage(project.id, "0000", PageStageStatus.clean))
     # page 0001 has no review row (ignored, so shouldn't matter)
 
     job = _build_job(project.id)
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j1")

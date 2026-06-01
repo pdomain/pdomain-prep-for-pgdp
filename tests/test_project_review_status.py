@@ -25,6 +25,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -77,7 +78,7 @@ def _seed(settings: Settings, *, project_id: str = "rs1", n_pages: int = 3, n_re
             )
             for i in range(n_pages)
         ]
-        await db.put_pages(pages)
+        seed_pages_in_store(settings, project_id, pages)
 
         # Mark n_reviewed pages as clean text_review
         for i in range(n_reviewed):
@@ -163,7 +164,7 @@ def test_review_status_no_parked_job(tmp_path) -> None:
         )
         await db.put_project(project)
         pages = [PageRecord(project_id="rs3", idx0=i, prefix=f"p{i}", source_stem=f"s{i}") for i in range(2)]
-        await db.put_pages(pages)
+        seed_pages_in_store(tmp_path / "data", "rs3", pages)
         await db.close()
 
     settings = _settings(tmp_path)

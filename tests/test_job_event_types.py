@@ -57,7 +57,9 @@ def _project(project_id: str = "p1") -> Project:
 
 
 @pytest.mark.asyncio
-async def test_runner_emits_progress_then_complete(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_emits_progress_then_complete(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     """Use an empty source — unzip succeeds with 0 pages — and assert the
     sequence of event `type`s the broker received.
     """
@@ -94,7 +96,7 @@ async def test_runner_emits_progress_then_complete(db: SqliteDatabase, storage: 
     listener = asyncio.create_task(listen())
     await asyncio.sleep(0.01)
 
-    runner = InProcessJobRunner(database=db, storage=storage, events=events)
+    runner = InProcessJobRunner(database=db, storage=storage, events=events, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     # Wait briefly for the broker to drain.

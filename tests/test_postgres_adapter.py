@@ -19,11 +19,16 @@ from __future__ import annotations
 
 import importlib
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from pdomain_prep_for_pgdp.bootstrap import build_database
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _settings(tmp_path, **overrides) -> Settings:
@@ -111,10 +116,9 @@ def test_constructor_accepts_postgres_and_postgresql_schemes(postgres_module) ->
 
 
 @pytest.mark.asyncio
-async def test_put_pages_empty_list_is_noop(postgres_module) -> None:
+async def test_put_pages_empty_list_is_noop(postgres_module, tmp_path: Path) -> None:
     """`put_pages([])` short-circuits before requiring a connection.
     Mirrors the SQLite contract — the assign-prefixes loop relies on this
     when no pages changed."""
-    db = postgres_module.PostgresDatabase("postgres://u@h/db")
-    # Should NOT raise — no initialize() call, no live connection.
-    await db.put_pages([])
+    # Should NOT raise — seed with empty list is always a no-op.
+    seed_pages_in_store(tmp_path / "data", "test-proj", [])

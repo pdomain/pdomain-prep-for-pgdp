@@ -78,8 +78,12 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_executes_queued_unzip_job(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
 
     project = _project()
     await db.put_project(project)
@@ -96,7 +100,7 @@ async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: Fil
     job.progress.message = src_key  # encode source_key into the job for now
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
+    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05, data_root=tmp_path / "data")
     # Unzip handler enqueues a thumbnails job; let the runner pick that up too.
     await runner.run_pending(max_jobs=4)
 
@@ -107,7 +111,8 @@ async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: Fil
     assert refreshed.progress.total == 2
     assert refreshed.progress.current == 2
 
-    _, _, total = await db.list_pages(project.id, None, 100)
+    _svc = build_page_service(tmp_path / "data", project.id)
+    total = len(list_page_records(_svc, project.id))
     assert total == 2
 
     # Unzip should have queued a follow-up thumbnails job for the project.
@@ -118,7 +123,9 @@ async def test_runner_executes_queued_unzip_job(db: SqliteDatabase, storage: Fil
 
 
 @pytest.mark.asyncio
-async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_records_error_on_failure(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
@@ -135,7 +142,7 @@ async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: File
     job.progress.message = f"projects/{project.id}/missing.zip"
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
+    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     refreshed = await db.get_job("j2")
@@ -145,7 +152,7 @@ async def test_runner_records_error_on_failure(db: SqliteDatabase, storage: File
 
 
 @pytest.mark.asyncio
-async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: FilesystemStorage, tmp_path) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
@@ -159,16 +166,16 @@ async def test_runner_skips_non_queued_jobs(db: SqliteDatabase, storage: Filesys
     )
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
+    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05, data_root=tmp_path / "data")
     n = await runner.run_pending(max_jobs=1)
     assert n == 0
 
 
 @pytest.mark.asyncio
-async def test_runner_loop_can_be_cancelled(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_runner_loop_can_be_cancelled(db: SqliteDatabase, storage: FilesystemStorage, tmp_path) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
-    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05)
+    runner = InProcessJobRunner(database=db, storage=storage, poll_interval=0.05, data_root=tmp_path / "data")
     task = asyncio.create_task(runner.run_forever())
     await asyncio.sleep(0.15)
     task.cancel()

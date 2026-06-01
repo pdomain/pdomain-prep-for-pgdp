@@ -1,4 +1,4 @@
-"""/api/data/projects/* — project CRUD."""
+"""/api/data/projects/* -- project CRUD."""
 
 from __future__ import annotations
 
@@ -11,7 +11,13 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from pdomain_prep_for_pgdp.api.dependencies import DatabaseDep, SettingsDep, StorageDep, UserDep
+from pdomain_prep_for_pgdp.api.dependencies import (
+    DatabaseDep,
+    PageServiceDep,
+    SettingsDep,
+    StorageDep,
+    UserDep,
+)
 from pdomain_prep_for_pgdp.core.ingest import extract_zip_image_thumbnail, peek_zip_image_names
 from pdomain_prep_for_pgdp.core.models import (
     Job,
@@ -42,7 +48,7 @@ def _compute_stage_artifacts_bytes(data_root: Path, project_id: str) -> int:
     """Walk pages/*/stages/ under the project directory and sum file sizes.
 
     Returns 0 when the directory doesn't exist yet (fresh project or no stages run).
-    Never raises — missing or inaccessible paths return 0 so the banner stays hidden.
+    Never raises -- missing or inaccessible paths return 0 so the banner stays hidden.
     """
     project_dir = data_root / "projects" / project_id / "pages"
     if not project_dir.is_dir():
@@ -104,7 +110,7 @@ class SourcePreviewResponse(BaseModel):
 
     Lets the SPA render a thumbnail strip / sanity-check the upload before
     triggering ingest. Backed by `peek_zip_image_names`, which only reads
-    the zip's central directory — no per-entry decompression.
+    the zip's central directory -- no per-entry decompression.
     """
 
     filenames: list[str]
@@ -171,7 +177,7 @@ async def get_project(
     if project.owner_id != user.user_id:
         raise HTTPException(403, "not authorised")
     # Compute disk-cost fields on-demand (M4 spec §Disk-cost banner).
-    # These are read-only annotations — never persisted to the DB.
+    # These are read-only annotations -- never persisted to the DB.
     return project.model_copy(
         update={
             "stage_artifacts_bytes": _compute_stage_artifacts_bytes(settings.data_root, project_id),
@@ -190,6 +196,7 @@ async def update_project_config(
     body: UpdateConfigRequest,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> UpdateConfigResponse:
     project = await db.get_project(project_id)
     if project is None:
@@ -199,7 +206,7 @@ async def update_project_config(
     merged = cast(dict[str, object], project.config.model_dump())
     merged.update(body.project_config)
     # `name` is normally a top-level Project field, but conceptually it's the
-    # same data as `book_name`. Keep them in sync — whichever the caller sends
+    # same data as `book_name`. Keep them in sync -- whichever the caller sends
     # wins, with explicit `name` taking priority over `project_config.book_name`.
     book_name = merged.get("book_name")
     new_name = body.name or (book_name if isinstance(book_name, str) else None)
@@ -213,7 +220,7 @@ async def update_project_config(
     # Re-derive prefixes whenever ranges change. Cheap (in-memory walk).
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
-    _ = await assign_prefixes(project=project, database=db)
+    _ = await assign_prefixes(project=project, page_service=page_service)
     return UpdateConfigResponse(
         project_config=project.config,
         updated_at=project.updated_at,
@@ -261,7 +268,7 @@ async def archive_project(
 ) -> Project:
     """Soft-delete: hide the project from default listings without removing data.
 
-    Idempotent — archiving an already-archived project is a no-op (still 200).
+    Idempotent -- archiving an already-archived project is a no-op (still 200).
     """
     return await _set_archived(project_id, archived=True, user=user, db=db)
 
@@ -281,7 +288,7 @@ async def source_preview(
     """Return image filenames + total count from the project's `source.zip`.
 
     404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse
-    of 403 → 404 to avoid leaking existence) and for the case where the
+    of 403 -> 404 to avoid leaking existence) and for the case where the
     presigned upload URL was issued but the PUT never landed.
     """
     project = await db.get_project(project_id)
@@ -311,18 +318,7 @@ async def source_preview_thumbnail(
     db: DatabaseDep,
     storage: StorageDep,
 ) -> Response:
-    """Return a JPEG thumbnail for one image entry inside the project's source.zip.
-
-    Pairs with ``GET /source-preview`` (slice 2): that route returns the
-    image filenames; the SPA then issues one of these per filename to fill
-    the preview strip. Auth/ownership match slice 2 verbatim — collapsing
-    403 → 404 so existence isn't leaked.
-
-    Unknown filename and non-image filename both 404 (see
-    ``extract_zip_image_thumbnail``); a corrupt image inside the zip
-    becomes a 500 today, since that indicates a broken upload rather than
-    a routine missing entry — let the SPA surface it.
-    """
+    """Return a JPEG thumbnail for one image entry inside the project's source.zip."""
     from pdomain_prep_for_pgdp.core.ingest import ZipImageEntryNotFound
 
     project = await db.get_project(project_id)
@@ -365,13 +361,16 @@ async def get_project_review_status(
     project_id: str,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> ReviewStatusResponse:
     """Return unreviewed page count + awaiting_review job for a project."""
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    pages, _, _ = await db.list_pages(project_id, None, 1_000_000)
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    pages = list_page_records(page_service, project_id)
     proof_pages = [p for p in pages if not p.ignore]
     proof_page_ids = {f"{p.idx0:04d}" for p in proof_pages}
 
@@ -416,12 +415,7 @@ async def project_run_dirty(
     settings: SettingsDep,
     stage_filter: str | None = None,
 ) -> JobSubmitResponse:
-    """Submit a project_run_dirty job.
-
-    Fans out across every page in the project, running every dirty or
-    not-run stage in DAG order.  An optional ``stage_filter`` query
-    parameter restricts the sweep to a single stage_id.
-    """
+    """Submit a project_run_dirty job."""
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
@@ -453,12 +447,7 @@ async def project_build_package(
     user: UserDep,
     db: DatabaseDep,
 ) -> JobSubmitResponse:
-    """Submit a build_package job for the project.
-
-    The job runner will park it in ``awaiting_review`` if any proof-range
-    page has not yet had its ``text_review`` stage marked clean.  It
-    auto-resumes once the last page is attested.
-    """
+    """Submit a build_package job for the project."""
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")

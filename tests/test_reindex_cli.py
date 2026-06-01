@@ -35,6 +35,7 @@ from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     commit_stage_artifact,
     stage_artifact_path,
 )
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -64,7 +65,9 @@ async def _prep_clean_state(tmp_path: Path) -> tuple[SqliteDatabase, Path]:
     db = SqliteDatabase(f"sqlite:///{(tmp_path / 'state.db').as_posix()}")
     await db.initialize()
     await db.put_project(_project())
-    await db.put_pages([PageRecord(project_id="proj1", idx0=0, prefix="p001", source_stem="src")])
+    seed_pages_in_store(
+        tmp_path / "data", "proj1", [PageRecord(project_id="proj1", idx0=0, prefix="p001", source_stem="src")]
+    )
     # Lazy-init: insert all 22 not-run rows, then commit one stage.
     await db.init_page_stages_for_page("proj1", "0000")
     await commit_stage_artifact(
@@ -416,7 +419,9 @@ async def test_reindex_project_id_argument_scopes_scan(tmp_path: Path) -> None:
     db, data_root = await _prep_clean_state(tmp_path)
     # Add a second project with drift.
     await db.put_project(_project("proj2"))
-    await db.put_pages([PageRecord(project_id="proj2", idx0=0, prefix="p001", source_stem="src")])
+    seed_pages_in_store(
+        tmp_path / "data", "proj2", [PageRecord(project_id="proj2", idx0=0, prefix="p001", source_stem="src")]
+    )
     bogus = data_root / "projects" / "proj2" / "pages" / "0000" / "stages" / "auto_deskew" / "output.png"
     bogus.parent.mkdir(parents=True, exist_ok=True)
     bogus.write_bytes(b"junk")

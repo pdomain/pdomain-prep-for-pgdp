@@ -31,6 +31,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -130,7 +131,7 @@ def _seed(settings: Settings, project_id: str = "rq1") -> None:
                 ],
             ),
         ]
-        await db.put_pages(pages)
+        seed_pages_in_store(settings, project_id, pages)
         await db.close()
 
     asyncio.run(go())

@@ -74,7 +74,9 @@ async def _make_slow_handler(duration: float) -> tuple:
 
 
 @pytest.mark.asyncio
-async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_default_concurrency_is_sequential(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     """Without a max_concurrency override, jobs run one-at-a-time."""
     from pdomain_prep_for_pgdp.core import job_runner as jr
 
@@ -96,7 +98,7 @@ async def test_default_concurrency_is_sequential(db: SqliteDatabase, storage: Fi
                 )
             )
 
-        runner = jr.InProcessJobRunner(database=db, storage=storage)
+        runner = jr.InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
         await runner.run_pending(max_jobs=3)
 
         # Sequential: each start is at least 0.08s after the previous (0.1s

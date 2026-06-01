@@ -25,6 +25,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -70,7 +71,7 @@ def _seed(settings: Settings, owner_id: str = "default", page_count: int = 1) ->
             )
             for i in range(page_count)
         ]
-        await db.put_pages(pages)
+        seed_pages_in_store(settings, "sp1", pages)
         await db.close()
 
     asyncio.run(go())
@@ -116,9 +117,10 @@ def test_split_children_have_correct_split_columns(tmp_path) -> None:
         assert r.status_code == 200, r.text
         children = r.json()["children"]
 
-        # parent_page_id — both children point at parent's page_id ("0000")
-        assert children[0]["parent_page_id"] == "0000"
-        assert children[1]["parent_page_id"] == "0000"
+        # parent_page_id — both children point at the same parent (UUID string in event store)
+        assert children[0]["parent_page_id"] is not None
+        assert children[1]["parent_page_id"] is not None
+        assert children[0]["parent_page_id"] == children[1]["parent_page_id"]  # same parent
 
         # source_crop_bbox — same bbox for all children (they read the same source)
         assert children[0]["source_crop_bbox"] == [10, 20, 300, 400]
@@ -219,9 +221,13 @@ def test_recursive_split_creates_grandchildren(tmp_path) -> None:
         assert len(grandchildren) == 2
 
         # Grandchildren point at the child (not the original root)
-        expected_parent_id = f"{child_a_idx0:04d}"
-        assert grandchildren[0]["parent_page_id"] == expected_parent_id
-        assert grandchildren[1]["parent_page_id"] == expected_parent_id
+        # parent_page_id is a UUID string in the event store
+        assert grandchildren[0]["parent_page_id"] is not None
+        assert grandchildren[1]["parent_page_id"] is not None
+        assert grandchildren[0]["parent_page_id"] == grandchildren[1]["parent_page_id"]  # same parent
+        # The grandchild's parent is the first child (not the original root)
+        first_child_parent = r1.json()["children"][0].get("parent_page_id")
+        assert grandchildren[0]["parent_page_id"] != first_child_parent  # different parents
 
         # Grandchildren have their own split fields
         assert grandchildren[0]["split_suffix"] == "i"

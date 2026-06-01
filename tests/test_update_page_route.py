@@ -17,6 +17,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
+from tests.fixtures.seed_pages import seed_pages_in_store
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -69,7 +71,9 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 storage_prefix="projects/up1/",
             )
         )
-        await db.put_pages([PageRecord(project_id="up1", idx0=0, prefix="", source_stem="src1")])
+        seed_pages_in_store(
+            settings, "up1", [PageRecord(project_id="up1", idx0=0, prefix="", source_stem="src1")]
+        )
         await db.close()
 
     asyncio.run(go())

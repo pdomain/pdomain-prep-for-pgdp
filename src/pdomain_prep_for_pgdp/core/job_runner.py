@@ -27,6 +27,8 @@ from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 from .ingest import generate_thumbnails, unzip_source
 from .models import Job, JobStatus, JobType, PageStageStatus
 from .packaging import build_package
+from .page_service_helpers import list_page_records
+from .page_store_factory import build_page_service
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -224,7 +226,7 @@ class InProcessJobRunner:
                     continue
                 if job.type != JobType.build_package:
                     continue
-                if await _all_pages_reviewed(self._db, job.project_id):
+                if await _all_pages_reviewed(self._db, job.project_id, self._data_root):
                     requeued = job.model_copy(update={"status": JobStatus.queued})
                     await self._db.put_job(requeued)
                     log.info("re-queued awaiting_review job %s (all pages reviewed)", job.id)
@@ -355,6 +357,9 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
     async def _report(current: int, total: int, stem: str) -> None:
         _ = await runner.update_progress(job, current=current, total=total, message=f"unzipping {stem}")
 
+    if runner._data_root is None:
+        raise RuntimeError("_handle_unzip: runner._data_root is required for event-store page creation")
+    _ps_unzip = build_page_service(runner._data_root, job.project_id)
     result = await unzip_source(
         project=project,
         source_type=source_type,
@@ -362,6 +367,7 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
         storage=runner.storage,
         database=runner.db,
         progress_cb=_report,
+        page_service=_ps_unzip,
     )
     _ = await runner.update_progress(
         job,
@@ -397,11 +403,17 @@ async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
     async def _report(current: int, total: int, stem: str) -> None:
         _ = await runner.update_progress(job, current=current, total=total, message=f"thumbnail {stem}")
 
+    if runner._data_root is None:
+        raise RuntimeError(
+            "_handle_thumbnails: runner._data_root is required for event-store thumbnail generation"
+        )
+    _ps_thumb = build_page_service(runner._data_root, job.project_id)
     result = await generate_thumbnails(
         project=project,
         storage=runner.storage,
         database=runner.db,
         progress_cb=_report,
+        page_service=_ps_thumb,
     )
     _ = await runner.update_progress(
         job,
@@ -416,14 +428,15 @@ async def _handle_build_package(runner: InProcessJobRunner, job: Job) -> None:
     if project is None:
         raise FileNotFoundError(f"project {job.project_id} not found")
 
-    if not await _all_pages_reviewed(runner.db, job.project_id):
+    if not await _all_pages_reviewed(runner.db, job.project_id, runner._data_root):
         parked = job.model_copy(update={"status": JobStatus.awaiting_review})
         await runner.db.put_job(parked)
         await runner.emit(parked)
         runner.park_job(job.id)
         return
 
-    pages, _, _ = await runner.db.list_pages(job.project_id, None, 1_000_000)
+    _ps_build = build_page_service(runner._data_root, job.project_id) if runner._data_root else None
+    pages = list_page_records(_ps_build, job.project_id) if _ps_build else []
     result = await build_package(project=project, pages=pages, storage=runner.storage)
     _ = await runner.update_progress(
         job,
@@ -486,9 +499,7 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
         raise FileNotFoundError(f"project {project_id!r} not found")
     # page_source_key: look it up from the DB rather than embedding in payload.
     # idx0 is derivable from page_id (zero-padded int).
-    idx0 = int(page_id)
-    page = await runner.db.get_page(project_id, idx0)
-    page_source_key = page.source_key if page is not None else None
+    page_source_key = None  # source_key is not stored in event store; stage loads from BlobStore
 
     await run_stage(
         data_root=data_root,
@@ -534,7 +545,8 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
     if project is None:
         raise FileNotFoundError(f"project {job.project_id!r} not found")
 
-    pages, _, _ = await runner.db.list_pages(job.project_id, None, 1_000_000)
+    _ps_dirty = build_page_service(runner._data_root, job.project_id) if runner._data_root else None
+    pages = list_page_records(_ps_dirty, job.project_id) if _ps_dirty else []
 
     # Collect pages that have at least one dirty/not-run stage (honouring filter).
     dirty_statuses = {PageStageStatus.dirty, PageStageStatus.not_run}
@@ -667,9 +679,13 @@ async def _distinct_owner_ids(db: IDatabase) -> list[str]:
     return list(await db.list_distinct_owner_ids())
 
 
-async def _all_pages_reviewed(db: IDatabase, project_id: str) -> bool:
+async def _all_pages_reviewed(db: IDatabase, project_id: str, data_root=None) -> bool:
     """True when every non-ignored page has a clean text_review stage row."""
-    pages, _, _ = await db.list_pages(project_id, None, 1_000_000)
+    if data_root is not None:
+        _ps = build_page_service(data_root, project_id)
+        pages = list_page_records(_ps, project_id)
+    else:
+        pages = []
     proof_pages = [p for p in pages if not p.ignore]
     if not proof_pages:
         return True

@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import zipfile
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -27,6 +28,10 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from tests.fixtures.seed_pages import seed_pages_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _project(project_id: str = "p1") -> Project:
@@ -59,7 +64,9 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_build_package_handler_writes_zip(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_build_package_handler_writes_zip(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
 
     project = _project()
@@ -79,7 +86,7 @@ async def test_build_package_handler_writes_zip(db: SqliteDatabase, storage: Fil
             )
         ],
     )
-    await db.put_pages([page])
+    seed_pages_in_store(tmp_path / "data", project.id, [page])
     await storage.put_bytes(page.outputs[0].for_zip_image_key, b"\x89PNG-fake")
     await storage.put_bytes(page.outputs[0].for_zip_text_key, b"page text")
     # Mark page as reviewed so build_package is not gated.
@@ -101,7 +108,7 @@ async def test_build_package_handler_writes_zip(db: SqliteDatabase, storage: Fil
     )
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     n = await runner.run_pending(max_jobs=1)
     assert n == 1
 

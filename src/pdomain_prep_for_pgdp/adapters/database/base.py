@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.core.models import (
         Job,
-        PageRecord,
         PageStageState,
         PageStageStatus,
         Project,
@@ -69,20 +68,6 @@ class IDatabase(Protocol):
 
     async def delete_project(self, project_id: str) -> None: ...
 
-    # ── Pages ───────────────────────────────────────────────────────────────
-    async def list_pages(
-        self,
-        project_id: str,
-        cursor: str | None = None,
-        limit: int = 50,
-    ) -> tuple[list[PageRecord], str | None, int]: ...
-
-    async def get_page(self, project_id: str, idx0: int) -> PageRecord | None: ...
-
-    async def put_page(self, page: PageRecord) -> None: ...
-
-    async def put_pages(self, pages: list[PageRecord]) -> None: ...
-
     # ── Jobs ────────────────────────────────────────────────────────────────
     async def get_job(self, job_id: str) -> Job | None: ...
 
@@ -104,11 +89,6 @@ class IDatabase(Protocol):
     async def delete_page_stages_for_page(self, project_id: str, page_id: str) -> None: ...
 
     async def init_page_stages_for_page(self, project_id: str, page_id: str) -> int: ...
-
-    # ── Split helpers ────────────────────────────────────────────────────────
-    async def delete_page(self, project_id: str, idx0: int) -> None: ...
-
-    async def list_pages_by_parent_id(self, project_id: str, parent_page_id: str) -> list[PageRecord]: ...
 
     # ── Full-text search (FTS5 / tsvector) ───────────────────────────────────
     async def upsert_page_text(self, project_id: str, page_id: str, idx0: int, ocr_text: str) -> None: ...

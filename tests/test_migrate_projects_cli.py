@@ -30,6 +30,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -81,7 +82,7 @@ async def _seed_db(
     await db.initialize()
     await db.put_project(_project(project_id))
     pages = [_page(project_id, i, processing_status=processing_status) for i in range(page_count)]
-    await db.put_pages(pages)
+    seed_pages_in_store(tmp_path / "data", project_id, pages)
 
     for page in pages:
         page_id = f"{page.idx0:04d}"
@@ -269,7 +270,7 @@ async def test_force_rebuild_all_projects(tmp_path: Path) -> None:
 
     for pid in ("alpha", "beta"):
         await db.put_project(_project(pid))
-        await db.put_pages([_page(pid, 0)])
+        seed_pages_in_store(tmp_path / "data", pid, [_page(pid, 0)])
         await db.init_page_stages_for_page(pid, "0000")
         stages_dir = data_root / "projects" / pid / "pages" / "0000" / "stages"
         stages_dir.mkdir(parents=True, exist_ok=True)

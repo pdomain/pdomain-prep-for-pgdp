@@ -18,7 +18,6 @@ a worker thread.
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import io
 import logging
@@ -26,15 +25,11 @@ import os
 import re
 import zipfile
 from collections.abc import Awaitable, Callable
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast
 
-import anyio.to_thread
-
 from .models import (
-    PageRecord,
     PipelineState,
     Project,
     ProjectStatus,
@@ -78,7 +73,7 @@ async def unzip_source(
     database: IDatabase,
     progress_cb: ProgressCb | None = None,
     zip_limits: _ZipLimitsProto | None = None,
-    page_service: PageService | None = None,
+    page_service: PageService,
 ) -> IngestResult:
     """Extract source files (or list a folder), create one PageRecord per image.
 
@@ -97,103 +92,60 @@ async def unzip_source(
         entries = await _enumerate_folder(storage, source_key)
 
     total = len(entries)
-    pages: list[PageRecord] = []
     _unzip_cb_failures = 0
     _progress_cb_max_failures = 3
 
-    # ── Event-store path (page_service provided) ────────────────────────
-    if page_service is not None:
-        import uuid as _uuid
+    # Pages live in the event store only.
+    import uuid as _uuid
 
-        from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
-        from pdomain_ops.pages import (
-            PageRecord as OpsPageRecord,
-        )
-        from pdomain_ops.pages import (
-            ProjectRecord,
-            set_extension,
-        )
+    from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
+    from pdomain_ops.pages import (
+        PageRecord as OpsPageRecord,
+    )
+    from pdomain_ops.pages import (
+        ProjectRecord,
+        set_extension,
+    )
 
-        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
-        project_uuid = _uuid.UUID(project.id)
-        proj_record = ProjectRecord(project_id=project_uuid, name=project.config.book_name)
-        proj_agg = ProjectAggregate(record=proj_record)
+    def _to_uuid(s: str) -> _uuid.UUID:
+        try:
+            return _uuid.UUID(s)
+        except (ValueError, AttributeError):
+            return _uuid.uuid5(_uuid.NAMESPACE_OID, s)
 
-        for valid_idx0, entry in enumerate(entries):
-            page_id = _uuid.uuid4()
-            ops_record = OpsPageRecord(
-                page_id=page_id,
-                page_index=valid_idx0,
-                source="raw",
-            )
-            source_hash = page_service.blobs.write(entry.bytes_)
-            ext = PrepPageExtension(
-                project_id=project.id,
-                idx0=valid_idx0,
-                prefix="",
-                source_stem=entry.stem,
-                ignore=(
-                    valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
-                ),
-                source_blob_hash=source_hash,
-            )
-            set_extension(ops_record, "prep", ext)
-            page_agg = PageAggregate(record=ops_record)
-            page_service.store.save_page(page_agg)
-            proj_agg.add_page(page_id=page_id, page_index=valid_idx0)
+    project_uuid = _to_uuid(project.id)
+    proj_record = ProjectRecord(project_id=project_uuid, name=project.config.book_name)
+    proj_agg = ProjectAggregate(record=proj_record)
 
-            if progress_cb is not None:
-                try:
-                    await progress_cb(valid_idx0 + 1, total, entry.stem)
-                    _unzip_cb_failures = 0
-                except Exception:
-                    _unzip_cb_failures += 1
-                    if _unzip_cb_failures >= _progress_cb_max_failures:
-                        log.error(
-                            "progress_cb failed %d times consecutively; disabling for this job",
-                            _unzip_cb_failures,
-                        )
-                        progress_cb = None
-                    else:
-                        log.exception(
-                            "unzip progress_cb raised (failure %d/%d)",
-                            _unzip_cb_failures,
-                            _progress_cb_max_failures,
-                        )
-
-        page_service.store.save_project(proj_agg)
-        # Note: database.put_pages is NOT called — pages live in event store only.
-        project = project.model_copy(
-            update={
-                "page_count": total,
-                "proof_page_count": total,
-                "status": ProjectStatus.ingesting,
-                "updated_at": datetime.now(UTC),
-                "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=[]),
-            }
-        )
-        await database.put_project(project)
-        return IngestResult(page_count=total, errors=[])
-
-    # ── Legacy path (no page_service) ────────────────────────────────────
     for valid_idx0, entry in enumerate(entries):
-        pages.append(
-            PageRecord(
-                project_id=project.id,
-                idx0=valid_idx0,
-                prefix="",
-                source_stem=entry.stem,
-                ignore=(
-                    valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
-                ),
-                source_key=entry.key,
-            )
+        page_id = _uuid.uuid4()
+        ops_record = OpsPageRecord(
+            page_id=page_id,
+            page_index=valid_idx0,
+            source="raw",
         )
+        source_hash = page_service.blobs.write(entry.bytes_)
+        ext = PrepPageExtension(
+            project_id=project.id,
+            idx0=valid_idx0,
+            prefix="",
+            source_stem=entry.stem,
+            ignore=(
+                valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
+            ),
+            source_blob_hash=source_hash,
+        )
+        set_extension(ops_record, "prep", ext)
+        page_agg = PageAggregate(record=ops_record)
+        page_service.store.save_page(page_agg)
+        proj_agg.add_page(page_id=page_id, page_index=valid_idx0)
+
         if progress_cb is not None:
             try:
                 await progress_cb(valid_idx0 + 1, total, entry.stem)
-                _unzip_cb_failures = 0  # reset on success — "consecutive" semantics
+                _unzip_cb_failures = 0
             except Exception:
                 _unzip_cb_failures += 1
                 if _unzip_cb_failures >= _progress_cb_max_failures:
@@ -209,22 +161,18 @@ async def unzip_source(
                         _progress_cb_max_failures,
                     )
 
-    if pages:
-        await database.put_pages(pages)
-
+    page_service.store.save_project(proj_agg)
     project = project.model_copy(
         update={
-            "page_count": len(pages),
-            "proof_page_count": len(pages),
-            # Stay in `ingesting` until thumbnails finish — the project page
-            # decides what to render based on the active job, not status.
+            "page_count": total,
+            "proof_page_count": total,
             "status": ProjectStatus.ingesting,
             "updated_at": datetime.now(UTC),
             "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=[]),
         }
     )
     await database.put_project(project)
-    return IngestResult(page_count=len(pages), errors=[])
+    return IngestResult(page_count=total, errors=[])
 
 
 # ─── Step 2: thumbnails (batched in one threadpool call) ───────────────────
@@ -264,7 +212,7 @@ async def generate_thumbnails(
     database: IDatabase,
     progress_cb: ProgressCb | None = None,
     thumbnail_workers: int | None = None,
-    page_service: PageService | None = None,
+    page_service: PageService,
 ) -> IngestResult:
     """Walk every page without a thumbnail, generate + persist JPGs in batch.
 
@@ -281,222 +229,98 @@ async def generate_thumbnails(
     ``thumbnail_workers`` arg → ``PGDP_THUMBNAIL_WORKERS`` env →
     ``os.cpu_count()``. Pass ``thumbnail_workers=1`` to disable the pool.
     """
-    # ── Event-store path (page_service provided) ────────────────────────
-    if page_service is not None:
-        import uuid as _uuid
+    # Pages live in the event store only.
+    import uuid as _uuid
 
-        from pdomain_ops.pages import ProvenanceNode, get_extension
+    from pdomain_ops.pages import ProvenanceNode, get_extension
 
-        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
-        project_uuid = _uuid.UUID(project.id)
+    def _to_uuid_thumb(s: str) -> _uuid.UUID:
         try:
-            proj_agg = page_service.store.get_project(project_uuid)
-        except Exception:
-            await _mark_step_complete(project, database, step_id=2)
-            return IngestResult(page_count=0, errors=[])
+            return _uuid.UUID(s)
+        except (ValueError, AttributeError):
+            return _uuid.uuid5(_uuid.NAMESPACE_OID, s)
 
-        todo_evt: list[tuple[_uuid.UUID, str, bytes]] = []
-        for page_id in proj_agg.record.page_ids:
-            try:
-                page_agg = page_service.store.get_page(page_id)
-            except Exception:
-                log.warning("generate_thumbnails: could not load page %s", page_id)
-                continue
-            ext = get_extension(page_agg.record, "prep", PrepPageExtension)
-            if ext is None or ext.thumbnail_blob_hash is not None:
-                continue
-            if ext.source_blob_hash is None:
-                continue
-            source_bytes = page_service.blobs.read(ext.source_blob_hash)
-            todo_evt.append((page_id, ext.source_stem, source_bytes))
+    project_uuid = _to_uuid_thumb(project.id)
+    try:
+        proj_agg = page_service.store.get_project(project_uuid)
+    except Exception:
+        await _mark_step_complete(project, database, step_id=2)
+        return IngestResult(page_count=0, errors=[])
 
-        total_evt = len(todo_evt)
-        if total_evt == 0:
-            await _mark_step_complete(project, database, step_id=2)
-            return IngestResult(page_count=0, errors=[])
-
-        errors_evt: list[str] = []
-        updated_count = 0
-        for page_id, stem, source_bytes in todo_evt:
-            try:
-                thumb_bytes = _make_thumbnail_bytes(source_bytes)
-            except _CorruptImageError as e:
-                errors_evt.append(f"{stem}: {e!r}")
-                continue
-            thumb_hash = page_service.blobs.write(thumb_bytes)
-
-            # Reload page aggregate, attach provenance node, update extension
+    todo_evt: list[tuple[_uuid.UUID, str, bytes]] = []
+    errors_evt: list[str] = []
+    for page_id in proj_agg.record.page_ids:
+        try:
             page_agg = page_service.store.get_page(page_id)
-            node = ProvenanceNode(
-                id=f"thumbnail:{page_id}",
-                source="thumbnail",
-                tool="prep-for-pgdp",
-                blob_refs=[thumb_hash],
-            )
-            page_agg.preprocess(provenance_node=node, blob_refs=[thumb_hash])
-
-            # Persist thumbnail_blob_hash via event-backed set_extension so it
-            # survives reload/replay (ops 0.7.1+: fires ExtensionSet event).
-            # Re-fetch ext from the reloaded aggregate (it may have changed).
-            current_ext = get_extension(page_agg.record, "prep", PrepPageExtension)
-            if current_ext is not None:
-                updated_ext_data = current_ext.model_copy(update={"thumbnail_blob_hash": thumb_hash})
-                page_agg.set_extension("prep", updated_ext_data)
-            page_service.store.save_page(page_agg)
-            updated_count += 1
-
-        await _mark_step_complete(project, database, step_id=2)
-        return IngestResult(page_count=updated_count, errors=errors_evt)
-
-    # ── Legacy IStorage path ─────────────────────────────────────────────
-    pages_in, _, _ = await database.list_pages(project.id, None, 1_000_000)
-
-    # Read source bytes for every page that still needs a thumbnail. We
-    # gather all bytes first so the threadpool task only does CPU work.
-    source_read_errors: list[str] = []
-    todo: list[tuple[int, str, bytes]] = []
-    for page in pages_in:
-        if page.thumbnail_key:
-            continue
-        if not page.source_key:
-            continue
-        try:
-            data = await storage.get_bytes(page.source_key)
-        except Exception as e:
-            log.warning("thumbnail failed for %s: %s", page.source_stem, e, exc_info=True)
-            source_read_errors.append(f"thumbnail:{page.source_stem}: {e!r}")
-            continue
-        todo.append((page.idx0, page.source_stem, data))
-
-    total = len(todo)
-    if total == 0:
-        await _mark_step_complete(project, database, step_id=2)
-        return IngestResult(page_count=0, errors=source_read_errors)
-
-    workers = _resolve_thumbnail_workers(override=thumbnail_workers)
-
-    # idx0 → JPEG bytes, populated as workers complete (pool path) or in
-    # one batch on the worker thread (single-process path). Persist after
-    # all results are in, in idx0 order, so the on-disk file order matches
-    # source order regardless of completion order.
-    jpgs_by_idx: dict[int, bytes] = {}
-    errors: list[str] = list(source_read_errors)
-
-    # Circuit breaker: stop calling progress_cb after 3 consecutive failures
-    # to avoid spamming logs when the UI-side reporting is broken.
-    _thumb_cb_failures = 0
-    _progress_cb_max_failures = 3
-
-    async def _call_progress_cb(done: int, total: int, stem: str) -> None:
-        nonlocal progress_cb, _thumb_cb_failures
-        if progress_cb is None:
-            return
-        try:
-            await progress_cb(done, total, stem)
-            _thumb_cb_failures = 0
         except Exception:
-            _thumb_cb_failures += 1
-            if _thumb_cb_failures >= _progress_cb_max_failures:
-                log.error(
-                    "progress_cb failed %d times consecutively; disabling for this job",
-                    _thumb_cb_failures,
-                )
-                progress_cb = None
-            else:
-                log.exception(
-                    "thumbnails progress_cb raised (failure %d/%d)",
-                    _thumb_cb_failures,
-                    _progress_cb_max_failures,
-                )
+            log.warning("generate_thumbnails: could not load page %s", page_id)
+            continue
+        ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+        if ext is None or ext.thumbnail_blob_hash is not None:
+            continue
+        if ext.source_blob_hash is None:
+            continue
+        try:
+            source_bytes = page_service.blobs.read(ext.source_blob_hash)
+        except Exception as e:
+            log.warning("generate_thumbnails: blob read failed for %s: %s", ext.source_stem, e)
+            errors_evt.append(f"{ext.source_stem}: blob read error: {e!r}")
+            continue
+        todo_evt.append((page_id, ext.source_stem, source_bytes))
 
-    if workers <= 1:
-        # ── Single-thread path ────────────────────────────────────────────
-        # Used by the test suite (no env override) and by users who explicitly
-        # opt out of the pool. Runs the whole batch on one worker thread so
-        # cv2 stays warm — much faster than N round-trips when total is small.
-        def _make_all() -> tuple[dict[int, bytes], list[str]]:
-            results: dict[int, bytes] = {}
-            errs: list[str] = []
-            for idx0, stem, data in todo:
-                _i, _s, jpg, err = thumbnail_for_page(idx0, stem, data)
-                if err is not None:
-                    errs.append(f"{_s}: {err}")
-                    continue
-                assert jpg is not None
-                results[_i] = jpg
-            return results, errs
+    total_evt = len(todo_evt)
+    if total_evt == 0:
+        project = project.model_copy(
+            update={
+                "status": ProjectStatus.configuring,
+                "updated_at": datetime.now(UTC),
+                "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors_evt),
+            }
+        )
+        await database.put_project(project)
+        return IngestResult(page_count=0, errors=errors_evt)
 
-        jpgs_by_idx, errors = await anyio.to_thread.run_sync(_make_all)
+    updated_count = 0
+    for page_id, stem, source_bytes in todo_evt:
+        try:
+            thumb_bytes = _make_thumbnail_bytes(source_bytes)
+        except _CorruptImageError as e:
+            errors_evt.append(f"{stem}: {e!r}")
+            continue
+        thumb_hash = page_service.blobs.write(thumb_bytes)
 
-        # Persist in idx0 order; report progress per page after each write.
-        pages_by_idx = {p.idx0: p for p in pages_in}
-        updated: list[PageRecord] = []
-        done = 0
-        for idx0, stem, _data in todo:
-            jpg = jpgs_by_idx.get(idx0)
-            if jpg is None:
-                continue
-            done += 1
-            thumb_key = f"projects/{project.id}/thumbnails/{stem}.jpg"
-            await storage.put_bytes(thumb_key, jpg, "image/jpeg")
-            page = pages_by_idx[idx0]
-            updated.append(page.model_copy(update={"thumbnail_key": thumb_key}))
-            await _call_progress_cb(done, total, stem)
-    else:
-        # ── ProcessPoolExecutor path ──────────────────────────────────────
-        # CPU-bound JPEG encode is trivially data-parallel; one worker per
-        # page, no shared state, results streamed back via the running
-        # event loop's default executor + `loop.run_in_executor`. We persist
-        # in idx0 order at the end so on-disk thumbnails line up with
-        # source pages even if the pool returned futures out of order.
-        loop = asyncio.get_running_loop()
-        cap = min(workers, total)
-        # Local alias so tests can `patch.object(ingest_mod, "ProcessPoolExecutor", ...)`
-        # and have the production import path actually exercised.
-        executor_cls = ProcessPoolExecutor
-        with executor_cls(max_workers=cap) as pool:
-            futures = [
-                loop.run_in_executor(pool, thumbnail_for_page, idx0, stem, data) for idx0, stem, data in todo
-            ]
-            done = 0
-            for fut in asyncio.as_completed(futures):
-                r_idx0, r_stem, jpg, err = await fut
-                done += 1
-                if err is not None:
-                    errors.append(f"{r_stem}: {err}")
-                    await _call_progress_cb(done, total, r_stem)
-                    continue
-                assert jpg is not None
-                jpgs_by_idx[r_idx0] = jpg
-                await _call_progress_cb(done, total, r_stem)
+        # Reload page aggregate, attach provenance node, update extension
+        page_agg = page_service.store.get_page(page_id)
+        node = ProvenanceNode(
+            id=f"thumbnail:{page_id}",
+            source="thumbnail",
+            tool="prep-for-pgdp",
+            blob_refs=[thumb_hash],
+        )
+        page_agg.preprocess(provenance_node=node, blob_refs=[thumb_hash])
 
-        # Persist in idx0 order so output is deterministic regardless of
-        # which worker finished first.
-        pages_by_idx = {p.idx0: p for p in pages_in}
-        updated = []
-        for idx0, stem, _data in todo:
-            jpg = jpgs_by_idx.get(idx0)
-            if jpg is None:
-                continue
-            thumb_key = f"projects/{project.id}/thumbnails/{stem}.jpg"
-            await storage.put_bytes(thumb_key, jpg, "image/jpeg")
-            page = pages_by_idx[idx0]
-            updated.append(page.model_copy(update={"thumbnail_key": thumb_key}))
+        # Persist thumbnail_blob_hash via event-backed set_extension so it
+        # survives reload/replay (ops 0.7.1+: fires ExtensionSet event).
+        # Re-fetch ext from the reloaded aggregate (it may have changed).
+        current_ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+        if current_ext is not None:
+            updated_ext_data = current_ext.model_copy(update={"thumbnail_blob_hash": thumb_hash})
+            page_agg.set_extension("prep", updated_ext_data)
+        page_service.store.save_page(page_agg)
+        updated_count += 1
 
-    if updated:
-        await database.put_pages(updated)
-
-    # Once thumbnails finish the user can productively use the Configure page.
+    # Advance project to configuring — thumbnails are done.
     project = project.model_copy(
         update={
             "status": ProjectStatus.configuring,
             "updated_at": datetime.now(UTC),
-            "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors),
+            "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors_evt),
         }
     )
     await database.put_project(project)
-    return IngestResult(page_count=len(updated), errors=errors)
+    return IngestResult(page_count=updated_count, errors=errors_evt)
 
 
 # ─── enumerate sources ─────────────────────────────────────────────────────

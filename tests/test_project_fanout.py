@@ -28,6 +28,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from tests.fixtures.seed_pages import seed_page_in_store
 
 
 def _project(project_id: str = "p1") -> Project:
@@ -80,7 +81,7 @@ async def test_project_run_dirty_parent_and_child_rows(
 
     # Create 3 pages, each with a dirty stage row.
     for i in range(3):
-        await db.put_page(_page("proj1", i))
+        seed_page_in_store(tmp_path / "data", "proj1", _page("proj1", i))
         await db.put_page_stage(
             PageStageState(
                 project_id="proj1",
@@ -101,7 +102,7 @@ async def test_project_run_dirty_parent_and_child_rows(
     )
     await db.put_job(parent_job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
 
     with patch(
         "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
@@ -132,7 +133,7 @@ async def test_project_run_dirty_no_dirty_stages(
 
     # 2 pages, stages explicitly clean.
     for i in range(2):
-        await db.put_page(_page("proj2", i))
+        seed_page_in_store(tmp_path / "data", "proj2", _page("proj2", i))
         await db.put_page_stage(
             PageStageState(
                 project_id="proj2",
@@ -153,7 +154,7 @@ async def test_project_run_dirty_no_dirty_stages(
     )
     await db.put_job(parent_job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
 
     parent = await db.get_job("parent-2")
@@ -178,7 +179,7 @@ async def test_project_run_dirty_stage_filter(
     await db.put_project(project)
 
     # Page 0: dirty "threshold" AND dirty "grayscale".
-    await db.put_page(_page("proj3", 0))
+    seed_page_in_store(tmp_path / "data", "proj3", _page("proj3", 0))
     for stage_id in ("threshold", "grayscale"):
         await db.put_page_stage(
             PageStageState(
@@ -191,7 +192,7 @@ async def test_project_run_dirty_stage_filter(
         )
 
     # Page 1: dirty "grayscale" only — no dirty "threshold".
-    await db.put_page(_page("proj3", 1))
+    seed_page_in_store(tmp_path / "data", "proj3", _page("proj3", 1))
     await db.put_page_stage(
         PageStageState(
             project_id="proj3",
@@ -212,7 +213,7 @@ async def test_project_run_dirty_stage_filter(
     )
     await db.put_job(parent_job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
 
     with patch(
         "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
@@ -248,7 +249,7 @@ async def test_project_run_stage_all_pages(db: SqliteDatabase, storage: Filesyst
 
     # 2 pages, both with dirty "grayscale".
     for i in range(2):
-        await db.put_page(_page("proj4", i))
+        seed_page_in_store(tmp_path / "data", "proj4", _page("proj4", i))
         await db.put_page_stage(
             PageStageState(
                 project_id="proj4",
@@ -269,7 +270,7 @@ async def test_project_run_stage_all_pages(db: SqliteDatabase, storage: Filesyst
     )
     await db.put_job(parent_job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
 
     with patch(
         "pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage",
@@ -306,7 +307,7 @@ async def test_project_run_dirty_stage_failure_surfaces_error(
 
     # 2 pages, both with a dirty "grayscale" stage.
     for i in range(2):
-        await db.put_page(_page("proj5", i))
+        seed_page_in_store(tmp_path / "data", "proj5", _page("proj5", i))
         await db.put_page_stage(
             PageStageState(
                 project_id="proj5",
@@ -327,7 +328,7 @@ async def test_project_run_dirty_stage_failure_surfaces_error(
     )
     await db.put_job(parent_job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
 
     # Raise on every call so every page/stage fails.
     with patch(

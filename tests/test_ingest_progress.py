@@ -61,7 +61,9 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_unzip_emits_per_page_progress_events(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_unzip_emits_per_page_progress_events(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
     pytest.importorskip("cv2")
     now = datetime.now(UTC)
     project = Project(
@@ -104,7 +106,7 @@ async def test_unzip_emits_per_page_progress_events(db: SqliteDatabase, storage:
     listener = asyncio.create_task(listen())
     await asyncio.sleep(0.01)
 
-    runner = InProcessJobRunner(database=db, storage=storage, events=events)
+    runner = InProcessJobRunner(database=db, storage=storage, events=events, data_root=tmp_path / "data")
     await runner.run_pending(max_jobs=1)
     await asyncio.wait_for(listener, timeout=2.0)
 

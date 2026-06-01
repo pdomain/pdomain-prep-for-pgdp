@@ -88,8 +88,8 @@ async def project_p(db: SqliteDatabase) -> str:
 
 
 @pytest.mark.asyncio
-async def test_unzip_missing_project_raises(db, storage) -> None:
-    runner = InProcessJobRunner(database=db, storage=storage)
+async def test_unzip_missing_project_raises(db, storage, tmp_path) -> None:
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = _job(JobType.unzip, project_id="ghost", source_key="x.zip")
     await db.put_job(job)
     with pytest.raises(FileNotFoundError, match="ghost"):
@@ -97,8 +97,8 @@ async def test_unzip_missing_project_raises(db, storage) -> None:
 
 
 @pytest.mark.asyncio
-async def test_unzip_missing_source_key_raises(db, storage, project_p) -> None:
-    runner = InProcessJobRunner(database=db, storage=storage)
+async def test_unzip_missing_source_key_raises(db, storage, project_p, tmp_path) -> None:
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = _job(JobType.unzip, project_id=project_p, source_key="")
     await db.put_job(job)
     with pytest.raises(ValueError, match="missing source_key"):
@@ -106,8 +106,8 @@ async def test_unzip_missing_source_key_raises(db, storage, project_p) -> None:
 
 
 @pytest.mark.asyncio
-async def test_thumbnails_missing_project_raises(db, storage) -> None:
-    runner = InProcessJobRunner(database=db, storage=storage)
+async def test_thumbnails_missing_project_raises(db, storage, tmp_path) -> None:
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = _job(JobType.thumbnails, project_id="ghost")
     await db.put_job(job)
     with pytest.raises(FileNotFoundError, match="ghost"):
@@ -115,8 +115,8 @@ async def test_thumbnails_missing_project_raises(db, storage) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_package_missing_project_raises(db, storage) -> None:
-    runner = InProcessJobRunner(database=db, storage=storage)
+async def test_build_package_missing_project_raises(db, storage, tmp_path) -> None:
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = _job(JobType.build_package, project_id="ghost")
     await db.put_job(job)
     with pytest.raises(FileNotFoundError, match="ghost"):
@@ -127,11 +127,11 @@ async def test_build_package_missing_project_raises(db, storage) -> None:
 
 
 @pytest.mark.asyncio
-async def test_runner_records_handler_failure_as_job_error(db, storage) -> None:
+async def test_runner_records_handler_failure_as_job_error(db, storage, tmp_path) -> None:
     """End-to-end: enqueue a build_package job for a missing project and
     let `run_pending` execute it. The job should land in JobStatus.error
     with the exception message persisted."""
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = _job(JobType.build_package, project_id="vanished")
     await db.put_job(job)
 

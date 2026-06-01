@@ -6,8 +6,9 @@ Locks in:
   - source files land under `source/`,
   - `s3_folder`/`local_folder` source types use list_prefix instead of
     unzipping,
-  - `generate_thumbnails` writes JPGs under `thumbnails/`, populates
-    `page.thumbnail_key`, and records corrupt entries as errors,
+  - `generate_thumbnails` writes JPGs to BlobStore, populates
+    `thumbnail_blob_hash` in PrepPageExtension, and records corrupt
+    entries as errors,
   - project status only advances to `configuring` after thumbnails finish
     (unzip leaves it at `ingesting` so the UI can render a "creating
     thumbnails" banner).
@@ -18,6 +19,7 @@ from __future__ import annotations
 import io
 import zipfile
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -30,6 +32,10 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _png(h: int, w: int, fill: int = 200) -> bytes:
@@ -81,8 +87,13 @@ def storage(tmp_path) -> FilesystemStorage:
 
 
 @pytest.mark.asyncio
-async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_unzip_zip_creates_one_page_per_image(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
+    from pdomain_ops.pages import get_extension
+
     from pdomain_prep_for_pgdp.core.ingest import unzip_source
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
     project = _project()
     await db.put_project(project)
@@ -96,6 +107,7 @@ async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage:
     )
     source_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(source_key, zip_bytes)
+    svc = build_page_service(tmp_path / "data", project.id)
 
     result = await unzip_source(
         project=project,
@@ -103,30 +115,42 @@ async def test_unzip_zip_creates_one_page_per_image(db: SqliteDatabase, storage:
         source_key=source_key,
         storage=storage,
         database=db,
+        page_service=svc,
     )
 
     assert result.page_count == 3
     assert result.errors == []
 
-    pages, _, total = await db.list_pages(project.id, None, 100)
-    assert total == 3
-    assert [p.idx0 for p in pages] == [0, 1, 2]
-    assert [p.source_stem for p in pages] == ["page_001", "page_002", "page_003"]
-    # Source extracted; thumbnails NOT yet created (separate stage).
-    for p in pages:
-        assert p.source_key
-        assert await storage.exists(p.source_key)
-        assert p.thumbnail_key is None
+    from tests.fixtures.seed_pages import _to_uuid
+
+    proj_agg = svc.store.get_project(_to_uuid(project.id))
+    assert len(proj_agg.record.page_ids) == 3
+    exts = []
+    for pid in proj_agg.record.page_ids:
+        page_agg = svc.store.get_page(pid)
+        ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None:
+            exts.append(ext)
+    exts.sort(key=lambda e: e.idx0)
+    assert [e.idx0 for e in exts] == [0, 1, 2]
+    assert [e.source_stem for e in exts] == ["page_001", "page_002", "page_003"]
+    # Source blobs stored; thumbnails NOT yet created (separate stage).
+    for e in exts:
+        assert e.source_blob_hash is not None
+        assert e.thumbnail_blob_hash is None
 
 
 @pytest.mark.asyncio
-async def test_unzip_leaves_project_in_ingesting(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_unzip_leaves_project_in_ingesting(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
     await db.put_project(project)
     zip_bytes = _make_zip([("p.png", _png(50, 50))])
     await storage.put_bytes(f"projects/{project.id}/source.zip", zip_bytes)
+    svc = build_page_service(tmp_path / "data", project.id)
 
     await unzip_source(
         project=project,
@@ -134,18 +158,21 @@ async def test_unzip_leaves_project_in_ingesting(db: SqliteDatabase, storage: Fi
         source_key=f"projects/{project.id}/source.zip",
         storage=storage,
         database=db,
+        page_service=svc,
     )
 
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
-    # Stays in ingesting until thumbnails finish — gives the UI a single
+    # Stays in ingesting until thumbnails finish -- gives the UI a single
     # "creating thumbnails" state to render.
     assert refreshed.status == ProjectStatus.ingesting
     assert refreshed.page_count == 1
 
 
 @pytest.mark.asyncio
-async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_unzip_skips_non_image_entries(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
     project = _project()
@@ -158,6 +185,7 @@ async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: Filesy
         ]
     )
     await storage.put_bytes(f"projects/{project.id}/source.zip", zip_bytes)
+    svc = build_page_service(tmp_path / "data", project.id)
 
     result = await unzip_source(
         project=project,
@@ -165,6 +193,7 @@ async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: Filesy
         source_key=f"projects/{project.id}/source.zip",
         storage=storage,
         database=db,
+        page_service=svc,
     )
 
     assert result.page_count == 2  # png + jpg, README skipped
@@ -172,7 +201,7 @@ async def test_unzip_skips_non_image_entries(db: SqliteDatabase, storage: Filesy
 
 @pytest.mark.asyncio
 async def test_unzip_local_folder_lists_storage_prefix(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.ingest import unzip_source
 
@@ -181,6 +210,7 @@ async def test_unzip_local_folder_lists_storage_prefix(
     folder_prefix = f"projects/{project.id}/raw/"
     await storage.put_bytes(f"{folder_prefix}page_a.png", _png(40, 40))
     await storage.put_bytes(f"{folder_prefix}page_b.png", _png(40, 40))
+    svc = build_page_service(tmp_path / "data", project.id)
 
     result = await unzip_source(
         project=project,
@@ -188,6 +218,7 @@ async def test_unzip_local_folder_lists_storage_prefix(
         source_key=folder_prefix,
         storage=storage,
         database=db,
+        page_service=svc,
     )
 
     assert result.page_count == 2
@@ -198,30 +229,44 @@ async def test_unzip_local_folder_lists_storage_prefix(
 
 @pytest.mark.asyncio
 async def test_thumbnails_generates_jpgs_for_every_page(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
+
+    from pdomain_ops.pages import get_extension
+
     from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
     project = _project()
     await db.put_project(project)
     zip_bytes = _make_zip([("p1.png", _png(80, 60)), ("p2.png", _png(80, 60))])
     src_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(src_key, zip_bytes)
-    await unzip_source(project=project, source_type="zip", source_key=src_key, storage=storage, database=db)
+    svc = build_page_service(tmp_path / "data", project.id)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db, page_service=svc
+    )
 
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
-    result = await generate_thumbnails(project=refreshed, storage=storage, database=db)
+    result = await generate_thumbnails(project=refreshed, storage=storage, database=db, page_service=svc)
     assert result.page_count == 2
 
-    pages, _, _ = await db.list_pages(project.id, None, 100)
-    for p in pages:
-        assert p.thumbnail_key
-        assert await storage.exists(p.thumbnail_key)
+    from tests.fixtures.seed_pages import _to_uuid
+
+    proj_agg = svc.store.get_project(_to_uuid(project.id))
+    for page_id in proj_agg.record.page_ids:
+        page_agg = svc.store.get_page(page_id)
+        ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+        assert ext is not None
+        assert ext.thumbnail_blob_hash is not None
+        assert svc.blobs.exists(ext.thumbnail_blob_hash)
 
 
 @pytest.mark.asyncio
-async def test_thumbnails_advances_project_status(db: SqliteDatabase, storage: FilesystemStorage) -> None:
+async def test_thumbnails_advances_project_status(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
+) -> None:
     from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
     project = _project()
@@ -229,10 +274,13 @@ async def test_thumbnails_advances_project_status(db: SqliteDatabase, storage: F
     zip_bytes = _make_zip([("p.png", _png(50, 50))])
     src_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(src_key, zip_bytes)
-    await unzip_source(project=project, source_type="zip", source_key=src_key, storage=storage, database=db)
+    svc = build_page_service(tmp_path / "data", project.id)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db, page_service=svc
+    )
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
-    await generate_thumbnails(project=refreshed, storage=storage, database=db)
+    await generate_thumbnails(project=refreshed, storage=storage, database=db, page_service=svc)
 
     final = await db.get_project(project.id)
     assert final is not None
@@ -241,7 +289,7 @@ async def test_thumbnails_advances_project_status(db: SqliteDatabase, storage: F
 
 @pytest.mark.asyncio
 async def test_thumbnails_records_corrupt_entries_as_errors(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path: Path
 ) -> None:
     from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 
@@ -255,11 +303,14 @@ async def test_thumbnails_records_corrupt_entries_as_errors(
     )
     src_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(src_key, zip_bytes)
-    await unzip_source(project=project, source_type="zip", source_key=src_key, storage=storage, database=db)
+    svc = build_page_service(tmp_path / "data", project.id)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db, page_service=svc
+    )
 
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
-    result = await generate_thumbnails(project=refreshed, storage=storage, database=db)
+    result = await generate_thumbnails(project=refreshed, storage=storage, database=db, page_service=svc)
 
     # Healthy page got a thumbnail; corrupt one is recorded.
     assert result.page_count == 1
@@ -268,9 +319,9 @@ async def test_thumbnails_records_corrupt_entries_as_errors(
 
 @pytest.mark.asyncio
 async def test_thumbnail_source_read_error_appears_in_ingest_errors(
-    db: SqliteDatabase, storage: FilesystemStorage, monkeypatch
+    db: SqliteDatabase, storage: FilesystemStorage, monkeypatch, tmp_path: Path
 ) -> None:
-    """When storage.get_bytes raises while reading source data for thumbnailing,
+    """When blobs.read raises while reading source data for thumbnailing,
     the failure must appear in IngestResult.errors (not swallowed silently)."""
     from unittest.mock import patch
 
@@ -281,22 +332,21 @@ async def test_thumbnail_source_read_error_appears_in_ingest_errors(
     zip_bytes = _make_zip([("page_1.png", _png(50, 50))])
     src_key = f"projects/{project.id}/source.zip"
     await storage.put_bytes(src_key, zip_bytes)
-    await unzip_source(project=project, source_type="zip", source_key=src_key, storage=storage, database=db)
+    svc = build_page_service(tmp_path / "data", project.id)
+    await unzip_source(
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db, page_service=svc
+    )
 
     refreshed = await db.get_project(project.id)
     assert refreshed is not None
 
-    # Wrap storage.get_bytes so that reads on source keys raise, simulating a
-    # missing or corrupt object-store entry.
-    original_get_bytes = storage.get_bytes
+    # Wrap blobs.read so it raises, simulating a missing or corrupt blob.
 
-    async def _failing_get_bytes(key: str) -> bytes:
-        if "/source/" in key:
-            raise OSError(f"simulated storage failure: {key}")
-        return await original_get_bytes(key)
+    def _failing_read(blob_hash: str) -> bytes:
+        raise OSError(f"simulated blob failure: {blob_hash}")
 
-    with patch.object(storage, "get_bytes", side_effect=_failing_get_bytes):
-        result = await generate_thumbnails(project=refreshed, storage=storage, database=db)
+    with patch.object(svc.blobs, "read", side_effect=_failing_read):
+        result = await generate_thumbnails(project=refreshed, storage=storage, database=db, page_service=svc)
 
     assert result.errors, "expected at least one error in IngestResult.errors"
     assert any("page_1" in e for e in result.errors)

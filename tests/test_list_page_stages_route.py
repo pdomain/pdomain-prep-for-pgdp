@@ -33,6 +33,7 @@ from pdomain_prep_for_pgdp.core.models import (
 )
 from pdomain_prep_for_pgdp.core.pipeline.stage_dag import topological_order
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -73,7 +74,9 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 storage_prefix="projects/m1c/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "m1c",
             [
                 PageRecord(
                     project_id="m1c",
@@ -89,7 +92,7 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                     source_stem="src2",
                     processing_status=PageProcessingStatus.pending,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -324,7 +327,7 @@ def test_stale_stage_version_served_as_dirty(
 # ─── Legacy migration: M4 lazy detection ──────────────────────────────────────
 
 
-def test_legacy_page_with_complete_status_gets_dirty_stages(tmp_path: Path) -> None:
+def test_page_with_complete_status_gets_not_run_stages(tmp_path: Path) -> None:
     """A pre-M1 page with processing_status=complete must init with dirty stages.
 
     Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §"Legacy detection".
@@ -350,7 +353,9 @@ def test_legacy_page_with_complete_status_gets_dirty_stages(tmp_path: Path) -> N
                 storage_prefix="projects/legacy/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            tmp_path / "data",
+            "legacy",
             [
                 PageRecord(
                     project_id="legacy",
@@ -359,7 +364,7 @@ def test_legacy_page_with_complete_status_gets_dirty_stages(tmp_path: Path) -> N
                     source_stem="src1",
                     processing_status=PageProcessingStatus.complete,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -372,13 +377,13 @@ def test_legacy_page_with_complete_status_gets_dirty_stages(tmp_path: Path) -> N
     rows = r.json()
     assert len(rows) == 22
     for row in rows:
-        assert row["status"] == PageStageStatus.dirty.value, (
-            f"legacy page with processing_status=complete must have dirty stages, "
+        assert row["status"] == PageStageStatus.not_run.value, (
+            f"page must have not-run stages (legacy detection removed), "
             f"got {row['status']} for stage {row['stage_id']}"
         )
 
 
-def test_legacy_page_with_processing_status_gets_dirty_stages(tmp_path: Path) -> None:
+def test_page_with_processing_status_gets_not_run_stages(tmp_path: Path) -> None:
     """A pre-M1 page with processing_status=processing must init with dirty stages."""
     settings = _settings(tmp_path)
 
@@ -401,7 +406,9 @@ def test_legacy_page_with_processing_status_gets_dirty_stages(tmp_path: Path) ->
                 storage_prefix="projects/legacy/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            tmp_path / "data",
+            "legacy",
             [
                 PageRecord(
                     project_id="legacy",
@@ -410,7 +417,7 @@ def test_legacy_page_with_processing_status_gets_dirty_stages(tmp_path: Path) ->
                     source_stem="src1",
                     processing_status=PageProcessingStatus.processing,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -423,10 +430,10 @@ def test_legacy_page_with_processing_status_gets_dirty_stages(tmp_path: Path) ->
     rows = r.json()
     assert len(rows) == 22
     for row in rows:
-        assert row["status"] == PageStageStatus.dirty.value
+        assert row["status"] == PageStageStatus.not_run.value
 
 
-def test_legacy_page_with_error_status_gets_dirty_stages(tmp_path: Path) -> None:
+def test_page_with_error_status_gets_not_run_stages(tmp_path: Path) -> None:
     """A pre-M1 page with processing_status=error must init with dirty stages."""
     settings = _settings(tmp_path)
 
@@ -449,7 +456,9 @@ def test_legacy_page_with_error_status_gets_dirty_stages(tmp_path: Path) -> None
                 storage_prefix="projects/legacy/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            tmp_path / "data",
+            "legacy",
             [
                 PageRecord(
                     project_id="legacy",
@@ -458,7 +467,7 @@ def test_legacy_page_with_error_status_gets_dirty_stages(tmp_path: Path) -> None
                     source_stem="src1",
                     processing_status=PageProcessingStatus.error,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -471,7 +480,7 @@ def test_legacy_page_with_error_status_gets_dirty_stages(tmp_path: Path) -> None
     rows = r.json()
     assert len(rows) == 22
     for row in rows:
-        assert row["status"] == PageStageStatus.dirty.value
+        assert row["status"] == PageStageStatus.not_run.value
 
 
 def test_non_legacy_page_with_pending_status_gets_not_run_stages(
@@ -513,7 +522,9 @@ def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
                 storage_prefix="projects/legacy/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            tmp_path / "data",
+            "legacy",
             [
                 PageRecord(
                     project_id="legacy",
@@ -522,7 +533,7 @@ def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
                     source_stem="src1",
                     processing_status=PageProcessingStatus.complete,
                 ),
-            ]
+            ],
         )
         await db.close()
 
@@ -538,11 +549,11 @@ def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
     rows1 = r1.json()
     rows2 = r2.json()
 
-    # All rows in both responses should be dirty
+    # All rows in both responses should be not-run (legacy detection removed)
     for row in rows1:
-        assert row["status"] == PageStageStatus.dirty.value
+        assert row["status"] == PageStageStatus.not_run.value
     for row in rows2:
-        assert row["status"] == PageStageStatus.dirty.value
+        assert row["status"] == PageStageStatus.not_run.value
 
     # Verify row identities match (idempotent, no duplicates)
     keys1 = sorted((r["stage_id"], r["status"]) for r in rows1)

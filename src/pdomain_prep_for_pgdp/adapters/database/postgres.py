@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol, Self, cast
 
-from pdomain_prep_for_pgdp.core.models import Job, PageRecord, Project, SystemDefaults
+from pdomain_prep_for_pgdp.core.models import Job, Project, SystemDefaults
 
 if TYPE_CHECKING:
     from .base import SearchResult
@@ -64,7 +64,6 @@ else:
 
 type _JsonTextRow = tuple[str]
 type _CountRow = tuple[int]
-type _PageInsertRow = tuple[str, int, str]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS system_defaults (
@@ -79,13 +78,6 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS projects_owner ON projects(owner_id);
-
-CREATE TABLE IF NOT EXISTS pages (
-    project_id TEXT NOT NULL,
-    idx0       INTEGER NOT NULL,
-    body       JSONB NOT NULL,
-    PRIMARY KEY (project_id, idx0)
-);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id         TEXT PRIMARY KEY,
@@ -210,70 +202,7 @@ class PostgresDatabase:
     async def delete_project(self, project_id: str) -> None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
-            _ = await cur.execute("DELETE FROM pages WHERE project_id = %s", (project_id,))
             _ = await cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
-
-    # ── Pages ───────────────────────────────────────────────────────────────
-
-    async def list_pages(
-        self,
-        project_id: str,
-        cursor: str | None = None,
-        limit: int = 50,
-    ) -> tuple[list[PageRecord], str | None, int]:
-        conn = self._require_conn()
-        offset = int(cursor) if cursor else 0
-        async with conn.cursor() as cur:
-            _ = await cur.execute(
-                "SELECT COUNT(*) FROM pages WHERE project_id = %s",
-                (project_id,),
-            )
-            total_row = cast(_CountRow | None, await cur.fetchone())
-            total = total_row[0] if total_row else 0
-            _ = await cur.execute(
-                "SELECT body::text FROM pages WHERE project_id = %s ORDER BY idx0 LIMIT %s OFFSET %s",
-                (project_id, limit, offset),
-            )
-            rows = cast(list[_JsonTextRow], await cur.fetchall())
-        pages = [PageRecord.model_validate_json(r[0]) for r in rows]
-        next_cursor = str(offset + limit) if offset + limit < total else None
-        return pages, next_cursor, total
-
-    async def get_page(self, project_id: str, idx0: int) -> PageRecord | None:
-        conn = self._require_conn()
-        async with conn.cursor() as cur:
-            _ = await cur.execute(
-                "SELECT body::text FROM pages WHERE project_id = %s AND idx0 = %s",
-                (project_id, idx0),
-            )
-            row = cast(_JsonTextRow | None, await cur.fetchone())
-        return PageRecord.model_validate_json(row[0]) if row else None
-
-    async def put_page(self, page: PageRecord) -> None:
-        conn = self._require_conn()
-        body = page.model_dump_json()
-        async with conn.cursor() as cur:
-            _ = await cur.execute(
-                """
-                INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb)
-                ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body
-                """,
-                (page.project_id, page.idx0, body),
-            )
-
-    async def put_pages(self, pages: list[PageRecord]) -> None:
-        if not pages:
-            return
-        conn = self._require_conn()
-        rows: list[_PageInsertRow] = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
-        async with conn.cursor() as cur:
-            _ = await cur.executemany(
-                """
-                INSERT INTO pages (project_id, idx0, body) VALUES (%s, %s, %s::jsonb)
-                ON CONFLICT (project_id, idx0) DO UPDATE SET body = EXCLUDED.body
-                """,
-                rows,
-            )
 
     # ── Jobs ────────────────────────────────────────────────────────────────
 

@@ -64,6 +64,10 @@ import cv2
 import numpy as np
 
 from pdomain_prep_for_pgdp.core.models import PageRecord, PageStageState, PageStageStatus, ResolvedPageConfig
+from pdomain_prep_for_pgdp.core.page_service_helpers import (
+    get_page_record,
+    list_page_records_by_parent_id,
+)
 from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
 
 from . import stage_dag as _stage_dag_module
@@ -256,6 +260,7 @@ async def _resolve_config(
     database: IDatabase,
     project_id: str,
     page_id: str,
+    page_service: PageService | None = None,
 ) -> ResolvedPageConfig:
     """Load page + project + system defaults from DB and resolve to a
     ``ResolvedPageConfig``.
@@ -275,7 +280,11 @@ async def _resolve_config(
     except ValueError:
         return default_resolved_page_config()
 
-    page = await database.get_page(project_id, idx0)
+    # Look up the page from the event store (page_service) when available;
+    # page_service is built from data_root in run_stage and cascaded to callers.
+    page: PageRecord | None = None
+    if page_service is not None:
+        page = get_page_record(page_service, project_id, idx0)
     if page is None:
         return default_resolved_page_config()
 
@@ -459,12 +468,26 @@ async def _cascade_dirty_to_split_children(
     project_id: str,
     page_id: str,
     stage_id: str,
+    page_service: PageService | None = None,
+    data_root: Path | None = None,
 ) -> None:
     """Dirty split children's decode_source when stage_id is at or before each child's split_at_stage.
 
     Spec: docs/specs/pipeline-task-model.md §"Cross-page dirty propagation: split children".
     """
-    children = await database.list_pages_by_parent_id(project_id, page_id)
+    # Use event-store lookup: page_id here is the zero-padded idx0 string (e.g. "0001").
+    # The parent_page_id stored in PrepPageExtension is also a zero-padded idx0 string.
+    _page_service_split: PageService | None = None
+    if page_service is not None:
+        _page_service_split = page_service
+    elif data_root is not None:
+        from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service as _bps
+
+        _page_service_split = _bps(data_root, project_id)
+    if _page_service_split is not None:
+        children = list_page_records_by_parent_id(_page_service_split, project_id, page_id)
+    else:
+        children = []
     if not children:
         return
 
@@ -701,6 +724,7 @@ async def run_stage(
     write_executor: StageWriteExecutor | None = None,
     stage_events: StageEventBroker | None = None,
     resolved_config: ResolvedPageConfig | None = None,
+    page_service: PageService | None = None,
 ) -> PageStageState:
     """Run one stage on one page. Dual-writes its artifact, then cascades
     dirty downstream.
@@ -747,6 +771,13 @@ async def run_stage(
     """
     stage = get_stage(stage_id)
 
+    # Build page_service from data_root if not provided by the caller.
+    _ps: PageService | None = page_service
+    if _ps is None:
+        from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service as _bps
+
+        _ps = _bps(data_root, project_id)
+
     # Detect split-child decode_source before the dependency check. A child
     # page's decode_source reads the PARENT's ingest_source artifact (not its
     # own), so both the dep check and the artifact loading differ from the
@@ -756,7 +787,7 @@ async def run_stage(
     if stage_id == "decode_source":
         try:
             _idx0 = int(page_id)
-            _page_rec = await database.get_page(project_id, _idx0)
+            _page_rec = get_page_record(_ps, project_id, _idx0) if _ps else None
             if _page_rec is not None and _page_rec.parent_page_id is not None:
                 _child_decode_page = _page_rec
         except (ValueError, TypeError):
@@ -823,7 +854,9 @@ async def run_stage(
     if resolved_config is not None:
         cfg = resolved_config
     else:
-        cfg = await _resolve_config(database=database, project_id=project_id, page_id=page_id)
+        cfg = await _resolve_config(
+            database=database, project_id=project_id, page_id=page_id, page_service=_ps
+        )
     _cfg_hash = _compute_config_hash(cfg, stage_id)
 
     # Sentinel for the impl's in-memory output; set inside the else branch
@@ -1104,6 +1137,8 @@ async def run_stage(
         project_id=project_id,
         page_id=page_id,
         stage_id=stage_id,
+        page_service=_ps,
+        data_root=data_root,
     )
 
     # Emit clean event for the completed stage after the cascade.

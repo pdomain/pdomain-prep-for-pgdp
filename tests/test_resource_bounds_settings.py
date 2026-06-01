@@ -90,7 +90,7 @@ def test_check_upload_size_passes_when_within_limit() -> None:
     _check_upload_size(req, max_bytes=100)  # no exception
 
 
-def test_check_upload_size_passes_when_no_content_length() -> None:
+def test_check_upload_size_passes_when_no_content_length(tmp_path: Path) -> None:
     """No content-length header → no exception (body check deferred to post-read)."""
     from pdomain_prep_for_pgdp.api.cdn import _check_upload_size
 

@@ -61,10 +61,10 @@ def _project() -> Project:
 
 
 @pytest.mark.asyncio
-async def test_mark_complete_skips_already_cancelled_job(db, storage) -> None:
+async def test_mark_complete_skips_already_cancelled_job(db, storage, tmp_path) -> None:
     """Simulate: user cancels DURING handler execution, then handler returns
     successfully. `_mark_complete` should leave the cancelled status alone."""
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = Job(
         id="j-cmp",
         project_id="cp1",
@@ -88,10 +88,10 @@ async def test_mark_complete_skips_already_cancelled_job(db, storage) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mark_failed_skips_already_cancelled_job(db, storage) -> None:
+async def test_mark_failed_skips_already_cancelled_job(db, storage, tmp_path) -> None:
     """Same idea: a handler that raises after a cancel should not overwrite
     cancelled status with error."""
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     job = Job(
         id="j-fail",
         project_id="cp1",

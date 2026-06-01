@@ -52,6 +52,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     _call_impl,
     run_stage,
 )
+from tests.fixtures.seed_pages import seed_page_in_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -1562,7 +1563,7 @@ async def _seed_split_child(
         split_at_stage=split_at_stage,
         split_suffix=suffix,
     )
-    await db.put_page(child)
+    seed_page_in_store(data_root, child.project_id, child)
     child_page_id = f"{child_idx0:04d}"
     await db.init_page_stages_for_page(project_id, child_page_id)
     for sid in clean_stages:

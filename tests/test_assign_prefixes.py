@@ -14,6 +14,7 @@ Locks in:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -26,6 +27,27 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _settings(tmp_path: Path) -> Settings:
+    return Settings(
+        host="127.0.0.1",
+        port=8765,
+        data_root=tmp_path / "data",
+        config_dir=tmp_path / "config",
+        storage_backend="filesystem",
+        database_url=f"sqlite:///{(tmp_path / 's.db').as_posix()}",
+        auth_mode="none",
+        gpu_backend="cpu",
+        dispatch_interval_seconds=0,
+    )
 
 
 def _project(project_id: str = "p1", **config_kwargs) -> Project:
@@ -63,7 +85,7 @@ async def db(tmp_path) -> SqliteDatabase:
 
 
 @pytest.mark.asyncio
-async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatabase) -> None:
+async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatabase, tmp_path: Path) -> None:
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
@@ -76,27 +98,27 @@ async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatab
     )
     await db.put_project(project)
     pages = [_page(project.id, i) for i in range(5)]
-    await db.put_pages(pages)
+    settings = _settings(tmp_path)
+    seed_pages_in_store(settings, project.id, pages)
+    svc = build_page_service(settings.data_root, project.id)
 
-    n = await assign_prefixes(project=project, database=db)
+    n = await assign_prefixes(project=project, page_service=svc)
     assert n == 5
 
-    pages, _, _ = await db.list_pages(project.id, None, 100)
-    by_idx = {p.idx0: p for p in pages}
+    result = list_page_records(svc, project.id)
+    by_idx = {p.idx0: p for p in result}
     # Fixed: first frontmatter page is f001.
     assert by_idx[0].prefix == "f001"
     assert by_idx[1].prefix == "f002"
     assert by_idx[2].prefix == "p000"
     assert by_idx[3].prefix == "p001"
     assert by_idx[4].prefix == "p002"
-    for p in pages:
+    for p in result:
         assert p.ignore is False
 
 
 @pytest.mark.asyncio
-async def test_assign_prefixes_marks_pages_outside_range_ignored(
-    db: SqliteDatabase,
-) -> None:
+async def test_assign_prefixes_marks_pages_outside_range_ignored(db: SqliteDatabase, tmp_path: Path) -> None:
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
@@ -108,11 +130,13 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(
         bodymatter_end_idx0=3,
     )
     await db.put_project(project)
-    await db.put_pages([_page(project.id, i) for i in range(5)])
+    settings = _settings(tmp_path)
+    seed_pages_in_store(settings, project.id, [_page(project.id, i) for i in range(5)])
+    svc = build_page_service(settings.data_root, project.id)
 
-    await assign_prefixes(project=project, database=db)
-    pages, _, _ = await db.list_pages(project.id, None, 100)
-    by_idx = {p.idx0: p for p in pages}
+    await assign_prefixes(project=project, page_service=svc)
+    result = list_page_records(svc, project.id)
+    by_idx = {p.idx0: p for p in result}
     assert by_idx[0].ignore is True
     assert by_idx[0].prefix == ""
     assert by_idx[1].ignore is True
@@ -124,7 +148,7 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(
 
 
 @pytest.mark.asyncio
-async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
+async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase, tmp_path: Path) -> None:
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
@@ -136,18 +160,22 @@ async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
         bodymatter_end_idx0=3,
     )
     await db.put_project(project)
-    await db.put_pages(
+    settings = _settings(tmp_path)
+    seed_pages_in_store(
+        settings,
+        project.id,
         [
             _page(project.id, 0),
             _page(project.id, 1),
             _page(project.id, 2, page_type=PageType.plate_p),
             _page(project.id, 3),
-        ]
+        ],
     )
+    svc = build_page_service(settings.data_root, project.id)
 
-    await assign_prefixes(project=project, database=db)
-    pages, _, _ = await db.list_pages(project.id, None, 100)
-    by_idx = {p.idx0: p for p in pages}
+    await assign_prefixes(project=project, page_service=svc)
+    result = list_page_records(svc, project.id)
+    by_idx = {p.idx0: p for p in result}
     # plate_p gets a "p" suffix and doesn't consume a body number.
     assert by_idx[2].prefix.endswith("p")
     # Numbering continues past the plate.
@@ -158,7 +186,7 @@ async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase) -> None:
 
 
 @pytest.mark.asyncio
-async def test_assign_prefixes_is_idempotent(db: SqliteDatabase) -> None:
+async def test_assign_prefixes_is_idempotent(db: SqliteDatabase, tmp_path: Path) -> None:
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
 
     project = _project(
@@ -170,10 +198,12 @@ async def test_assign_prefixes_is_idempotent(db: SqliteDatabase) -> None:
         bodymatter_end_idx0=2,
     )
     await db.put_project(project)
-    await db.put_pages([_page(project.id, i) for i in range(3)])
+    settings = _settings(tmp_path)
+    seed_pages_in_store(settings, project.id, [_page(project.id, i) for i in range(3)])
+    svc = build_page_service(settings.data_root, project.id)
 
-    await assign_prefixes(project=project, database=db)
-    first = {p.idx0: p.prefix for p in (await db.list_pages(project.id, None, 100))[0]}
-    await assign_prefixes(project=project, database=db)
-    second = {p.idx0: p.prefix for p in (await db.list_pages(project.id, None, 100))[0]}
+    await assign_prefixes(project=project, page_service=svc)
+    first = {p.idx0: p.prefix for p in list_page_records(svc, project.id)}
+    await assign_prefixes(project=project, page_service=svc)
+    second = {p.idx0: p.prefix for p in list_page_records(svc, project.id)}
     assert first == second

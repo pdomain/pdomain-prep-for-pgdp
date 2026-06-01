@@ -30,6 +30,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
 
 
 def _png(h: int, w: int) -> bytes:
@@ -70,7 +71,7 @@ def _project() -> Project:
 
 
 @pytest.mark.asyncio
-async def test_unzip_skips_directory_entries(db, storage) -> None:
+async def test_unzip_skips_directory_entries(db, storage, tmp_path) -> None:
     """A zip with bare directory entries (e.g. created by GUI tools) shouldn't
     cause spurious PageRecords — `_enumerate_zip` skips them."""
     pytest.importorskip("cv2")
@@ -86,15 +87,16 @@ async def test_unzip_skips_directory_entries(db, storage) -> None:
     src_key = "projects/ih1/source.zip"
     await storage.put_bytes(src_key, buf.getvalue())
 
+    svc = build_page_service(tmp_path / "data", project.id)
     result = await unzip_source(
-        project=project, source_type="zip", source_key=src_key, storage=storage, database=db
+        project=project, source_type="zip", source_key=src_key, storage=storage, database=db, page_service=svc
     )
     # 2 pages — directory entry skipped (otherwise it'd be 3).
     assert result.page_count == 2
 
 
 @pytest.mark.asyncio
-async def test_unzip_local_folder_skips_non_image_files(db, storage) -> None:
+async def test_unzip_local_folder_skips_non_image_files(db, storage, tmp_path) -> None:
     """`_enumerate_folder` filters by extension; .txt files shouldn't become
     pages."""
     project = _project()
@@ -104,8 +106,14 @@ async def test_unzip_local_folder_skips_non_image_files(db, storage) -> None:
     await storage.put_bytes(f"{folder}README.txt", b"not an image")
     await storage.put_bytes(f"{folder}img2.jpg", _png(40, 40))
 
+    svc = build_page_service(tmp_path / "data", project.id)
     result = await unzip_source(
-        project=project, source_type="local_folder", source_key=folder, storage=storage, database=db
+        project=project,
+        source_type="local_folder",
+        source_key=folder,
+        storage=storage,
+        database=db,
+        page_service=svc,
     )
     assert result.page_count == 2
 

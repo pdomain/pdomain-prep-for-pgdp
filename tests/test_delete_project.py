@@ -17,6 +17,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -54,8 +55,10 @@ def _seed(settings: Settings) -> str:
                 storage_prefix=f"projects/{pid}/",
             )
         )
-        await db.put_pages(
-            [PageRecord(project_id=pid, idx0=i, prefix=f"p{i:03d}", source_stem=f"s{i}") for i in range(2)]
+        seed_pages_in_store(
+            settings,
+            pid,
+            [PageRecord(project_id=pid, idx0=i, prefix=f"p{i:03d}", source_stem=f"s{i}") for i in range(2)],
         )
         await db.close()
         return pid

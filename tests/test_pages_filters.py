@@ -31,6 +31,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -69,7 +70,9 @@ def _seed(settings: Settings) -> None:
                 storage_prefix="projects/pf1/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "pf1",
             [
                 PageRecord(
                     project_id="pf1",
@@ -116,7 +119,7 @@ def _seed(settings: Settings) -> None:
                     page_type=PageType.normal,
                     processing_status=PageProcessingStatus.error,
                 ),
-            ]
+            ],
         )
         await db.close()
 

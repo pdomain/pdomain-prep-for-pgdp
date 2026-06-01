@@ -30,10 +30,18 @@ also be set. Raise `ValidationError` on partial split rows.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.core.models import PageRecord
+from pdomain_prep_for_pgdp.core.page_service_helpers import get_page_record
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+from tests.fixtures.seed_pages import seed_page_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -92,8 +100,7 @@ def test_root_page_reading_order_defaults_to_zero() -> None:
     assert page.reading_order == 0
 
 
-@pytest.mark.asyncio
-async def test_legacy_page_record_round_trips_through_db(db: SqliteDatabase) -> None:
+def test_legacy_page_record_round_trips_through_db(tmp_path: Path) -> None:
     """An existing-shape row (no split fields in JSON) round-trips cleanly.
 
     Legacy rows in production today will not have any of the new split keys
@@ -101,8 +108,9 @@ async def test_legacy_page_record_round_trips_through_db(db: SqliteDatabase) -> 
     and fill in defaults.
     """
     page = _root_page()
-    await db.put_page(page)
-    fetched = await db.get_page("p1", 0)
+    seed_page_in_store(tmp_path / "data", page.project_id, page)
+    svc = build_page_service(tmp_path / "data", page.project_id)
+    fetched = get_page_record(svc, page.project_id, 0)
     assert fetched is not None
     assert fetched.parent_page_id is None
     assert fetched.reading_order == 0
@@ -122,12 +130,12 @@ def test_split_child_with_all_fields_validates() -> None:
     assert page.reading_order == 1
 
 
-@pytest.mark.asyncio
-async def test_split_child_round_trips_through_db(db: SqliteDatabase) -> None:
+def test_split_child_round_trips_through_db(tmp_path: Path) -> None:
     """A split-child PageRecord persists and rehydrates with split fields intact."""
     page = PageRecord(**_split_child_kwargs())
-    await db.put_page(page)
-    fetched = await db.get_page("p1", 1)
+    seed_page_in_store(tmp_path / "data", page.project_id, page)
+    svc = build_page_service(tmp_path / "data", page.project_id)
+    fetched = get_page_record(svc, page.project_id, 1)
     assert fetched is not None
     assert fetched.parent_page_id == "0000"
     assert fetched.source_crop_bbox == (10, 20, 300, 400)

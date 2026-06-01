@@ -48,6 +48,7 @@ from pdomain_prep_for_pgdp.core.models import (
 )
 from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -90,7 +91,9 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 storage_prefix="projects/m2s4/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "m2s4",
             [
                 PageRecord(
                     project_id="m2s4",
@@ -99,7 +102,7 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                     source_stem="src1",
                     processing_status=PageProcessingStatus.pending,
                 ),
-            ]
+            ],
         )
         await db.close()
 

@@ -276,7 +276,7 @@
           "projects"
         ],
         "summary": "Archive Project",
-        "description": "Soft-delete: hide the project from default listings without removing data.\n\nIdempotent \u2014 archiving an already-archived project is a no-op (still 200).",
+        "description": "Soft-delete: hide the project from default listings without removing data.\n\nIdempotent -- archiving an already-archived project is a no-op (still 200).",
         "operationId": "archive_project",
         "security": [
           {
@@ -324,7 +324,7 @@
           "projects"
         ],
         "summary": "Source Preview",
-        "description": "Return image filenames + total count from the project's `source.zip`.\n\n404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse\nof 403 \u2192 404 to avoid leaking existence) and for the case where the\npresigned upload URL was issued but the PUT never landed.",
+        "description": "Return image filenames + total count from the project's `source.zip`.\n\n404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse\nof 403 -> 404 to avoid leaking existence) and for the case where the\npresigned upload URL was issued but the PUT never landed.",
         "operationId": "get_source_preview",
         "security": [
           {
@@ -382,7 +382,7 @@
           "projects"
         ],
         "summary": "Source Preview Thumbnail",
-        "description": "Return a JPEG thumbnail for one image entry inside the project's source.zip.\n\nPairs with ``GET /source-preview`` (slice 2): that route returns the\nimage filenames; the SPA then issues one of these per filename to fill\nthe preview strip. Auth/ownership match slice 2 verbatim \u2014 collapsing\n403 \u2192 404 so existence isn't leaked.\n\nUnknown filename and non-image filename both 404 (see\n``extract_zip_image_thumbnail``); a corrupt image inside the zip\nbecomes a 500 today, since that indicates a broken upload rather than\na routine missing entry \u2014 let the SPA surface it.",
+        "description": "Return a JPEG thumbnail for one image entry inside the project's source.zip.",
         "operationId": "get_source_preview_thumbnail",
         "security": [
           {
@@ -534,7 +534,7 @@
           "projects"
         ],
         "summary": "Project Run Dirty",
-        "description": "Submit a project_run_dirty job.\n\nFans out across every page in the project, running every dirty or\nnot-run stage in DAG order.  An optional ``stage_filter`` query\nparameter restricts the sweep to a single stage_id.",
+        "description": "Submit a project_run_dirty job.",
         "operationId": "project_run_dirty",
         "security": [
           {
@@ -598,7 +598,7 @@
           "projects"
         ],
         "summary": "Project Build Package",
-        "description": "Submit a build_package job for the project.\n\nThe job runner will park it in ``awaiting_review`` if any proof-range\npage has not yet had its ``text_review`` stage marked clean.  It\nauto-resumes once the last page is attested.",
+        "description": "Submit a build_package job for the project.",
         "operationId": "project_build_package",
         "security": [
           {
@@ -5531,7 +5531,7 @@
           "total_image_count"
         ],
         "title": "SourcePreviewResponse",
-        "description": "Cheap-to-compute preview of an uploaded source zip (P2 #8).\n\nLets the SPA render a thumbnail strip / sanity-check the upload before\ntriggering ingest. Backed by `peek_zip_image_names`, which only reads\nthe zip's central directory \u2014 no per-entry decompression."
+        "description": "Cheap-to-compute preview of an uploaded source zip (P2 #8).\n\nLets the SPA render a thumbnail strip / sanity-check the upload before\ntriggering ingest. Backed by `peek_zip_image_names`, which only reads\nthe zip's central directory -- no per-entry decompression."
       },
       "SplitPageRequest": {
         "properties": {

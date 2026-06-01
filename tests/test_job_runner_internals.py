@@ -47,9 +47,9 @@ def storage(tmp_path) -> FilesystemStorage:
 
 @pytest.mark.asyncio
 async def test_on_dispatcher_flush_ignores_empty_job_id(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     # Should NOT raise — no_op when job_id is "".
     await runner._on_dispatcher_flush(
         "",
@@ -59,10 +59,10 @@ async def test_on_dispatcher_flush_ignores_empty_job_id(
 
 @pytest.mark.asyncio
 async def test_on_dispatcher_flush_ignores_missing_job(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
     """If the job row was purged before the flush callback runs, we don't crash."""
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner._on_dispatcher_flush(
         "ghost-job-id",
         [BatchJobResult(job_type="run_page_stage", project_id="x", idx0=0, ok=True)],
@@ -71,7 +71,7 @@ async def test_on_dispatcher_flush_ignores_missing_job(
 
 @pytest.mark.asyncio
 async def test_on_dispatcher_flush_marks_job_error_when_all_failed(
-    db: SqliteDatabase, storage: FilesystemStorage
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:
     """All-failed batch → JobStatus.error and the first error message wins."""
     now = datetime.now(UTC)
@@ -98,7 +98,7 @@ async def test_on_dispatcher_flush_marks_job_error_when_all_failed(
     )
     await db.put_job(job)
 
-    runner = InProcessJobRunner(database=db, storage=storage)
+    runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
     await runner._on_dispatcher_flush(
         "j-flush",
         [

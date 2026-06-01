@@ -56,6 +56,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     run_stage,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -83,6 +84,7 @@ def _gray_gradient_png() -> bytes:
 async def _seed_project_and_page(
     db: SqliteDatabase,
     project_id: str,
+    data_root: Path,
     config_overrides: PageConfigOverrides | None = None,
 ) -> None:
     now = datetime.now(UTC)
@@ -101,7 +103,9 @@ async def _seed_project_and_page(
             storage_prefix=f"projects/{project_id}/",
         )
     )
-    await db.put_pages(
+    seed_pages_in_store(
+        data_root,
+        project_id,
         [
             PageRecord(
                 project_id=project_id,
@@ -111,7 +115,7 @@ async def _seed_project_and_page(
                 processing_status=PageProcessingStatus.pending,
                 config_overrides=config_overrides or PageConfigOverrides(),
             )
-        ]
+        ],
     )
 
 
@@ -130,7 +134,9 @@ async def test_threshold_stage_uses_resolved_config_threshold_level(
     and white pixels on the gradient input, so ``arr.max() > 0`` would hold.
     """
     project_id, page_id = "cfg_b1", "0000"
-    await _seed_project_and_page(db, project_id, config_overrides=PageConfigOverrides(threshold_level=255))
+    await _seed_project_and_page(
+        db, project_id, tmp_path, config_overrides=PageConfigOverrides(threshold_level=255)
+    )
     gray_png = _gray_gradient_png()
     await db.init_page_stages_for_page(project_id, page_id)
     await commit_stage_artifact(
@@ -275,7 +281,9 @@ def _seed_b3(settings: Settings) -> None:
                 storage_prefix="projects/b3proj/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "b3proj",
             [
                 PageRecord(
                     project_id="b3proj",
@@ -284,7 +292,7 @@ def _seed_b3(settings: Settings) -> None:
                     source_stem="src",
                     processing_status=PageProcessingStatus.pending,
                 )
-            ]
+            ],
         )
 
     asyncio.run(go())
@@ -379,7 +387,7 @@ async def test_run_stage_accepts_resolved_config_kwarg_no_behavior_change(
     """``run_stage`` accepts ``resolved_config`` kwarg and behaves identically
     when the kwarg is absent vs. when it is ``None``."""
     project_id, page_id = "b87_kw", "0000"
-    await _seed_project_and_page(db, project_id)
+    await _seed_project_and_page(db, project_id, tmp_path)
     color_png = _color_png()
     await db.init_page_stages_for_page(project_id, page_id)
     await commit_stage_artifact(
@@ -420,6 +428,7 @@ async def test_initial_crop_with_configured_margins_produces_smaller_image(
     await _seed_project_and_page(
         db,
         project_id,
+        tmp_path,
         config_overrides=PageConfigOverrides(initial_crop=(2, 2, 4, 4)),
     )
     png_40x60 = _color_png(h=40, w=60)
@@ -457,7 +466,7 @@ async def test_initial_crop_with_configured_margins_produces_smaller_image(
 async def test_initial_crop_no_op_when_no_config(tmp_path: Path, db: SqliteDatabase) -> None:
     """``initial_crop`` with no config overrides passes through the image unchanged."""
     project_id, page_id = "b87_ic_noop", "0000"
-    await _seed_project_and_page(db, project_id)
+    await _seed_project_and_page(db, project_id, tmp_path)
     png_40x60 = _color_png(h=40, w=60)
     await db.init_page_stages_for_page(project_id, page_id)
     await commit_stage_artifact(
@@ -500,6 +509,7 @@ async def test_manual_deskew_pre_rotates_when_angle_configured(tmp_path: Path, d
     await _seed_project_and_page(
         db,
         project_id,
+        tmp_path,
         config_overrides=PageConfigOverrides(deskew_before_crop=90.0),
     )
     # Use a non-square image so a 90-degree rotation changes the shape.
@@ -538,7 +548,7 @@ async def test_manual_deskew_pre_rotates_when_angle_configured(tmp_path: Path, d
 async def test_manual_deskew_pre_no_op_when_no_angle(tmp_path: Path, db: SqliteDatabase) -> None:
     """Without ``manual_deskew_angle``, the stage is a passthrough."""
     project_id, page_id = "b87_mdp_noop", "0000"
-    await _seed_project_and_page(db, project_id)
+    await _seed_project_and_page(db, project_id, tmp_path)
     # manual_deskew_pre depends on initial_crop, so seed that as the parent.
     png_30x80 = _color_png(h=30, w=80)
     await db.init_page_stages_for_page(project_id, page_id)
@@ -615,7 +625,9 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
                 storage_prefix="projects/b87_route/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "b87_route",
             [
                 PageRecord(
                     project_id="b87_route",
@@ -625,7 +637,7 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
                     processing_status=PageProcessingStatus.pending,
                     config_overrides=PageConfigOverrides(threshold_level=255),
                 )
-            ]
+            ],
         )
         # Seed grayscale artifact (manual_deskew_pre must also exist as parent).
         await db.init_page_stages_for_page("b87_route", "0000")

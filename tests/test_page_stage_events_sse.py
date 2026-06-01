@@ -27,6 +27,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -67,7 +68,9 @@ def _seed(settings: Settings, project_id: str = "p1") -> None:
                 storage_prefix=f"projects/{project_id}/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            project_id,
             [
                 PageRecord(
                     project_id=project_id,
@@ -76,7 +79,7 @@ def _seed(settings: Settings, project_id: str = "p1") -> None:
                     source_stem="src1",
                     processing_status=PageProcessingStatus.pending,
                 ),
-            ]
+            ],
         )
         await db.close()
 

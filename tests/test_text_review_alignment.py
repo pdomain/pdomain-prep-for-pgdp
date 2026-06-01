@@ -13,6 +13,7 @@ Locks in:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,6 +30,10 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_page_in_store
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -46,9 +51,7 @@ def settings(tmp_path) -> Settings:
     )
 
 
-def test_patch_text_writes_to_ocr_text_key_recorded_on_output(
-    settings: Settings,
-) -> None:
+def test_patch_text_writes_to_ocr_text_key_recorded_on_output(settings: Settings, tmp_path: Path) -> None:
     """Seed via a fresh asyncio loop, then run TestClient on its own loop.
 
     `TestClient` spins up its own event loop on `__enter__`. Sharing a loop
@@ -95,7 +98,7 @@ def test_patch_text_writes_to_ocr_text_key_recorded_on_output(
                 )
             ],
         )
-        await db.put_page(page)
+        seed_page_in_store(tmp_path / "data", page.project_id, page)
         await db.close()
         return project_id, ocr_text_key
 

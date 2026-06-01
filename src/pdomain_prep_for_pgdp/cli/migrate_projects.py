@@ -32,6 +32,8 @@ from pdomain_prep_for_pgdp.core.models import (
     PageStageStatus,
     Project,
 )
+from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
 from pdomain_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
 from pdomain_prep_for_pgdp.settings import Settings
 
@@ -116,7 +118,7 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
 
         if typed_args.force_rebuild:
             return await _force_rebuild(db, data_root, projects, typed_args, stdout=stdout)
-        return await _report_legacy(db, projects, stdout=stdout)
+        return await _report_legacy(db, data_root, projects, stdout=stdout)
     finally:
         await db.close()
 
@@ -152,9 +154,10 @@ async def _all_owner_ids(db: SqliteDatabase) -> set[str]:
     return await db._run(_go)
 
 
-async def _all_pages_for_project(db: SqliteDatabase, project_id: str) -> list[PageRecord]:
-    pages, _, _total = await db.list_pages(project_id, limit=99999)
-    return pages
+def _all_pages_for_project(data_root: Path, project_id: str) -> list[PageRecord]:
+    """Return all pages for a project from the event store."""
+    svc = build_page_service(data_root, project_id)
+    return list_page_records(svc, project_id)
 
 
 # ─── Force-rebuild ───────────────────────────────────────────────────────────
@@ -198,11 +201,8 @@ async def _force_rebuild(
     total_bytes_freed = 0
 
     for project in projects:
-        if args.page_idx is not None:
-            page = await db.get_page(project.id, args.page_idx)
-            pages = [page] if page is not None else []
-        else:
-            pages = await _all_pages_for_project(db, project.id)
+        all_pages = _all_pages_for_project(data_root, project.id)
+        pages = [p for p in all_pages if p.idx0 == args.page_idx] if args.page_idx is not None else all_pages
 
         for page in pages:
             page_id = f"{page.idx0:04d}"
@@ -229,13 +229,14 @@ async def _force_rebuild(
 
 async def _report_legacy(
     db: SqliteDatabase,
+    data_root: Path,
     projects: list[Project],
     *,
     stdout: TextIO,
 ) -> int:
     legacy_count = 0
     for project in projects:
-        pages = await _all_pages_for_project(db, project.id)
+        pages = _all_pages_for_project(data_root, project.id)
         if any(p.processing_status in LEGACY_STATUSES for p in pages):
             legacy_count += 1
 

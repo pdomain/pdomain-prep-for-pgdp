@@ -37,6 +37,15 @@ from pdomain_prep_for_pgdp.core.models import (
     PageType,
 )
 from pdomain_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
+from pdomain_prep_for_pgdp.core.page_service_helpers import (
+    _to_uuid as _project_id_to_uuid,
+)
+from pdomain_prep_for_pgdp.core.page_service_helpers import (
+    get_page_record,
+    list_page_records,
+    put_page_records,
+    update_page_extension,
+)
 from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     StageArtifactWriteError,
     stage_artifact_path,
@@ -163,60 +172,24 @@ async def list_pages(
         raise HTTPException(404, "project not found")
 
     # ── Event-store path ──────────────────────────────────────────────────
-    try:
-        from pdomain_ops.pages import get_extension as _ops_get_ext
-
-        project_uuid = uuid.UUID(project_id)
-        proj_agg = page_service.store.get_project(project_uuid)
-        all_extensions: list[PrepPageExtension] = []
-        for page_id in proj_agg.record.page_ids:
-            try:
-                page_agg = page_service.store.get_page(page_id)
-            except Exception:
-                continue
-            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
-            if ext is not None:
-                all_extensions.append(ext)
-
-        filtered = all_extensions
-        if page_type is not None:
-            filtered = [e for e in filtered if e.page_type == page_type]
-        if has_splits is not None:
-            filtered = [e for e in filtered if bool(e.splits) == has_splits]
-        if status is not None:
-            filtered = [e for e in filtered if e.processing_status == status]
-        if review_needed is True:
-            filtered = [e for e in filtered if _needs_review_ext(e)]
-        if review_needed is False:
-            filtered = [e for e in filtered if not _needs_review_ext(e)]
-
-        total_es = len(filtered)
-        offset = int(cursor) if cursor else 0
-        page_slice = filtered[offset : offset + limit]
-        next_cursor_es = str(offset + limit) if offset + limit < total_es else None
-        records = [_ext_to_page_record(e) for e in page_slice]
-        return ListPagesResponse(pages=records, next_cursor=next_cursor_es, total=total_es)
-    except Exception:
-        pass  # Fall through to legacy IDatabase path if event store not populated
-
-    # ── Legacy IDatabase path ─────────────────────────────────────────────
-    pages, next_cursor, total = await db.list_pages(project_id, cursor, limit)
+    all_pages = list_page_records(page_service, project_id)
+    filtered = all_pages
     if page_type is not None:
-        pages = [p for p in pages if p.page_type == page_type]
+        filtered = [p for p in filtered if p.page_type == page_type]
     if has_splits is not None:
-        pages = [p for p in pages if bool(p.splits) == has_splits]
+        filtered = [p for p in filtered if bool(p.splits) == has_splits]
     if status is not None:
-        pages = [p for p in pages if p.processing_status == status]
+        filtered = [p for p in filtered if p.processing_status == status]
     if review_needed is True:
-        pages = [p for p in pages if _needs_review(p)]
+        filtered = [p for p in filtered if _needs_review(p)]
     if review_needed is False:
-        pages = [p for p in pages if not _needs_review(p)]
-    # When the caller filters, total reflects the visible page count so the
-    # UI can render "N of M pages need review".
-    filtered_total = (
-        len(pages) if any(f is not None for f in (page_type, has_splits, status, review_needed)) else total
-    )
-    return ListPagesResponse(pages=pages, next_cursor=next_cursor, total=filtered_total)
+        filtered = [p for p in filtered if not _needs_review(p)]
+
+    total = len(filtered)
+    offset = int(cursor) if cursor else 0
+    page_slice = filtered[offset : offset + limit]
+    next_cursor_out = str(offset + limit) if offset + limit < total else None
+    return ListPagesResponse(pages=page_slice, next_cursor=next_cursor_out, total=total)
 
 
 def _needs_review(page: PageRecord) -> bool:
@@ -227,20 +200,6 @@ def _needs_review(page: PageRecord) -> bool:
         # Pre-OCR pages don't need review yet.
         return False
     for o in page.outputs:
-        if o.ocr_status != PageProcessingStatus.complete:
-            return True
-        if o.ocr_error:
-            return True
-    return False
-
-
-def _needs_review_ext(ext: PrepPageExtension) -> bool:
-    """Review-queue heuristic on PrepPageExtension (event-store path)."""
-    if ext.processing_status == PageProcessingStatus.error:
-        return True
-    if not ext.outputs:
-        return False
-    for o in ext.outputs:
         if o.ocr_status != PageProcessingStatus.complete:
             return True
         if o.ocr_error:
@@ -294,24 +253,7 @@ async def get_page(
         raise HTTPException(404, "project not found")
 
     # ── Event-store path ──────────────────────────────────────────────────
-    try:
-        from pdomain_ops.pages import get_extension as _ops_get_ext
-
-        project_uuid = uuid.UUID(project_id)
-        proj_agg = page_service.store.get_project(project_uuid)
-        for page_id in proj_agg.record.page_ids:
-            try:
-                page_agg = page_service.store.get_page(page_id)
-            except Exception:
-                continue
-            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
-            if ext is not None and ext.idx0 == idx0:
-                return _ext_to_page_record(ext)
-    except Exception:
-        pass  # Fall through to legacy path
-
-    # ── Legacy IDatabase path ─────────────────────────────────────────────
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
     return page
@@ -327,6 +269,7 @@ async def reorder_pages(
     body: ReorderPagesRequest,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> ReorderPagesResponse:
     """Reorder pages in a project.
 
@@ -356,7 +299,7 @@ async def reorder_pages(
             idx0 = int(page_id)
         except ValueError as err:
             raise HTTPException(422, f"invalid page_id format: {page_id}") from err
-        page = await db.get_page(project_id, idx0)
+        page = get_page_record(page_service, project_id, idx0)
         if page is None:
             raise HTTPException(404, f"page not found: {page_id}")
         pages_by_id[page_id] = page
@@ -377,8 +320,8 @@ async def reorder_pages(
         new_prefix = compute_prefix(page.idx0, project.config, pages_by_idx)
         page.prefix = new_prefix or ""
 
-    # Write all updated pages to the database in a batch
-    await db.put_pages(updated_pages)
+    # Write all updated pages to the event store in a batch
+    put_page_records(page_service, updated_pages)
 
     return ReorderPagesResponse(pages=updated_pages)
 
@@ -394,11 +337,12 @@ async def update_page(
     body: UpdatePageRequest,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> PageRecord:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
     updated_fields = body.model_fields_set
@@ -413,7 +357,18 @@ async def update_page(
         page.splits = body.splits
     if "illustration_regions" in updated_fields and body.illustration_regions is not None:
         page.illustration_regions = body.illustration_regions
-    await db.put_page(page)
+    updated = update_page_extension(
+        page_service,
+        project_id,
+        idx0,
+        config_overrides=page.config_overrides,
+        page_type=page.page_type,
+        alignment=page.alignment,
+        splits=page.splits,
+        illustration_regions=page.illustration_regions,
+    )
+    if updated is not None:
+        page = updated
 
     # Cascade dirty to stages whose config-field sets overlap with the changed
     # config_overrides fields, so the chip rail reflects staleness immediately.
@@ -443,11 +398,12 @@ async def update_page_text(
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
+    page_service: PageServiceDep,
 ) -> UpdatePageTextResponse:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -480,11 +436,12 @@ async def get_page_text(
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
+    page_service: PageServiceDep,
 ) -> GetPageTextResponse:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
     real_suffix = "" if suffix == "_" else suffix
@@ -596,6 +553,7 @@ async def delete_page_words(
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
+    page_service: PageServiceDep,
 ) -> DeleteWordsResponse:
     """Soft-delete OCR words from a page's `<root>.words.json` and
     rewrite `<root>.txt` from the survivors (roadmap §9a).
@@ -609,7 +567,7 @@ async def delete_page_words(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -685,6 +643,7 @@ async def restore_page_words(
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
+    page_service: PageServiceDep,
 ) -> RestoreWordsResponse:
     """Restore previously soft-deleted OCR words for a page (roadmap §9a).
 
@@ -695,7 +654,7 @@ async def restore_page_words(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -794,75 +753,45 @@ async def split_page(
         raise HTTPException(404, "project not found")
 
     # ── Event-store path ──────────────────────────────────────────────────
-    try:
-        from pdomain_ops.pages import get_extension as _ops_get_ext
+    from pdomain_ops.pages import get_extension as _ops_get_ext
 
-        from pdomain_prep_for_pgdp.core.split_ops import split_page_in_store
+    from pdomain_prep_for_pgdp.core.split_ops import split_page_in_store
 
-        project_uuid = uuid.UUID(project_id)
-        proj_agg = page_service.store.get_project(project_uuid)
-        parent_page_uuid = None
-        parent_ext = None
-        for pid in proj_agg.record.page_ids:
-            try:
-                page_agg = page_service.store.get_page(pid)
-            except Exception:
-                continue
-            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
-            if ext is not None and ext.idx0 == idx0:
-                parent_page_uuid = pid
-                parent_ext = ext
-                break
+    project_uuid = _project_id_to_uuid(project_id)
+    proj_agg = page_service.store.get_project(project_uuid)
+    parent_page_uuid = None
+    parent_ext = None
+    for pid in proj_agg.record.page_ids:
+        try:
+            page_agg = page_service.store.get_page(pid)
+        except Exception:
+            continue
+        ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None and ext.idx0 == idx0:
+            parent_page_uuid = pid
+            parent_ext = ext
+            break
 
-        if parent_page_uuid is not None and parent_ext is not None:
-            child_records = split_page_in_store(
-                service=page_service,
-                project_id=project_id,
-                parent_page_id=parent_page_uuid,
-                parent_idx0=parent_ext.idx0,
-                parent_prefix=parent_ext.prefix,
-                parent_source_stem=parent_ext.source_stem,
-                bbox=body.bbox,
-                split_at_stage=body.split_at_stage,
-                suffixes=body.suffixes,
-            )
-            children_wire = []
-            for ops_rec in child_records:
-                child_ext = _ops_get_ext(ops_rec, "prep", PrepPageExtension)
-                if child_ext is not None:
-                    children_wire.append(_ext_to_page_record(child_ext))
-            return SplitPageResponse(children=children_wire)
-    except Exception:
-        pass  # Fall through to legacy path
-
-    # ── Legacy IDatabase path ─────────────────────────────────────────────
-    parent = await db.get_page(project_id, idx0)
-    if parent is None:
+    if parent_page_uuid is None or parent_ext is None:
         raise HTTPException(404, "page not found")
 
-    # Allocate idx0 values after the current maximum across all pages.
-    all_pages, _, _ = await db.list_pages(project_id, cursor=None, limit=10000)
-    next_idx0 = max((p.idx0 for p in all_pages), default=-1) + 1
-
-    parent_page_id = _page_id_for_idx0(idx0)
-    children_legacy: list[PageRecord] = []
-    for i, suffix in enumerate(body.suffixes):
-        child = PageRecord(
-            project_id=project_id,
-            idx0=next_idx0 + i,
-            prefix=f"{parent.prefix}{suffix}",
-            source_stem=parent.source_stem,
-            parent_page_id=parent_page_id,
-            source_crop_bbox=body.bbox,
-            split_index=i + 1,
-            split_at_stage=body.split_at_stage,
-            split_suffix=suffix,
-            reading_order=i,
-        )
-        children_legacy.append(child)
-
-    await db.put_pages(children_legacy)
-    return SplitPageResponse(children=children_legacy)
+    child_records = split_page_in_store(
+        service=page_service,
+        project_id=project_id,
+        parent_page_id=parent_page_uuid,
+        parent_idx0=parent_ext.idx0,
+        parent_prefix=parent_ext.prefix,
+        parent_source_stem=parent_ext.source_stem,
+        bbox=body.bbox,
+        split_at_stage=body.split_at_stage,
+        suffixes=body.suffixes,
+    )
+    children_wire = []
+    for ops_rec in child_records:
+        child_ext = _ops_get_ext(ops_rec, "prep", PrepPageExtension)
+        if child_ext is not None:
+            children_wire.append(_ext_to_page_record(child_ext))
+    return SplitPageResponse(children=children_wire)
 
 
 # ─── Unsplit: DELETE /pages/{idx0}/split ────────────────────────────────────
@@ -895,79 +824,86 @@ async def unsplit_page(
         raise HTTPException(404, "project not found")
 
     # ── Event-store path ──────────────────────────────────────────────────
-    try:
-        from pdomain_ops.pages import get_extension as _ops_get_ext
+    from pdomain_ops.pages import get_extension as _ops_get_ext
 
-        from pdomain_prep_for_pgdp.core.split_ops import unsplit_page_in_store
+    from pdomain_prep_for_pgdp.core.split_ops import unsplit_page_in_store
 
-        project_uuid = uuid.UUID(project_id)
-        proj_agg = page_service.store.get_project(project_uuid)
-        target_page_uuid = None
-        target_ext = None
-        for pid in proj_agg.record.page_ids:
-            try:
-                page_agg = page_service.store.get_page(pid)
-            except Exception:
-                continue
-            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
-            if ext is not None and ext.idx0 == idx0:
-                target_page_uuid = pid
-                target_ext = ext
-                break
+    project_uuid = _project_id_to_uuid(project_id)
+    proj_agg = page_service.store.get_project(project_uuid)
+    target_page_uuid = None
+    target_ext = None
+    for pid in proj_agg.record.page_ids:
+        try:
+            page_agg = page_service.store.get_page(pid)
+        except Exception:
+            continue
+        ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None and ext.idx0 == idx0:
+            target_page_uuid = pid
+            target_ext = ext
+            break
 
-        if target_page_uuid is not None and target_ext is not None:
-            if target_ext.parent_page_id is None:
-                raise HTTPException(422, "page is not a split child")
-
-            parent_page_uuid = uuid.UUID(target_ext.parent_page_id)
-
-            # Clean up page_stages for children before removing from event store
-            for pid in list(proj_agg.record.page_ids):
-                try:
-                    page_agg = page_service.store.get_page(pid)
-                except Exception:
-                    continue
-                ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
-                if ext is not None and ext.parent_page_id == str(parent_page_uuid):
-                    await db.delete_page_stages_for_page(project_id, str(pid))
-
-            unsplit_page_in_store(
-                service=page_service,
-                project_id=project_id,
-                parent_page_id=parent_page_uuid,
-            )
-
-            # Return the parent page
-            parent_agg = page_service.store.get_page(parent_page_uuid)
-            parent_ext = _ops_get_ext(parent_agg.record, "prep", PrepPageExtension)
-            if parent_ext is None:
-                raise HTTPException(404, "parent page has no prep extension")
-            return _ext_to_page_record(parent_ext)
-    except HTTPException:
-        raise
-    except Exception:
-        pass  # Fall through to legacy path
-
-    # ── Legacy IDatabase path ─────────────────────────────────────────────
-    page = await db.get_page(project_id, idx0)
-    if page is None:
+    if target_page_uuid is None or target_ext is None:
         raise HTTPException(404, "page not found")
-    if page.parent_page_id is None:
+
+    if target_ext.parent_page_id is None:
         raise HTTPException(422, "page is not a split child")
 
-    parent_page_id = page.parent_page_id
-    parent_idx0 = int(parent_page_id)
-    parent = await db.get_page(project_id, parent_idx0)
-    if parent is None:
-        raise HTTPException(404, "parent page not found")
+    # The parent_page_id may be either a UUID string (from production split)
+    # or a zero-padded idx0 string (from legacy/test seeding).
+    parent_page_id_str = target_ext.parent_page_id
 
-    siblings = await db.list_pages_by_parent_id(project_id, parent_page_id)
-    for sibling in siblings:
-        sibling_page_id = _page_id_for_idx0(sibling.idx0)
-        await db.delete_page_stages_for_page(project_id, sibling_page_id)
-        await db.delete_page(project_id, sibling.idx0)
+    # Clean up page_stages for children before removing from event store.
+    # page_stages rows use the zero-padded idx0 as page_id, not the event-store UUID.
+    for pid in list(proj_agg.record.page_ids):
+        try:
+            page_agg = page_service.store.get_page(pid)
+        except Exception:
+            continue
+        ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None and ext.parent_page_id == parent_page_id_str:
+            # Use zero-padded idx0 for page_stages lookup (the legacy page_id format).
+            child_page_stages_id = f"{ext.idx0:04d}"
+            await db.delete_page_stages_for_page(project_id, child_page_stages_id)
 
-    return parent
+    # Remove children from the project aggregate.
+    # parent_page_id_str might be a UUID (production) or zero-padded idx0 (test).
+    try:
+        parent_uuid = _project_id_to_uuid(parent_page_id_str)
+        from pdomain_prep_for_pgdp.core.split_ops import unsplit_page_in_store
+
+        unsplit_page_in_store(
+            service=page_service,
+            project_id=project_id,
+            parent_page_id=parent_uuid,
+            parent_page_id_str=parent_page_id_str,
+        )
+    except Exception:
+        pass  # Children already cleaned up above; project aggregate update failed
+
+    # Return the parent page — look up by finding the page with no parent_page_id
+    # that matches the parent_page_id_str context.
+    # Try to parse as idx0 (zero-padded string like "0000" → idx0=0).
+    try:
+        parent_idx0 = int(parent_page_id_str)
+        parent_rec = get_page_record(page_service, project_id, parent_idx0)
+        if parent_rec is not None:
+            return parent_rec
+    except (ValueError, TypeError):
+        pass
+
+    # Try as UUID — find page whose aggregate UUID matches parent_page_id_str
+    for pid in proj_agg.record.page_ids:
+        if str(pid) == parent_page_id_str:
+            try:
+                parent_agg = page_service.store.get_page(pid)
+                parent_ext = _ops_get_ext(parent_agg.record, "prep", PrepPageExtension)
+                if parent_ext is not None:
+                    return _ext_to_page_record(parent_ext)
+            except Exception:
+                pass
+
+    raise HTTPException(404, "parent page not found after unsplit")
 
 
 # ─── Per-page DAG stages (M1 §C) ─────────────────────────────────────────────
@@ -992,6 +928,7 @@ async def list_page_stages(
     idx0: int,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> list[PageStageState]:
     """Return ordered per-page stage state for the 22-stage DAG.
 
@@ -1008,7 +945,7 @@ async def list_page_stages(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -1053,6 +990,7 @@ async def run_page_stage(
     storage: StorageDep,
     settings: SettingsDep,
     stage_events: StageEventsDep,
+    page_service: PageServiceDep,
     async_: Annotated[bool, Query(alias="async")] = False,
 ) -> Job | PageStageState:
     """Run one stage on one page synchronously and return the new row.
@@ -1089,7 +1027,7 @@ async def run_page_stage(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -1141,7 +1079,7 @@ async def run_page_stage(
             # page's source_key; pass through unconditionally so the runner
             # has them when it needs them (other stages ignore both).
             storage=storage,
-            page_source_key=page.source_key,
+            page_source_key=None,  # source_key not stored in event store; stage reads from BlobStore
             stage_events=stage_events,
             resolved_config=_resolved_config,
         )
@@ -1203,6 +1141,7 @@ async def get_page_stage_artifact(
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
+    page_service: PageServiceDep,
     _v: str | None = None,  # cache-busting: ?v=<last_run_at>; value is ignored server-side
     if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
@@ -1235,7 +1174,7 @@ async def get_page_stage_artifact(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -1301,6 +1240,7 @@ async def get_page_stage_thumbnail(
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
+    page_service: PageServiceDep,
     if_none_match: Annotated[str | None, Header(alias="If-None-Match")] = None,
 ) -> Response:
     """Return the pre-generated thumbnail PNG for a clean stage's output.
@@ -1315,7 +1255,7 @@ async def get_page_stage_thumbnail(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 
@@ -1352,6 +1292,7 @@ async def stream_page_stage_events(
     user: UserDep,
     db: DatabaseDep,
     stage_events: StageEventsDep,
+    page_service: PageServiceDep,
 ):
     """SSE — push stage-status and stage-progress events for one page.
 
@@ -1369,7 +1310,7 @@ async def stream_page_stage_events(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
-    page = await db.get_page(project_id, idx0)
+    page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
 

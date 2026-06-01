@@ -20,8 +20,6 @@ import anyio.to_thread
 from pdomain_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
     Job,
-    PageProcessingStatus,
-    PageRecord,
     PageStageState,
     PageStageStatus,
     Project,
@@ -65,13 +63,6 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS projects_owner ON projects(owner_id);
-
-CREATE TABLE IF NOT EXISTS pages (
-    project_id TEXT NOT NULL,
-    idx0       INTEGER NOT NULL,
-    body       TEXT NOT NULL,
-    PRIMARY KEY (project_id, idx0)
-);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id         TEXT PRIMARY KEY,
@@ -130,7 +121,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS page_text_fts USING fts5(
 type _JsonTextRow = tuple[str]
 type _CountRow = tuple[int]
 type _OwnerIdRow = tuple[str]
-type _PageInsertRow = tuple[str, int, str]
 type _SearchRow = tuple[str, int, str | None, float]
 type _PageStageRow = tuple[
     str,
@@ -181,23 +171,6 @@ def _fetch_owner_id_rows(cur: sqlite3.Cursor) -> list[_OwnerIdRow]:
 
 
 # ─── Legacy migration helpers ───────────────────────────────────────────────────
-
-
-def _initial_stage_status(page: PageRecord) -> str:
-    """Determine initial stage status for lazy-init.
-
-    Spec: docs/specs/2026-05-13-m4-migration-disk-cost-design.md §"Legacy detection".
-    Pre-M1 pages with legacy processing_status values are marked as `dirty`
-    to indicate they need re-running through the new DAG.
-    """
-    legacy_statuses = {
-        PageProcessingStatus.complete,
-        PageProcessingStatus.processing,
-        PageProcessingStatus.error,
-    }
-    if page.processing_status in legacy_statuses:
-        return PageStageStatus.dirty.value
-    return PageStageStatus.not_run.value
 
 
 class SqliteDatabase:
@@ -330,101 +303,9 @@ class SqliteDatabase:
         def _go() -> None:
             with self._cursor() as cur:
                 _ = cur.execute("DELETE FROM page_stages WHERE project_id = ?", (project_id,))
-                _ = cur.execute("DELETE FROM pages WHERE project_id = ?", (project_id,))
                 _ = cur.execute("DELETE FROM projects WHERE id = ?", (project_id,))
 
         await self._run(_go)
-
-    # ── Pages ───────────────────────────────────────────────────────────────
-
-    async def list_pages(
-        self,
-        project_id: str,
-        cursor: str | None = None,
-        limit: int = 50,
-    ) -> tuple[list[PageRecord], str | None, int]:
-        def _go() -> tuple[list[PageRecord], str | None, int]:
-            offset = int(cursor) if cursor else 0
-            with self._cursor() as cur:
-                _ = cur.execute("SELECT COUNT(*) FROM pages WHERE project_id = ?", (project_id,))
-                total = _fetch_count(cur)
-                _ = cur.execute(
-                    "SELECT body FROM pages WHERE project_id = ? ORDER BY idx0 LIMIT ? OFFSET ?",
-                    (project_id, limit, offset),
-                )
-                rows = _fetch_json_text_rows(cur)
-            pages = [PageRecord.model_validate_json(r[0]) for r in rows]
-            next_cursor = str(offset + limit) if offset + limit < total else None
-            return pages, next_cursor, total
-
-        return await self._run(_go)
-
-    async def get_page(self, project_id: str, idx0: int) -> PageRecord | None:
-        def _go() -> PageRecord | None:
-            with self._cursor() as cur:
-                _ = cur.execute(
-                    "SELECT body FROM pages WHERE project_id = ? AND idx0 = ?",
-                    (project_id, idx0),
-                )
-                row = _fetch_optional_json_text_row(cur)
-                return PageRecord.model_validate_json(row[0]) if row else None
-
-        return await self._run(_go)
-
-    async def put_page(self, page: PageRecord) -> None:
-        body = page.model_dump_json()
-
-        def _go() -> None:
-            with self._cursor() as cur:
-                _ = cur.execute(
-                    "INSERT OR REPLACE INTO pages (project_id, idx0, body) VALUES (?, ?, ?)",
-                    (page.project_id, page.idx0, body),
-                )
-
-        await self._run(_go)
-
-    async def put_pages(self, pages: list[PageRecord]) -> None:
-        if not pages:
-            return
-        rows: list[_PageInsertRow] = [(p.project_id, p.idx0, p.model_dump_json()) for p in pages]
-
-        def _go() -> None:
-            with self._cursor() as cur:
-                _ = cur.executemany(
-                    "INSERT OR REPLACE INTO pages (project_id, idx0, body) VALUES (?, ?, ?)",
-                    rows,
-                )
-
-        await self._run(_go)
-
-    async def delete_page(self, project_id: str, idx0: int) -> None:
-        def _go() -> None:
-            with self._cursor() as cur:
-                _ = cur.execute(
-                    "DELETE FROM pages WHERE project_id=? AND idx0=?",
-                    (project_id, idx0),
-                )
-
-        await self._run(_go)
-
-    async def list_pages_by_parent_id(
-        self,
-        project_id: str,
-        parent_page_id: str,
-    ) -> list[PageRecord]:
-        """Return all pages in the project whose parent_page_id matches."""
-
-        def _go() -> list[PageRecord]:
-            with self._cursor() as cur:
-                _ = cur.execute(
-                    "SELECT body FROM pages WHERE project_id=? ORDER BY idx0",
-                    (project_id,),
-                )
-                rows = _fetch_json_text_rows(cur)
-            pages = [PageRecord.model_validate_json(r[0]) for r in rows]
-            return [p for p in pages if p.parent_page_id == parent_page_id]
-
-        return await self._run(_go)
 
     # ── Full-text search ─────────────────────────────────────────────────────
 
@@ -693,15 +574,13 @@ class SqliteDatabase:
         callers race safely — `INSERT OR IGNORE` skips the second
         inserter's row at the composite PK.
 
-        Status is `dirty` for legacy pre-M1 pages (processing_status ∈
-        {complete, processing, error}); `not-run` otherwise.
+        Status is `not-run` for all new pages (pages now live in the event
+        store, not in IDatabase; legacy detection is no longer applicable).
 
         Returns the number of rows actually inserted (0 if all 22 already
         exist).
         """
-        idx0 = int(page_id)
-        page = await self.get_page(project_id, idx0)
-        initial_status = PageStageStatus.not_run.value if page is None else _initial_stage_status(page)
+        initial_status = PageStageStatus.not_run.value
 
         def _go() -> int:
             with self._cursor() as cur:

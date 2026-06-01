@@ -41,6 +41,7 @@ from pdomain_prep_for_pgdp.core.models import (
 )
 from pdomain_prep_for_pgdp.core.ocr_artifacts import words_key_for
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -77,7 +78,9 @@ def _seed_project(settings: Settings, owner_id: str = "default") -> None:
                 storage_prefix="projects/pt1/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "pt1",
             [
                 PageRecord(
                     project_id="pt1",
@@ -85,7 +88,7 @@ def _seed_project(settings: Settings, owner_id: str = "default") -> None:
                     prefix="p001",
                     source_stem="src1",
                 )
-            ]
+            ],
         )
         await db.close()
 

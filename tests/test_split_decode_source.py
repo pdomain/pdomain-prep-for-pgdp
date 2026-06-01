@@ -33,6 +33,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     run_stage,
 )
+from tests.fixtures.seed_pages import seed_page_in_store
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,20 +63,23 @@ def _expected_input_hash(parent_page_id: str, source_crop_bbox: tuple[int, int, 
     return hashlib.sha256(payload).hexdigest()
 
 
-async def _make_parent_page(db: SqliteDatabase, project_id: str, idx0: int = 0) -> PageRecord:
+async def _make_parent_page(
+    db: SqliteDatabase, project_id: str, data_root: Path, idx0: int = 0
+) -> PageRecord:
     parent = PageRecord(
         project_id=project_id,
         idx0=idx0,
         prefix=f"p{idx0:03d}",
         source_stem=f"page_{idx0}",
     )
-    await db.put_page(parent)
+    seed_page_in_store(data_root, parent.project_id, parent)
     return parent
 
 
 async def _make_child_page(
     db: SqliteDatabase,
     project_id: str,
+    data_root: Path,
     parent_page_id: str,
     source_crop_bbox: tuple[int, int, int, int],
     idx0: int = 1,
@@ -92,7 +96,7 @@ async def _make_child_page(
         split_at_stage="auto_detect_attrs",
         split_suffix=split_suffix,
     )
-    await db.put_page(child)
+    seed_page_in_store(data_root, child.project_id, child)
     return child
 
 
@@ -112,9 +116,9 @@ async def test_decode_source_on_split_child_produces_cropped_png(
     parent_page_id = "0000"
     source_crop_bbox = (0, 0, 100, 75)  # (x, y, w, h)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 
@@ -171,9 +175,9 @@ async def test_decode_source_on_split_child_crops_correct_region(
     # Bbox targets the red square exactly.
     source_crop_bbox = (50, 30, 40, 40)  # (x=50, y=30, w=40, h=40)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 
@@ -225,9 +229,9 @@ async def test_decode_source_on_child_fails_when_parent_ingest_source_not_clean(
     parent_page_id = "0000"
     source_crop_bbox = (0, 0, 50, 50)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 
@@ -257,9 +261,9 @@ async def test_split_child_decode_source_input_hash_encodes_parent_and_bbox(
     parent_page_id = "0000"
     source_crop_bbox = (10, 20, 80, 60)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 
@@ -301,7 +305,7 @@ async def test_split_child_decode_source_input_hash_changes_when_bbox_changes(
     bbox_a = (0, 0, 50, 50)
     bbox_b = (50, 50, 50, 50)  # different position
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
 
     parent_png = _solid_color_png(200, 200, (128, 128, 128))
     await db.init_page_stages_for_page(project_id, parent_page_id)
@@ -316,7 +320,13 @@ async def test_split_child_decode_source_input_hash_changes_when_bbox_changes(
 
     # Child A with bbox_a.
     child_a = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=bbox_a, idx0=1, split_suffix="a"
+        db,
+        project_id,
+        tmp_path,
+        parent_page_id=parent_page_id,
+        source_crop_bbox=bbox_a,
+        idx0=1,
+        split_suffix="a",
     )
     child_a_pid = f"{child_a.idx0:04d}"
     await db.init_page_stages_for_page(project_id, child_a_pid)
@@ -331,7 +341,13 @@ async def test_split_child_decode_source_input_hash_changes_when_bbox_changes(
 
     # Child B with bbox_b.
     child_b = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=bbox_b, idx0=2, split_suffix="b"
+        db,
+        project_id,
+        tmp_path,
+        parent_page_id=parent_page_id,
+        source_crop_bbox=bbox_b,
+        idx0=2,
+        split_suffix="b",
     )
     child_b_pid = f"{child_b.idx0:04d}"
     await db.init_page_stages_for_page(project_id, child_b_pid)
@@ -366,9 +382,9 @@ async def test_parent_ingest_source_rerun_dirties_child_decode_source(
     source_crop_bbox = (0, 0, 50, 50)
     storage = FilesystemStorage(tmp_path)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=source_crop_bbox, idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 
@@ -439,9 +455,9 @@ async def test_parent_ingest_source_does_not_dirty_child_decode_source_if_not_cl
     parent_page_id = "0000"
     storage = FilesystemStorage(tmp_path)
 
-    await _make_parent_page(db, project_id, idx0=0)
+    await _make_parent_page(db, project_id, tmp_path, idx0=0)
     child = await _make_child_page(
-        db, project_id, parent_page_id=parent_page_id, source_crop_bbox=(0, 0, 50, 50), idx0=1
+        db, project_id, tmp_path, parent_page_id=parent_page_id, source_crop_bbox=(0, 0, 50, 50), idx0=1
     )
     child_page_id = f"{child.idx0:04d}"
 

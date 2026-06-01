@@ -19,6 +19,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_page_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -56,14 +57,16 @@ def test_processing_error_round_trips(tmp_path) -> None:
             storage_prefix="projects/pe1/",
         )
         await db.put_project(project)
-        await db.put_page(
+        seed_page_in_store(
+            tmp_path / "data",
+            "pe1",
             PageRecord(
                 project_id="pe1",
                 idx0=0,
                 prefix="p001",
                 source_stem="s",
                 processing_error="deskew failed: image too small",
-            )
+            ),
         )
         await db.close()
 

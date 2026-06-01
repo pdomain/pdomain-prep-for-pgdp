@@ -33,6 +33,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.settings import Settings
+from tests.fixtures.seed_pages import seed_pages_in_store
 
 
 def _settings(tmp_path) -> Settings:
@@ -71,7 +72,9 @@ def _seed(settings: Settings) -> None:
                 storage_prefix="projects/us1/",
             )
         )
-        await db.put_pages(
+        seed_pages_in_store(
+            settings,
+            "us1",
             [
                 # Root parent page
                 PageRecord(
@@ -106,7 +109,7 @@ def _seed(settings: Settings) -> None:
                     split_suffix="b",
                     reading_order=1,
                 ),
-            ]
+            ],
         )
         # Add a fake page_stages row for child 1 so we can verify it's deleted.
         await db.put_page_stage(
