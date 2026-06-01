@@ -335,12 +335,15 @@ async def generate_thumbnails(
                 blob_refs=[thumb_hash],
             )
             page_agg.preprocess(provenance_node=node, blob_refs=[thumb_hash])
-            page_service.store.save_page(page_agg)
 
-            # Store thumbnail_blob_hash in ext_patches sidecar so it
-            # survives event-store replay (extensions are only stored in the
-            # initial ImageIngested event, so post-creation mutations need the sidecar).
-            page_service.ext_patches.set_fields(page_id, "prep", {"thumbnail_blob_hash": thumb_hash})
+            # Persist thumbnail_blob_hash via event-backed set_extension so it
+            # survives reload/replay (ops 0.7.1+: fires ExtensionSet event).
+            # Re-fetch ext from the reloaded aggregate (it may have changed).
+            current_ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+            if current_ext is not None:
+                updated_ext_data = current_ext.model_copy(update={"thumbnail_blob_hash": thumb_hash})
+                page_agg.set_extension("prep", updated_ext_data)
+            page_service.store.save_page(page_agg)
             updated_count += 1
 
         await _mark_step_complete(project, database, step_id=2)

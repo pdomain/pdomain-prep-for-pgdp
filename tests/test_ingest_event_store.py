@@ -183,10 +183,11 @@ async def test_generate_thumbnails_writes_blob_hash(tmp_path: Path) -> None:
 
     assert result.page_count == 1
 
-    from pdomain_prep_for_pgdp.core.page_store_factory import get_page_with_ext_patches
-
-    updated_agg = get_page_with_ext_patches(service, page_id)
-    updated_ext = get_extension(updated_agg.record, "prep", PrepPageExtension)
-    assert updated_ext is not None
-    assert updated_ext.thumbnail_blob_hash is not None
-    assert service.blobs.exists(updated_ext.thumbnail_blob_hash)
+    # Reload from a FRESH PageService (new app/repository instance) — proves
+    # thumbnail_blob_hash survives via event-store replay, not any sidecar.
+    fresh_service = build_page_service(tmp_path, project_id)
+    reloaded_agg = fresh_service.store.get_page(page_id)
+    reloaded_ext = get_extension(reloaded_agg.record, "prep", PrepPageExtension)
+    assert reloaded_ext is not None
+    assert reloaded_ext.thumbnail_blob_hash is not None
+    assert fresh_service.blobs.exists(reloaded_ext.thumbnail_blob_hash)
