@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
     from pdomain_prep_for_pgdp.adapters.database import IDatabase
     from pdomain_prep_for_pgdp.adapters.storage import IStorage, ObjectInfo
+    from pdomain_prep_for_pgdp.core.page_store_factory import PageService
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +78,7 @@ async def unzip_source(
     database: IDatabase,
     progress_cb: ProgressCb | None = None,
     zip_limits: _ZipLimitsProto | None = None,
+    page_service: PageService | None = None,
 ) -> IngestResult:
     """Extract source files (or list a folder), create one PageRecord per image.
 
@@ -98,6 +100,83 @@ async def unzip_source(
     pages: list[PageRecord] = []
     _unzip_cb_failures = 0
     _progress_cb_max_failures = 3
+
+    # ── Event-store path (page_service provided) ────────────────────────
+    if page_service is not None:
+        import uuid as _uuid
+
+        from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
+        from pdomain_ops.pages import (
+            PageRecord as OpsPageRecord,
+        )
+        from pdomain_ops.pages import (
+            ProjectRecord,
+            set_extension,
+        )
+
+        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+
+        project_uuid = _uuid.UUID(project.id)
+        proj_record = ProjectRecord(project_id=project_uuid, name=project.config.book_name)
+        proj_agg = ProjectAggregate(record=proj_record)
+
+        for valid_idx0, entry in enumerate(entries):
+            page_id = _uuid.uuid4()
+            ops_record = OpsPageRecord(
+                page_id=page_id,
+                page_index=valid_idx0,
+                source="raw",
+            )
+            source_hash = page_service.blobs.write(entry.bytes_)
+            ext = PrepPageExtension(
+                project_id=project.id,
+                idx0=valid_idx0,
+                prefix="",
+                source_stem=entry.stem,
+                ignore=(
+                    valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
+                ),
+                source_blob_hash=source_hash,
+            )
+            set_extension(ops_record, "prep", ext)
+            page_agg = PageAggregate(record=ops_record)
+            page_service.store.save_page(page_agg)
+            proj_agg.add_page(page_id=page_id, page_index=valid_idx0)
+
+            if progress_cb is not None:
+                try:
+                    await progress_cb(valid_idx0 + 1, total, entry.stem)
+                    _unzip_cb_failures = 0
+                except Exception:
+                    _unzip_cb_failures += 1
+                    if _unzip_cb_failures >= _progress_cb_max_failures:
+                        log.error(
+                            "progress_cb failed %d times consecutively; disabling for this job",
+                            _unzip_cb_failures,
+                        )
+                        progress_cb = None
+                    else:
+                        log.exception(
+                            "unzip progress_cb raised (failure %d/%d)",
+                            _unzip_cb_failures,
+                            _progress_cb_max_failures,
+                        )
+
+        page_service.store.save_project(proj_agg)
+        # Note: database.put_pages is NOT called — pages live in event store only.
+        project = project.model_copy(
+            update={
+                "page_count": total,
+                "proof_page_count": total,
+                "status": ProjectStatus.ingesting,
+                "updated_at": datetime.now(UTC),
+                "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=[]),
+            }
+        )
+        await database.put_project(project)
+        return IngestResult(page_count=total, errors=[])
+
+    # ── Legacy path (no page_service) ────────────────────────────────────
     for valid_idx0, entry in enumerate(entries):
         pages.append(
             PageRecord(
