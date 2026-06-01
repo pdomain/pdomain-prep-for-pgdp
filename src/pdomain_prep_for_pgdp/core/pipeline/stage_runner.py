@@ -94,10 +94,27 @@ from .stage_registry import (
 from .stage_write_executor import StageWriteExecutor, write_artifact_file_async
 
 if TYPE_CHECKING:
+    import uuid as uuid_mod
     from pathlib import Path
 
     from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
     from pdomain_prep_for_pgdp.adapters.storage.base import IStorage
+    from pdomain_prep_for_pgdp.core.page_store_factory import PageService
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+
+
+def load_page_extension_from_store(
+    service: PageService,
+    page_id: uuid_mod.UUID,
+) -> PrepPageExtension | None:
+    """Load a PrepPageExtension from the event store by page UUID."""
+    from pdomain_ops.pages import get_extension as _ops_get_ext
+
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension as _PrepExt
+
+    page_agg = service.store.get_page(page_id)
+    return _ops_get_ext(page_agg.record, "prep", _PrepExt)
+
 
 # output_type values that are serialised as JSON rather than PNG.
 _JSON_OUTPUT_TYPES: frozenset[str] = frozenset({"bbox", "page_attrs", "illustration_regions"})
