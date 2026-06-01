@@ -264,6 +264,7 @@ async def generate_thumbnails(
     database: IDatabase,
     progress_cb: ProgressCb | None = None,
     thumbnail_workers: int | None = None,
+    page_service: PageService | None = None,
 ) -> IngestResult:
     """Walk every page without a thumbnail, generate + persist JPGs in batch.
 
@@ -280,6 +281,72 @@ async def generate_thumbnails(
     ``thumbnail_workers`` arg → ``PGDP_THUMBNAIL_WORKERS`` env →
     ``os.cpu_count()``. Pass ``thumbnail_workers=1`` to disable the pool.
     """
+    # ── Event-store path (page_service provided) ────────────────────────
+    if page_service is not None:
+        import uuid as _uuid
+
+        from pdomain_ops.pages import ProvenanceNode, get_extension
+
+        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+
+        project_uuid = _uuid.UUID(project.id)
+        try:
+            proj_agg = page_service.store.get_project(project_uuid)
+        except Exception:
+            await _mark_step_complete(project, database, step_id=2)
+            return IngestResult(page_count=0, errors=[])
+
+        todo_evt: list[tuple[_uuid.UUID, str, bytes]] = []
+        for page_id in proj_agg.record.page_ids:
+            try:
+                page_agg = page_service.store.get_page(page_id)
+            except Exception:
+                log.warning("generate_thumbnails: could not load page %s", page_id)
+                continue
+            ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+            if ext is None or ext.thumbnail_blob_hash is not None:
+                continue
+            if ext.source_blob_hash is None:
+                continue
+            source_bytes = page_service.blobs.read(ext.source_blob_hash)
+            todo_evt.append((page_id, ext.source_stem, source_bytes))
+
+        total_evt = len(todo_evt)
+        if total_evt == 0:
+            await _mark_step_complete(project, database, step_id=2)
+            return IngestResult(page_count=0, errors=[])
+
+        errors_evt: list[str] = []
+        updated_count = 0
+        for page_id, stem, source_bytes in todo_evt:
+            try:
+                thumb_bytes = _make_thumbnail_bytes(source_bytes)
+            except _CorruptImageError as e:
+                errors_evt.append(f"{stem}: {e!r}")
+                continue
+            thumb_hash = page_service.blobs.write(thumb_bytes)
+
+            # Reload page aggregate, attach provenance node, update extension
+            page_agg = page_service.store.get_page(page_id)
+            node = ProvenanceNode(
+                id=f"thumbnail:{page_id}",
+                source="thumbnail",
+                tool="prep-for-pgdp",
+                blob_refs=[thumb_hash],
+            )
+            page_agg.preprocess(provenance_node=node, blob_refs=[thumb_hash])
+            page_service.store.save_page(page_agg)
+
+            # Store thumbnail_blob_hash in ext_patches sidecar so it
+            # survives event-store replay (extensions are only stored in the
+            # initial ImageIngested event, so post-creation mutations need the sidecar).
+            page_service.ext_patches.set_fields(page_id, "prep", {"thumbnail_blob_hash": thumb_hash})
+            updated_count += 1
+
+        await _mark_step_complete(project, database, step_id=2)
+        return IngestResult(page_count=updated_count, errors=errors_evt)
+
+    # ── Legacy IStorage path ─────────────────────────────────────────────
     pages_in, _, _ = await database.list_pages(project.id, None, 1_000_000)
 
     # Read source bytes for every page that still needs a thumbnail. We

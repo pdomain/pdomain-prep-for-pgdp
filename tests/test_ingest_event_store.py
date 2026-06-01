@@ -122,3 +122,71 @@ async def test_unzip_no_legacy_pages_table_writes(tmp_path: Path) -> None:
     )
 
     database.put_pages.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generate_thumbnails_writes_blob_hash(tmp_path: Path) -> None:
+    """generate_thumbnails writes thumbnail to BlobStore + updates extension."""
+    import uuid as _uuid
+
+    import cv2
+    import numpy as np
+
+    project_id = str(_uuid.uuid4())
+    project = _make_project(project_id)
+    service = build_page_service(tmp_path, project_id)
+
+    page_id = _uuid.uuid4()
+    project_uuid = _uuid.UUID(project_id)
+
+    # Synthesise a tiny valid 10x10 white PNG
+    white_img = np.ones((10, 10, 3), dtype=np.uint8) * 255
+    ok, buf = cv2.imencode(".jpg", white_img)
+    assert ok
+    source_bytes = bytes(buf.tobytes())
+    source_hash = service.blobs.write(source_bytes)
+
+    from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
+    from pdomain_ops.pages import PageRecord as OpsPageRecord
+    from pdomain_ops.pages import ProjectRecord, get_extension, set_extension
+
+    ops_record = OpsPageRecord(page_id=page_id, page_index=0, source="raw")
+    ext = PrepPageExtension(
+        project_id=project_id,
+        idx0=0,
+        prefix="",
+        source_stem="img001",
+        source_blob_hash=source_hash,
+    )
+    set_extension(ops_record, "prep", ext)
+    page_agg = PageAggregate(record=ops_record)
+    service.store.save_page(page_agg)
+
+    proj_record = ProjectRecord(project_id=project_uuid, name="Test")
+    proj_agg = ProjectAggregate(record=proj_record)
+    proj_agg.add_page(page_id=page_id, page_index=0)
+    service.store.save_project(proj_agg)
+
+    from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails
+
+    database = AsyncMock()
+    database.get_project = AsyncMock(return_value=project)
+    database.put_project = AsyncMock()
+
+    result = await generate_thumbnails(
+        project=project,
+        storage=AsyncMock(),
+        database=database,
+        page_service=service,
+        thumbnail_workers=1,
+    )
+
+    assert result.page_count == 1
+
+    from pdomain_prep_for_pgdp.core.page_store_factory import get_page_with_ext_patches
+
+    updated_agg = get_page_with_ext_patches(service, page_id)
+    updated_ext = get_extension(updated_agg.record, "prep", PrepPageExtension)
+    assert updated_ext is not None
+    assert updated_ext.thumbnail_blob_hash is not None
+    assert service.blobs.exists(updated_ext.thumbnail_blob_hash)
