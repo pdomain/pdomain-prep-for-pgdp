@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag
 from pdomain_prep_for_pgdp.api.dependencies import (
     DatabaseDep,
+    PageServiceDep,
     SettingsDep,
     StageEventsDep,
     StorageDep,
@@ -50,6 +51,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     run_stage,
 )
 from pdomain_prep_for_pgdp.core.prefix import compute_prefix
+from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +150,7 @@ async def list_pages(
     project_id: str,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
     cursor: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     page_type: Annotated[PageType | None, Query()] = None,
@@ -159,6 +162,44 @@ async def list_pages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
+    # ── Event-store path ──────────────────────────────────────────────────
+    try:
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        project_uuid = uuid.UUID(project_id)
+        proj_agg = page_service.store.get_project(project_uuid)
+        all_extensions: list[PrepPageExtension] = []
+        for page_id in proj_agg.record.page_ids:
+            try:
+                page_agg = page_service.store.get_page(page_id)
+            except Exception:
+                continue
+            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+            if ext is not None:
+                all_extensions.append(ext)
+
+        filtered = all_extensions
+        if page_type is not None:
+            filtered = [e for e in filtered if e.page_type == page_type]
+        if has_splits is not None:
+            filtered = [e for e in filtered if bool(e.splits) == has_splits]
+        if status is not None:
+            filtered = [e for e in filtered if e.processing_status == status]
+        if review_needed is True:
+            filtered = [e for e in filtered if _needs_review_ext(e)]
+        if review_needed is False:
+            filtered = [e for e in filtered if not _needs_review_ext(e)]
+
+        total_es = len(filtered)
+        offset = int(cursor) if cursor else 0
+        page_slice = filtered[offset : offset + limit]
+        next_cursor_es = str(offset + limit) if offset + limit < total_es else None
+        records = [_ext_to_page_record(e) for e in page_slice]
+        return ListPagesResponse(pages=records, next_cursor=next_cursor_es, total=total_es)
+    except Exception:
+        pass  # Fall through to legacy IDatabase path if event store not populated
+
+    # ── Legacy IDatabase path ─────────────────────────────────────────────
     pages, next_cursor, total = await db.list_pages(project_id, cursor, limit)
     if page_type is not None:
         pages = [p for p in pages if p.page_type == page_type]
@@ -193,6 +234,49 @@ def _needs_review(page: PageRecord) -> bool:
     return False
 
 
+def _needs_review_ext(ext: PrepPageExtension) -> bool:
+    """Review-queue heuristic on PrepPageExtension (event-store path)."""
+    if ext.processing_status == PageProcessingStatus.error:
+        return True
+    if not ext.outputs:
+        return False
+    for o in ext.outputs:
+        if o.ocr_status != PageProcessingStatus.complete:
+            return True
+        if o.ocr_error:
+            return True
+    return False
+
+
+def _ext_to_page_record(ext: PrepPageExtension) -> PageRecord:
+    """Assemble a prep PageRecord wire shape from PrepPageExtension."""
+    return PageRecord(
+        project_id=ext.project_id,
+        idx0=ext.idx0,
+        prefix=ext.prefix,
+        source_stem=ext.source_stem,
+        ignore=ext.ignore,
+        page_type=ext.page_type,
+        alignment=ext.alignment,
+        config_overrides=ext.config_overrides,
+        splits=ext.splits,
+        illustration_regions=ext.illustration_regions,
+        source_key=None,
+        thumbnail_key=None,
+        processing_status=ext.processing_status,
+        processing_job_id=ext.processing_job_id,
+        processing_error=ext.processing_error,
+        last_processed_at=ext.last_processed_at,
+        outputs=ext.outputs,
+        parent_page_id=ext.parent_page_id,
+        source_crop_bbox=ext.source_crop_bbox,
+        split_index=ext.split_index,
+        split_at_stage=ext.split_at_stage,
+        split_suffix=ext.split_suffix,
+        reading_order=ext.reading_order,
+    )
+
+
 @router.get(
     "/projects/{project_id}/pages/{idx0}",
     response_model=PageRecord,
@@ -203,10 +287,30 @@ async def get_page(
     idx0: int,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> PageRecord:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # ── Event-store path ──────────────────────────────────────────────────
+    try:
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        project_uuid = uuid.UUID(project_id)
+        proj_agg = page_service.store.get_project(project_uuid)
+        for page_id in proj_agg.record.page_ids:
+            try:
+                page_agg = page_service.store.get_page(page_id)
+            except Exception:
+                continue
+            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+            if ext is not None and ext.idx0 == idx0:
+                return _ext_to_page_record(ext)
+    except Exception:
+        pass  # Fall through to legacy path
+
+    # ── Legacy IDatabase path ─────────────────────────────────────────────
     page = await db.get_page(project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
@@ -671,6 +775,7 @@ async def split_page(
     body: SplitPageRequest,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> SplitPageResponse:
     """Create N sibling child pages by splitting a parent page.
 
@@ -687,6 +792,50 @@ async def split_page(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # ── Event-store path ──────────────────────────────────────────────────
+    try:
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        from pdomain_prep_for_pgdp.core.split_ops import split_page_in_store
+
+        project_uuid = uuid.UUID(project_id)
+        proj_agg = page_service.store.get_project(project_uuid)
+        parent_page_uuid = None
+        parent_ext = None
+        for pid in proj_agg.record.page_ids:
+            try:
+                page_agg = page_service.store.get_page(pid)
+            except Exception:
+                continue
+            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+            if ext is not None and ext.idx0 == idx0:
+                parent_page_uuid = pid
+                parent_ext = ext
+                break
+
+        if parent_page_uuid is not None and parent_ext is not None:
+            child_records = split_page_in_store(
+                service=page_service,
+                project_id=project_id,
+                parent_page_id=parent_page_uuid,
+                parent_idx0=parent_ext.idx0,
+                parent_prefix=parent_ext.prefix,
+                parent_source_stem=parent_ext.source_stem,
+                bbox=body.bbox,
+                split_at_stage=body.split_at_stage,
+                suffixes=body.suffixes,
+            )
+            children_wire = []
+            for ops_rec in child_records:
+                child_ext = _ops_get_ext(ops_rec, "prep", PrepPageExtension)
+                if child_ext is not None:
+                    children_wire.append(_ext_to_page_record(child_ext))
+            return SplitPageResponse(children=children_wire)
+    except Exception:
+        pass  # Fall through to legacy path
+
+    # ── Legacy IDatabase path ─────────────────────────────────────────────
     parent = await db.get_page(project_id, idx0)
     if parent is None:
         raise HTTPException(404, "page not found")
@@ -696,7 +845,7 @@ async def split_page(
     next_idx0 = max((p.idx0 for p in all_pages), default=-1) + 1
 
     parent_page_id = _page_id_for_idx0(idx0)
-    children: list[PageRecord] = []
+    children_legacy: list[PageRecord] = []
     for i, suffix in enumerate(body.suffixes):
         child = PageRecord(
             project_id=project_id,
@@ -710,10 +859,10 @@ async def split_page(
             split_suffix=suffix,
             reading_order=i,
         )
-        children.append(child)
+        children_legacy.append(child)
 
-    await db.put_pages(children)
-    return SplitPageResponse(children=children)
+    await db.put_pages(children_legacy)
+    return SplitPageResponse(children=children_legacy)
 
 
 # ─── Unsplit: DELETE /pages/{idx0}/split ────────────────────────────────────
@@ -729,6 +878,7 @@ async def unsplit_page(
     idx0: int,
     user: UserDep,
     db: DatabaseDep,
+    page_service: PageServiceDep,
 ) -> PageRecord:
     """Reverse a split: delete all sibling child pages and return the parent.
 
@@ -743,6 +893,62 @@ async def unsplit_page(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # ── Event-store path ──────────────────────────────────────────────────
+    try:
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        from pdomain_prep_for_pgdp.core.split_ops import unsplit_page_in_store
+
+        project_uuid = uuid.UUID(project_id)
+        proj_agg = page_service.store.get_project(project_uuid)
+        target_page_uuid = None
+        target_ext = None
+        for pid in proj_agg.record.page_ids:
+            try:
+                page_agg = page_service.store.get_page(pid)
+            except Exception:
+                continue
+            ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+            if ext is not None and ext.idx0 == idx0:
+                target_page_uuid = pid
+                target_ext = ext
+                break
+
+        if target_page_uuid is not None and target_ext is not None:
+            if target_ext.parent_page_id is None:
+                raise HTTPException(422, "page is not a split child")
+
+            parent_page_uuid = uuid.UUID(target_ext.parent_page_id)
+
+            # Clean up page_stages for children before removing from event store
+            for pid in list(proj_agg.record.page_ids):
+                try:
+                    page_agg = page_service.store.get_page(pid)
+                except Exception:
+                    continue
+                ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+                if ext is not None and ext.parent_page_id == str(parent_page_uuid):
+                    await db.delete_page_stages_for_page(project_id, str(pid))
+
+            unsplit_page_in_store(
+                service=page_service,
+                project_id=project_id,
+                parent_page_id=parent_page_uuid,
+            )
+
+            # Return the parent page
+            parent_agg = page_service.store.get_page(parent_page_uuid)
+            parent_ext = _ops_get_ext(parent_agg.record, "prep", PrepPageExtension)
+            if parent_ext is None:
+                raise HTTPException(404, "parent page has no prep extension")
+            return _ext_to_page_record(parent_ext)
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Fall through to legacy path
+
+    # ── Legacy IDatabase path ─────────────────────────────────────────────
     page = await db.get_page(project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")

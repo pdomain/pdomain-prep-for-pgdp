@@ -19,6 +19,7 @@ from pdomain_prep_for_pgdp.adapters.storage import IStorage
 from pdomain_prep_for_pgdp.api.auth.session_cookie import COOKIE_NAME, verify_cookie_value
 from pdomain_prep_for_pgdp.core.job_events import JobEventBroker
 from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+from pdomain_prep_for_pgdp.core.page_store_factory import PageService
 from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker
 from pdomain_prep_for_pgdp.dispatcher import IDispatcher
 from pdomain_prep_for_pgdp.settings import Settings
@@ -133,3 +134,21 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 GPUBackendDep = Annotated[GPUBackend, Depends(get_gpu_backend)]
 JobEventsDep = Annotated[JobEventBroker, Depends(get_job_events)]
 StageEventsDep = Annotated[StageEventBroker, Depends(get_stage_events)]
+
+
+def get_page_service_for_project(
+    project_id: str,
+    request: Request,
+) -> PageService:
+    """Return a PageService scoped to this project.
+
+    Builds one on-demand from settings.data_root; the PagesApplication
+    is lightweight (connection pooled by SQLite WAL).
+    """
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+    settings: Settings = request.app.state.settings  # pyright: ignore[reportAny]
+    return build_page_service(settings.data_root, project_id)
+
+
+PageServiceDep = Annotated[PageService, Depends(get_page_service_for_project)]
