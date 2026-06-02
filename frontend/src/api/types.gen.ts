@@ -87,7 +87,7 @@ export interface paths {
          * Archive Project
          * @description Soft-delete: hide the project from default listings without removing data.
          *
-         *     Idempotent — archiving an already-archived project is a no-op (still 200).
+         *     Idempotent -- archiving an already-archived project is a no-op (still 200).
          */
         post: operations["archive_project"];
         delete?: never;
@@ -108,7 +108,7 @@ export interface paths {
          * @description Return image filenames + total count from the project's `source.zip`.
          *
          *     404s for unknown / wrong-owner projects (mirrors `assets.py`'s collapse
-         *     of 403 → 404 to avoid leaking existence) and for the case where the
+         *     of 403 -> 404 to avoid leaking existence) and for the case where the
          *     presigned upload URL was issued but the PUT never landed.
          */
         get: operations["get_source_preview"];
@@ -130,16 +130,6 @@ export interface paths {
         /**
          * Source Preview Thumbnail
          * @description Return a JPEG thumbnail for one image entry inside the project's source.zip.
-         *
-         *     Pairs with ``GET /source-preview`` (slice 2): that route returns the
-         *     image filenames; the SPA then issues one of these per filename to fill
-         *     the preview strip. Auth/ownership match slice 2 verbatim — collapsing
-         *     403 → 404 so existence isn't leaked.
-         *
-         *     Unknown filename and non-image filename both 404 (see
-         *     ``extract_zip_image_thumbnail``); a corrupt image inside the zip
-         *     becomes a 500 today, since that indicates a broken upload rather than
-         *     a routine missing entry — let the SPA surface it.
          */
         get: operations["get_source_preview_thumbnail"];
         put?: never;
@@ -202,10 +192,6 @@ export interface paths {
         /**
          * Project Run Dirty
          * @description Submit a project_run_dirty job.
-         *
-         *     Fans out across every page in the project, running every dirty or
-         *     not-run stage in DAG order.  An optional ``stage_filter`` query
-         *     parameter restricts the sweep to a single stage_id.
          */
         post: operations["project_run_dirty"];
         delete?: never;
@@ -226,10 +212,6 @@ export interface paths {
         /**
          * Project Build Package
          * @description Submit a build_package job for the project.
-         *
-         *     The job runner will park it in ``awaiting_review`` if any proof-range
-         *     page has not yet had its ``text_review`` stage marked clean.  It
-         *     auto-resumes once the last page is attested.
          */
         post: operations["project_build_package"];
         delete?: never;
@@ -2009,7 +1991,7 @@ export interface components {
          *
          *     Lets the SPA render a thumbnail strip / sanity-check the upload before
          *     triggering ingest. Backed by `peek_zip_image_names`, which only reads
-         *     the zip's central directory — no per-entry decompression.
+         *     the zip's central directory -- no per-entry decompression.
          */
         SourcePreviewResponse: {
             /** Filenames */

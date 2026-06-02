@@ -13,9 +13,12 @@ import pkg from "../package.json";
  * in dist (React 18 internals), which crashes React 19 vitest consumers.
  * Fixed in 0.2.1 (externalized react/jsx-dev-runtime in rollupOptions).
  *
- * The pin must stay at ^0.2.1 so a fresh `pnpm install` pulls a version
- * whose dist does not bundle React internals. This is the floor for the
- * Phase 2.7 migration (meta #266).
+ * `@pdomain/pdomain-ui@0.4.0` adopts the right-side utility dock (M8
+ * consumer migration). JobsPill hover popover removed; Settings + Keybinds
+ * render in the dock. The floor is now ^0.4.0.
+ *
+ * The pin must stay at ^0.4.0 or higher so a fresh `pnpm install` pulls a
+ * version with the utility dock API. This is the floor for the M8 migration.
  */
 describe("@pdomain/pdomain-ui pin (meta #293)", () => {
   const pin = (pkg.dependencies as Record<string, string>)[
@@ -36,15 +39,15 @@ describe("@pdomain/pdomain-ui pin (meta #293)", () => {
     expect(pin).not.toBe("0.2.0");
   });
 
-  it("pins at least 0.2.1 as a semver range (no file: path deps — registry is live)", () => {
-    // Phase 4.5: @pdomain/pdomain-ui@0.2.2 is published to pdomain-index-npm.
-    // file: path deps are no longer acceptable. Only semver ranges are valid.
+  it("pins at least 0.4.0 as a semver range (no file: path deps — registry is live)", () => {
+    // M8 migration: @pdomain/pdomain-ui@0.4.0 adds the utility dock API.
+    // file: path deps are not acceptable. Only semver ranges are valid.
     expect(pin).toBeDefined();
     expect((pin ?? "").startsWith("file:")).toBe(false);
     const isSemver = /^\^?\d+\.\d+\.\d+/.test(pin ?? "");
     expect(isSemver).toBe(true);
-    // Floor: must be at least 0.2.1 (fixes jsx-dev-runtime bundling crash).
-    const isSufficientVersion = /\^0\.2\.[1-9]\d*/.test(pin ?? "");
+    // Floor: must be at least 0.4.0 (utility dock API).
+    const isSufficientVersion = /\^0\.[4-9]\.\d+|\^[1-9]/.test(pin ?? "");
     expect(isSufficientVersion).toBe(true);
   });
 });

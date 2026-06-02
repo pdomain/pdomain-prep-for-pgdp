@@ -46,7 +46,6 @@ import {
   type UIPrefsConfig,
   type InstalledApp,
   type LaunchResult,
-  type ActiveJob,
 } from "@pdomain/pdomain-ui/shell";
 import { api, getAuthToken } from "./api/client";
 import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
@@ -227,16 +226,20 @@ async function postLaunch(id: string): Promise<LaunchResult> {
 
 // ── Task #155 (s0-c): useActiveJobs — feeds pdomain-ui AppHeader's JobsPill ────────
 //
-// Polls /api/jobs every 5 s and maps running/queued jobs to the ActiveJob
+// Polls /api/jobs every 5 s and maps running/queued jobs to the Job
 // shape expected by AppHeader. "running" jobs are primary; "queued" jobs
 // are included so the pill reflects work that is imminent.
 //
+// M8 migration: ActiveJob (deprecated) → Job (0.4.0). Job adds status/cancelable;
+// removes title. title was mapped from job.type — now embedded in phase label.
+//
 // Mapping:
-//   id      ← job.id
-//   title   ← job.type (e.g. "ingest", "process_page")
-//   phase   ← job.status
-//   pct     ← job.progress.current / job.progress.total * 100 (0 when total=0)
-//   project ← job.project_id
+//   id         ← job.id
+//   phase      ← job.status + " — " + job.type (phase label for dock display)
+//   pct        ← job.progress.current / job.progress.total * 100 (0 when total=0)
+//   project    ← job.project_id
+//   status     ← job.status (typed: running/queued → matches JobStatus union)
+//   cancelable ← false (local mode: jobs run to completion; no cancel API)
 interface RawJob {
   id: string;
   project_id: string;
@@ -245,7 +248,10 @@ interface RawJob {
   progress: { current: number; total: number; message: string };
 }
 
-function useActiveJobs(): ActiveJob[] {
+// M8: useActiveJobs returns the ActiveJob-compatible shape (AppHeader still
+// accepts ActiveJob[] for one back-compat release). The Job type (0.4.0) is
+// the forward target; migrate when AppHeader moves to Job[].
+function useActiveJobs() {
   const result = useQuery({
     queryKey: ["active-jobs"],
     queryFn: () => api.get<RawJob[]>("/api/jobs?status=running&status=queued"),
@@ -301,7 +307,7 @@ export default function App() {
               /*
                * Task #155 (s0-c): pdomain-ui AppHeader replaces custom TopNav.
                *
-               * activeJobs → feeds the built-in JobsPill indicator.
+               * activeJobs → feeds the built-in JobsPill indicator (Job[] shape).
                * onSearchClick → opens the app-level SearchModal.
                *
                * The built-in user avatar area (username/initials/onUserClick)
