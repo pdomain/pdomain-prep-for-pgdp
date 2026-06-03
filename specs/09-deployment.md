@@ -573,38 +573,34 @@ attached to the Fargate task: **~$15/month** + GPU usage.
 
 ## CI/CD
 
-```yaml
-# .github/workflows/release.yml
-- name: Build frontend
-  run: cd frontend && npm ci && npm run build && cp -r dist/* ../src/pdomain_prep_for_pgdp/static/
+Releases are started from a clean, up-to-date `main` branch with the local
+release targets:
 
-- name: Tag and push (install.sh resolves latest tag from GitHub API)
-  run: |
-    git tag "$VERSION"
-    git push --tags
-
-- name: Build container (managed mode)
-  run: |
-    docker build -t pgdp-prep:$VERSION .
-    aws ecr get-login-password | docker login --password-stdin "$ECR"
-    docker push "$ECR/pgdp-prep:$VERSION"
-
-- name: Deploy ECS
-  run: aws ecs update-service --cluster pgdp --service pgdp-prep --force-new-deployment
-
-- name: Deploy Modal functions
-  run: modal deploy src/pdomain_prep_for_pgdp/adapters/gpu/modal_backend.py
+```sh
+make release-patch
+make release-minor
+make release-major
 ```
 
-Local install does **not** publish to PyPI. `install.sh` reads the latest tag
-from the GitHub API and installs directly via `uv tool install
-git+https://github.com/.../pdomain-prep-for-pgdp@<tag>` (same pattern as
-pdomain-ocr-cli). Hatchling + hatch-vcs derives the package version from the tag
-at install time. No PyPI account, no upload step, no race between tag and
-publish. Hosted-mode ECS still uses the same git ref via the container build.
+The release script runs release preflight, creates the annotated `vX.Y.Z` tag,
+pushes `main` and the exact tag, then dispatches
+`.github/workflows/release.yml` with `gh workflow run release.yml --ref main -f
+tag=vX.Y.Z`.
 
-Frontend bundle, container image, and Modal functions are all built from the
-same commit. There is no monorepo coordination across separate language
-stacks — `uv tool install` against the git ref is the single deliverable for
-local + self-hosted, and the container that wraps the same source tree
-covers managed.
+`.github/workflows/release.yml` is `workflow_dispatch` only. It checks out the
+exact tag, runs `make ci-slow`, builds release artifacts with `make build`,
+creates a GitHub Release with the wheel asset, and dispatches
+`pdomain-index-pip`. If the dispatch is unavailable, the scheduled index regen
+is the fallback.
+
+Local install does **not** publish to PyPI. `install.sh` reads the latest tag
+from the GitHub API, fetches the `.whl` asset from that GitHub Release, and
+installs it with `uv tool install <wheel-path>[extras]`. Hatchling +
+hatch-vcs derives the package version from the release tag. No PyPI account,
+no upload step, and no source install path are part of the supported release
+contract.
+
+GitHub Actions does not build or publish managed-mode container images for this
+repo. Managed-mode container publication is deferred; until it is back in
+scope, build containers locally with the `docker-build` Make target or publish
+them through a separate, explicitly documented deployment path.
