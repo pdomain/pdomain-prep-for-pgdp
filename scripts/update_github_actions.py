@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Refresh reviewed GitHub Actions refs in workflow files."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import re
@@ -23,7 +21,9 @@ MANAGED_ACTIONS = (
     "actions/upload-artifact",
     "actions/download-artifact",
     "peter-evans/create-pull-request",
+    "pnpm/action-setup",
 )
+USES_PATTERN = re.compile(r"(?m)^\s*uses:\s*([^@\s#]+)(?:@[^\s#]+)?")
 
 
 @dataclass(frozen=True)
@@ -89,6 +89,35 @@ def latest_uv_version(*, runner: GhRunner = run_gh) -> str:
     return version
 
 
+def workflow_action_names(path: Path) -> set[str]:
+    """Return non-local action names referenced by one workflow file."""
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"(?m)^(\s*)-\s+uses:", r"\1uses:", text)
+    names: set[str] = set()
+    for match in USES_PATTERN.finditer(text):
+        name = match.group(1)
+        if name.startswith("./"):
+            continue
+        names.add(name)
+    return names
+
+
+def verify_managed_actions(workflow_dir: Path = WORKFLOW_DIR) -> None:
+    """Fail when workflow files reference actions outside MANAGED_ACTIONS."""
+    managed = set(MANAGED_ACTIONS)
+    unmanaged: dict[str, list[str]] = {}
+    for path in sorted(workflow_dir.glob("*.yml")):
+        try:
+            display_path = str(path.relative_to(ROOT))
+        except ValueError:
+            display_path = str(path)
+        for name in sorted(workflow_action_names(path) - managed):
+            unmanaged.setdefault(name, []).append(display_path)
+    if unmanaged:
+        details = ", ".join(f"{name} in {', '.join(paths)}" for name, paths in sorted(unmanaged.items()))
+        raise ValueError(f"unmanaged workflow actions: {details}")
+
+
 def update_uv_version_refs(path: Path, *, version: str) -> bool:
     """Update the uv version string inside setup-uv with: blocks. Returns True if changed."""
     text = path.read_text(encoding="utf-8")
@@ -142,6 +171,7 @@ def update_github_actions(
     runner: GhRunner = run_gh,
 ) -> list[Path]:
     """Refresh managed action refs and uv version, return changed workflow paths."""
+    verify_managed_actions(workflow_dir)
     releases = {a: latest_release(a, runner=runner) for a in MANAGED_ACTIONS}
     uv_version = latest_uv_version(runner=runner)
     changed: set[Path] = set()
