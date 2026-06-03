@@ -103,8 +103,8 @@ remote / cloud mode" while local-first lands:
   `run_batch` raise `NotImplementedError` (roadmap §D1).
 - **Postgres adapter** — scaffold shipped (commit `77072c6`); live-DB
   integration tests deferred (roadmap §D2).
-- **`.github/workflows/release.yml`** builds the container on tag push
-  but doesn't push to a registry (roadmap §D4).
+- **Container publication** — GitHub Actions does not publish a container
+  image; managed-mode container publication remains deferred (roadmap §D4).
 - **install.sh end-to-end** has never been exercised against a clean
   shell with internet (roadmap §D3).
 
@@ -118,9 +118,11 @@ Two workflows:
 | Workflow | When | Job | What |
 |---|---|---|---|
 | `.github/workflows/ci.yml` | every push + PR | `ci` | `make ci AI=1` — setup + frontend-install + pre-commit + openapi-export + frontend-build + pytest + frontend-format-check + frontend-lint + vitest |
-| `.github/workflows/release.yml` | every push to main + tag push | `build-frontend` | npm install + ESLint + Prettier + Vitest + `vite build`; uploads `dist/` |
-| `.github/workflows/release.yml` | every push (after `build-frontend`) | `build-wheel` | `uv build --wheel` with frontend bundled into the wheel; CI guard `Verify wheel contains SPA bundle` (roadmap §22); on tag push, attaches the wheel to the GitHub Release |
-| `.github/workflows/release.yml` | tag push only | `build-container` | docker build (no push wired up — registry push parked under roadmap §D4) |
+| `.github/workflows/release.yml` | workflow dispatch from `make release-patch`, `make release-minor`, or `make release-major` | `release-ci` | checks out the exact tag and runs `make ci-slow` |
+| `.github/workflows/release.yml` | workflow dispatch after `release-ci` | `publish` | builds the wheel, creates the GitHub Release asset, and dispatches `pdomain/pdomain-index-pip`; scheduled index regen is the fallback |
+
+Tag pushes alone are not the supported release path. GitHub Actions does not
+publish a container image for this repo.
 
 ## Frontend bundling
 
@@ -146,5 +148,5 @@ All parked under roadmap "Deferred — remote / cloud mode":
 - **install.sh end-to-end exercise** — `install.sh` carries the same latent
   wheel-METADATA bug pre-fixed in `pdomain-ocr-cli`; fix before exercising the
   curl-pipe-sh path (AD-10, §D3).
-- **Registry push** — `release.yml`'s `build-container` job builds but
-  doesn't push (§D4).
+- **Container publication** — GitHub Actions does not publish container images
+  for this repo; managed-mode container publishing remains deferred (§D4).
