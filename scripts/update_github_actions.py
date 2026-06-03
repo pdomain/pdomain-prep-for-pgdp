@@ -123,8 +123,8 @@ def update_uv_version_refs(path: Path, *, version: str) -> bool:
     """Update the uv version string inside setup-uv with: blocks. Returns True if changed."""
     text = path.read_text(encoding="utf-8")
     updated = re.sub(
-        r'(uses:\s+astral-sh/setup-uv@[^\n]+\n\s+with:\n\s+version:\s+")[^"]+(")',
-        rf"\g<1>{version}\g<2>",
+        r"(uses:\s*[\"']?astral-sh/setup-uv@[^\n\"']+[\"']?\n\s+with:\n\s+version:\s*)([\"'])([^\"']+)(\2)",
+        rf"\g<1>\g<2>{version}\g<4>",
         text,
     )
     if updated == text:
@@ -139,8 +139,8 @@ def update_workflow_refs(path: Path, *, releases: dict[str, ActionRelease]) -> b
     updated = text
     for action, release in releases.items():
         updated = re.sub(
-            rf"(?m)(uses:\s+{re.escape(action)}@)[^\s]+",
-            rf"\g<1>{release.sha}",
+            rf'(?m)(uses:\s*)(["\']?)({re.escape(action)}@)[^\s#"\']+(["\']?)',
+            rf"\g<1>\g<2>\g<3>{release.sha}\g<4>",
             updated,
         )
     if updated == text:
