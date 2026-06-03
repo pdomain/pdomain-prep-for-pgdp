@@ -123,8 +123,8 @@ def update_uv_version_refs(path: Path, *, version: str) -> bool:
     """Update the uv version string inside setup-uv with: blocks. Returns True if changed."""
     text = path.read_text(encoding="utf-8")
     updated = re.sub(
-        r"(uses:\s*[\"']?astral-sh/setup-uv@[^\n\"']+[\"']?\n\s+with:\n\s+version:\s*)([\"'])([^\"']+)(\2)",
-        rf"\g<1>\g<2>{version}\g<4>",
+        r"(uses:\s*[\"']?astral-sh/setup-uv@[^\n\"']+[\"']?\s*(?:#[^\n]*)?\n\s+with:\n\s+version:\s*[\"']?)[^\"'\n]+([\"']?)",
+        rf"\g<1>{version}\g<2>",
         text,
     )
     if updated == text:
