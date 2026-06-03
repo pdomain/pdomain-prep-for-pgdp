@@ -37,5 +37,20 @@ def test_accepts_local_workflow_call(tmp_path: Path) -> None:
     update_github_actions.verify_managed_actions(workflows)
 
 
+def test_accepts_quoted_managed_actions_and_local_workflows(tmp_path: Path) -> None:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        "jobs:\n"
+        "  ci:\n"
+        "    steps:\n"
+        '      - uses: "actions/checkout@abc123"\n'
+        "      - uses: './.github/workflows/regen.yml'\n",
+        encoding="utf-8",
+    )
+
+    update_github_actions.verify_managed_actions(workflows)
+
+
 def test_current_workflows_use_only_managed_actions() -> None:
     update_github_actions.verify_managed_actions()

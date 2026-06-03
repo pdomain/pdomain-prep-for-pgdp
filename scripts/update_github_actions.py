@@ -23,7 +23,7 @@ MANAGED_ACTIONS = (
     "peter-evans/create-pull-request",
     "pnpm/action-setup",
 )
-USES_PATTERN = re.compile(r"(?m)^\s*uses:\s*([^@\s#]+)(?:@[^\s#]+)?")
+USES_PATTERN = re.compile(r"(?m)^\s*uses:\s*([^\s#]+)")
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,8 @@ def workflow_action_names(path: Path) -> set[str]:
     text = re.sub(r"(?m)^(\s*)-\s+uses:", r"\1uses:", text)
     names: set[str] = set()
     for match in USES_PATTERN.finditer(text):
-        name = match.group(1)
+        raw = match.group(1).strip().strip("\"'")
+        name = raw.split("@", 1)[0]
         if name.startswith("./"):
             continue
         names.add(name)
