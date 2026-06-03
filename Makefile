@@ -406,7 +406,7 @@ run-local: ## DEPRECATED: use local-run
 # ---------------------------------------------------------------------------
 
 docker-build: frontend-build ## Build the managed-mode container image
-	docker build -t pgdp-prep:dev .
+	docker build --build-arg VERSION=$$(git describe --tags --always --dirty) -t pgdp-prep:dev .
 
 docker-run: ## Run the container locally on :8765
 	docker run --rm -p 8765:8765 \
