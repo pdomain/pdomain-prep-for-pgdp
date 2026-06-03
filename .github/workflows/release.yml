@@ -77,9 +77,10 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(dist/*.whl dist/*.tar.gz)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::no release artifacts found under dist/"
+          files=(dist/*.whl)
+          if [ ${#files[@]} -ne 1 ]; then
+            echo "::error::expected exactly one wheel under dist/"
+            ls -la dist/
             exit 1
           fi
           gh release create "$RELEASE_TAG" "${files[@]}" \
