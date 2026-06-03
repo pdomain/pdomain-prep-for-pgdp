@@ -112,10 +112,17 @@ Note: long-term strategy is the self-hosted PEP 503 index
 (AD-10); fix the latent wheel-METADATA bug pre-fixed in pdomain-ocr-cli
 before exercising.
 
-### D4. CI container push
+### D4. Managed-mode container publication
 
-`.github/workflows/release.yml` builds the managed-mode container
-on tag push but doesn't push to a registry. Wire ECR / GHCR creds.
+`.github/workflows/release.yml` is dispatch-only: the local
+`make release-patch`, `make release-minor`, and `make release-major`
+targets run release preflight, push the exact tag, and dispatch the
+workflow. The workflow publishes the wheel as a GitHub Release artifact
+and dispatches `pdomain-index-pip`.
+
+GitHub Actions does not build or publish the managed-mode container.
+Wire ECR / GHCR credentials only when managed-mode container publishing
+is back in scope.
 
 ### D5. CUDA `STAGE_IMPL` entries
 
