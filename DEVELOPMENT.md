@@ -159,11 +159,14 @@ make pre-commit-check
 
 ```sh
 make build         # builds SPA + wheel
-make release-patch # bumps patch version + creates a git tag
+make release-patch # runs release preflight, tags, pushes, and dispatches release
 make release-minor # ditto, minor
 make release-major # ditto, major
-git push --tags    # CI picks up the tag and builds the container
 ```
+
+Releases are workflow-dispatch based and must be started by `make release-patch`,
+`make release-minor`, or `make release-major`. Tag pushes alone are not the supported
+publish path. This repo does not publish a container image from GitHub Actions.
 
 `hatch-vcs` derives the wheel version from the git tag at build time. The
 `release.yml` workflow builds the wheel (with the prebuilt SPA bundled) and
@@ -191,7 +194,7 @@ pdomain-prep-for-pgdp/
 ├── Makefile                # dev workflows
 ├── Dockerfile              # managed-mode container
 ├── install.sh / .ps1       # one-line end-user installer
-└── .github/workflows/      # CI (test + frontend build + wheel + container)
+└── .github/workflows/      # CI and dispatch-based release workflows
 ```
 
 ## Spec ↔ implementation map
@@ -212,14 +215,14 @@ See [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md) for t
 
 ## CI
 
-`.github/workflows/release.yml` runs on every push and on tag push:
+`.github/workflows/ci.yml` runs on push and pull request. `.github/workflows/release.yml`
+runs only by workflow dispatch from the local release script.
 
 | Job | Trigger | What |
 |---|---|---|
-| `test` | every push | uv sync + ruff + pytest |
-| `build-frontend` | every push | npm install + `vite build` (Node 24 via `actions/setup-node@v4`); uploads `dist/` artifact |
-| `build-wheel` | after test + build-frontend | downloads SPA artifact → `uv build --wheel`; on tag push, attaches the wheel to the GitHub Release |
-| `build-container` | tag push only | docker build (push not yet wired — needs ECR creds) |
+| CI jobs | push / pull request | uv sync, ruff, pytest, frontend build, and wheel checks |
+| `release-ci` | workflow dispatch | release-grade validation from the exact tag |
+| `publish` | workflow dispatch after `release-ci` | builds the wheel and attaches it to the GitHub Release |
 
 CI does not depend on mise; it pins versions in the workflow file directly.
 
