@@ -154,6 +154,9 @@ def test_returns_none_for_nonexistent_file(tmp_path) -> None:
     [
         "/etc/passwd",
         "../../etc/passwd",
+        # Covers the decoded form of GET /..%2fetc%2fpasswd (sibling-repo audit
+        # attack variant): Starlette decodes %2f → / before the handler sees
+        # full_path, so that request arrives as full_path="../etc/passwd".
         "../etc/passwd",
         "/root/.bashrc",
     ],
@@ -174,9 +177,19 @@ def test_parametrized_traversal_attacks(tmp_path, full_path: str) -> None:
     [
         # URL-decoded absolute path (FastAPI decodes %2Fetc%2Fpasswd before handler)
         "%2Fetc%2Fpasswd",
-        # Dotdot traversal
+        # Dotdot traversal — plain
         "../etc/passwd",
         "../../etc/passwd",
+        # Mixed dotdot + percent-encoded slash: the specific attack vector found
+        # in the sibling repo pdomain-ocr-simple-gui security audit.
+        # GET /..%2fetc%2fpasswd → Starlette decodes → full_path="../etc/passwd"
+        # A naive `FRONTEND_DIR / full_path` without containment check would
+        # resolve to /etc/passwd and serve it.  _safe_static_file must block it.
+        "..%2fetc%2fpasswd",
+        "..%2F..%2Fetc%2Fpasswd",
+        # Percent-encoded dotdot variants
+        "%2e%2e/etc/passwd",
+        "%2e%2e%2fetc%2fpasswd",
     ],
 )
 def test_http_traversal_returns_index_not_host_file(test_app, attack_path: str) -> None:
