@@ -88,11 +88,24 @@ pdomain-ops = { index = "pdomain-index-pip" }
 [tool.hatch.version]
 source = "vcs"
 
+[tool.hatch.build]
+# Include the gitignored Vite build output in BOTH the sdist and the wheel.
+# The static/ directory is in .gitignore (generated artefact), so hatchling's
+# default VCS-based file selection would silently omit it. Setting `artifacts`
+# globally (not just in the wheel target) ensures:
+#   1. The sdist contains src/pdomain_prep_for_pgdp/static/ (the built SPA).
+#   2. The wheel built from that sdist also includes the static files.
+# Without this, `uv build` (default: sdist then wheel-from-sdist) produces a
+# wheel with 0 static files even when force-include is set only in the wheel
+# target, because hatchling builds the wheel in a non-git temp dir from the
+# sdist and applies the per-target include spec against that dir.
+artifacts = ["src/pdomain_prep_for_pgdp/static/**/*"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdomain_prep_for_pgdp"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/pdomain_prep_for_pgdp/static" = "pdomain_prep_for_pgdp/static"
+# The global `artifacts` above also covers this target; no additional per-wheel
+# force-include needed. Avoid a global-artifacts + same-path force-include combo
+# (raises duplicate-path ValueError in hatchling).
 
 # Local guard mirroring the CI check in `.github/workflows/release.yml`:
 # fail `uv build` / `hatch build` if the SPA bundle is missing, so the
@@ -202,7 +215,7 @@ convention = "google"
 # loop-var reassignment (PLW2901); list-building in tests fine (PERF401/PERF402);
 # PT018 multi-condition asserts common in parametrized tests; S301 pickle in fixtures;
 # S603 subprocess in test helpers; TRY rules in test conftest; BLE001 in e2e.
-"tests/*" = ["E741", "N806", "S101", "S104", "S105", "S106", "S301", "S311", "S603", "T201", "ANN", "D", "PLR2004", "PT011", "PT018", "S108", "PLR0133", "PLW2901", "PLW1510", "PERF401", "PERF402", "TRY", "BLE001"]
+"tests/*" = ["E741", "N806", "S101", "S104", "S105", "S106", "S301", "S311", "S603", "S607", "T201", "ANN", "D", "PLR2004", "PT011", "PT018", "S108", "PLR0133", "PLW2901", "PLW1510", "PERF401", "PERF402", "TRY", "BLE001"]
 # Mock class mimics boto3's uppercase keyword argument names (Params, ExpiresIn).
 "tests/test_s3_storage.py" = ["N803", "N805"]
 # Scripts: print() is the output mechanism; no docstrings required; S603/S607/ANN
@@ -293,10 +306,15 @@ addopts = [
     "--cov=pdomain_prep_for_pgdp",
     "--cov-branch",              # measure branch coverage (gates except-path testing)
     "--cov-report=term-missing:skip-covered",
+    "-m", "not slow",            # exclude slow tests from default run (make ci-slow runs them)
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+
+markers = [
+    "slow: marks tests as slow — excluded from `make test`; included in `make ci-slow`",
+]
 filterwarnings = [
     # Treat all warnings as errors — surfaces deprecation issues at LLM-iteration time.
     "error",

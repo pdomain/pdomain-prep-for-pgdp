@@ -13,7 +13,7 @@ $(_goals):
 else
 
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
-        typecheck pre-commit-check test e2e build clean ci \
+        typecheck pre-commit-check test test-slow e2e build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
@@ -286,19 +286,23 @@ format: ## Format code with ruff
 pre-commit-check: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
 
-test: ## Run pytest (excludes e2e/)
+test: ## Run pytest (excludes e2e/ and slow tests)
 	uv run pytest tests/ -v --ignore=tests/e2e -n auto
+
+test-slow: frontend-build ## Run pytest including slow packaging tests (requires prior frontend-build)
+	uv run pytest tests/ -v --ignore=tests/e2e -n auto -m slow
 
 e2e: frontend-build ## Run Playwright E2E tests (requires `playwright install chromium`)
 	uv run --group e2e pytest tests/e2e -v
 
-build: frontend-build ## Build the wheel (with frontend bundled)
-	# `--wheel` skips the sdist step. The build hook in
-	# build_hooks/spa_check.py refuses to build a wheel without
-	# src/pdomain_prep_for_pgdp/static/index.html, and that directory is
-	# .gitignore'd — so the default `uv build` (sdist → wheel-from-sdist)
-	# fails because the unpacked sdist has no SPA. Wheel-only is the
-	# supported path; CI mirrors this in .github/workflows/release.yml.
+build: frontend-build ## Build the wheel and sdist (with frontend bundled)
+	# Build sdist and wheel SEPARATELY from the source tree (not the default
+	# sdist-then-wheel-from-sdist path). Without this, bare `uv build` builds
+	# the wheel in a non-git temp dir unpacked from the sdist, where hatchling
+	# only honours `artifacts` at the GLOBAL `[tool.hatch.build]` table —
+	# a per-target-only force-include is silently ignored, producing a wheel
+	# with 0 static files. Building both explicitly from source avoids that path.
+	uv build --sdist
 	uv build --wheel
 
 clean: ## Clean cache + build artifacts
@@ -310,7 +314,7 @@ clean: ## Clean cache + build artifacts
 
 ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip ## Full CI pipeline
 
-ci-slow: ci build ## Full pre-flight for releases (CI plus wheel build)
+ci-slow: ci build test-slow ## Full pre-flight for releases (CI + wheel build + slow packaging tests)
 
 # ─── local-dev workflow (spec #362) ─────────────────────────────────────────
 
