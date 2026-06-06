@@ -81,6 +81,15 @@ pdomain_release_main() {
     echo ""
     echo "Running preflight: $RELEASE_PREFLIGHT"
     echo ""
+    if [ "${VALIDATE_AGAINST_MAIN:-0}" = "1" ]; then
+        if [ -x ./scripts/ci-against-main.sh ]; then
+            echo ""
+            echo "VALIDATE_AGAINST_MAIN=1: validating against sibling main first..."
+            ./scripts/ci-against-main.sh
+        else
+            echo "WARNING: VALIDATE_AGAINST_MAIN=1 set but scripts/ci-against-main.sh not found; skipping." >&2
+        fi
+    fi
     if ! sh -c "$RELEASE_PREFLIGHT"; then
         echo "" >&2
         echo "ERROR: Preflight failed. No tag created." >&2
