@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    from pdomain_prep_for_pgdp.adapters.gpu import BatchJobItem, BatchJobResult
+    from pdomain_ops.gpu import BatchJobItem, BatchJobResult
 
 
 class IDispatcher(Protocol):

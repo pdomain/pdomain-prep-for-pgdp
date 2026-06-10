@@ -10,7 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pdomain_prep_for_pgdp.adapters.gpu import BatchJobItem, BatchJobResult, GPUBackend
+    from pdomain_ops.gpu import BatchJobItem, BatchJobResult, GPUBackend
 
 
 class ImmediateDispatcher:
