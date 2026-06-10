@@ -23,6 +23,9 @@
 import type { ReactNode } from "react";
 import type { StageRunnerRef } from "@/machines/pipelineShell";
 import { SourceTool } from "@/pages/pipeline/tools/SourceTool";
+import { GrayscaleTool } from "./tools/GrayscaleTool";
+import { PagesGridTool } from "./tools/PagesGridTool";
+import { ImageStageReviewTool } from "./tools/ImageStageReviewTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -51,6 +54,14 @@ export type ToolSlotComponent = (props: ToolSlotProps) => ReactNode;
 export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   // F5.1 — Source stage tool (task/f51-source-tool)
   source: SourceTool,
+  // F5.2 — Image-prep group (task/f52-imageprep-tools)
+  grayscale: GrayscaleTool,
+  crop: PagesGridTool,
+  threshold: ImageStageReviewTool,
+  deskew: ImageStageReviewTool,
+  denoise: ImageStageReviewTool,
+  dewarp: ImageStageReviewTool,
+  post_transform_crop: ImageStageReviewTool,
 };
 
 /**

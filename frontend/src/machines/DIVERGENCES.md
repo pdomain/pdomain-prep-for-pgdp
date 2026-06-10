@@ -536,6 +536,8 @@ a run-all-stale sweep.
 
 ---
 
+# Task F5.1 (source tool) divergences
+
 ## F5-1 — Settings region extracted into `stageSettings.ts` (sourceTool)
 
 **YAML:** The settings parallel region (`default` / `modified` / `preset` states,
@@ -652,6 +654,81 @@ is called inside the same `assign` action that mutates `files`, returning the ne
 **Impact:** None — the recount result is identical. The convention prevents
 a class of bugs where `files` and `totals` drift out of sync because a caller
 forgot to chain the separate action.
+---
+
+# Task F5.2 (image-prep tools) divergences
+
+## F5-1 — `APPLY_RUN` uses absolute state ID `#grayscaleTool.converting` (grayscaleTool)
+
+**YAML:** `done.tuned.APPLY_RUN` has `target: '#grayscaleTool.converting'` — a
+YAML cross-parent target using the anchor-ID syntax.
+
+**XState v5:** Absolute state ID targets that cross a parent boundary must be
+written as string literal `"#grayscaleTool.converting"` in XState v5. The
+YAML's notation is preserved exactly, but the `#` prefix must be present
+(without it, XState v5 resolves relative to the `done.tuned` parent, looking
+for a `converting` sibling of `idle/tuned` — which doesn't exist).
+
+**Impact:** The transition works. At I1, if the machine ID changes, this
+string literal must be updated to match. Document the machine `id` alongside
+this divergence: `id: "grayscaleTool"`.
+
+---
+
+## F5-2 — `isLastPage` uses `_total` sentinel on page object (grayscaleTool)
+
+**YAML:** `isLastPage: doneCount(ctx.pages) + 1 === ctx.pages.length`
+
+The YAML assumes `ctx.pages` is pre-populated with placeholder entries for
+ALL expected pages (total count known in advance). `doneCount` counts filled
+entries; the guard fires when the incoming push fills the last slot.
+
+**XState v5 (F5):** At F5, the machine does not receive the total page count
+from the server before PAGE_PUSH events arrive. `ctx.pages` starts empty and
+grows with each push. Without a known total, `isLastPage` would never fire.
+
+**Resolution:** The page object carries an optional `_total: number` field.
+When present, `isLastPage = nextPages.length >= _total`. The mock adapter
+sets `_total` on the final page. When `_total` is absent, the guard returns
+`false` (machine waits).
+
+**At I1:** Remove `_total` from the page shape. Instead, receive the page
+count from the `fetchStageState` pre-flight call (server knows the total
+before streaming begins). Store it in `context._pageTotal` and use that
+in the guard.
+
+---
+
+## F5-3 — `PREV_PAGE` / `NEXT_PAGE` in editing stay in editing via in-place actions (pagesGrid)
+
+**YAML:** `ready.editor.editing.PREV_PAGE` and `NEXT_PAGE` call
+`stepToPrevPage` + `beginDraft` as actions and stay in `editing`. The YAML
+implies a re-entry into `editing` with a fresh draft.
+
+**XState v5:** Actions without a `target` fire in-place — the machine stays in
+`editing`. `stepToPrevPage` is an `assign` that moves `selectedPageId` to the
+prior visible page. `beginDraft` refreshes the draft from the new selected page.
+The net effect (draft refreshed, editor stays open) is identical to a re-entry.
+
+**Impact:** No separate `target: editing` needed. The YAML's `stepToPrevPage +
+beginDraft` pattern ports directly as an action-only handler.
+
+---
+
+## F5-4 — `saveError` targets `editing` (not a separate error sub-state) (pagesGrid)
+
+**YAML:** `ready.editor.editing.saving.onError: { target: editing, actions: [assignError] }`
+
+The YAML targets `editing` on save failure — the user stays in the editor with
+an error displayed.
+
+**XState v5:** Implemented as `onError: { target: "#pagesGrid.ready.editor.editing",
+actions: ["assignError"] }`. The error is stored in `context.error` and cleared
+on the next `EDIT` or `OPEN_EDITOR` event. No separate `saveError` leaf state.
+
+**Impact:** The machine has no `saveError` sub-state; the inline error is surfaced
+via `context.error` while in `editing`. The component renders it as an inline
+banner inside the editor.
 
 ---
 

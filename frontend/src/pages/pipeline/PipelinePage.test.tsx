@@ -244,11 +244,15 @@ describe("PipelinePage — pipeline/stages", () => {
     });
   });
 
-  it("renders tool-slot-placeholder for unregistered stages (F5 pending)", async () => {
+  it("renders F5 tool (ImageStageReviewTool) for default threshold stage", async () => {
+    // F5 filled TOOL_REGISTRY — the placeholder no longer appears for registered stages.
+    // Default stage is "threshold" → ImageStageReviewTool renders.
     const services = makeServices();
     renderPipeline(services);
     await waitFor(() => {
-      expect(screen.getByTestId("tool-slot-placeholder")).toBeDefined();
+      expect(
+        screen.getByTestId("image-stage-review-tool-threshold"),
+      ).toBeDefined();
     });
   });
 
