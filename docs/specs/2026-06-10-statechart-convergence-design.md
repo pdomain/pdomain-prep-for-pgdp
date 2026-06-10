@@ -159,7 +159,27 @@ canvas components (PageImageCanvas-family), word-delete undo buffer. Every
 `DCArtboard` becomes a Storybook story or test fixture. Prototype scaffolding
 (`DesignCanvas`, `*-data.js`, Babel/window-sharing, `FakeThumb`) is never ported.
 
-## 6. pdomain-ui promotion (D4)
+## 6. Library placement (D4, broadened 2026-06-10)
+
+Every task must ask "does this belong upstream?" before implementing in-repo.
+Placement targets and default dispositions:
+
+- **pdomain-book-tools** — image/OCR/text primitives. Candidates here: denoise
+  and dewarp implementations (book-tools ships textline dewarp), hyphen-join
+  and wordcheck text logic if labeler/CLI could reuse them.
+- **pdomain-ops** — suite plumbing, eventsourcing aggregates
+  (PageRecord/BlobStore shipped in ops v0.6.0), StageDispatcher/LongJobRunner
+  protocols. The event-store work converges on ops machinery where it fits
+  rather than growing a parallel implementation.
+- **pdomain-ui** — shared frontend kit (tokens, atoms, chrome, hooks; possibly
+  generic XState machine patterns if a second SPA would reuse them).
+- **Stays here** — PGDP-specific pipeline logic, stage tools, app surfaces.
+
+Phase 0 produces the placement contract (per-component disposition); a task
+that discovers a placement candidate mid-flight flags it rather than silently
+implementing locally.
+
+### 6.1 pdomain-ui promotion (D4)
 
 - Design `tokens.css` reconciles into pdomain-ui's token set; no new token where
   an equivalent exists; app keeps zero hard-coded colors/spacing.

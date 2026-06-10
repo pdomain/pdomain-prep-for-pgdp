@@ -54,6 +54,13 @@ Phase 0 artifact, the artifact path is the contract — read it, don't guess.
   worktrees). Tasks listed as gates must merge before dependents dispatch.
 - pdomain-ui work (Task F1b) is dispatched to the `pdomain-ui` repo agent, not
   this repo's agent.
+- **Library placement rule (spec §6):** before implementing anything in-repo,
+  each task checks the placement contract (`docs/specs/library-placement.md`,
+  Task 0.4): image/OCR/text primitives → pdomain-book-tools; eventsourcing /
+  dispatch plumbing → pdomain-ops; shared frontend kit → pdomain-ui;
+  PGDP-specific logic stays here. A task that discovers an unlisted placement
+  candidate mid-flight reports it in its return summary instead of silently
+  implementing locally; the orchestrator routes it to the owning repo's agent.
 
 **Dependency graph:**
 
@@ -144,23 +151,38 @@ XState is supposed to be mechanical; that requires parseable YAML.
   `ValidationReport`, `SubmitCheckReport`).
 - [ ] **Step 4:** Commit: `docs(spec): API v2 deltas for registry v2`.
 
-### Task 0.4 ∥: pdomain-ui promotion list
+### Task 0.4 ∥: Library placement contract (pdomain-ui / book-tools / ops)
 
 **Files:**
-- Create: `docs/specs/pdomain-ui-promotion.md`
+- Create: `docs/specs/library-placement.md`
 - Read: `docs/plans/design_handoff_pgdp_app/design-system/ui-base.jsx`,
   `design-system/template.jsx`, `design-system/tokens.css`,
   `COMPONENT_INDEX.md`; pdomain-ui exports (dispatch `pdomain-ui-docs` agent
-  for the current export list + tokens)
+  for the current export list + tokens); pdomain-ops eventsourcing + dispatch
+  surface (dispatch `pdomain-ops-docs`: PageRecord/BlobStore aggregates,
+  StageDispatcher/LongJobRunner); pdomain-book-tools image/text primitives
+  (dispatch `pdomain-book-tools-docs`: dewarp/denoise/deskew availability,
+  text post-processing helpers)
 
-- [ ] **Step 1:** Build a three-column disposition table: design component →
+- [ ] **Step 1 (frontend):** Three-way disposition table: design component →
   `exists in pdomain-ui (reuse/extend)` | `promote to pdomain-ui` |
   `stays app-local`. Cover every identifier in `ui-base.jsx` + `template.jsx`
   and the multi-file identifiers in `COMPONENT_INDEX.md`.
-- [ ] **Step 2:** Token reconciliation table: each `tokens.css` custom property
-  → existing pdomain-ui token | new token to add. No new token where an
-  equivalent exists (spec §6).
-- [ ] **Step 3:** Commit: `docs(spec): pdomain-ui promotion + token reconciliation list`.
+- [ ] **Step 2 (tokens):** Token reconciliation table: each `tokens.css`
+  custom property → existing pdomain-ui token | new token to add. No new token
+  where an equivalent exists (spec §6).
+- [ ] **Step 3 (backend — book-tools):** For each new/re-cut stage (denoise,
+  dewarp, wordcheck, hyphen_join, regex, validation checks): does the
+  algorithm belong in pdomain-book-tools (reusable by labeler/CLI) or is it
+  PGDP-specific? Record disposition + the book-tools API to call or the
+  proposed book-tools addition (routed to the `pdomain-book-tools` agent as
+  upstream work before the consuming B task).
+- [ ] **Step 4 (backend — ops):** Decide the event-store relationship: adopt /
+  wrap pdomain-ops eventsourcing aggregates vs keep the in-repo event log
+  (record rationale either way — D5 traceability is the requirement, not a
+  specific library); decide whether stage execution uses ops
+  StageDispatcher/LongJobRunner protocols for GPU/long-job dispatch.
+- [ ] **Step 5:** Commit: `docs(spec): library placement contract (ui/book-tools/ops)`.
 
 ### Task 0.5 ∥: Mock fixtures + machine↔stage map
 
@@ -230,8 +252,10 @@ and flagging both tracks in the plan checklist.
   grayscale, crop, threshold, deskew, post_transform_crop, post_ocr_crop
   (re-key + folding glue only — implementations exist)
 - Create: `core/pipeline/steps/denoise.py`, `core/pipeline/steps/dewarp.py`
-  (new; use pdomain-book-tools primitives — book-tools ships textline dewarp;
-  dispatch `pdomain-book-tools-docs` for the current API before writing)
+  (new; thin wrappers — the algorithms live where
+  `docs/specs/library-placement.md` (Task 0.4) put them, expected
+  pdomain-book-tools, which already ships textline dewarp; any book-tools
+  additions land upstream first via the `pdomain-book-tools` agent)
 - Test: extend the synthetic-page integration tests
   (`tests/test_process_page.py` pattern) per stage; settings
   default/modified/preset persistence per stage (the design's settings
