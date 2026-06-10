@@ -396,6 +396,100 @@ exist.
 
 ---
 
+---
+
+## F4-1 — `projectSettings` child actor spawning delegated to React component (pipelineShell)
+
+**YAML:** `pipeline-shell.yaml` does not explicitly describe `projectSettings`
+spawning, but the canonical YAML actor model implies the shell machine spawns
+`projectSettings` as a child actor alongside the `stageRunners`.
+
+**XState v5 (current):** `projectSettings` is instantiated via `useActor()` in
+`PipelinePage.tsx`. The shell machine tracks whether settings mode is active via
+a `_inSettings: boolean` context flag + `openSettings` / `closeSettings` events.
+The component mounts `projectSettingsMachine` as a hook whenever `_inSettings` is
+true.
+
+**Rationale:** Matches the F3-4 / F3-6 pattern — avoids `spawnChild` complexity
+at I1. The behavioral contract (settings actor is alive while the shell is in
+`mode.settings`) is preserved.
+
+**At I1:** Promote to `spawnChild` inside `pipelineShellMachine` when full
+actor-model integration is needed (same migration path as F3-4 / F3-6).
+
+---
+
+## F4-2 — `runAllStale` coordinator spawning delegated to React component (pipelineShell)
+
+**YAML:** `pipeline-shell.yaml` implies the shell orchestrates a `runAllStale`
+coordinator to sequence stale stage runs.
+
+**XState v5 (current):** `runAllStale` is instantiated via `useActor()` in
+`PipelinePage.tsx`, mounted only when the user activates "Run All Stale". The
+shell receives `RUN_ALL_STALE` and sets `_runAllStaleActive: boolean` context
+which the component observes.
+
+**Rationale:** Matches F3-4 pattern. Avoids `spawnChild` at I1.
+
+**At I1:** Promote to `spawnChild` when full actor-model integration is needed.
+
+---
+
+## F4-3 — Tab initial state uses `initial:` idiom (pipelineShell tab region)
+
+**YAML:** The tab region's initial state is `active` (a single leaf state that
+holds the current tab ID in context). The spec implies a `settleInitialTab`
+action on entry.
+
+**XState v5 (current):** The tab region uses a single `active` state with
+`context.activeTab` initialized to the first tab for the default stage. Tab
+switches are driven by `SELECT_TAB { tabId }` events calling `assign()`.
+
+**Impact:** No `settleInitialTab` action slot; initialization is done inline in
+`context.activeTab` initialization. This is idiomatic XState v5 and avoids an
+artificial entry-action.
+
+---
+
+## F4-4 — Fan-out `UPSTREAM_CHANGED` via side-effect action (pipelineShell)
+
+**YAML:** `fanOutStale` is described as calling `forEach(downstreamIds, id =>
+runners[id].send(UPSTREAM_CHANGED))`.
+
+**XState v5:** `sendTo` only targets a single actor. There is no built-in
+multi-target `sendTo`. Using `raise` loops would require N separate `raise`
+calls at declaration time (not dynamic).
+
+**Resolution:** `fanOutStaleSideEffect` is a plain side-effect action (not
+`sendTo`) that reads `context.runners` and calls `ref.send()` on each
+downstream `StageRunnerRef` returned by `computeDownstream()`. This is
+equivalent behavior without the `sendTo` constraint.
+
+**Impact:** Fan-out tests verify the downstream runners receive `UPSTREAM_CHANGED`
+events. `fanOutStaleSideEffect` is a typed action with no return value (side-effect
+only, no context mutation).
+
+---
+
+## F4-5 — Tool slot placeholder is intentionally visible (PipelinePage / toolSlot.tsx)
+
+**Spec acceptance rule:** Workspace rules require that UI elements are either
+visible + enabled + functional, OR not rendered at all. Dead stubs are not
+permitted.
+
+**F4 exception:** The tool slot placeholder (`data-testid="tool-slot-placeholder"`)
+is intentionally visible and labeled "F5 pending" because Task F5 will fill the
+`TOOL_REGISTRY` with real per-stage tool components within this same plan
+iteration. The placeholder is NOT a dead stub — it communicates to F5 exactly
+where to plug in.
+
+**Contract (F5 must satisfy):** Each tool slot receives `{ stageId: string,
+runnerRef: StageRunnerRef }` and renders whatever UI the stage's workbench/tool
+tab needs. Register via `TOOL_REGISTRY[stageId] = MyToolComponent` in
+`toolSlot.tsx`.
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.

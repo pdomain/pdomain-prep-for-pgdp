@@ -66,6 +66,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { ProjectReviewQueuePage } from "./pages/ProjectReviewQueuePage";
 import { TextReviewPage } from "./pages/TextReviewPage";
 import { CropsGridPage } from "./pages/CropsGridPage";
+import { PipelinePage } from "./pages/pipeline/PipelinePage";
 
 // ── Phase 2.7b: UIPrefsConfig — real pdomain-ocr-ops wiring (resolves GAP-2/GAP-3) ─
 //
@@ -375,6 +376,10 @@ export default function App() {
                     <Route
                       path="/projects/:projectId/review"
                       element={<ProjectReviewQueuePage />}
+                    />
+                    <Route
+                      path="/projects/:projectId/pipeline"
+                      element={<PipelinePage />}
                     />
                     <Route path="/settings" element={<SettingsPage />} />
                   </Routes>
