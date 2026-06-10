@@ -128,18 +128,17 @@ def test_v2_stage_impl_covers_all_24() -> None:
         assert callable(V2_STAGE_IMPL[sid]["cpu"]), f"{sid!r} cpu entry not callable"
 
 
-def test_new_stages_have_placeholder_impls() -> None:
-    """New/unimplemented v2 stages raise StageNotImplemented when invoked.
+def test_b4_stages_are_now_wired() -> None:
+    """B4 project-scoped tail stages are fully wired (not placeholder stubs).
 
-    B2 stages (denoise, dewarp, post_transform_crop) implemented — see
-    tests/test_image_prep_stages.py. B3 stages (text_zones, wordcheck,
-    hyphen_join) implemented — see tests/test_b3_ocr_text_stages.py.
-    Only the B4 tail stages remain placeholders.
+    B4 (Task B4: Project-scoped tail stages) implemented all 7 stages:
+    page_order, validation, proof_pack, build_package, zip, submit_check, archive.
+    Each should have a callable cpu entry that does NOT raise StageNotImplemented.
+    Detailed coverage in tests/test_b4_tail_stages.py and tests/test_gate_chain.py.
     """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import V2_STAGE_IMPL, StageNotImplemented
 
-    # B4 tail stages: no implementation yet (B4 will wire them)
-    new_stages = {
+    b4_stages = {
         "page_order",
         "validation",
         "proof_pack",
@@ -148,10 +147,16 @@ def test_new_stages_have_placeholder_impls() -> None:
         "submit_check",
         "archive",
     }
-    for sid in new_stages:
+    for sid in b4_stages:
         fn = V2_STAGE_IMPL[sid]["cpu"]
-        with pytest.raises(StageNotImplemented):
-            fn(None)
+        assert callable(fn), f"{sid!r} cpu entry not callable"
+        # Calling with no args should raise TypeError (wrong args), not StageNotImplemented
+        try:
+            fn()
+        except StageNotImplemented:
+            pytest.fail(f"{sid!r} still raises StageNotImplemented — B4 not wired")
+        except Exception:  # noqa: S110
+            pass  # TypeError (missing args) is expected for a real function
 
 
 def test_blank_proof_synth_not_in_v2_stages() -> None:

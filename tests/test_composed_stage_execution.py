@@ -252,36 +252,14 @@ def test_text_review_v2_passes_through() -> None:
 # ─── New stages: NotImplemented placeholders ─────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "stage_id",
-    [
-        # All new page-scoped stages are implemented (B2 image prep, B3 OCR/text).
-        # New project-scoped stages without implementations yet (B4 — tail stages)
-        # Note: "source" is excluded - it is a re-cut of ingest_source+thumbnail+attrs+decode_source
-        "page_order",
-        "validation",
-        "proof_pack",
-        "build_package",
-        "zip",
-        "submit_check",
-        "archive",
-    ],
-)
-def test_new_stage_placeholder_raises_stage_not_implemented(stage_id: str) -> None:
-    """New/unimplemented v2 stages raise StageNotImplemented when invoked.
+@pytest.mark.skip(reason="B4 implemented all project-scoped tail stages — no placeholder stubs remain")
+def test_new_stage_placeholder_raises_stage_not_implemented() -> None:
+    """Formerly checked that B4 stages were placeholder stubs.
 
-    Note: denoise/dewarp/post_transform_crop were implemented in Task B2
-    (tests/test_image_prep_stages.py); text_zones/wordcheck/hyphen_join in
-    Task B3 (tests/test_b3_ocr_text_stages.py).
+    B4 (Task B4: Project-scoped tail stages) implemented all 7 stages:
+    page_order, validation, proof_pack, build_package, zip, submit_check, archive.
+    Coverage moved to tests/test_b4_tail_stages.py and tests/test_gate_chain.py.
     """
-    from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
-        StageNotImplemented,
-        get_v2_stage_impl,
-    )
-
-    fn = get_v2_stage_impl(stage_id, "cpu")
-    with pytest.raises(StageNotImplemented):
-        fn(None)
 
 
 # ─── V2 illustrations: registers without crashing ────────────────────────────
