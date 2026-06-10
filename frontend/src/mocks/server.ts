@@ -128,6 +128,66 @@ export interface MockServer {
     pageId: string,
     subscriber: PageSubscriber,
   ): () => void;
+
+  // ---- Stage settings API (F5 — §1.8) ----------------------------------------
+
+  /**
+   * GET .../pages/{idx0}/stages/{stage_id}/settings
+   * Returns effective settings (override > saved default > registry default).
+   */
+  getStageSettings(
+    projectId: string,
+    stageId: string,
+  ): Promise<Record<string, unknown>>;
+
+  /**
+   * PUT .../pages/{idx0}/stages/{stage_id}/settings
+   * Saves a project override (not persisted as "my default").
+   */
+  putStageSettings(
+    projectId: string,
+    stageId: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
+
+  /**
+   * POST .../stages/{stage_id}/settings/save-as-default
+   * Persists the body as the project-level default for this stage.
+   */
+  saveStageSettingsAsDefault(
+    projectId: string,
+    stageId: string,
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
+
+  /**
+   * POST .../stages/{stage_id}/settings/revert
+   * Deletes the override; reverts to saved default or registry default.
+   */
+  revertStageSettings(
+    projectId: string,
+    stageId: string,
+  ): Promise<Record<string, unknown>>;
+
+  /**
+   * POST .../stages/{stage_id}/settings/reset
+   * Deletes both override and saved default; reverts to registry default.
+   */
+  resetStageSettings(
+    projectId: string,
+    stageId: string,
+  ): Promise<Record<string, unknown>>;
+
+  // ---- Source stage API (F5.1) -----------------------------------------------
+
+  /**
+   * POST .../project-stages/source/confirm
+   * Commits the page file set; returns { pages: N }.
+   */
+  confirmSourceSelection(
+    projectId: string,
+    files: { idx: number; state: string }[],
+  ): Promise<{ pages: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +217,11 @@ export function createMockServer(): MockServer {
   // SSE subscribers
   const projectSubs = new Set<ProjectSubscriber>();
   const pageSubs = new Map<string, Set<PageSubscriber>>(); // key: `${projectId}:${pageId}`
+
+  // Stage settings: override and saved-default layers (F5 §1.8)
+  // key: `${projectId}:${stageId}`
+  const stageSettingsOverrides = new Map<string, Record<string, unknown>>();
+  const stageSettingsDefaults = new Map<string, Record<string, unknown>>();
 
   // -------------------------------------------------------------------------
   // Internal helpers
@@ -676,6 +741,71 @@ export function createMockServer(): MockServer {
           s.delete(subscriber);
         }
       };
+    },
+
+    // ---- Stage settings (F5 §1.8) -------------------------------------------
+
+    async getStageSettings(_projectId, stageId) {
+      // Registry defaults for known stages (empty dict = use built-in defaults)
+      return (
+        stageSettingsOverrides.get(`${_projectId}:${stageId}`) ??
+        stageSettingsDefaults.get(`${_projectId}:${stageId}`) ??
+        {}
+      );
+    },
+
+    async putStageSettings(_projectId, stageId, body) {
+      const key = `${_projectId}:${stageId}`;
+      stageSettingsOverrides.set(key, { ...body });
+      return server.getStageSettings(_projectId, stageId);
+    },
+
+    async saveStageSettingsAsDefault(_projectId, stageId, body) {
+      const key = `${_projectId}:${stageId}`;
+      stageSettingsDefaults.set(key, { ...body });
+      stageSettingsOverrides.delete(key);
+      return server.getStageSettings(_projectId, stageId);
+    },
+
+    async revertStageSettings(_projectId, stageId) {
+      const key = `${_projectId}:${stageId}`;
+      stageSettingsOverrides.delete(key);
+      return server.getStageSettings(_projectId, stageId);
+    },
+
+    async resetStageSettings(_projectId, stageId) {
+      const key = `${_projectId}:${stageId}`;
+      stageSettingsOverrides.delete(key);
+      stageSettingsDefaults.delete(key);
+      return {};
+    },
+
+    // ---- Source stage API (F5.1) -------------------------------------------
+
+    async confirmSourceSelection(_projectId, files) {
+      const pages = files.filter(
+        (f) => f.state === "page" || f.state === "inserted",
+      ).length;
+      // Mark the source project stage as clean
+      const sourceState = projectStages.get("source");
+      if (sourceState) {
+        projectStages.set("source", {
+          ...sourceState,
+          status: "clean",
+          last_run_at: 1749513900,
+          duration_ms: 800,
+        });
+        emitProject({
+          type: "project-stage-status",
+          stage_id: "source",
+          status: "clean",
+          job_id: null,
+          error_message: null,
+        });
+        // Propagate stale to downstream project stages
+        propagateStaleProjectStage("source");
+      }
+      return { pages };
     },
   };
 
