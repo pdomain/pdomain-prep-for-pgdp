@@ -31,6 +31,10 @@ import { OcrTool } from "./tools/OcrTool";
 import { PageOrderTool } from "./tools/PageOrderTool";
 import { CanvasMapTool } from "./tools/CanvasMapTool";
 import { IllustrationsTool } from "./tools/IllustrationsTool";
+import { WordcheckTool } from "./tools/WordcheckTool";
+import { HyphenJoinTool } from "./tools/HyphenJoinTool";
+import { TextReviewTool } from "./tools/TextReviewTool";
+import { RegexTool } from "./tools/RegexTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -74,6 +78,12 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   page_order: PageOrderTool,
   canvas_map: CanvasMapTool,
   illustrations: IllustrationsTool,
+  // F5.5 — Text group (task/f55-text-tools)
+  wordcheck: WordcheckTool,
+  scannocheck: WordcheckTool,
+  hyphen_join: HyphenJoinTool,
+  text_review: TextReviewTool,
+  regex: RegexTool,
 };
 
 /**
