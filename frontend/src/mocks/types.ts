@@ -260,3 +260,120 @@ export type PageChannelEvent =
   | PageSnapshotEvent
   | StageStatusEvent
   | StageProgressEvent;
+
+// ---------------------------------------------------------------------------
+// Projects list API (GET /api/projects)
+// Used by railList, projectDetail, recentActivity, etc.
+// @see docs/plans/design_handoff_pgdp_app/statecharts/rail-list.yaml
+// @see docs/plans/design_handoff_pgdp_app/final/projects/projects.jsx PROJECTS[]
+// ---------------------------------------------------------------------------
+
+/**
+ * Project status in the lifecycle taxonomy.
+ * @see project-lifecycle.yaml states
+ * @see projects.jsx STATUS map
+ */
+export type ProjectLifecycleStatus =
+  | "queued"
+  | "running"
+  | "review"
+  | "ready"
+  | "submitted"
+  | "error"
+  | "archived";
+
+/** Full project record as returned by GET /api/projects. */
+export interface ProjectRecord {
+  id: string;
+  title: string;
+  author: string;
+  pages: number;
+  totalStages: number;
+  currentStage: number;
+  status: ProjectLifecycleStatus;
+  flagged?: number;
+  archived?: boolean;
+  archivedOn?: string;
+  updatedRel: string;
+  updatedAbs: string;
+  created: string;
+  size: string;
+  registry_version: number;
+}
+
+/** Badge tone derived from project status (server-authoritative). */
+export type StatusTone = "neutral" | "running" | "review" | "clean" | "failed";
+
+// ---------------------------------------------------------------------------
+// Activity feed API (GET /api/projects/:id/activity)
+// Used by recentActivity machine.
+// ---------------------------------------------------------------------------
+
+export type ActivityEntryKind = "stage" | "comment" | "system";
+
+export interface ActivityEntry {
+  id: string;
+  stage: string;
+  description: string;
+  at: string; // ISO
+  kind: ActivityEntryKind;
+}
+
+export interface ActivityFeedResponse {
+  entries: ActivityEntry[];
+  totalCount: number;
+  commentCount: number;
+  stageCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Attributes API (GET/PATCH /api/projects/:id/attributes)
+// Used by attributesPanel machine.
+// ---------------------------------------------------------------------------
+
+export type AttributeSection = "bib" | "pgdp" | "fmt" | "comments";
+
+export interface AttributeRecord {
+  bib: Record<string, string>;
+  pgdp: Record<string, string>;
+  fmt: Record<string, string>;
+  comments: string;
+}
+
+// ---------------------------------------------------------------------------
+// Manage actions API (POST /api/projects/:id/*)
+// Used by manageActions machine.
+// ---------------------------------------------------------------------------
+
+export type ManageAction =
+  | "clean"
+  | "archive"
+  | "saveCopy"
+  | "delete"
+  | "restore";
+
+export interface ManageActionResult {
+  action: ManageAction;
+  status?: ProjectLifecycleStatus;
+  reclaimedBytes?: number;
+  zippedSize?: number;
+  downloadUrl?: string;
+  deleted?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Import job types (used by postImport machine)
+// @see post-import.yaml context: job shape
+// ---------------------------------------------------------------------------
+
+export type ImportJobState = "running" | "done" | "cancelled";
+
+export interface ImportJob {
+  id: string;
+  project: string;
+  projectId: string;
+  phase: string;
+  pct: number;
+  state: ImportJobState;
+  cancelable?: boolean;
+}

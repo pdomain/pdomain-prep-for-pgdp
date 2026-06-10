@@ -34,6 +34,12 @@ import type {
   ProjectChannelEvent,
   PageChannelEvent,
   StageRunRequest,
+  ProjectRecord,
+  ManageAction,
+  ManageActionResult,
+  ActivityFeedResponse,
+  AttributeRecord,
+  AttributeSection,
 } from "./types";
 
 import {
@@ -84,6 +90,33 @@ export interface MockServer {
   // Page order
   reorderPages(projectId: string, newOrder: string[]): Promise<void>;
   getPageOrder(projectId: string): string[];
+
+  // ---- Projects-list API (F3) -----------------------------------------------
+  /** GET /api/projects — list all projects for the current user. */
+  listProjects(): Promise<ProjectRecord[]>;
+
+  /** GET /api/projects/:id/activity — recent activity entries. */
+  fetchActivity(
+    projectId: string,
+    limit?: number,
+  ): Promise<ActivityFeedResponse>;
+
+  /** GET /api/projects/:id/attributes — full attribute record. */
+  fetchAttributes(projectId: string): Promise<AttributeRecord>;
+
+  /** PATCH /api/projects/:id/attributes/:section — update one section. */
+  saveAttributes(
+    projectId: string,
+    section: AttributeSection,
+    draft: Record<string, string>,
+  ): Promise<AttributeRecord>;
+
+  /** Execute a manage action (clean/archive/saveCopy/delete/restore). */
+  runManageAction(
+    projectId: string,
+    action: ManageAction,
+    step?: 1 | 2,
+  ): Promise<ManageActionResult>;
 
   // SSE subscriptions
   subscribeProject(
@@ -448,6 +481,159 @@ export function createMockServer(): MockServer {
 
     getPageOrder(_projectId) {
       return [...pageOrder];
+    },
+
+    // ---- Projects-list API (F3 additions) -----------------------------------
+
+    async listProjects() {
+      // Deterministic mock: return 3 fixture projects with different statuses
+      const records: ProjectRecord[] = [
+        {
+          id: project.id,
+          title: project.title,
+          author: "Mock Author",
+          pages: project.page_count,
+          totalStages: 23,
+          currentStage: 10,
+          status: "running",
+          flagged: 0,
+          archived: false,
+          updatedRel: "just now",
+          updatedAbs: "Jun 10, 09:00",
+          created: "Jun 10, 2026",
+          size: "12.4 MB",
+          registry_version: project.registry_version,
+        },
+        {
+          id: "proj-mock-archived",
+          title: "Archived Book",
+          author: "Past Author",
+          pages: 218,
+          totalStages: 23,
+          currentStage: 22,
+          status: "archived",
+          archived: true,
+          archivedOn: "May 02, 2026",
+          updatedRel: "May 02",
+          updatedAbs: "May 02, 11:45",
+          created: "Apr 22, 2026",
+          size: "15.2 MB",
+          registry_version: 2,
+        },
+        {
+          id: "proj-mock-ready",
+          title: "Ready Book",
+          author: "Ready Author",
+          pages: 387,
+          totalStages: 23,
+          currentStage: 22,
+          status: "ready",
+          archived: false,
+          updatedRel: "2h ago",
+          updatedAbs: "Jun 10, 07:00",
+          created: "Jun 01, 2026",
+          size: "28.4 MB",
+          registry_version: 2,
+        },
+      ];
+      return records;
+    },
+
+    async fetchActivity(_projectId, limit = 3) {
+      // Return deterministic activity entries
+      const entries = [
+        {
+          id: "act-1",
+          stage: "ocr",
+          description: "completed · 12 pages · 6m 12s",
+          at: "2026-06-10T08:00:00Z",
+          kind: "stage" as const,
+        },
+        {
+          id: "act-2",
+          stage: "wordcheck",
+          description: "4 dictionary mismatches",
+          at: "2026-06-10T07:45:00Z",
+          kind: "stage" as const,
+        },
+        {
+          id: "act-3",
+          stage: "grayscale",
+          description: "completed · 12 pages",
+          at: "2026-06-10T07:30:00Z",
+          kind: "stage" as const,
+        },
+      ];
+      return {
+        entries: entries.slice(0, limit),
+        totalCount: 12,
+        commentCount: 3,
+        stageCount: 9,
+      };
+    },
+
+    async fetchAttributes(_projectId) {
+      return {
+        bib: {
+          Title: project.title,
+          Author: "Mock Author",
+          Language: "English",
+          "Original year": "1890",
+          Edition: "First Edition",
+          "Source archive": "archive.org · mock-book-1890",
+        },
+        pgdp: {
+          "Project ID": project.id,
+          Difficulty: "B1 · Beginners welcome",
+          Genre: "Fiction",
+          "Forum category": "Literature",
+          Round: "P1 (initial proofread)",
+          "Format version": "pgdp-format-2024.3",
+        },
+        fmt: {
+          "Page format": "smooth-reading",
+          Illustrations: "none",
+          Footnotes: "none",
+          "Word lists": "+ 0 custom",
+          "Special chars": "—",
+          "PG submission": "not yet",
+        },
+        comments: "No special comments.",
+      };
+    },
+
+    async saveAttributes(_projectId, _section, _draft) {
+      // Return the current attributes (mock: no-op save)
+      return server.fetchAttributes(_projectId);
+    },
+
+    async runManageAction(projectId, action, step) {
+      switch (action) {
+        case "clean":
+          return { action, reclaimedBytes: 1_620_000_000 };
+        case "archive":
+          return {
+            action,
+            status: "archived" as const,
+            zippedSize: 24_800_000,
+          };
+        case "saveCopy":
+          return {
+            action,
+            downloadUrl: `/api/projects/${projectId}/export/download`,
+          };
+        case "delete":
+          if (step === 2) {
+            return { action, deleted: true };
+          }
+          return {
+            action,
+            status: "archived" as const,
+            zippedSize: 24_800_000,
+          };
+        case "restore":
+          return { action, status: "queued" as const };
+      }
     },
 
     subscribeProject(_projectId, subscriber) {
