@@ -42,7 +42,7 @@ disposition:
 | `KeyCap` | reuse pdomain-ui | `KeyCap` in `@pdomain/pdomain-ui` (primitives). Verified exported. |
 | `Divider` | reuse pdomain-ui | `Separator` in `@pdomain/pdomain-ui` (primitives). Horizontal and vertical variants both supported. |
 | `StepDots` | reuse pdomain-ui | `StepDots` in `@pdomain/pdomain-ui` (primitives). Exported with `StepDotsProps`. |
-| `TopNav` | reuse pdomain-ui | `TopNav` in `@pdomain/pdomain-ui` (shell). The design `TopNav` is a simplified proto of the shipped `AppHeader`; use `AppHeader` which already handles the icon, search box, bell + unread, and avatar slots. |
+| `TopNav` | reuse pdomain-ui | **Maps to `AppHeader`** in `@pdomain/pdomain-ui` (shell). pdomain-ui exports both `TopNav` (bare layout wrapper) and `AppHeader` (full header with icon+name, search, bell+unread, avatar). The design's `TopNav` is a proto of the shipped `AppHeader`; import `AppHeader` — do not use pdomain-ui's `TopNav`. |
 | `ServerFooter` | stays app-local | PGDP-specific server-address footer (`127.0.0.1:<port>`). No parallel in pdomain-ui; stays in `frontend/src/design/ServerFooter.tsx`. |
 | `PageHeader` | reuse pdomain-ui | `ConfigureHeader` in `@pdomain/pdomain-ui` (templates) covers the title + sub + action-slot pattern. Alternatively use the `ProjectInfoBand` template for pipeline views. |
 | `ProjectListBackdrop` | stays app-local | Prototype scaffolding used only in the design canvas; never port. Replaced by the proper `ProjectsPage` surface (Task F3). |
@@ -54,7 +54,7 @@ disposition:
 |---|---|---|
 | `AppHeader` | reuse pdomain-ui | `AppHeader` in `@pdomain/pdomain-ui` (shell). The design `AppHeader` matches the shipped version: left icon+name, center search, right jobs+bell+user. |
 | `JobsPill` | reuse pdomain-ui | `JobsPill` in `@pdomain/pdomain-ui` (shell). The design `JobsPill` matches the shipped component (active/idle states, count badge, hover popover). |
-| `JobsDrawer` | reuse pdomain-ui | `JobsDrawer` in `@pdomain/pdomain-ui` (shell, shipped in 0.4.0). Modes: `expanded` / `collapsed` / `dismissed`. Exported with `JobsDrawerProps`. |
+| `JobsDrawer` | reuse pdomain-ui | `JobsDrawer` in `@pdomain/pdomain-ui` (shell). Present in installed @pdomain/pdomain-ui (v0.2.2). Modes: `expanded` / `collapsed` / `dismissed`. Exported with `JobsDrawerProps`. |
 | `JobRow` | reuse pdomain-ui | `JobRow` in `@pdomain/pdomain-ui` (shell). Inline hover actions (Open/Pause/Discard) are part of the shipped component. |
 | `Breadcrumb` | reuse pdomain-ui | `Breadcrumb` in `@pdomain/pdomain-ui` (shell). Trail + controls slot pattern matches. |
 | `ControlsPlaceholder` | stays app-local | Dev-only striped placeholder; never port to production code. |
@@ -76,23 +76,34 @@ applies to ALL occurrences; the impl lives in one place.
 | `Stat` | 8 | stays app-local | Summary statistic display (count, label, tone); PGDP-stage-specific. Evaluate against `StatTile` in pdomain-ui (primitives) — if `StatTile` covers the shape, prefer it. |
 | `Toggle2` | 8 | stays app-local | Two-way toggle control appearing in pack-group settings panels; PGDP-specific. Evaluate against `Toggle` / `ToggleGroup` in pdomain-ui (primitives). |
 | `Tree` | 6 | stays app-local | File-tree display used in archive/build_package/proof_pack/zip/submit_check/validation; PGDP-specific artefact-tree shape. |
-| `Segmented` | 5 | promote to pdomain-ui | Multi-option segmented control appearing in denoise, deskew, dewarp, text_zones, threshold. These are stage tools reusable across the labeler-spa suite. Promote as `SegmentedControl` or `Segmented` in pdomain-ui primitives. |
+| `Segmented` | 5 | reuse pdomain-ui | `Segmented` already exists in `@pdomain/pdomain-ui` (primitives). Verified in installed package (v0.2.2): `SegmentedProps`, `SegmentedSize`, `SegmentedOption` all exported. API: `options: SegmentedOption[]`, `value`, `onChange`, `size?: 'sm'\|'md'`. Import directly; no promotion needed. |
 | `SettingRow` | 5 | stays app-local | Per-stage settings row (label + control) inside stage step-settings panels. Evaluate against pdomain-ui `FieldRow`; if the API matches, reuse. If not (PGDP slider/label shape diverges), keep app-local. |
 | `SettingSlider` | 5 | stays app-local | Numeric slider control in stage step-settings panels; PGDP-specific range semantics. Evaluate against pdomain-ui `Progress` / any slider primitive; if no match, keep app-local. |
 | `Check` | 3 | stays app-local | Checkbox control with PGDP-specific tone/label pairing used in submit_check/validation/build_package; evaluate against pdomain-ui `CheckIcon` + generic checkbox patterns. |
 
 ### 1.4 Promotion summary
 
-Components to add to pdomain-ui (Task F1b, dispatched to `pdomain-ui` agent):
+**Task F1b reduces to: confirm reuse mappings + version bump; no new pdomain-ui
+components needed.**
 
-| Component | Notes |
-|---|---|
-| `Segmented` | Multi-option segmented control (5 stage-tool uses: denoise, deskew, dewarp, text_zones, threshold). API: `items: {value, label}[]`, `value`, `onChange`. |
+`Segmented` is already present in the installed `@pdomain/pdomain-ui` (v0.2.2,
+confirmed via `dist/primitives.d.ts`). There are zero components to promote.
+Task F1b's scope is: (1) verify the version pinned in `package.json` exposes
+all reused components; (2) bump if the resolved version is below the minimum
+that ships them; (3) confirm import paths in the stage-tool components.
 
-Components confirmed present in pdomain-ui and reusable without change:
+Components confirmed present in pdomain-ui and reusable without change
+(all verified in installed v0.2.2 unless noted):
 `Icon` (icons subpath), `Button`, `Input`, `Badge`/`Chip`, `KeyCap`, `Separator`,
-`StepDots`, `TopNav`/`AppHeader`, `JobsPill`, `JobsDrawer`, `JobRow`,
+`StepDots`, `Segmented` (primitives — `SegmentedProps`/`SegmentedSize` exported),
+`AppHeader`, `JobsPill`, `JobsDrawer`, `JobRow`,
 `Breadcrumb`, `AppShell`, `PipelineTemplate`, `ConfigureHeader`.
+
+Note on `TopNav` vs `AppHeader`: pdomain-ui exports **both** `TopNav` (a bare
+layout wrapper for child content) **and** `AppHeader` (the full header shell
+with icon, search, bell + unread, avatar slots). The design's `TopNav` maps to
+`AppHeader`, not pdomain-ui's `TopNav`. See §1.1 (`TopNav` row) for the
+explicit mapping.
 
 ---
 
@@ -145,9 +156,10 @@ and therefore available to this app at no cost):**
 transitions, shadow variants (`--shadow-sm`, `--shadow-dock`, `--shadow-overlay`,
 `--shadow-card`), `--overlay-scrim`.
 
-**Decision:** No new tokens need to be added to pdomain-ui. All design tokens
-map exactly to existing pdomain-ui tokens. The design's back-compat aliases
-(`--font-sans`, `--font-mono`) are not promoted — use canonical names.
+**Decision:** No new tokens need to be added to pdomain-ui. The design file
+has 27 unique custom properties: 25 identical matches to existing pdomain-ui
+tokens, plus 2 design-only back-compat aliases (`--font-sans`, `--font-mono`)
+that are not promoted — use canonical names (`--ui-font`, `--mono-font`).
 
 The app's `frontend/src/design/tokens.css` contains only the `.pgd` scoping
 wrapper and `data-theme` overrides; it imports and defers to pdomain-ui's
@@ -264,9 +276,32 @@ re-cut). Long-running tail stages (B4) adopt `LongJobRunner`. The in-repo
 
 None blocking Phase 0. All decisions are explicit.
 
-Downstream task dependencies from this contract:
+### Placement flags from `stage-registry-v2.md` §7 — all resolved
 
-- Task F1b (`pdomain-ui` agent): add `Segmented` component.
+`stage-registry-v2.md` §7 raised three placement flags for Task 0.4 to decide:
+
+1. **`denoise` algorithm** — resolved: **propose pdomain-book-tools addition**.
+   `denoise_binary` is generic (reusable by pdomain-ocr-cli + labeler-spa) and
+   belongs in `image_processing.cv2_processing.denoise`. Cross-repo
+   recommendation issued (§3). This repo's `steps/denoise.py` calls the
+   book-tools API; no PGDP-specific logic in the algorithm.
+
+2. **`wordcheck` / `hyphen_join` text logic** — resolved: **both stay
+   app-local**. Both depend on PGDP project word lists, `WordlistPromotion`
+   events, and PGDP submission format semantics. pdomain-book-tools provides
+   `Page.word_list()` and word iteration but does not own the list-management
+   or decision loops. See §3 for full rationale.
+
+3. **`PrepProjectAggregate` eventsourcing aggregate** — resolved: **app-local**
+   (`src/pdomain_prep_for_pgdp/core/pipeline/prep_aggregate.py`, new in B1).
+   The ten v2 event types are PGDP-pipeline-domain; pdomain-ops owns the
+   eventsourcing library and generic page-record events but not PGDP-specific
+   pipeline events. See §4.1 for full rationale.
+
+### Downstream task dependencies from this contract
+
+- Task F1b (`pdomain-ui` agent): **confirm reuse mappings + version bump only;
+  no new pdomain-ui components needed** (see §1.4).
 - Task B2 (denoise stage): route to `pdomain-book-tools` agent for
   `denoise_binary` addition **before** wiring the step wrapper.
 - Task B1 (registry + DAG core): implement `PrepProjectAggregate`
