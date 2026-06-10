@@ -1121,6 +1121,29 @@ def _illustrations_v2_cpu(image: ImageArray, cfg: StageConfig = None) -> Compoun
     }
 
 
+# ─── B3 stage callables (OCR/Text group) ────────────────────────────────────
+# Imported lazily at module load to avoid heavy deps at import time.
+# Each is a thin wrapper delegating to core/pipeline/steps/
+
+
+def _get_text_zones_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.text_zones import text_zones_v2_cpu
+
+    return cast("StageImpl", text_zones_v2_cpu)
+
+
+def _get_wordcheck_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.wordcheck import wordcheck_v2_cpu
+
+    return cast("StageImpl", wordcheck_v2_cpu)
+
+
+def _get_hyphen_join_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import hyphen_join_v2_cpu
+
+    return cast("StageImpl", hyphen_join_v2_cpu)
+
+
 # Map of v2 stage IDs to their composed cpu impls.
 _V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "source": _source_cpu,
@@ -1138,6 +1161,10 @@ _V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "regex": _text_postprocess_cpu,
     "text_review": _text_review_cpu,
     "illustrations": _illustrations_v2_cpu,
+    # B3: OCR/Text group
+    "text_zones": _get_text_zones_cpu(),
+    "wordcheck": _get_wordcheck_cpu(),
+    "hyphen_join": _get_hyphen_join_cpu(),
 }
 
 _ALL_V2_STAGE_IDS: tuple[str, ...] = V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS
