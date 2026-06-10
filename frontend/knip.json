@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "project": ["src/**/*.{ts,tsx}"],
-  "ignore": ["src/api/types.gen.ts", "src/mocks/**"],
+  "ignore": ["src/api/types.gen.ts", "src/mocks/**", "src/design/index.ts"],
   "ignoreDependencies": ["lucide-react"]
 }
