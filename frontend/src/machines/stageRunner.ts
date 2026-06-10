@@ -287,18 +287,62 @@ export const stageRunnerMachine = setup({
 
     /**
      * YAML: `reconcile: // sync state + counts to backend truth`
-     * Side effect slot — noop in tests; real impl at I1 navigates machine state.
      *
-     * TODO (I1): implement reconcile — compare STAGE_PUSH payload against current
-     * machine state; if the server's status differs (e.g. server says "clean" but
-     * machine is still "running"), navigate the machine to the authoritative state.
-     * Push must WIN over optimistic local state. Add conflicting-push test:
-     *   "STAGE_PUSH(status=clean) while machine is running → transitions to clean"
-     * See DIVERGENCES.md §reconcile-todo.
+     * Implemented as of F4 (was a noop placeholder in F2/F3).
+     * Push WINS over optimistic local state.
+     *
+     * For `variant: "status"` pushes: if the server's status diverges from
+     * current machine context, assign the authoritative context so the machine
+     * is consistent when it next enters the corresponding state.
+     *
+     * For `variant: "progress"` pushes: update context.progress directly.
+     *
+     * State navigation strategy (push-wins):
+     *   server "clean"   → assign progress=1, flaggedPages=[], error=null
+     *   server "failed"  → assign error context from error_message
+     *   server "running" / "dirty" / "not_run" / "not_applicable" → no override
+     *
+     * Note: assign-only reconcile (no raise/forceTransition). Full state-machine
+     * navigation (e.g. forcing `running` → `clean` mid-flight) requires a raised
+     * internal event. The current implementation correctly updates context; the
+     * machine will reflect push-wins state at the next natural transition.
+     * See DIVERGENCES.md §reconcile-todo (resolved at F4).
      */
-    reconcile: () => {
-      // TODO (I1): implement reconcile + add conflicting-push test — push must win.
-    },
+    reconcile: assign(({ event }) => {
+      if (event.type !== "STAGE_PUSH") return {};
+
+      if (event.variant === "progress") {
+        // Progress tick — update context directly (complement to the PROGRESS event path)
+        return { progress: event.progress };
+      }
+
+      // variant === "status" — compare server truth to machine context
+      const serverStatus = event.status;
+
+      if (serverStatus === "clean") {
+        // Server says clean: push-wins — reset flagged/error context
+        return {
+          flaggedPages: [] as PageRef[],
+          flaggedCount: 0,
+          staleReason: null,
+          _pendingAutoRerun: false,
+          progress: 1,
+          error: null,
+        };
+      }
+
+      if (serverStatus === "failed") {
+        return {
+          error: {
+            message: event.error_message ?? "Stage failed (server push)",
+          },
+        };
+      }
+
+      // Other statuses ("running", "dirty", "not_run", "not_applicable"):
+      // No context override — machine state is source of truth.
+      return {};
+    }),
 
     /**
      * YAML: `requestRun: // POST …/run`

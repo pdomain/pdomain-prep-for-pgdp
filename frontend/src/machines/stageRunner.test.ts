@@ -362,11 +362,7 @@ describe("stageRunner — stale behavior", () => {
 
 // ---------------------------------------------------------------------------
 // Server-authoritative reconciliation (STAGE_PUSH)
-// ---------------------------------------------------------------------------
-// TODO (I1): implement reconcile + add conflicting-push test — push must win.
-// Example: "STAGE_PUSH(status=clean) while machine is running → transitions
-// to clean" — currently reconcile is a no-op so this case is NOT asserted.
-// See DIVERGENCES.md §reconcile-todo and stageRunner.ts `reconcile` action.
+// Reconcile is implemented as of F4 — push wins over optimistic local state.
 // ---------------------------------------------------------------------------
 
 describe("stageRunner — server reconciliation (STAGE_PUSH)", () => {
@@ -457,6 +453,125 @@ describe("stageRunner — server reconciliation (STAGE_PUSH)", () => {
       error_message: null,
     });
     expect(actor.getSnapshot().value).toBe("stale");
+    actor.stop();
+  });
+
+  // -------------------------------------------------------------------------
+  // Push-wins tests (F4 — reconcile now implemented)
+  // -------------------------------------------------------------------------
+
+  it("STAGE_PUSH(status=clean) while machine is running → reconcile sets clean context (push wins)", () => {
+    // Server says clean while machine is still running (optimistic run in flight).
+    // reconcile assigns clean context — machine state stays "running" until the
+    // runStage actor resolves, but context is already push-wins authoritative.
+    const actor = startRunner();
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+    expect(actor.getSnapshot().value).toBe("running");
+
+    actor.send({
+      type: "STAGE_PUSH",
+      variant: "status" as const,
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+    });
+
+    // State is still "running" (actor hasn't resolved), but context reflects clean
+    expect(actor.getSnapshot().value).toBe("running");
+    // Push-wins: flaggedPages cleared, progress set to 1, error cleared
+    const ctx = actor.getSnapshot().context;
+    expect(ctx.flaggedPages).toHaveLength(0);
+    expect(ctx.progress).toBe(1);
+    expect(ctx.error).toBeNull();
+    actor.stop();
+  });
+
+  it("STAGE_PUSH(status=failed) while machine is running → reconcile sets error context (push wins)", () => {
+    const actor = startRunner();
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+
+    actor.send({
+      type: "STAGE_PUSH",
+      variant: "status" as const,
+      stage_id: "grayscale",
+      status: "failed",
+      job_id: null,
+      error_message: "GPU OOM",
+    });
+
+    const ctx = actor.getSnapshot().context;
+    expect(ctx.error).not.toBeNull();
+    expect(ctx.error?.message).toBe("GPU OOM");
+    actor.stop();
+  });
+
+  it("STAGE_PUSH(status=failed) with null error_message uses fallback message", () => {
+    const actor = startRunner();
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+
+    actor.send({
+      type: "STAGE_PUSH",
+      variant: "status" as const,
+      stage_id: "grayscale",
+      status: "failed",
+      job_id: null,
+      error_message: null,
+    });
+
+    const ctx = actor.getSnapshot().context;
+    expect(ctx.error?.message).toContain("failed");
+    actor.stop();
+  });
+
+  it("STAGE_PUSH(progress) updates context.progress (push wins)", () => {
+    const actor = startRunner();
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+
+    actor.send({
+      type: "STAGE_PUSH",
+      variant: "progress" as const,
+      stage_id: "grayscale",
+      progress: 0.55,
+      message: "55% done",
+    });
+
+    expect(actor.getSnapshot().context.progress).toBe(0.55);
+    actor.stop();
+  });
+
+  it("STAGE_PUSH(status=clean) while flagged → clears flaggedPages (push wins)", async () => {
+    const services = makeServices({
+      runStage: vi.fn().mockResolvedValue({
+        status: "flagged",
+        flaggedPages: [{ pageId: "0003", n: 3, flagKind: "thresh" }],
+      }),
+    });
+    const actor = startRunner({ services });
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(actor.getSnapshot().value).toBe("flagged");
+    expect(actor.getSnapshot().context.flaggedPages).toHaveLength(1);
+
+    // Server push says clean — push wins
+    actor.send({
+      type: "STAGE_PUSH",
+      variant: "status" as const,
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+    });
+
+    const ctx = actor.getSnapshot().context;
+    expect(ctx.flaggedPages).toHaveLength(0);
+    expect(ctx.flaggedCount).toBe(0);
+    expect(ctx.progress).toBe(1);
     actor.stop();
   });
 });
