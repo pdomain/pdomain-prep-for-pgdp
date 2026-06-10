@@ -257,7 +257,7 @@ implicit fields: `originator_id` (aggregate UUID), `originator_version`
 | `StageRunCompleted` | Stage execution succeeds | `stage_id: str`, `page_id: str \| None`, `status: Literal["clean","flagged"]`, `duration_ms: int`, `artifact_key: str` | |
 | `StageRunFailed` | Stage execution fails | `stage_id: str`, `page_id: str \| None`, `error_message: str`, `duration_ms: int` | |
 | `StageForcedStale` | Upstream re-run cascades dirty | `stage_id: str`, `page_id: str \| None`, `caused_by_stage: str` | Emitted per affected stage |
-| `ReviewDecision` | Reviewer approves/flags a page within a stage | `stage_id: str`, `page_id: str`, `decision: Literal["clean","flagged","reviewed"]`, `note: str \| None` | |
+| `ReviewDecision` | Reviewer approves/flags a page within a stage | `stage_id: str`, `page_id: str`, `decision: Literal["clean","flagged","reviewed"]`, `note: str \| None` | Also covers wordcheck and hyphen_join per-word decisions, disambiguated by `stage_id`; the `make_wordcheck_decision` / `make_hyphen_join_decision` step helpers build the payload, persisted via `PrepProjectAggregate.record_review_decision` |
 | `PageReorder` | User reorders pages in page_order stage | `new_order: list[str]`, `previous_order: list[str]` | Full before/after sequence for reindex |
 | `GateConfirmation` | Two-step gate confirmed | `gate: Literal["two_step_delete","submit_confirm"]`, `target_id: str` | Used by manageActions + submitCheck |
 | `SettingsChange` | Stage or project settings changed | `scope: Literal["stage","project"]`, `stage_id: str \| None`, `before: dict`, `after: dict` | Full before/after for reindex |
