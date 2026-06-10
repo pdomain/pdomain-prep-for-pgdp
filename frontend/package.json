@@ -19,6 +19,8 @@
   },
   "dependencies": {
     "@pdomain/pdomain-ui": "^0.5.0",
+    "@xstate/react": "^6.1.0",
+    "xstate": "^5.32.0",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@radix-ui/react-accordion": "^1.2.12",
