@@ -619,3 +619,107 @@ class OcrWord(ApiModel):
     bounding_box: BoundingBox
     split_suffix: str | None = None
     deleted: bool = False
+
+
+# ─── v2 API schemas (api-v2-deltas.md §3) ────────────────────────────────────
+
+
+class StageRunRequest(ApiModel):
+    """Request body for POST .../stages/{stage_id}/run (page and project).
+
+    api-v2-deltas.md §3.
+    """
+
+    force: bool = False
+    """Re-run even if the stage is already clean. Defaults False."""
+    async_: bool = Field(False, alias="async")
+    """Return a Job immediately rather than blocking. Always True for project-scoped stages."""
+
+    model_config = ConfigDict(
+        json_schema_serialization_defaults_required=True,
+        populate_by_name=True,
+    )
+
+
+class PageStageSummary(ApiModel):
+    """Per-stage-ID aggregate for PipelineSnapshot.page_stages_summary.
+
+    stale_count resolution (B5): per-stage count of pages where that stage
+    is dirty (the straightforward reading of api-v2-deltas.md §1.5 NEEDS_CONTEXT).
+    This is the most useful interpretation for pipelineShell — it tells the
+    frontend exactly how many pages need re-running for each stage.
+
+    api-v2-deltas.md §3 (Additional schemas).
+    """
+
+    stage_id: str
+    worst_status: str
+    """Worst status across all pages for this stage_id. Enum values from PageStageStatus."""
+    stale_count: int
+    """Count of pages where this stage has status=dirty."""
+    flagged_count: int
+    """Count of pages where this stage has status=flagged."""
+
+
+class ProjectAutomation(ApiModel):
+    """Automation toggles embedded in PipelineSnapshot.
+
+    Mirrors the automation context block in pipeline-shell.yaml.
+    api-v2-deltas.md §3 (Additional schemas).
+    """
+
+    auto_run_after_ingest: bool = False
+    rerun_downstream_on_stale: bool = False
+    notify_on_error: bool = False
+    pause_on_flag_pct: int = 0
+
+
+class ValidationBlocker(ApiModel):
+    """One blocking issue in a ValidationReport. api-v2-deltas.md §3."""
+
+    page_id: str | None = None
+    stage_id: str
+    message: str
+    code: str
+
+
+class ValidationWarning(ApiModel):
+    """One warning in a ValidationReport. api-v2-deltas.md §3."""
+
+    page_id: str | None = None
+    stage_id: str
+    message: str
+    code: str
+
+
+class ValidationReport(ApiModel):
+    """Artifact written by the validation project-stage. api-v2-deltas.md §3."""
+
+    project_id: str
+    run_at: datetime
+    blockers: list[ValidationBlocker]
+    warnings: list[ValidationWarning]
+    blocker_count: int
+    warning_count: int
+    passed: bool
+
+
+class SubmitCheckReport(ApiModel):
+    """Artifact written by the submit_check project-stage. api-v2-deltas.md §3."""
+
+    project_id: str
+    run_at: datetime
+    zip_sha256: str
+    zip_size_bytes: int
+    file_count: int
+    issues: list[str]
+    passed: bool
+
+
+class PageOrderUpdate(ApiModel):
+    """Stored artifact and event payload for page_order stage. api-v2-deltas.md §3."""
+
+    new_order: list[str]
+    previous_order: list[str]
+    actor_id: str = "default"
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

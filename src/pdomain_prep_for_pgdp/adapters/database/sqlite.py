@@ -545,6 +545,32 @@ class SqliteDatabase:
 
         return await self._run(_go)
 
+    async def list_page_stages_by_project(
+        self,
+        project_id: str,
+    ) -> list[PageStageState]:
+        """All page_stage rows for one project (all pages, all stages).
+
+        Used by B5 pipeline-snapshot to aggregate per-stage status across pages.
+        """
+
+        def _go() -> list[PageStageState]:
+            with self._cursor() as cur:
+                _ = cur.execute(
+                    """
+                    SELECT project_id, page_id, stage_id, status, stage_version,
+                           config_hash, input_hash, artifact_key, last_run_at,
+                           duration_ms, error_message, job_id
+                    FROM page_stages
+                    WHERE project_id=?
+                    """,
+                    (project_id,),
+                )
+                rows = _fetch_page_stage_rows(cur)
+            return [_row_to_page_stage(r) for r in rows]
+
+        return await self._run(_go)
+
     async def delete_page_stages_for_page(
         self,
         project_id: str,

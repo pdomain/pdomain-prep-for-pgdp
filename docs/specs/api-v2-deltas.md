@@ -120,12 +120,10 @@ Response schema: `PipelineSnapshot`
 }
 ```
 
-**NEEDS_CONTEXT:** The `PageStageSummary` aggregation strategy needs to be
-confirmed — specifically whether `stale_count` is per-stage-ID (count of pages
-where that stage is stale) or a single project-level flag. The `stage-runner.yaml`
-"Open assumption #3" notes this is unresolved. Implementer (B5) should confirm
-with CT before wiring. The type is included here as a placeholder with the
-per-stage-per-page count interpretation.
+**RESOLVED (B5, 2026-06-10):** `stale_count` is per-stage-ID — the count of
+pages where that stage has `status = dirty`. One summary row per stage ID;
+`stale_count = len([p for p in all_pages if p.stage[stage_id].status == dirty])`.
+Implemented in `api/data/project_stages.py` `_build_pipeline_snapshot()`.
 
 ### 1.6 Page-order mutation route (re-keyed from v1)
 

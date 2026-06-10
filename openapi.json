@@ -640,6 +640,276 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pipeline": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Pipeline Snapshot",
+        "description": "GET /projects/{id}/pipeline \u2014 single fetch to hydrate pipelineShell.\n\nReturns PipelineSnapshot: project + page_stages_summary + project_stages\n+ automation. Enforces registry-version 409 guard.\n\napi-v2-deltas.md \u00a71.5.",
+        "operationId": "get_pipeline_snapshot",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "List Project Stages",
+        "description": "Return all 8 project-scoped stage rows. Lazy-init on first access.\n\napi-v2-deltas.md \u00a71.2.",
+        "operationId": "list_project_stages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Project Stage",
+        "description": "Return one project-stage row. 404 if not found.\n\napi-v2-deltas.md \u00a71.2.",
+        "operationId": "get_project_stage",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/run": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Run Project Stage",
+        "description": "Submit a project-stage run. Always async (returns Job, HTTP 202).\n\nStages not yet implemented surface their StageNotImplemented as a clean\nfailed state with error_message, NOT a 500. The contract is:\n  - Implemented stage (source): Job accepted, stage row \u2192 running \u2192 clean|failed\n  - Placeholder stage: Job accepted, stage row \u2192 failed with error_message\n    \"stage not implemented\"\n\napi-v2-deltas.md \u00a71.2.",
+        "operationId": "run_project_stage",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StageRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/artifact": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Project Stage Artifact",
+        "description": "Return artifact bytes for a clean project-scoped stage.\n\napi-v2-deltas.md \u00a71.4. Redirect (302) for proof_pack/build_package/zip\nis not yet implemented (B4 not landed); returns 404 for those stages\nuntil their artifacts exist on disk.",
+        "operationId": "get_project_stage_artifact",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stage artifact bytes; Content-Type per stage.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found, stage not clean, or artifact missing."
+          },
+          "422": {
+            "description": "Unknown stage_id."
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages": {
       "get": {
         "tags": [
@@ -5617,6 +5887,23 @@
           "fields"
         ],
         "title": "StageFieldsResponse"
+      },
+      "StageRunRequest": {
+        "properties": {
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          },
+          "async": {
+            "type": "boolean",
+            "title": "Async",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "StageRunRequest",
+        "description": "Request body for POST .../stages/{stage_id}/run (page and project).\n\napi-v2-deltas.md \u00a73."
       },
       "StepState": {
         "properties": {
