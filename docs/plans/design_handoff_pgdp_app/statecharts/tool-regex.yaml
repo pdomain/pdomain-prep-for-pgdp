@@ -1,0 +1,134 @@
+# =============================================================================
+# Machine: regexPass   (per-stage tool — stage · Regex pass)
+# Surface: final/regex/regex.jsx — RXMain (gate + rules + preview),
+#          RXRules (full rule list), RXSettings.
+# =============================================================================
+# An ordered list of find→replace rules run top-to-bottom across every page.
+# Each rule has status: applied | review | pending (disabled rules excluded
+# via their toggle). "Require preview to commit" means a review-status rule
+# must show its before/after hunks and be COMMITTED (or skipped) before it
+# applies. The whole pass is snapshotted before running, so it's rollbackable.
+#
+# Rule order matters — an earlier replacement can change what a later rule
+# matches (rules are drag-reorderable).
+# =============================================================================
+
+machine: regexPass
+description: >
+  Ordered regex find→replace rules with per-rule enable, a preview→commit gate
+  for flagged rules, and a snapshot that makes the whole pass reversible.
+
+context:
+  projectId: null
+  stageIndex: 0
+  rules: []               # Rule[] — { id, name, find, repl, flags, scope, status:'applied'|'review'|'pending', enabled, matches }
+  counts: null            # { rules, applied, review, pending, matches }
+  previewRule: null       # ruleId open in the preview card | null
+  hunks: []               # { page, before, after, warn? }[] for the preview rule
+  listFilter: all         # 'all' | 'applied' | 'review' | 'disabled'  (Rules tab)
+  snapshotId: null        # restore point taken before the run
+  error: null
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchRules        # -> { rules, counts, snapshotId }
+      onDone:
+        - target: clean
+          guard: nothingPending
+          actions: [assignRules]
+        - target: reviewing
+          actions: [assignRules]
+      onError: { target: error, actions: [assignError] }
+
+  reviewing:
+    description: '"N rules awaiting a decision" — preview flagged rules before committing.'
+    initial: idle
+    states:
+      idle:
+        on:
+          OPEN_PREVIEW: { target: previewing, actions: [assignPreviewRule, loadHunks] }
+          RUN_RULE:     { target: runningRule, guard: ruleIsPending }   # pending rules run directly
+      previewing:
+        description: Before/after hunks for one rule; verify, then commit or skip.
+        on:
+          COMMIT_RULE: { target: runningRule }
+          SKIP_RULE:   { target: idle, actions: [markSkipped, clearPreview] }
+          CLOSE:       { target: idle, actions: [clearPreview] }
+      runningRule:
+        invoke:
+          src: applyRule       # (ruleId) -> { rule, counts }
+          onDone:
+            - target: '#regexPass.clean'
+              guard: nothingPendingAfter
+              actions: [mergeRule, emitResolved]
+            - target: idle
+              actions: [mergeRule]
+          onError: { target: idle, actions: [assignError] }
+    on:
+      TOGGLE_RULE:  { actions: [toggleEnabled, persistRule] }
+      ADD_RULE:     { actions: [appendRule, persistRule] }
+      REORDER_RULE: { actions: [moveRule, persistOrder, invalidateDownstreamRules] }   # order matters
+      LOAD_PRESET:  { target: loading, actions: [requestPreset] }
+      SET_LIST_FILTER: { actions: [assignListFilter] }
+
+  clean:
+    description: All enabled rules applied; pass snapshotted and reversible.
+    on:
+      ROLLBACK:    { target: loading, actions: [requestRollback] }
+      ADD_RULE:    { target: reviewing, actions: [appendRule, persistRule] }
+      TOGGLE_RULE: { target: reviewing, actions: [toggleEnabled, persistRule] }
+      TEXT_CHANGED:                       # upstream text edits (re-run-on-change toggle)
+        target: reviewing
+        guard: rerunOnChangeEnabled
+        actions: [invalidateAllRules]
+
+  error:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  nothingPending: event.data.counts.review + event.data.counts.pending === 0
+  nothingPendingAfter: ctx.counts.review + ctx.counts.pending === 0
+  ruleIsPending: ruleOf(ctx, event.ruleId).status === 'pending'
+  rerunOnChangeEnabled: ctx._settings.rerunOnTextChange === true
+
+actions:
+  assignRules: ctx.rules = event.data.rules; ctx.counts = event.data.counts; ctx.snapshotId = event.data.snapshotId
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  assignPreviewRule: ctx.previewRule = event.ruleId
+  clearPreview: ctx.previewRule = null; ctx.hunks = []
+  markSkipped: //  rule stays in 'review'; record skip so the gate shows it as pending decision
+  mergeRule: //  upsert event.data.rule (now 'applied'); ctx.counts = event.data.counts
+  toggleEnabled: ctx.rules = patchRule(ctx.rules, event.ruleId, r => ({ ...r, enabled: !r.enabled }))
+  appendRule: ctx.rules = [...ctx.rules, newRule(event.fields)]   # status:'pending'
+  moveRule: ctx.rules = reorder(ctx.rules, event.from, event.to)
+  invalidateDownstreamRules: //  rules after the moved index whose status is 'applied' → 'review'
+  invalidateAllRules: //  applied → review (text changed under them)
+  assignListFilter: ctx.listFilter = event.value
+  loadHunks: //  SIDE EFFECT: GET preview hunks for ruleId → ctx.hunks
+  persistRule: //  SIDE EFFECT: PATCH rule
+  persistOrder: //  SIDE EFFECT: PUT rule order
+  requestPreset: //  SIDE EFFECT: load rule preset into the project
+  requestRollback: //  SIDE EFFECT: POST restore snapshotId (whole pass reverts)
+  emitResolved: //  send parent: RESOLVE — stageRunner[regex] settles to clean
+
+services:
+  fetchRules: 'GET  /api/projects/:id/stages/regex/rules -> { rules, counts, snapshotId }'
+  applyRule:  'POST /api/projects/:id/stages/regex/rules/:ruleId/apply -> { rule, counts }'
+
+# --- Notes -------------------------------------------------------------------
+# • Settings that change behavior here: "Require preview to commit" (forces the
+#   previewing path for review-status rules), "Snapshot before run" (enables
+#   ROLLBACK), "Re-run on text change" (the TEXT_CHANGED guard). Scope, case
+#   sensitivity, and skip-proofer-markup are per-rule defaults — data.
+# • A preview hunk can carry warn:true (e.g. a match touching an initial,
+#   "M. Belloc") — rendering concern; committing is still all-or-nothing per
+#   rule.
+# • Reordering or toggling rules AFTER a clean pass re-opens `reviewing` —
+#   applied results downstream of the change are no longer trustworthy.

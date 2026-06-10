@@ -1,0 +1,157 @@
+# =============================================================================
+# Machine: hyphenJoin   (per-stage tool — stage · Hyphen join)
+# Surface: final/hyphen_join/hyphen.jsx — HyphenOverview, HyphenUndecided
+#          (queue), HyphenAutoJoined, HyphenMismatch, HyphenStepSettings,
+#          HyphenPageWorkbench (before/after + decision card).
+# =============================================================================
+# End-of-line hyphenation: the rule library auto-joins what it can; humans
+# decide the rest. Case status (data enum, HJ_STATUS_TONE):
+#   joined (auto) · validated (joined + human-verified) · undecided ·
+#   flagged · crosspage · mismatch (hyphen form)
+# Decision verbs are STATUS-DEPENDENT (HJDecisionCard):
+#   undecided / flagged       → Accept join | Keep hyphen
+#   joined (not validated)    → Validate join
+#   crosspage (not validated) → Validate cross-page join
+#   anything decided          → Revert decision
+# Three review modes are tabs over the same case set: queue (Undecided),
+# joined (auto-joined validation, grouped by word), mismatch (dash report).
+# The page workbench shows before/after — only the rule library's actual
+# changes differ between the two views.
+# =============================================================================
+
+machine: hyphenJoin
+description: >
+  Reviews end-of-line hyphenation cases across three modes with
+  status-dependent decisions, a per-page before/after workbench, and a
+  word-rule handoff to the global library.
+
+context:
+  projectId: null
+  stageIndex: 0
+  cases: []               # Case[] — { caseId, kind:'auto'|'crosspage'|…, head, tail, line, page,
+                          #            status:'joined'|'undecided'|'flagged'|'crosspage'|'mismatch',
+                          #            validated, conf, rule, book:{ inBody, joinedElsewhere, mismatch } }
+  totals: null            # counts per status (the stat tiles + tab badges)
+  mode: queue             # 'queue' | 'joined' | 'mismatch' — active review tab
+  cursor: 0               # active case within the mode's list
+  pageId: null            # page open in the workbench | null
+  error: null
+
+initial: scanning
+
+states:
+
+  scanning:
+    description: Rule library runs over the corpus; auto-joins + flags collect.
+    invoke:
+      src: scanHyphenation     # -> { cases, totals }
+      onDone:
+        - target: reviewing
+          guard: anythingToDecide
+          actions: [assignCases]
+        - target: settled
+          actions: [assignCases]
+      onError: { target: failed, actions: [assignError] }
+
+  reviewing:
+    description: Cases await decisions across the three modes.
+    on:
+      SET_MODE: { actions: [assignMode, resetCursor] }    # queue | joined | mismatch
+      NEXT_CASE: { actions: [moveNext] }
+      PREV_CASE: { actions: [movePrev] }
+      SELECT_CASE: { actions: [moveTo] }
+
+      # ---- status-dependent decisions (optimistic, advance after) ----------
+      ACCEPT_JOIN:
+        guard: isDecidable                                # undecided | flagged
+        actions: [setVerifiedJoin, persistDecision, advance, recount, settleIfClear]
+      KEEP_HYPHEN:
+        guard: isDecidable
+        actions: [setVerifiedKeep, persistDecision, advance, recount, settleIfClear]
+      VALIDATE_JOIN:
+        guard: isUnvalidatedJoin                          # joined | crosspage, !validated
+        actions: [markValidated, persistDecision, advance, recount, settleIfClear]
+      FIX_MISMATCH:
+        guard: isMismatch                                 # hyphen-form report
+        actions: [applyDashFix, persistDecision, advance, recount, settleIfClear]
+      REVERT_DECISION:
+        actions: [revertCase, persistDecision, recount]
+
+      # ---- bulk (joined tab groups by word) ---------------------------------
+      VALIDATE_WORD_GROUP:
+        actions: [validateGroup, persistGroup, recount, settleIfClear]
+
+      # ---- page workbench ----------------------------------------------------
+      OPEN_PAGE: { actions: [assignPage] }                # before/after + case rows
+      CLOSE_PAGE: { actions: [clearPage] }
+      PREV_PAGE: { actions: [stepPage] }
+      NEXT_PAGE: { actions: [stepPage] }
+      APPLY_CONTINUE: { actions: [persistPage, stepPage] }
+
+      # ---- rule library -------------------------------------------------------
+      ADD_WORD_RULE: { actions: [appendRule, persistRule] }    # e.g. always-join 'household'
+      OPEN_GLOBAL_LIBRARY: { actions: [navigateToLibrary] }    # cross-project word library
+
+  settled:
+    description: Every case decided/validated; text flows to Wordcheck.
+    entry: [emitResolved]
+    on:
+      UPSTREAM_CHANGED: { target: scanning }
+      SETTINGS_CHANGED: { target: scanning }    # rule-set / library change re-scans
+
+  failed:
+    on:
+      RETRY: { target: scanning, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  anythingToDecide: event.data.totals.undecided + event.data.totals.flagged + event.data.totals.unvalidated + event.data.totals.mismatch > 0
+  isDecidable: ['undecided', 'flagged'].includes(currentCase(ctx).status)
+  isUnvalidatedJoin: ['joined', 'crosspage'].includes(currentCase(ctx).status) && !currentCase(ctx).validated
+  isMismatch: currentCase(ctx).status === 'mismatch'
+
+actions:
+  assignCases: ctx.cases = event.data.cases; ctx.totals = event.data.totals
+  assignMode: ctx.mode = event.mode
+  resetCursor: ctx.cursor = 0
+  moveNext: ctx.cursor = Math.min(ctx.cursor + 1, modeList(ctx).length - 1)
+  movePrev: ctx.cursor = Math.max(ctx.cursor - 1, 0)
+  moveTo: ctx.cursor = event.index
+  setVerifiedJoin: //  case → status 'joined', validated:true (verified join); text closes up
+  setVerifiedKeep: //  case → verified keep; hyphen stays, line break collapses
+  markValidated: //  case.validated = true (validated / cross-page validated)
+  applyDashFix: //  apply the corrected hyphen form (em-dash vs hyphen etc.)
+  revertCase: //  restore the rule library's original status for the case
+  validateGroup: //  validate every auto-joined instance of one word at once
+  advance: //  moveNext within the active mode (keeps the reviewer flowing)
+  recount: ctx.totals = recount(ctx.cases)
+  settleIfClear: //  nothing left to decide → transition to settled
+  assignPage: ctx.pageId = event.pageId
+  clearPage: ctx.pageId = null
+  stepPage: //  prev/next page with cases
+  appendRule: //  add word rule (always-join / never-join) — affects future scans
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  persistDecision: //  SIDE EFFECT: POST decision { caseId, verdict }
+  persistGroup: //  SIDE EFFECT: POST group validation { word }
+  persistPage: //  SIDE EFFECT: commit the page's decisions
+  persistRule: //  SIDE EFFECT: POST word rule (book-level; promote via library)
+  navigateToLibrary: //  SIDE EFFECT: open the global word library (cross-project)
+  emitResolved: //  send parent: RESOLVE — stageRunner[hyphen_join] → clean
+
+services:
+  scanHyphenation: 'POST /api/projects/:id/stages/hyphen_join/scan -> { cases, totals }'
+
+# --- Notes (resolves the stub's open questions) --------------------------------
+# 1. Decision verbs per mode — encoded above; they're status-, not mode-,
+#    dependent. Modes are filters over one case set.
+# 2. "Joined" supports BULK validation grouped by word (VALIDATE_WORD_GROUP)
+#    as well as per-case Validate.
+# 3. Global library is a SEPARATE surface (cross-project) — this machine only
+#    adds book-level rules and navigates; promotion semantics mirror
+#    wordcheckTool's promoteToLibrary.
+# 4. Resolution: settleIfClear → settled → emitResolved settles
+#    stageRunner[hyphen_join] (same PAGES_RESOLVED convention).
+# • Cross-page joins (head on p028, tail on p029, running head skipped) are
+#   ordinary cases with kind:'crosspage' — both page renders show the same
+#   case; decide once.

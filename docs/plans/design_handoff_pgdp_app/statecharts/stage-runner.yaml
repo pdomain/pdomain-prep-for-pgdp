@@ -1,0 +1,193 @@
+# =============================================================================
+# Machine: stageRunner   ★ THE SHARED MACHINE ★
+# Surface: one pipeline stage (final/pipeline/pipeline-template.jsx →
+#          STAGE_DEFS / STAGE_STATE / StageStrip dots / PipelineMini)
+# =============================================================================
+# Defined ONCE, spawned ONCE PER STAGE (23 live instances per open project).
+# The StageStrip dots and PipelineMini are NOT machines — they render a
+# projection of these runners' states. See `dotState` in the notes.
+#
+# A stage's run lifecycle:
+#   notrun → queued → running → (clean | flagged | error)
+# plus `stale` (an upstream stage re-ran, so our output is out of date).
+#
+# Per-page review is NOT owned here — a tool machine (reviewQueue / pagesGrid)
+# drives individual page decisions and emits RESOLVE as the flagged set drains.
+# This runner owns the AGGREGATE (flaggedPages[], counts), not each page.
+#
+# Server-authoritative: the backend actually executes stages. The UI fires
+# optimistic RUN/RETRY intents; `STAGE_PUSH` reconciles to backend truth and
+# can move us to any state.
+# =============================================================================
+
+machine: stageRunner
+description: >
+  The lifecycle of a single pipeline stage. Instantiated per STAGE_DEFS entry.
+  Owns the stage's run state, flagged-page aggregate, staleness, and timing.
+
+context:
+  stageId: null           # 'source' | 'grayscale' | … | 'archive'  (STAGE_DEFS.id)
+  index: 0                # 0..22 — position in STAGE_DEFS (drives dot order)
+  group: null             # 'Source' | 'Image' | 'OCR' | 'Pack'
+  pageScoped: true        # false for non-page stages (build_package, hyphen_join…)
+  progress: 0             # 0..1 while running
+  flaggedPages: []        # PageRef[] — aggregate; tool machine resolves these
+  flaggedCount: 0         # cached flaggedPages.length (StageStrip shows this)
+  staleReason: null       # 'upstream_changed' | 'settings_changed' | null
+  startedAt: null         # ISO | null
+  durationMs: null        # number | null  (StageStrip: "11 hr 38 min")
+  artifactBytes: null     # number | null  (Storage / clean estimates)
+  error: null             # { message, code } | null
+
+# PageRef shape: { pageId, n, flagKind }   flagKind ∈ stage-specific flag set
+
+initial: notrun
+
+states:
+
+  # Never executed. Dot = neutral/hollow (STAGE_STATE 'notrun').
+  notrun:
+    description: Stage has not run yet.
+    on:
+      RUN:         { target: queued, actions: [requestRun] }
+      STAGE_PUSH:  { actions: [reconcile] }
+
+  # Enqueued, waiting for a worker. Dot = dim accent.
+  queued:
+    description: Waiting for a worker slot.
+    on:
+      START:       { target: running, actions: [stampStart] }
+      CANCEL:      { target: notrun, actions: [requestCancel] }
+      STAGE_PUSH:  { actions: [reconcile] }
+
+  # Actively processing. Dot = pulsing accent (the `pgd-pulse` animation).
+  running:
+    description: Worker is processing pages. Emits progress ticks.
+    invoke:
+      src: runStage          # streams PROGRESS; resolves with the outcome
+      onDone:
+        - target: error
+          guard: outcomeFailed
+          actions: [assignError, stampDuration]
+        - target: flagged
+          guard: outcomeHasFlags
+          actions: [assignFlagged, stampDuration]
+        - target: clean
+          actions: [clearFlagged, stampDuration]
+      onError:
+        target: error
+        actions: [assignError, stampDuration]
+    on:
+      PROGRESS:    { actions: [assignProgress] }
+      PAUSE:       { target: queued, actions: [requestPause] }
+      STAGE_PUSH:  { actions: [reconcile] }
+
+  # Completed, no flags. Dot = solid green (STAGE_STATE 'clean' → var(--exact)).
+  clean:
+    description: Stage output is clean and current.
+    on:
+      RERUN:           { target: queued, actions: [requestRun] }
+      UPSTREAM_CHANGED: { target: stale, actions: [markStale] }
+      SETTINGS_CHANGED: { target: stale, actions: [markStaleSettings] }
+      STAGE_PUSH:      { actions: [reconcile] }
+
+  # Completed but produced pages needing review. Dot reads 'clean' but the
+  # strip surfaces `flaggedCount` (the fuzzy-tone counter).
+  flagged:
+    description: Ran successfully but flagged pages await human review.
+    on:
+      # A tool machine (reviewQueue / pagesGrid) resolves individual pages and
+      # emits RESOLVE as the flagged set drains.
+      RESOLVE:
+        - target: clean
+          guard: allPagesResolved
+          actions: [removeResolvedPages, clearFlagged]
+        - target: flagged
+          actions: [removeResolvedPages]      # still some flagged → stay
+      RERUN:            { target: queued, actions: [requestRun] }
+      UPSTREAM_CHANGED: { target: stale, actions: [markStale] }
+      STAGE_PUSH:       { actions: [reconcile] }
+
+  # Output is out of date because an upstream stage re-ran (or settings changed).
+  # Counts into the StageStrip "stale" total. Auto-advances to queued IF the
+  # project's "re-run downstream on stale bump" automation is on (the parent
+  # passes that via the event/guard).
+  stale:
+    description: Output stale; needs re-run. May auto-queue per automation.
+    always:
+      - target: queued
+        guard: autoRerunEnabled
+        actions: [requestRun]
+    on:
+      RUN:         { target: queued, actions: [requestRun] }
+      STAGE_PUSH:  { actions: [reconcile] }
+
+  # A stage failed. Dot = red (var(--mismatch)). Recoverable via retry.
+  error:
+    description: Stage execution failed.
+    on:
+      RETRY:       { target: queued, actions: [clearError, requestRun] }
+      STAGE_PUSH:  { actions: [reconcile] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  outcomeFailed: event.data.status === 'error'
+  outcomeHasFlags: (event.data.flaggedPages?.length ?? 0) > 0
+  allPagesResolved: ctx.flaggedPages.filter(p => !event.resolvedIds.includes(p.pageId)).length === 0
+  # parent supplies automation flag on the staleness event:
+  autoRerunEnabled: ctx.staleReason != null && event?.autoRerun === true
+
+actions:
+  assignProgress: ctx.progress = event.value
+  stampStart: ctx.startedAt = now(); ctx.progress = 0
+  stampDuration: ctx.durationMs = since(ctx.startedAt); ctx.progress = 1
+  assignFlagged: >
+    ctx.flaggedPages = event.data.flaggedPages;
+    ctx.flaggedCount = event.data.flaggedPages.length;
+    ctx.artifactBytes = event.data.artifactBytes ?? ctx.artifactBytes;
+    ctx.staleReason = null
+  clearFlagged: ctx.flaggedPages = []; ctx.flaggedCount = 0; ctx.staleReason = null
+  removeResolvedPages: >
+    ctx.flaggedPages = ctx.flaggedPages.filter(p => !event.resolvedIds.includes(p.pageId));
+    ctx.flaggedCount = ctx.flaggedPages.length
+  markStale: ctx.staleReason = 'upstream_changed'
+  markStaleSettings: ctx.staleReason = 'settings_changed'
+  assignError: ctx.error = { message: event.error?.message ?? event.data?.message, code: event.data?.code }
+  clearError: ctx.error = null
+  reconcile: //  sync state + counts to backend truth (event carries new run state)
+  # optimistic intents — backend confirms via STAGE_PUSH:
+  requestRun: //  POST /api/projects/:pid/stages/:stageId/run
+  requestPause: //  POST /api/projects/:pid/stages/:stageId/pause
+  requestCancel: //  POST /api/projects/:pid/stages/:stageId/cancel
+
+services:
+  runStage: >
+    POST /api/projects/:pid/stages/:stageId/run  (or WS subscription)
+    streams: { type:'PROGRESS', value } …
+    resolves: { status:'clean'|'flagged'|'error', flaggedPages?, artifactBytes?, code? }
+
+# --- Projection: how the dots read this runner -------------------------------
+# NOT a machine — a pure view function. Mirrors the logic already in
+# StageStrip / PipelineMini:
+#
+#   dotState(runner, isSelected):
+#     if (isSelected)               return 'current'   // pulsing accent box
+#     switch (runner.state):
+#       'clean'   → 'clean'   (solid var(--exact))
+#       'flagged' → 'clean'   (solid; count shown separately in fuzzy tone)
+#       'running' → 'running' (pulsing var(--ocr))
+#       'error'   → 'error'   (var(--mismatch))
+#       'stale'   → 'stale'   (counts into the "stale" total)
+#       else      → 'notrun'  (hollow / var(--ink-4) @ .55)
+#
+# StageStrip counters:
+#   flagged = Σ runner.flaggedCount
+#   stale   = Σ (runner.state === 'stale' ? runner.stalePageCount : 0)
+#             (← see Open Question #3: is stale stage-level or page-level?)
+#
+# --- Open assumptions (from pipeline-plan.md §7) -----------------------------
+# • stale modeled as a STAGE-LEVEL substate here. If it's per-page, lift
+#   stalePages[] into context alongside flaggedPages[] and keep the stage in
+#   clean/flagged while carrying a stale count.
+# • runStage is treated as one service per stage; swap for a shared WS feed if
+#   the backend pushes all stages over one channel (then STAGE_PUSH is primary).

@@ -1,0 +1,178 @@
+# =============================================================================
+# Machine: manageActions
+# Surface: Project detail → "Manage" tab (final/projects/projects.jsx)
+# =============================================================================
+# The Manage tab shows a different action set depending on whether the project
+# is archived:
+#
+#   ACTIVE project:   Clean intermediate artifacts · Archive · Save a copy ·
+#                     Delete…  (step 1 of 2 → archives)
+#   ARCHIVED project: Restore · Save a copy · Delete permanently (danger)
+#
+# Every mutating action runs through a confirm → executing → done/failed
+# sub-flow. The key domain rule is the TWO-STEP DELETE:
+#   • Delete on an ACTIVE project = clean + archive (reversible).
+#   • Delete on an ARCHIVED project = permanent (irreversible, danger confirm).
+#
+# On success this machine emits PROJECT_MUTATED up to projectDetail so the
+# rail + lifecycle badge resync.
+# =============================================================================
+
+machine: manageActions
+description: >
+  Drives the Manage tab's destructive/maintenance actions with per-action
+  confirm + execute + result flow. Enforces the two-step delete rule.
+
+context:
+  projectId: null
+  isArchived: false        # selects which action set is shown
+  size: null               # for "Save a copy" / reclaim estimates
+  reclaimable: null        # bytes of intermediate artifacts (clean estimate)
+  pendingAction: null      # 'clean' | 'archive' | 'saveCopy' | 'delete' | 'restore'
+  result: null             # last action result payload
+  error: null
+
+initial: deciding
+
+states:
+
+  # Pick the action set from project state. Re-entered whenever the parent
+  # re-keys this machine to a different project (respawn in projectDetail).
+  deciding:
+    always:
+      - target: archivedActions
+        guard: isArchived
+      - target: activeActions
+
+  # ---- ACTIVE project action set --------------------------------------------
+  activeActions:
+    description: Actions available for a non-archived project.
+    initial: list
+    states:
+      list:
+        on:
+          CLEAN:
+            target: '#manageActions.confirming'
+            actions: [setPendingClean]
+          ARCHIVE:
+            target: '#manageActions.confirming'
+            actions: [setPendingArchive]
+          SAVE_COPY:
+            # Non-destructive; opens a destination picker, no confirm gate.
+            target: '#manageActions.executing'
+            actions: [setPendingSaveCopy]
+          DELETE:
+            # Step 1 of 2 — this only ARCHIVES. Confirm explains that.
+            target: '#manageActions.confirming'
+            actions: [setPendingDeleteStep1]
+
+  # ---- ARCHIVED project action set ------------------------------------------
+  archivedActions:
+    description: Actions available for an archived (read-only) project.
+    initial: list
+    states:
+      list:
+        on:
+          RESTORE:
+            target: '#manageActions.confirming'
+            actions: [setPendingRestore]
+          SAVE_COPY:
+            target: '#manageActions.executing'
+            actions: [setPendingSaveCopy]
+          DELETE:
+            # Step 2 of 2 — PERMANENT. Routes to the danger confirm variant.
+            target: '#manageActions.confirmingDanger'
+            actions: [setPendingDeletePermanent]
+
+  # ---- Shared confirm gate (non-danger) -------------------------------------
+  confirming:
+    id: confirming
+    description: >
+      Standard confirm dialog. Copy is derived from pendingAction
+      (e.g. "Archive will zip the project in place and mark it read-only").
+    on:
+      CONFIRM: { target: executing }
+      CANCEL:  { target: deciding, actions: [clearPending] }
+
+  # ---- Danger confirm gate (permanent delete only) --------------------------
+  # Requires an extra explicit step (e.g. typing the project id or a second
+  # affordance) because it cannot be undone.
+  confirmingDanger:
+    description: High-friction confirm for irreversible permanent delete.
+    initial: armed
+    states:
+      armed:
+        on:
+          ACKNOWLEDGE:
+            target: ready                # user typed id / checked the box
+            actions: [markAcknowledged]
+          CANCEL:
+            target: '#manageActions.deciding'
+            actions: [clearPending]
+      ready:
+        on:
+          CONFIRM:
+            target: '#manageActions.executing'
+            guard: deleteAcknowledged
+          CANCEL:
+            target: '#manageActions.deciding'
+            actions: [clearPending]
+
+  # ---- Execute the pending action -------------------------------------------
+  executing:
+    description: Run the mutation. Action buttons disabled, spinner on the row.
+    invoke:
+      src: runManageAction      # (projectId, pendingAction) -> result
+      onDone:
+        target: done
+        actions: [assignResult, emitMutation]   # tell parent to resync
+      onError:
+        target: failed
+        actions: [assignError]
+
+  done:
+    description: Action succeeded. Show a brief confirmation, then settle.
+    after:
+      1500ms: { target: deciding, actions: [clearPending] }
+    on:
+      DISMISS: { target: deciding, actions: [clearPending] }
+
+  failed:
+    description: Action failed. Keep the dialog, offer Retry.
+    on:
+      RETRY:  { target: executing, actions: [clearError] }
+      CANCEL: { target: deciding, actions: [clearPending, clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  isArchived: ctx.isArchived === true
+  deleteAcknowledged: ctx._ack === true
+
+actions:
+  # pendingAction setters also carry the human-readable intent for the dialog.
+  setPendingClean:           ctx.pendingAction = 'clean'
+  setPendingArchive:         ctx.pendingAction = 'archive'
+  setPendingSaveCopy:        ctx.pendingAction = 'saveCopy'
+  setPendingDeleteStep1:     ctx.pendingAction = 'delete'; ctx._step = 1   // → archives
+  setPendingDeletePermanent: ctx.pendingAction = 'delete'; ctx._step = 2   // → removes
+  setPendingRestore:         ctx.pendingAction = 'restore'
+  markAcknowledged:          ctx._ack = true
+  clearPending:              ctx.pendingAction = null; ctx._ack = false; ctx._step = null
+  assignResult:              ctx.result = event.data
+  assignError:               ctx.error = event.error
+  clearError:                ctx.error = null
+  # Bubble the outcome so projectDetail can patch the project + refresh rail.
+  # The frontend should map results to a lifecycle event:
+  #   clean    -> (no status change)            archive  -> status:archived
+  #   delete#1 -> status:archived               delete#2 -> deleted (drop row)
+  #   restore  -> status:<restored>
+  emitMutation: //  send to parent: { type:'PROJECT_MUTATED', action:ctx.pendingAction, result:ctx.result }
+
+services:
+  runManageAction: >
+    dispatch by pendingAction:
+      clean    -> POST   /api/projects/:id/clean      -> { reclaimedBytes }
+      archive  -> POST   /api/projects/:id/archive     -> { status:'archived', zippedSize }
+      saveCopy -> POST   /api/projects/:id/export      -> { downloadUrl }   (after dest picked)
+      delete   -> DELETE /api/projects/:id?step=:step  -> { status:'archived' } | { deleted:true }
+      restore  -> POST   /api/projects/:id/restore     -> { status }

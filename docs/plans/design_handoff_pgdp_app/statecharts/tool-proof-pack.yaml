@@ -1,0 +1,78 @@
+# =============================================================================
+# Machine: proofPackTool   (per-stage tool — stage · Proof pack)
+# Surface: final/proof_pack/proof-pack.jsx — PPMain (gate + contents tree +
+#          per-page completeness), PPSettings.
+# =============================================================================
+# Bundles page images + proofer text + illustration crops + project metadata
+# into the layout PGDP expects. The invariant it owns: EVERY page must carry
+# both an image and a text file (the completeness bar, 387/387).
+# =============================================================================
+
+machine: proofPackTool
+description: >
+  Assembles the proof pack from current stage outputs, tracks per-page
+  completeness, and re-assembles on demand or when inputs change.
+
+context:
+  projectId: null
+  stageIndex: 0
+  tree: []                # TreeRow[] — bundled contents
+  completeness: null      # { complete: 387, total: 387 }
+  include: null           # { images: true, text: true, illustrations: true } (settings)
+  error: null
+
+initial: assembling
+
+states:
+
+  assembling:
+    invoke:
+      src: assemblePack        # -> { tree, completeness }
+      onDone:
+        - target: incomplete
+          guard: pagesMissing
+          actions: [assignPack]
+        - target: assembled
+          actions: [assignPack, emitResolved]
+      onError: { target: failed, actions: [assignError] }
+
+  incomplete:
+    description: Some pages lack an image or text file — completeness bar short.
+    on:
+      OPEN_MISSING: { actions: [navigateToGap] }    # jump to the stage that owes the file
+      REASSEMBLE:   { target: assembling }
+      UPSTREAM_CHANGED: { target: assembling }
+
+  assembled:
+    description: '"Proof pack assembled · N pages" — every page has image + text.'
+    on:
+      PREVIEW_FILE:     { actions: [openPreview] }
+      REASSEMBLE:       { target: assembling }      # settings "Re-assemble pack"
+      SET_INCLUDE:      { target: assembling, actions: [patchInclude] }   # toggling contents rebuilds
+      UPSTREAM_CHANGED: { target: assembling }
+
+  failed:
+    on:
+      RETRY: { target: assembling, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  pagesMissing: event.data.completeness.complete < event.data.completeness.total
+
+actions:
+  assignPack: ctx.tree = event.data.tree; ctx.completeness = event.data.completeness
+  patchInclude: ctx.include = { ...ctx.include, ...event.patch }
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  openPreview: //  SIDE EFFECT: open file preview overlay
+  navigateToGap: //  SIDE EFFECT: route to the stage missing output for that page
+  emitResolved: //  send parent: RESOLVE — stageRunner[proof_pack] → clean
+
+services:
+  assemblePack: 'POST /api/projects/:id/stages/proof_pack/assemble -> { tree, completeness }'
+
+# --- Notes -------------------------------------------------------------------
+# • File naming scheme and text encoding (settings) are assemble inputs;
+#   changing them re-assembles, same as SET_INCLUDE.
+# • The completeness invariant is the stage's whole reason to exist — model
+#   `incomplete` as a first-class state, not an error.

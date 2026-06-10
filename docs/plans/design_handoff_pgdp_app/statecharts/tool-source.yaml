@@ -1,0 +1,173 @@
+# =============================================================================
+# Machine: sourceTool   (per-stage tool — stage 01 · Source)
+# Surface: final/source/source.jsx — SourceFiles (generating / selection),
+#          FileToolbar, BulkBar, InsertDialog, SourceStepSettings,
+#          SourcePageWorkbench role controls.
+# =============================================================================
+# The intake stage: every scanned file must be MARKED (page / cover / back /
+# blank / duplicate) or INSERTED (synthetic page) before the selection can be
+# confirmed and the pipeline advances. Three independent concerns as parallel
+# regions:
+#   1. thumbnails — the generation job (skeleton grid + progress banner) that
+#      gates everything; same job postImport tracks from the projects page.
+#   2. files — the marking UX: filter chips, density, multi-select + bulk bar,
+#      the insert-page dialog, and the guarded "Confirm selection" advance.
+#   3. settings — the stage-settings inheritance banner (project default /
+#      modified / preset). This tri-state generalizes to other stages.
+#
+# File.state lifecycle (per file, data not actors):
+#   pending → ready(unmarked) → page | cover | back | blank | duplicate
+#   (+ 'inserted' rows created by the dialog, kind: missing|blank|errata|manual)
+# =============================================================================
+
+machine: sourceTool
+description: >
+  Source-stage tool: thumbnail generation progress, file marking with
+  multi-select bulk actions and synthetic-page inserts, a guarded
+  confirm-selection advance, and stage-settings inheritance.
+
+context:
+  projectId: null
+  files: []               # FileRow[] — { idx, stem, state, pageNumber?, kind?, note?, tone }
+  totals: null            # { files, thumbed, rateHz, remaining, marked:{page,cover,back,blank,duplicate,inserted}, unmarked }
+  filter: all             # 'all' | 'page' | 'skipped' | 'unmarked' | 'inserts'
+  density: M              # 'S' | 'M' | 'L'
+  query: ''               # search ('/' shortcut)
+  selected: []            # idx[] — multi-select (shift+click = range)
+  insertDraft: null       # { anchorStem, position:'before'|'after', kind:'missing'|'blank'|'errata'|'manual', note, image? }
+  settingsState: default  # 'default' | 'modified' | 'preset'  (inheritance banner)
+  error: null
+
+type: parallel
+
+states:
+
+  # ---- Region: thumbnails (generation job; gates Confirm) -------------------
+  thumbnails:
+    initial: generating
+    states:
+      generating:
+        description: Skeleton thumbs + progress banner (e.g. 165/387 · 14.2/s); Confirm disabled.
+        on:
+          THUMB_PROGRESS: { actions: [assignThumbProgress] }
+          THUMBS_DONE:    { target: done, actions: [markAllThumbed] }
+      done:
+        on:
+          REGENERATE:     { target: generating, actions: [requestRegenerate] }   # settings "Re-generate all 387"
+
+  # ---- Region: files (marking + selection + insert + confirm) ---------------
+  files:
+    initial: browsing
+    states:
+      browsing:
+        description: Grid with filter/density/search; no selection.
+        on:
+          SELECT_FILE: { target: selecting, actions: [addToSelection] }
+      selecting:
+        description: ≥1 file selected; BulkBar pinned at the bottom.
+        on:
+          SELECT_FILE:  { actions: [toggleSelection] }       # click toggles; shift+click ranges
+          SELECT_RANGE: { actions: [addRangeToSelection] }
+          MARK_AS:                                            # Page / Cover / Back / Blank / Duplicate
+            actions: [markSelected, recountTotals, persistMarks]
+          REMOVE_FILES:
+            actions: [removeSelected, recountTotals, persistRemoval]
+          CLEAR_SELECTION: { target: browsing, actions: [emptySelection] }   # esc
+      inserting:
+        description: Insert-page dialog open (position · kind · note · optional image).
+        on:
+          SET_INSERT_FIELD: { actions: [patchInsertDraft] }
+          CONFIRM_INSERT:
+            target: browsing
+            actions: [createInsertedRow, recountTotals, persistInsert, clearInsertDraft]
+          CANCEL_INSERT: { target: browsing, actions: [clearInsertDraft] }
+      confirming:
+        description: '"Confirm selection · N pages" — commits the page set.'
+        invoke:
+          src: confirmSelection     # (files) -> { pages:N }
+          onDone:  { target: confirmed, actions: [emitStageComplete] }
+          onError: { target: browsing, actions: [assignError] }
+      confirmed:
+        type: final
+        description: Selection locked; pipeline advances past Source.
+    on:
+      SET_FILTER:  { actions: [assignFilter] }
+      SET_DENSITY: { actions: [assignDensity] }
+      SET_QUERY:   { actions: [assignQuery] }
+      OPEN_INSERT: { target: .inserting, actions: [beginInsertDraft] }   # toolbar button or hover divider
+      SET_ROLE:    { actions: [assignRole, recountTotals, persistMarks] }  # workbench role segment (cover/body/blank/insert/skip)
+      CONFIRM_SELECTION:
+        target: .confirming
+        guard: canConfirm        # button is disabled while generating or unmarked > 0
+
+  # ---- Region: settings (inheritance banner; generic pattern) ---------------
+  settings:
+    initial: default
+    states:
+      default:
+        description: '"Using project default · Standard quality preset".'
+        on:
+          CHANGE_SETTING: { target: modified, actions: [recordSettingChange] }
+          LOAD_PRESET:    { target: preset,   actions: [assignPreset] }
+      modified:
+        description: '"Modified · N changes vs project default" — Save / Revert offered.'
+        on:
+          CHANGE_SETTING:    { actions: [recordSettingChange] }
+          SAVE_AS_DEFAULT:   { target: default, actions: [persistAsProjectDefault] }
+          REVERT:            { target: default, actions: [revertSettings] }
+          SAVE_AS_PRESET:    { target: preset,  actions: [persistPreset] }
+      preset:
+        description: '"Using preset · IA / JP2 archive scans" — not the project default.'
+        on:
+          CHANGE_SETTING:     { target: modified, actions: [recordSettingChange] }
+          RESET_TO_DEFAULT:   { target: default,  actions: [revertSettings] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  canConfirm: ctx.totals.unmarked === 0 && thumbnailsRegionIn('done')
+
+actions:
+  assignThumbProgress: ctx.totals = { ...ctx.totals, thumbed: event.thumbed, rateHz: event.rateHz, remaining: event.remaining }
+  markAllThumbed: ctx.files = ctx.files.map(f => f.state === 'pending' ? { ...f, state: 'ready' } : f)
+  assignFilter: ctx.filter = event.value      # all | page | skipped | unmarked | inserts
+  assignDensity: ctx.density = event.value    # S | M | L
+  assignQuery: ctx.query = event.value
+  addToSelection: ctx.selected = [event.idx]
+  toggleSelection: ctx.selected = xor(ctx.selected, event.idx)
+  addRangeToSelection: ctx.selected = union(ctx.selected, range(lastAnchor, event.idx))
+  emptySelection: ctx.selected = []
+  markSelected: ctx.files = ctx.files.map(f => ctx.selected.includes(f.idx) ? { ...f, state: event.state } : f)
+  assignRole: ctx.files = setRole(ctx.files, event.idx, event.role)   # workbench single-page variant of markSelected
+  removeSelected: ctx.files = ctx.files.filter(f => !ctx.selected.includes(f.idx)); ctx.selected = []
+  recountTotals: ctx.totals = recount(ctx.files)
+  beginInsertDraft: ctx.insertDraft = { anchorStem: event.anchorStem ?? null, position: 'after', kind: 'missing', note: '', image: null }
+  patchInsertDraft: ctx.insertDraft = { ...ctx.insertDraft, ...event.patch }
+  createInsertedRow: ctx.files = insertAt(ctx.files, ctx.insertDraft)   # state:'inserted', dashed-thumb placeholder unless image given
+  clearInsertDraft: ctx.insertDraft = null
+  assignError: ctx.error = event.error
+  recordSettingChange: ctx._settingsDraft = { ...ctx._settingsDraft, ...event.patch }
+  assignPreset: ctx._preset = event.presetId
+  revertSettings: ctx._settingsDraft = null
+  persistMarks: //  SIDE EFFECT: PATCH file states (batch)
+  persistRemoval: //  SIDE EFFECT: DELETE files from project
+  persistInsert: //  SIDE EFFECT: POST inserted page (+ optional image upload)
+  persistAsProjectDefault: //  SIDE EFFECT: save stage settings as project default
+  persistPreset: //  SIDE EFFECT: save named preset
+  requestRegenerate: //  SIDE EFFECT: POST regenerate-thumbnails (clears cache)
+  emitStageComplete: //  send parent(pipelineShell): RESOLVE for stageRunner[source] → clean
+
+services:
+  confirmSelection: 'POST /api/projects/:id/stages/source/confirm -> { pages }'
+
+# --- Notes -------------------------------------------------------------------
+# • Files are DATA (FileRow.state), not actors — consistent with pages-as-data.
+#   The Overview tab and the banner counts are projections of recountTotals.
+# • The Metadata tab reuses attributesPanel (see attributes-panel.yaml) keyed
+#   to the same project — no new machine.
+# • The settings region's default/modified/preset tri-state is a REUSABLE
+#   pattern: every stage's Settings tab shows the same inheritance banner.
+#   Implement once, parameterize by stageId.
+# • Insert rows participate in numbering downstream; kind ∈ missing | blank |
+#   errata | manual (KIND_LABEL).
+# • Confirm is the only edge that settles stageRunner[source]; it stays
+#   disabled until thumbnails are done AND unmarked === 0 (canConfirm).

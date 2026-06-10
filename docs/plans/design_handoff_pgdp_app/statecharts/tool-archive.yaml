@@ -1,0 +1,66 @@
+# =============================================================================
+# Machine: archiveTool   (per-stage tool — stage · Archive)
+# Surface: final/archive/archive.jsx — ARCMain (gate + keep/drop list +
+#          "Archive now"), ARCSettings.
+# =============================================================================
+# The last stage: hand the project to cold storage. Each artifact class is
+# keep or drop (originals + finished package + provenance are kept; bulky
+# re-derivable intermediates are dropped). Destination, retention, and the
+# keep toggles come from settings.
+# =============================================================================
+
+machine: archiveTool
+description: >
+  Reviews the keep/drop manifest and archives the project to cold storage;
+  reports kept/dropped sizes and retention.
+
+context:
+  projectId: null
+  stageIndex: 0
+  items: []               # Item[] — { name, meta, keep }  (what gets archived)
+  destination: glacier    # 'glacier' | 'nas' | 'custom' (settings)
+  retention: 10yr         # '5yr' | '10yr' | 'forever' (settings)
+  result: null            # { kept:'3.5 GB', dropped:'18.4 GB' } once archived
+  error: null
+
+initial: reviewing
+
+states:
+
+  reviewing:
+    description: Keep/drop list shown; nothing moved yet.
+    on:
+      TOGGLE_KEEP: { actions: [toggleItem, persistItem] }    # settings keep-originals / keep-intermediates map onto classes
+      ARCHIVE_NOW: { target: archiving }
+
+  archiving:
+    invoke:
+      src: archiveProject      # (items, destination, retention) -> { kept, dropped }
+      onDone:  { target: archived, actions: [assignResult, emitResolved] }
+      onError: { target: reviewing, actions: [assignError] }
+
+  archived:
+    description: '"Archived to cold storage" — kept/dropped sizes + retention shown.'
+    on:
+      RE_ARCHIVE:       { target: archiving }    # e.g. after changing destination
+      UPSTREAM_CHANGED: { target: reviewing }    # package rebuilt — archive is stale
+
+# --- Implementation reference ------------------------------------------------
+guards: {}
+
+actions:
+  toggleItem: ctx.items = patchItem(ctx.items, event.name, it => ({ ...it, keep: !it.keep }))
+  assignResult: ctx.result = event.data
+  assignError: ctx.error = event.error
+  persistItem: //  SIDE EFFECT: PATCH keep/drop choice
+  emitResolved: //  send parent: RESOLVE — stageRunner[archive] → clean (pipeline complete)
+
+services:
+  archiveProject: 'POST /api/projects/:id/stages/archive/run -> { kept, dropped }'
+
+# --- Notes -------------------------------------------------------------------
+# • This is the PIPELINE archive stage (cold-storage handoff). It is distinct
+#   from the project-level archive in manage-actions.yaml / project-lifecycle
+#   (reversible hide-from-Active). Do not conflate the two.
+# • Keep rule of thumb baked into copy: keep what's irreplaceable or what the
+#   pipeline can't reproduce; drop what's re-derivable from source + settings.

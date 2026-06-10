@@ -1,0 +1,196 @@
+# =============================================================================
+# Machine: pageOrderTool   (per-stage tool — stage · Page order / Order & numbering)
+# Surface: final/page_order/page-order-unified.jsx (the unified workspace) +
+#          run-leaf.jsx (ledger, leaf inspector, run management) +
+#          naming.jsx (output file naming) + page-order.jsx (banner/overview).
+# =============================================================================
+# THE MODEL: the book is an ordered list of LEAVES grouped into NUMBERING RUNS.
+# A run = contiguous span sharing a numbering style (roman/arabic/none), a
+# start (Set: explicit value · Continue: previous run's last), and a step.
+# Roles (text / plate / blank / skip / cover) are per-leaf. Page labels are
+# COMPUTED from runs + roles; the ledger reconciles OCR-read folios against
+# those computed labels (flags: out-of-seq, gap, duplicate, misread, no-folio,
+# unnumbered, [blank] marker, counted-blank, renumber, continues).
+#
+# One workspace, four lenses of the same object:
+#   ribbon (map) · run spine (editable) · ledger (table/grid toggle, lens
+#   filters) · leaf inspector (per-leaf workbench). Plates & blanks are NOT
+#   runs — they're read-only "Holds" in the spine.
+# =============================================================================
+
+machine: pageOrderTool
+description: >
+  Edits the book's leaf order, numbering runs, and per-leaf roles; reconciles
+  OCR folios against computed labels; manages output file naming — all views
+  of one ordered-leaves-grouped-into-runs model.
+
+context:
+  projectId: null
+  stageIndex: 0
+  leaves: []              # Leaf[] — { scan, role, runId, folioPos?, folioLabel?, ocrFolio?, flags[], plateIdx?, foldout? }
+  runs: []                # Run[] — { id, label, style:'roman'|'arabic'|'none', start:{mode:'set'|'continue', value?}, step, span }
+  totals: null            # { total, scanned, outOfSeq, gaps, duplicates, … }
+  lens: all               # filter chip — 'all' | 'outOfSequence' | 'gap' | 'duplicate' | 'misread' | …
+  view: table             # 'table' | 'grid' (Pages as a view-toggle)
+  selectedLeaf: null      # scan index open in the leaf inspector | null
+  selScans: []            # multi-selected scans (bulk move / role)
+  openDropdown: null      # { scan, kind:'role'|'run' } — one inline dropdown at a time
+  runEdit: null           # runId open in RunEditCard | null
+  addingRun: false        # RunAddForm open
+  naming: null            # { parts:{seq,type,folio}, digits } — output naming scheme
+  error: null
+
+initial: readingFolios
+
+states:
+
+  readingFolios:
+    description: '"Reading folios…" — OCR extracts each leaf''s printed number.'
+    on:
+      FOLIO_PUSH: { actions: [mergeFolio] }
+      FOLIOS_DONE: { target: workspace, actions: [assignModel, computeLabels, reconcile] }
+
+  workspace:
+    type: parallel
+    states:
+
+      # ---- Region: ledger (leaf table/grid + lenses) -----------------------
+      ledger:
+        initial: browsing
+        states:
+          browsing:
+            on:
+              SELECT_LEAF:   { actions: [assignSelectedLeaf] }     # opens the inspector
+              TOGGLE_SCAN:   { actions: [toggleScanSelection] }
+              OPEN_DROPDOWN: { actions: [assignDropdown] }          # inline role/run cell
+              SET_ROLE:      { actions: [patchLeafRole, computeLabels, reconcile, persistLeaf, closeDropdown] }
+              SET_RUN:       { actions: [patchLeafRun, computeLabels, reconcile, persistLeaf, closeDropdown] }
+              DRAG_START:    { target: reordering, guard: reorderable }
+          reordering:
+            description: Dragging one or more leaves to a new position in scan order.
+            on:
+              DRAG_OVER: { actions: [assignDropTarget] }
+              DROP:
+                target: browsing
+                actions: [moveLeaves, computeLabels, reconcile, persistOrder, emitOrderChanged]
+              DRAG_CANCEL: { target: browsing, actions: [clearDrag] }
+        on:
+          SET_LENS: { actions: [assignLens] }    # out-of-sequence etc. are FILTERS, not tabs
+          SET_VIEW: { actions: [assignView] }    # table ↔ grid
+
+      # ---- Region: inspector (per-leaf workbench, right rail) ---------------
+      inspector:
+        initial: closed
+        states:
+          closed:
+            on:
+              LEAF_SELECTED: { target: open }    # raised by assignSelectedLeaf
+          open:
+            description: Folio override, plate tag, fold-out segments, output name, read history.
+            on:
+              OVERRIDE_FOLIO:  { actions: [patchLeaf, computeLabels, reconcile, persistLeaf] }
+              SET_PLATE_TAG:   { actions: [patchLeaf, persistLeaf] }
+              EDIT_FOLDOUT:    { actions: [patchLeaf, persistLeaf] }   # multi-segment scans, tissue guards
+              OPEN_SCAN:       { actions: [openFullResScan] }
+              CLOSE_INSPECTOR: { target: closed, actions: [clearSelectedLeaf] }
+
+      # ---- Region: runs (the editable spine) --------------------------------
+      runs:
+        initial: idle
+        states:
+          idle:
+            on:
+              ADD_RUN:  { target: adding }
+              EDIT_RUN: { target: editing, actions: [assignRunEdit] }
+          adding:
+            description: RunAddForm — pick style, start (Set/Continue), span boundary.
+            on:
+              CONFIRM_ADD: { target: idle, actions: [insertRun, computeLabels, reconcile, persistRuns] }
+              CANCEL:      { target: idle }
+          editing:
+            description: RunEditCard for one run.
+            on:
+              SET_STYLE:  { actions: [patchRun, computeLabels, reconcile] }
+              SET_START:  { actions: [patchRun, computeLabels, reconcile] }   # Set value | Continue previous
+              REMOVE_RUN:
+                target: idle
+                actions: [mergeRunUp, computeLabels, reconcile, persistRuns]  # leaves merge into the previous run
+              DONE: { target: idle, actions: [persistRuns, clearRunEdit] }
+
+      # ---- Region: naming (output file naming scheme) -----------------------
+      naming:
+        initial: configured
+        states:
+          configured:
+            on:
+              SET_NAME_PART: { actions: [patchNaming, persistNaming] }   # ‹seq›‹type›‹folio› toggles + padding
+    on:
+      CONFIRM_ADVANCE:
+        target: confirming
+        guard: sequenceClean     # no unresolved out-of-seq / duplicate flags
+
+  confirming:
+    invoke:
+      src: confirmStage
+      onDone:  { target: settled, actions: [emitResolved] }
+      onError: { target: workspace, actions: [assignError] }
+
+  settled:
+    description: Order, numbering, and names locked; downstream stages consume them.
+    on:
+      UPSTREAM_CHANGED: { target: readingFolios }    # page set changed (e.g. a text_zones split)
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  reorderable: ctx.view === 'table'    # drag-reorder lives in the ledger
+  sequenceClean: ctx.totals.outOfSeq === 0 && ctx.totals.duplicates === 0
+
+actions:
+  mergeFolio: //  upsert { scan, ocrFolio } into ctx.leaves
+  assignModel: ctx.leaves = event.data.leaves; ctx.runs = event.data.runs; ctx.totals = event.data.totals
+  computeLabels: //  PURE: folioLabel per leaf from (runs, roles, order) — the heart of the stage
+  reconcile: //  PURE: flags per leaf from (computed label vs ocrFolio); recount totals
+  assignLens: ctx.lens = event.value
+  assignView: ctx.view = event.value
+  assignSelectedLeaf: ctx.selectedLeaf = event.scan   # + raise LEAF_SELECTED to the inspector region
+  clearSelectedLeaf: ctx.selectedLeaf = null
+  toggleScanSelection: ctx.selScans = xor(ctx.selScans, event.scan)
+  assignDropdown: ctx.openDropdown = { scan: event.scan, kind: event.kind }
+  closeDropdown: ctx.openDropdown = null
+  patchLeafRole: ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, role: event.role }))
+  patchLeafRun: ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, runId: event.runId }))
+  patchLeaf: ctx.leaves = patchLeaf(ctx.leaves, ctx.selectedLeaf, l => ({ ...l, ...event.patch }))
+  assignDropTarget: ctx._over = { scan: event.scan, after: event.after }
+  moveLeaves: ctx.leaves = moveScans(ctx.leaves, ctx.selScans.length ? ctx.selScans : [event.scan], ctx._over)
+  clearDrag: ctx._over = null
+  insertRun: ctx.runs = insertRun(ctx.runs, event.run)
+  patchRun: ctx.runs = patchRun(ctx.runs, ctx.runEdit, event.patch)
+  mergeRunUp: ctx.runs = removeRunMergingUp(ctx.runs, ctx.runEdit)
+  assignRunEdit: ctx.runEdit = event.runId
+  clearRunEdit: ctx.runEdit = null
+  patchNaming: ctx.naming = { ...ctx.naming, ...event.patch }
+  assignError: ctx.error = event.error
+  openFullResScan: //  SIDE EFFECT: open the original capture image (never renamed)
+  persistLeaf: //  SIDE EFFECT: PATCH leaf
+  persistOrder: //  SIDE EFFECT: PUT leaf order
+  persistRuns: //  SIDE EFFECT: PUT runs
+  persistNaming: //  SIDE EFFECT: PUT naming scheme
+  emitOrderChanged: //  reorder → downstream stages stale (fanOutStale)
+  emitResolved: //  send parent: RESOLVE — stageRunner[page_order] → clean
+
+services:
+  confirmStage: 'POST /api/projects/:id/stages/page_order/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • computeLabels + reconcile run after EVERY model edit — labels are always
+#   derived, never stored truth. Keep them pure + synchronous.
+# • Hard cases the model must keep working (from pr-data.js): [Blank Page]
+#   markers (kept in order, excluded from the run), unnumbered plate + facing
+#   blank (side matters), and a back-bound catalogue that renumbers.
+# • Naming: leaves without their own number BORROW an anchor (plate-tied p08v,
+#   page-tied x156); fold-outs get part suffixes (142d01a/b/c). Original
+#   capture filenames are preserved verbatim — provenance, never renamed.
+# • The ribbon and all counts are projections; "out of sequence" is a LENS
+#   over the ledger, not a separate tab or machine.
+# • RolesRibbon/RolesList/RolesOutline (page-roles.jsx) are superseded design
+#   explorations of the same model — implement the unified workspace.

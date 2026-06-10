@@ -1,0 +1,133 @@
+# =============================================================================
+# Machine: textReviewTool   (per-stage tool — stage · Text review)
+# Surface: final/text_review/text-review.jsx — TrReviewQueue (hero),
+#          TrComments, TrPages, TrOverview, TrStepSettings.
+# =============================================================================
+# The last human gate before packaging: every queued concern is read against
+# the scan and approved, corrected, or discussed. Two coupled datasets:
+#   • queue items — { word+context, reason, page/line, reviewer, status }
+#   • comment threads — open | resolved, anchored to a page + quote
+# Page state is a PROJECTION of its items/threads:
+#   clean (auto-passed) | pending | discuss | approved   (+ running while the
+#   queue assembles).
+# Confirm-and-advance is gated on zero in-discussion pages (and, if the
+# "Require comments resolved" setting is on, zero open threads).
+# =============================================================================
+
+machine: textReviewTool
+description: >
+  Drives the human review queue (approve / comment / resolve per item), the
+  discussion layer, and the confirm gate that releases pages to Illustrations
+  and the proof pack.
+
+context:
+  projectId: null
+  stageIndex: 0
+  queue: []               # Item[] — { id, word, ctxL, ctxR, suggest?, reason, page, line, reviewer, comments, status:'pending'|'discuss' }
+  threads: []             # Thread[] — { id, author, page, folio, anchor, body, replies, status:'open'|'resolved' }
+  totals: null            # { total, queue, pending, discuss, approved, clean, comments }
+  queueFilter: all        # 'all' | 'mine' | 'discuss' | <reasonKind>
+  commentFilter: all      # 'all' | 'open' | 'resolved'
+  me: null                # current reviewer id (the 'Mine' filter)
+  error: null
+
+initial: assembling
+
+states:
+
+  assembling:
+    description: '"Assembling the review queue…" — concerns gathered from upstream stages.'
+    on:
+      QUEUE_PUSH: { actions: [mergeQueueProgress] }
+      QUEUE_READY:
+        - target: reviewing
+          guard: anythingQueued
+          actions: [assignQueue]
+        - target: settled
+          actions: [assignQueue]
+
+  reviewing:
+    description: Items await a human; per-item approve / comment / discuss.
+    on:
+      # ---- per-item decisions (optimistic, like reviewQueue) ---------------
+      APPROVE_ITEM:    { actions: [markApproved, persistDecision, recount, settleIfClear] }
+      OPEN_COMMENT:    { actions: [beginThread] }            # turns the item to 'discuss'
+      REPLY:           { actions: [appendReply, persistReply] }
+      RESOLVE_THREAD:  { actions: [resolveThread, maybeUnblockItem, recount, settleIfClear] }
+      VIEW_ON_PAGE:    { actions: [navigateToPage] }
+
+      # ---- batch -----------------------------------------------------------
+      APPROVE_LOW_RISK:
+        target: batchApproving
+      SEND_APPROVED:   { actions: [forwardApproved] }        # release approved pages downstream early
+
+      # ---- filters ----------------------------------------------------------
+      SET_QUEUE_FILTER:   { actions: [assignQueueFilter] }
+      SET_COMMENT_FILTER: { actions: [assignCommentFilter] }
+
+      # ---- the gate ----------------------------------------------------------
+      CONFIRM_ADVANCE:
+        target: confirming
+        guard: gateOpen      # no 'discuss' pages; threads resolved if setting requires
+
+  batchApproving:
+    invoke:
+      src: approveLowRisk      # -> { approvedIds }
+      onDone:  { target: reviewing, actions: [mergeBatchApprovals, recount, settleIfClear] }
+      onError: { target: reviewing, actions: [assignError] }
+
+  confirming:
+    invoke:
+      src: confirmStage
+      onDone:  { target: settled, actions: [emitResolved] }
+      onError: { target: reviewing, actions: [assignError] }
+
+  settled:
+    description: Every page signed off; pages flow to Illustrations & the proof pack.
+    on:
+      REOPEN: { target: reviewing, actions: [reopenPages] }   # e.g. sign-off rule changed (see settings note)
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  anythingQueued: event.data.totals.queue > 0
+  gateOpen: >
+    ctx.totals.discuss === 0 &&
+    (!ctx._settings.requireCommentsResolved || ctx.threads.every(t => t.status === 'resolved'))
+
+actions:
+  mergeQueueProgress: ctx.totals = { ...ctx.totals, done: event.done, queue: event.queue }
+  assignQueue: ctx.queue = event.data.queue; ctx.threads = event.data.threads; ctx.totals = event.data.totals
+  markApproved: ctx.queue = dropItem(ctx.queue, event.itemId)   # page → approved when its last item clears
+  beginThread: ctx.threads = [...ctx.threads, newThread(event)]; setItemStatus(ctx.queue, event.itemId, 'discuss')
+  appendReply: ctx.threads = patchThread(ctx.threads, event.threadId, t => ({ ...t, replies: t.replies + 1 }))
+  resolveThread: ctx.threads = patchThread(ctx.threads, event.threadId, t => ({ ...t, status: 'resolved' }))
+  maybeUnblockItem: //  if the thread's item has no other open threads → status back to 'pending'
+  mergeBatchApprovals: ctx.queue = ctx.queue.filter(q => !event.data.approvedIds.includes(q.id))
+  recount: ctx.totals = recount(ctx.queue, ctx.threads)
+  settleIfClear: //  if totals.queue === 0 && gateOpen → raise QUEUE_READY-equivalent settle
+  assignQueueFilter: ctx.queueFilter = event.value
+  assignCommentFilter: ctx.commentFilter = event.value
+  assignError: ctx.error = event.error
+  reopenPages: //  re-enqueue pages the rule change affects ("19 pages would return to the queue")
+  navigateToPage: //  SIDE EFFECT: open the page with the concern highlighted
+  persistDecision: //  SIDE EFFECT: POST approve { itemId }
+  persistReply: //  SIDE EFFECT: POST reply
+  forwardApproved: //  SIDE EFFECT: release approved pages to Illustrations
+  emitResolved: //  send parent: RESOLVE — stageRunner[text_review] → clean
+
+services:
+  approveLowRisk: 'POST /api/projects/:id/stages/text_review/approve-low-risk -> { approvedIds }'
+  confirmStage:   'POST /api/projects/:id/stages/text_review/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • Page state is DERIVED: clean = never queued; pending = open items;
+#   discuss = any item with an open thread; approved = all items cleared.
+#   TrPages renders this projection — no per-page machine.
+# • Sign-off rules (Single / Two reviewers / Two if flagged) change what
+#   "approved" requires. Changing the rule after approvals RE-OPENS affected
+#   pages (the settings warning) — modeled as REOPEN from settled.
+# • Reviewer assignment, low-score threshold, and queue-source kinds are
+#   settings data (the standard tri-state inheritance pattern).
+# • The reviewQueue machine (tool-review-queue.yaml) remains the generic
+#   cursor-style alternative; THIS machine matches the shipped list-style
+#   text_review surface with its discussion layer.

@@ -1,0 +1,135 @@
+# =============================================================================
+# Machine: projectSettings   (spawned by pipelineShell when settings open)
+# Surface: final/pipeline/pipeline-template.jsx → ProjectSettingsTemplate
+#          (left-rail groups + per-group content, incl. Automation toggles +
+#          Danger zone)
+# =============================================================================
+# A left rail of setting groups (general / bib / pgdp / format / defaults /
+# members / storage / danger) with a right pane per group. Editing is
+# autosave-per-field ("All changes saved"), but the Danger zone routes through
+# confirm gates. The Automation toggles here are the inputs that drive
+# staleness auto-run behavior in stageRunner / pipelineShell.
+# =============================================================================
+
+machine: projectSettings
+description: >
+  Project-scoped settings: group navigation, autosaving field edits, the
+  automation toggles, and a guarded Danger zone.
+
+context:
+  projectId: null
+  group: general          # active left-rail group
+  values: {}              # loaded settings, keyed by group
+  automation:             # surfaced to pipelineShell on close
+    autoRunAfterIngest: true
+    rerunDownstreamOnStale: true
+    notifyOnError: true
+    pauseOnFlagPct: 10
+  dirtyFields: {}         # { [fieldKey]: true } currently saving
+  error: null
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchSettings
+      onDone:  { target: ready, actions: [assignSettings, assignAutomation] }
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  ready:
+    initial: general
+    on:
+      SET_GROUP:
+        guard: groupChanged
+        actions: [assignGroup]
+
+      # Autosave model: edits persist per-field; UI shows "All changes saved".
+      FIELD_CHANGE:
+        actions: [markFieldDirty, autosaveField]
+      FIELD_SAVED:
+        actions: [clearFieldDirty]
+      FIELD_FAILED:
+        actions: [flagFieldError]
+
+      # Automation toggles — same autosave, but also remembered for close sync.
+      TOGGLE_AUTOMATION:
+        actions: [setAutomation, autosaveAutomation]
+
+    states:
+      # Most groups are plain autosave forms; modeled as one `editing` state.
+      general:   { on: { SET_GROUP: { actions: [assignGroup] } } }
+      bib:       {}
+      pgdp:      {}
+      format:    {}
+      defaults:  {}
+      members:   {}
+      storage:   {}
+
+      # Danger zone has its own confirm-gated destructive actions.
+      danger:
+        initial: idle
+        states:
+          idle:
+            on:
+              REQUEST_DESTRUCTIVE:
+                target: confirming
+                actions: [setPendingDestructive]   # reset / purge / delete
+          confirming:
+            description: High-friction confirm (cannot be undone).
+            on:
+              ACKNOWLEDGE: { target: armed, actions: [markAck] }
+              CANCEL:      { target: idle, actions: [clearPending] }
+          armed:
+            on:
+              CONFIRM:
+                target: executing
+                guard: acknowledged
+              CANCEL: { target: idle, actions: [clearPending] }
+          executing:
+            invoke:
+              src: runDestructive
+              onDone:  { target: idle, actions: [applyDestructiveResult, clearPending] }
+              onError: { target: idle, actions: [assignError, clearPending] }
+
+  # pipelineShell sends this (or reads context) when closing settings so the
+  # automation flags propagate back to the staleness logic.
+  # (Modeled as an event handled in `ready`; no separate state needed.)
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  groupChanged: event.group !== ctx.group
+  acknowledged: ctx._ack === true
+
+actions:
+  assignSettings: ctx.values = event.data.values
+  assignAutomation: ctx.automation = event.data.automation
+  assignGroup: ctx.group = event.group
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  markFieldDirty: ctx.dirtyFields[event.key] = true
+  clearFieldDirty: //  delete ctx.dirtyFields[event.key]
+  flagFieldError: ctx.error = event.error   # + clear dirty so UI can retry
+  autosaveField: //  SIDE EFFECT: PATCH settings field; resolves FIELD_SAVED/FAILED
+  setAutomation: ctx.automation[event.key] = event.value
+  autosaveAutomation: //  SIDE EFFECT: PATCH automation; FIELD_SAVED/FAILED
+  setPendingDestructive: ctx._pending = event.action   # 'reset'|'purge'|'delete'
+  markAck: ctx._ack = true
+  clearPending: ctx._pending = null; ctx._ack = false
+  applyDestructiveResult: //  reflect result (e.g. cleared artifacts) into values
+
+services:
+  fetchSettings: 'GET /api/projects/:id/settings -> { values, automation }'
+  runDestructive: 'POST /api/projects/:id/settings/danger/:action -> result'
+
+# --- Notes -------------------------------------------------------------------
+# • Groups bib/pgdp/format/defaults/members/storage are structurally identical
+#   autosave forms — left as empty leaf states rather than duplicating handlers,
+#   since FIELD_CHANGE/SAVED/FAILED are handled at the `ready` level.
+# • On CLOSE_SETTINGS, pipelineShell pulls ctx.automation back so the staleness
+#   auto-run behavior (stageRunner.autoRerunEnabled) reflects these toggles.

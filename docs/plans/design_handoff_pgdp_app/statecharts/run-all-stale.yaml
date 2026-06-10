@@ -1,0 +1,133 @@
+# =============================================================================
+# Machine: runAllStale   (coordinator — spawned on demand by pipelineShell)
+# Surface: ProjectInfoBand → "Run all stale" button
+# =============================================================================
+# Collects every stage currently `stale` (or `notrun`, depending on policy)
+# and drives them to completion IN DEPENDENCY ORDER, aggregating progress and
+# surfacing a single result. It does NOT re-implement stage execution — it
+# sends RUN to the shared stageRunner actors and watches them complete.
+#
+# Default ordering assumption: stages run strictly in STAGE_DEFS index order
+# (a linear pipeline). See Open Question #6 — swap `nextStale` for a DAG
+# topological pick if stages can run in parallel / out of order.
+# =============================================================================
+
+machine: runAllStale
+description: >
+  Coordinates a "run all stale" sweep: orders the stale stages, runs them one
+  at a time (or per the dependency policy) via their stageRunner actors,
+  aggregates progress, and reports completion or a halt on first error.
+
+context:
+  queue: []               # number[] — stale stage indices, in run order
+  total: 0                # queue length at start (for the progress meter)
+  completed: []           # number[] — finished stage indices
+  currentIndex: null      # the stage index currently running
+  failedIndex: null       # set if a stage errored and we halted
+  haltOnError: true       # stop the sweep on first failure (vs continue)
+
+initial: collecting
+
+states:
+
+  # Snapshot which stages are stale right now and order them.
+  collecting:
+    entry: [buildQueue]
+    always:
+      - target: done
+        guard: queueEmpty          # nothing stale → no-op success
+      - target: confirming
+
+  # Light confirm — a big sweep can be long-running and re-derives downstream
+  # artifacts. (Skip this state if product wants one-click.)
+  confirming:
+    on:
+      CONFIRM: { target: running }
+      CANCEL:  { target: cancelled }
+
+  # Drive the queue. We don't run stages ourselves — we tell each stageRunner
+  # to RUN and wait for its STAGE_COMPLETED to come back via pipelineShell.
+  running:
+    initial: dispatch
+    on:
+      CANCEL: { target: cancelling }
+    states:
+
+      dispatch:
+        description: Send RUN to the next stale stage's runner.
+        entry: [runNext]
+        always:
+          - target: '#runAllStale.done'
+            guard: queueDrained
+        on:
+          # pipelineShell forwards the runner's terminal result here.
+          STAGE_DONE:
+            - target: '#runAllStale.halted'
+              guard: erroredAndHalt
+              actions: [markFailed]
+            - target: dispatch
+              actions: [markCompleted, advance]   # next iteration runs runNext
+          STAGE_PROGRESS:
+            actions: [assignStageProgress]
+
+  cancelling:
+    description: Let the in-flight stage settle (or cancel it), then stop.
+    invoke:
+      src: cancelInFlight
+      onDone: { target: cancelled }
+    # (Could also send CANCEL to the current runner and wait.)
+
+  # ---- Terminal states ------------------------------------------------------
+  done:
+    type: final
+    description: All stale stages completed clean (or queue was empty).
+    entry: [reportDone]
+
+  halted:
+    description: A stage failed and haltOnError is on. Offer Retry / Skip.
+    on:
+      RETRY: { target: running, actions: [requeueFailed] }
+      SKIP:  { target: running, actions: [skipFailed] }
+      CANCEL: { target: cancelled }
+
+  cancelled:
+    type: final
+    description: User cancelled the sweep. Completed stages keep their state.
+    entry: [reportCancelled]
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  queueEmpty: ctx.queue.length === 0
+  queueDrained: ctx.queue.length === 0
+  erroredAndHalt: event.status === 'error' && ctx.haltOnError
+
+actions:
+  # snapshot stale indices in dependency order (linear = ascending index):
+  buildQueue: >
+    ctx.queue = event.staleIndices.slice().sort((a,b) => a - b);
+    ctx.total = ctx.queue.length;
+    ctx.completed = []; ctx.failedIndex = null
+  runNext: >
+    ctx.currentIndex = ctx.queue[0];
+    // SIDE EFFECT: send RUN to runners[ctx.currentIndex] (via pipelineShell)
+  advance: ctx.queue = ctx.queue.slice(1); ctx.currentIndex = null
+  markCompleted: ctx.completed = [...ctx.completed, event.stageIndex]
+  markFailed: ctx.failedIndex = event.stageIndex
+  requeueFailed: ctx.queue = [ctx.failedIndex, ...ctx.queue]; ctx.failedIndex = null
+  skipFailed: ctx.failedIndex = null         # leave it errored, continue
+  assignStageProgress: //  roll per-stage progress into an overall meter
+  reportDone: //  SIDE EFFECT: toast "N stages re-run", notify pipelineShell
+  reportCancelled: //  SIDE EFFECT: toast / notify pipelineShell
+
+services:
+  cancelInFlight: 'POST /api/projects/:id/stages/:stageId/cancel -> ok'
+
+# --- Notes -------------------------------------------------------------------
+# • This coordinator deliberately holds NO stage-execution logic — that lives
+#   in stageRunner. It only orders + sequences + aggregates. Keeping the two
+#   separate is what makes stageRunner the single shared definition.
+# • Overall progress = completed.length / total, optionally blended with the
+#   current stage's own progress (0..1) for a smooth meter.
+# • DAG variant: replace buildQueue's sort with a topological order and let
+#   `runNext` dispatch ALL ready stages whose deps are in `completed` (then the
+#   `dispatch` state tracks a set of in-flight indices instead of one).

@@ -1,0 +1,195 @@
+# =============================================================================
+# Machine: recentActivity
+# Surface: Project detail → "Recent activity" tab (final/projects/projects.jsx)
+# =============================================================================
+# Renders the last N activity entries for the *currently selected* project,
+# plus the "View all activity" / "Open activity log" affordances.
+#
+# Dialect: framework-neutral plain statechart spec. Keys:
+#   states / initial / on / guard / actions / invoke{src,onDone,onError} /
+#   entry / exit / context. See _CONVENTIONS at the bottom of README.md.
+#
+# Lifecycle note: this machine is keyed to the selected project. When the
+# parent (projectDetail) changes selection it should RESTART or send
+# `PROJECT_CHANGED` so the feed reloads for the new project id.
+# =============================================================================
+
+machine: recentActivity
+description: >
+  Loads and displays the most recent pipeline activity entries for the
+  selected project. Owns its own fetch lifecycle, polling while the project
+  is actively running, and the inline "view all" expansion.
+
+# --- Context: the live data this machine carries -----------------------------
+context:
+  projectId: null          # string  — selected project, supplied on spawn
+  limit: 3                 # number  — entries shown in the preview ("last 3")
+  entries: []              # Array<ActivityEntry> — newest first
+  totalCount: 0            # number  — full count for the "+ N earlier" line
+  commentCount: 0          # number  — surfaced in the footer summary
+  stageCount: 0            # number  — surfaced in the footer summary
+  error: null              # Error | null
+  lastFetchedAt: null      # ISO timestamp | null
+  isLive: false            # boolean — true while parent status === running
+
+# ActivityEntry shape (for the frontend's type, not part of the chart):
+#   { stage: string, description: string, at: ISOString, kind: 'stage'|'comment'|'system' }
+
+initial: idle
+
+states:
+
+  # Nothing requested yet. Entered on mount before a projectId is known,
+  # or after the parent clears selection.
+  idle:
+    description: No project selected, or feed not yet requested.
+    on:
+      LOAD:
+        target: loading
+        guard: hasProjectId
+        actions: [assignProjectId]
+
+  # First load — show skeleton rows, no data yet.
+  loading:
+    description: Initial fetch. Show skeleton placeholder rows.
+    invoke:
+      src: fetchRecentActivity      # (projectId, limit) -> { entries, totalCount, commentCount, stageCount }
+      onDone:
+        - target: loaded.empty
+          guard: resultIsEmpty
+          actions: [assignFeed]
+        - target: loaded.list
+          actions: [assignFeed, clearError]
+      onError:
+        target: error
+        actions: [assignError]
+    on:
+      CANCEL:
+        target: idle
+
+  # Successful load. Compound: list vs empty, with a parallel polling region
+  # so a running project keeps the feed fresh without leaving "loaded".
+  loaded:
+    description: Feed resolved. Stays mounted while the user reads / expands.
+    type: parallel
+    on:
+      # Parent swapped the selected project → reload from scratch.
+      PROJECT_CHANGED:
+        target: loading
+        actions: [assignProjectId, resetFeed]
+      # Manual or polled refresh keeps us in `loaded` (silent re-fetch).
+      REFRESH:
+        target: .data.refreshing
+
+    states:
+
+      # ---- Region A: the data itself ------------------------------------
+      data:
+        initial: list
+        states:
+
+          list:
+            description: One or more entries rendered (the normal case).
+            on:
+              VIEW_ALL:
+                # "View all activity" / "Open activity log" — hand off to the
+                # full log surface. Parent/router owns navigation.
+                actions: [navigateToActivityLog]
+              ENTRY_CLICK:
+                actions: [openEntryDetail]
+
+          empty:
+            description: Project exists but has no activity yet (just created).
+            on:
+              VIEW_ALL:
+                actions: [navigateToActivityLog]
+
+          # Silent background re-fetch — does NOT blank the list. On success we
+          # diff in new rows; on error we keep stale data and surface a subtle
+          # "couldn't refresh" affordance (handled by the parent toast layer).
+          refreshing:
+            invoke:
+              src: fetchRecentActivity
+              onDone:
+                - target: empty
+                  guard: resultIsEmpty
+                  actions: [assignFeed]
+                - target: list
+                  actions: [assignFeed, clearError]
+              onError:
+                # Stay on whatever we had; just record the error.
+                target: list
+                actions: [assignError, flagStaleRefresh]
+
+      # ---- Region B: live polling cadence -------------------------------
+      polling:
+        initial: deciding
+        states:
+          deciding:
+            description: Pick a cadence based on whether the project is live.
+            always:
+              - target: active
+                guard: isLive
+              - target: paused
+
+          # Project is running → poll every 10s by re-emitting REFRESH.
+          active:
+            entry: [startPollTimer]    # after: 10s -> REFRESH (parent or timer service)
+            exit: [stopPollTimer]
+            on:
+              SET_LIVE:
+                target: deciding
+                actions: [assignIsLive]
+              TICK:
+                actions: [raiseRefresh]   # internal: re-enters loaded.data.refreshing
+
+          # Project not running → no polling; only manual REFRESH.
+          paused:
+            on:
+              SET_LIVE:
+                target: deciding
+                actions: [assignIsLive]
+
+  # Fetch failed on first load (no stale data to fall back to).
+  error:
+    description: Initial load failed. Show inline error row with Retry.
+    on:
+      RETRY:
+        target: loading
+        actions: [clearError]
+      PROJECT_CHANGED:
+        target: loading
+        actions: [assignProjectId, resetFeed]
+
+# --- Implementation reference ------------------------------------------------
+# Guards (pure, synchronous predicates over context + event):
+guards:
+  hasProjectId: ctx.projectId != null || event.projectId != null
+  resultIsEmpty: event.data.entries.length === 0
+  isLive: ctx.isLive === true
+
+# Actions (side-effect-free context writers unless noted // SIDE EFFECT):
+actions:
+  assignProjectId: ctx.projectId = event.projectId ?? ctx.projectId
+  assignFeed: >
+    ctx.entries = event.data.entries;
+    ctx.totalCount = event.data.totalCount;
+    ctx.commentCount = event.data.commentCount;
+    ctx.stageCount = event.data.stageCount;
+    ctx.lastFetchedAt = now()
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  resetFeed: ctx.entries = []; ctx.totalCount = 0; ctx.error = null
+  assignIsLive: ctx.isLive = event.isLive
+  flagStaleRefresh: ctx.error = event.error      # surfaced as a toast, list kept
+  raiseRefresh: //  internal -> send {type: REFRESH}
+  startPollTimer: //  SIDE EFFECT: schedule TICK every 10s
+  stopPollTimer: //  SIDE EFFECT: clear poll timer
+  navigateToActivityLog: //  SIDE EFFECT: router.push(`/projects/${ctx.projectId}/activity`)
+  openEntryDetail: //  SIDE EFFECT: open the clicked entry (stage panel / comment)
+
+# Services / actors (async, return a promise resolved into onDone/onError):
+services:
+  fetchRecentActivity: >
+    GET /api/projects/:projectId/activity?limit=:limit
+    -> { entries, totalCount, commentCount, stageCount }

@@ -1,0 +1,162 @@
+# =============================================================================
+# Machine: attributesPanel
+# Surface: Project detail → "Attributes" tab (final/projects/projects.jsx)
+# =============================================================================
+# A reflow grid of collapsible sections — Bibliographic, PGDP project,
+# Format & content — plus a full-width "Project comments" section. Each
+# section has an Edit (wrench) affordance.
+#
+# Two concerns, modeled as parallel regions:
+#   1. collapse — independent open/closed state per section (a parallel set of
+#      tiny regions, one per section).
+#   2. editing  — at most ONE section is in edit mode at a time, with a
+#      dirty-guard + save/cancel + discard-confirm sub-flow.
+# =============================================================================
+
+machine: attributesPanel
+description: >
+  Manages the Attributes tab: per-section collapse state and an exclusive
+  inline-edit flow with dirty tracking, validation, save, and discard confirm.
+
+context:
+  projectId: null
+  fields: {}               # the loaded attribute record (all sections)
+  open:                    # collapse state mirrors `open` in AttributesPanel
+    bib: true
+    pgdp: true
+    fmt: true
+    comments: true
+  editingSection: null     # 'bib' | 'pgdp' | 'fmt' | 'comments' | null
+  draft: null              # working copy while editing
+  errors: {}               # field-level validation errors
+  error: null              # load/save error
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchAttributes
+      onDone:  { target: viewing, actions: [assignFields] }
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  # Normal operation: collapse + editing run in parallel.
+  viewing:
+    type: parallel
+    states:
+
+      # ---- Region A: collapse -------------------------------------------
+      # Each section toggles independently. Modeled as a parallel bag of
+      # binary regions so any combination of open/closed is representable.
+      collapse:
+        type: parallel
+        states:
+          bib:
+            initial: open
+            states:
+              open:   { on: { TOGGLE_BIB:   { target: closed, actions: [syncOpen] } } }
+              closed: { on: { TOGGLE_BIB:   { target: open,   actions: [syncOpen] } } }
+          pgdp:
+            initial: open
+            states:
+              open:   { on: { TOGGLE_PGDP:  { target: closed, actions: [syncOpen] } } }
+              closed: { on: { TOGGLE_PGDP:  { target: open,   actions: [syncOpen] } } }
+          fmt:
+            initial: open
+            states:
+              open:   { on: { TOGGLE_FMT:   { target: closed, actions: [syncOpen] } } }
+              closed: { on: { TOGGLE_FMT:   { target: open,   actions: [syncOpen] } } }
+          comments:
+            initial: open
+            states:
+              open:   { on: { TOGGLE_COMMENTS: { target: closed, actions: [syncOpen] } } }
+              closed: { on: { TOGGLE_COMMENTS: { target: open,   actions: [syncOpen] } } }
+
+      # ---- Region B: editing (exclusive) --------------------------------
+      editing:
+        initial: idle
+        states:
+          idle:
+            description: Read-only. Every section shows its Edit (wrench) button.
+            on:
+              EDIT:
+                target: active
+                # Editing a collapsed section auto-expands it.
+                actions: [beginEdit, ensureSectionOpen]
+
+          active:
+            description: One section is editable; others' Edit buttons disabled.
+            initial: clean
+            on:
+              CHANGE:
+                target: .dirty
+                actions: [updateDraft, validateField]
+              CANCEL:
+                - target: confirmDiscard
+                  guard: isDirty
+                - target: idle
+                  actions: [clearDraft]
+            states:
+              clean:
+                description: Entered edit but nothing changed yet.
+              dirty:
+                description: Unsaved edits present.
+                on:
+                  SAVE:
+                    target: '#attributesPanel.viewing.editing.saving'
+                    guard: isValid
+
+          saving:
+            invoke:
+              src: saveAttributes      # (projectId, section, draft) -> updatedFields
+              onDone:
+                target: idle
+                actions: [commitDraft, clearDraft]
+              onError:
+                target: active
+                actions: [assignSaveError]
+
+          confirmDiscard:
+            description: Guard against losing unsaved edits on cancel.
+            on:
+              DISCARD: { target: idle,   actions: [clearDraft] }
+              KEEP:    { target: active }     # back to editing, draft intact
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  isDirty: ctx.draft != null && !deepEqual(ctx.draft, sectionOf(ctx.fields, ctx.editingSection))
+  isValid: Object.keys(ctx.errors).length === 0
+
+actions:
+  assignFields: ctx.fields = event.data
+  assignError:  ctx.error = event.error
+  clearError:   ctx.error = null
+  # collapse: mirror the active state set back into ctx.open for the view layer.
+  syncOpen: //  ctx.open[section] = (state === 'open')
+  ensureSectionOpen: //  force ctx.open[ctx.editingSection] = true
+  beginEdit: >
+    ctx.editingSection = event.section;
+    ctx.draft = clone(sectionOf(ctx.fields, event.section));
+    ctx.errors = {}
+  updateDraft: ctx.draft[event.field] = event.value
+  validateField: //  populate/clear ctx.errors[event.field]
+  clearDraft: ctx.editingSection = null; ctx.draft = null; ctx.errors = {}
+  commitDraft: //  merge event.data (saved section) back into ctx.fields
+  assignSaveError: ctx.error = event.error
+
+services:
+  fetchAttributes: 'GET  /api/projects/:id/attributes -> AttributeRecord'
+  saveAttributes:  'PATCH /api/projects/:id/attributes/:section -> AttributeRecord'
+
+# --- Notes -------------------------------------------------------------------
+# • collapse and editing are INDEPENDENT: a user can fold a section they are
+#   not editing while another section is mid-edit. Editing is still exclusive
+#   (one `editingSection`) — the parallel `collapse` region only governs
+#   visibility, never edit ownership.
+# • The four TOGGLE_* events keep the chart explicit per section; a generic
+#   TOGGLE{section} event is an equivalent compression if you prefer.

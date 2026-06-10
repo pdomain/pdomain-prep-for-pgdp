@@ -1,0 +1,142 @@
+# =============================================================================
+# Machine: reviewQueue   (per-stage tool — flagged-item review)
+# Surface: text_review "Review queue" tab, and any queue-style review
+#          (e.g. hyphen "Undecided"). final/pipeline STAGE_TABS.
+# =============================================================================
+# A linear queue of flagged items the proofreader walks through, making one
+# decision per item (accept / reject / edit), with keyboard nav. As the queue
+# drains, it emits resolved ids so the owning stageRunner can settle to clean.
+#
+# Single-cursor model: exactly one item is "current". Decisions are submitted
+# per item; an optimistic advance keeps the proofreader moving while the save
+# is in flight.
+# =============================================================================
+
+machine: reviewQueue
+description: >
+  Drives a flagged-item review queue: cursor navigation, per-item decision
+  (accept/reject/edit) with optimistic advance, and resolved-id reporting back
+  to the stage.
+
+context:
+  projectId: null
+  stageId: null
+  stageIndex: 0
+  items: []               # QueueItem[] — pending review items, in order
+  cursor: 0               # index of the current item
+  decisions: {}           # { [itemId]: 'accept'|'reject'|{edit} } made this session
+  resolved: []            # itemIds confirmed saved (flushed to parent)
+  inFlight: null          # itemId whose decision is saving | null
+  error: null
+
+# QueueItem shape: { itemId, pageId, n, kind, context, suggestion }
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchQueue       # (projectId, stageId) -> QueueItem[]
+      onDone:
+        - target: empty
+          guard: queueEmpty
+          actions: [assignItems]
+        - target: reviewing
+          actions: [assignItems, resetCursor]
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  empty:
+    description: No items to review — the stage is clean.
+    entry: [emitAllResolved]      # tell the stage there's nothing flagged
+
+  reviewing:
+    description: One item under the cursor; awaiting a decision.
+    # editing the current item is a nested sub-flow.
+    initial: idle
+    on:
+      # ---- cursor navigation (keyboard ↑/↓/j/k) -------------------------
+      NEXT:  { actions: [moveNext] }
+      PREV:  { actions: [movePrev] }
+      JUMP:  { guard: indexInRange, actions: [moveTo] }
+
+      # ---- decisions (optimistic: record + advance, save in background) --
+      ACCEPT:
+        actions: [recordAccept, submitDecision, advanceAfterDecision]
+      REJECT:
+        actions: [recordReject, submitDecision, advanceAfterDecision]
+
+      # ---- background save results --------------------------------------
+      DECISION_SAVED:
+        - target: done
+          guard: allDecided
+          actions: [confirmResolved, emitResolved]
+        - actions: [confirmResolved, emitResolved]
+      DECISION_FAILED:
+        actions: [revertDecision, flagSaveError]   # surface a retry affordance
+
+    states:
+      idle:
+        on:
+          EDIT_ITEM: { target: editing, actions: [beginItemDraft] }
+      editing:
+        description: Inline edit of the current item (correct the text/zone).
+        on:
+          CHANGE: { actions: [updateItemDraft] }
+          SAVE_EDIT:
+            target: idle
+            actions: [recordEdit, submitDecision, advanceAfterDecision]
+          CANCEL_EDIT: { target: idle, actions: [clearItemDraft] }
+
+  # All items decided & saved → the stage's flagged set is empty.
+  done:
+    type: final
+    description: Queue fully resolved. Owning stageRunner settles to clean.
+    entry: [emitAllResolved]
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  queueEmpty: event.data.length === 0
+  indexInRange: event.index >= 0 && event.index < ctx.items.length
+  allDecided: Object.keys(ctx.decisions).length === ctx.items.length
+
+actions:
+  assignItems: ctx.items = event.data
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  resetCursor: ctx.cursor = 0
+  moveNext: ctx.cursor = Math.min(ctx.cursor + 1, ctx.items.length - 1)
+  movePrev: ctx.cursor = Math.max(ctx.cursor - 1, 0)
+  moveTo: ctx.cursor = event.index
+  recordAccept: ctx.decisions[currentId(ctx)] = 'accept'
+  recordReject: ctx.decisions[currentId(ctx)] = 'reject'
+  recordEdit: ctx.decisions[currentId(ctx)] = { edit: ctx._itemDraft }
+  submitDecision: ctx.inFlight = currentId(ctx)   # + SIDE EFFECT: postDecision
+  advanceAfterDecision: //  moveNext unless at end; keeps the proofreader flowing
+  confirmResolved: ctx.resolved = [...ctx.resolved, event.itemId]; ctx.inFlight = null
+  revertDecision: //  delete ctx.decisions[event.itemId]; restore cursor; ctx.inFlight = null
+  flagSaveError: ctx.error = event.error
+  beginItemDraft: ctx._itemDraft = clone(ctx.items[ctx.cursor])
+  updateItemDraft: ctx._itemDraft = { ...ctx._itemDraft, ...event.patch }
+  clearItemDraft: ctx._itemDraft = null
+  # report resolved pageIds up so the stageRunner's flagged count drops:
+  emitResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[event.pageId] }
+  emitAllResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: allPageIds }
+
+services:
+  fetchQueue: 'GET /api/projects/:id/stages/:stageId/queue -> QueueItem[]'
+  # postDecision is fired imperatively in submitDecision; resolves into
+  # DECISION_SAVED / DECISION_FAILED:
+  #   POST /api/projects/:id/stages/:stageId/queue/:itemId -> { itemId, pageId }
+
+# --- Notes -------------------------------------------------------------------
+# • Optimistic flow: ACCEPT/REJECT records the decision and advances the cursor
+#   immediately; the save runs in the background and confirms via DECISION_SAVED.
+#   On DECISION_FAILED we revert that one decision and surface a retry — the
+#   proofreader doesn't lose their place.
+# • currentId(ctx) = ctx.items[ctx.cursor].itemId. Pulled out as a helper to
+#   keep the action bodies readable.

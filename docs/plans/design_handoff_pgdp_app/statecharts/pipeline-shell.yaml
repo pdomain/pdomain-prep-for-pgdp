@@ -1,0 +1,181 @@
+# =============================================================================
+# Machine: pipelineShell   (singleton — one per open project)
+# Surface: final/pipeline/pipeline-template.jsx → PipelineTemplate
+#          (ProjectInfoBand + StageStrip + TabsBand + content slot)
+# =============================================================================
+# The top-level orchestrator for the pipeline view. It:
+#   • spawns the 23 stageRunner actors and holds their refs
+#   • owns stage SELECTION (the StageStrip chip/dropdown + Prev/Next)
+#   • owns the per-stage TAB strip (tabs vary by stage — tabsForStage())
+#   • mounts ONE tool machine for the active stage's workbench tab
+#   • toggles between pipeline mode and PROJECT SETTINGS mode
+#   • fans out staleness when a stage re-runs, and launches runAllStale
+#
+# The dots are NOT here — they're a projection of the stageRunner refs
+# (see stage-runner.yaml notes). This machine just owns which one is selected.
+# =============================================================================
+
+machine: pipelineShell
+description: >
+  Singleton orchestrator for the pipeline view: stage selection, the per-stage
+  tab strip, tool mounting, settings-mode toggle, and staleness fan-out across
+  the 23 spawned stageRunners.
+
+context:
+  projectId: null
+  runners: []             # StageRunnerRef[23], index-aligned with STAGE_DEFS
+  currentStageId: 'threshold'   # selected stage (StageStrip chip)
+  currentIndex: 5               # index of currentStageId in STAGE_DEFS
+  currentTab: null              # active tab id within the stage (tabsForStage)
+  automation:                   # mirrors ProjectSettings automation toggles
+    autoRunAfterIngest: true
+    rerunDownstreamOnStale: true
+    notifyOnError: true
+    pauseOnFlagPct: 10
+  tool: null              # spawned tool actor for the active workbench tab
+
+initial: booting
+
+states:
+
+  booting:
+    description: Load the project + stage states, spawn the 23 runners.
+    invoke:
+      src: fetchPipeline      # -> { project, stages: StageState[23], automation }
+      onDone:
+        target: pipeline
+        actions: [assignProject, spawnRunners, resolveInitialSelection, assignAutomation]
+      onError:
+        target: loadError
+    on:
+      STAGE_PUSH: { actions: [routeStagePush] }   # buffer early pushes
+
+  loadError:
+    on:
+      RETRY: { target: booting }
+
+  # Normal pipeline view. Selection + tab run as parallel regions; a
+  # top-level `mode` region swaps the whole body into settings.
+  pipeline:
+    type: parallel
+    states:
+
+      # ---- Region: mode (pipeline body vs project settings) -------------
+      mode:
+        initial: stages
+        states:
+          stages:
+            description: Stage strip + tabs + tool body visible.
+            on:
+              OPEN_SETTINGS: { target: settings, actions: [spawnSettings] }
+          settings:
+            description: ProjectSettingsTemplate replaces the stage UI.
+            # Delegates to projectSettings.yaml (spawned actor).
+            on:
+              CLOSE_SETTINGS:
+                target: stages
+                actions: [stopSettings, syncAutomationFromSettings]
+
+      # ---- Region: stage selection --------------------------------------
+      selection:
+        initial: selected
+        states:
+          selected:
+            description: One stage is active; its tabs + tool are shown.
+            on:
+              SELECT_STAGE:
+                guard: stageChanged
+                actions: [assignSelection, resetTabForStage, remountTool]
+              PREV:
+                guard: hasPrev
+                actions: [selectPrev, resetTabForStage, remountTool]
+              NEXT:
+                guard: hasNext
+                actions: [selectNext, resetTabForStage, remountTool]
+
+      # ---- Region: tab within the active stage --------------------------
+      tab:
+        initial: active
+        states:
+          active:
+            on:
+              SET_TAB:
+                guard: tabExistsForStage
+                actions: [assignTab, remountTool]
+
+    # ---- Events handled at the pipeline level (any region) --------------
+    on:
+      # A runner finished a (re)run → mark everything downstream stale, and
+      # auto-queue them if automation says so.
+      STAGE_COMPLETED:
+        actions: [fanOutStale]
+      # "Run all stale" button in ProjectInfoBand.
+      RUN_ALL_STALE:
+        actions: [launchRunAllStale]      # spawns/sends to runAllStale.yaml
+      # Tool resolved flagged pages → forward to the owning runner.
+      PAGES_RESOLVED:
+        actions: [forwardResolveToRunner]
+      # Backend push for any stage → route to that runner's actor.
+      STAGE_PUSH:
+        actions: [routeStagePush]
+      # A stage's settings changed (from the tool's Stage settings tab).
+      STAGE_SETTINGS_CHANGED:
+        actions: [markStageSettingsStale, fanOutStale]
+      OPEN_PROJECT_NAV:
+        actions: [navigate]               # breadcrumb / Find page / etc.
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  stageChanged: event.stageId !== ctx.currentStageId
+  hasPrev: ctx.currentIndex > 0
+  hasNext: ctx.currentIndex < 22
+  tabExistsForStage: tabsForStage(ctx.currentStageId).some(t => t.id === event.tab)
+
+actions:
+  assignProject: ctx.projectId = event.data.project.id
+  assignAutomation: ctx.automation = event.data.automation
+  # spawn one stageRunner per STAGE_DEFS entry, hydrated from backend state:
+  spawnRunners: >
+    ctx.runners = STAGE_DEFS.map((s, i) =>
+      spawn(stageRunner, { stageId: s.id, index: i, group: s.group,
+                           ...event.data.stages[i] }))
+  resolveInitialSelection: //  from URL ?stage= or first non-clean stage
+  assignSelection: ctx.currentStageId = event.stageId; ctx.currentIndex = indexOf(event.stageId)
+  selectPrev: ctx.currentIndex -= 1; ctx.currentStageId = STAGE_DEFS[ctx.currentIndex].id
+  selectNext: ctx.currentIndex += 1; ctx.currentStageId = STAGE_DEFS[ctx.currentIndex].id
+  resetTabForStage: >
+    const tabs = tabsForStage(ctx.currentStageId);
+    ctx.currentTab = tabs.find(t => t.id !== 'overview')?.id ?? tabs[0].id
+  assignTab: ctx.currentTab = event.tab
+  # mount the right tool machine for the active stage+tab:
+  remountTool: //  stop ctx.tool; ctx.tool = spawn(toolFor(currentStageId, currentTab))
+  # staleness fan-out: mark every downstream runner stale; pass automation flag
+  # so each runner can decide whether to auto-queue (see stageRunner `autoRerunEnabled`).
+  fanOutStale: >
+    ctx.runners.slice(event.fromIndex + 1).forEach(r =>
+      send(r, { type:'UPSTREAM_CHANGED', autoRerun: ctx.automation.rerunDownstreamOnStale }))
+  markStageSettingsStale: send(ctx.runners[ctx.currentIndex], { type:'SETTINGS_CHANGED' })
+  forwardResolveToRunner: send(ctx.runners[event.stageIndex], { type:'RESOLVE', resolvedIds: event.resolvedIds })
+  routeStagePush: send(ctx.runners[indexOf(event.stageId)], { type:'STAGE_PUSH', ...event })
+  launchRunAllStale: //  spawn/send runAllStale with the stale runner set
+  spawnSettings: ctx.settingsRef = spawn(projectSettings, { projectId: ctx.projectId })
+  stopSettings: //  stop ctx.settingsRef
+  syncAutomationFromSettings: //  pull automation toggles back from settings actor
+  navigate: //  SIDE EFFECT: router
+
+services:
+  fetchPipeline: 'GET /api/projects/:id/pipeline -> { project, stages:StageState[23], automation }'
+
+# --- Spawned children --------------------------------------------------------
+# runners[0..22] -> stage-runner.yaml      (the dots / progress projection)
+# tool           -> tool-pages-grid.yaml | tool-review-queue.yaml |
+#                   tool-hyphen-join.yaml | tool-build-package.yaml
+# settingsRef    -> project-settings.yaml  (mode:settings)
+# runAllStale    -> run-all-stale.yaml     (RUN_ALL_STALE)
+
+# --- Notes -------------------------------------------------------------------
+# • `toolFor(stageId, tab)` maps the active workbench/queue tab to a tool
+#   machine. Stages without a bespoke tool fall back to pagesGrid; Overview /
+#   Stage-settings tabs are mostly presentational (no tool actor needed).
+# • Prev/Next and the dropdown all funnel through assignSelection so selection
+#   stays single-sourced.

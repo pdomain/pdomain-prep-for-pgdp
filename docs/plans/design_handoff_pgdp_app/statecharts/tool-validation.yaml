@@ -1,0 +1,99 @@
+# =============================================================================
+# Machine: validationTool   (per-stage tool — stage · Validation)
+# Surface: final/validation/validation.jsx — VALMain (gate + stats + rule
+#          list), VALSettings.
+# =============================================================================
+# The pre-flight gate before Build package: 8 rules run over the project.
+# Rule levels: pass | warn | error. ERRORS BLOCK THE BUILD ("N error · build
+# blocked"); warnings are advisory and can be WAIVED with a note (if the
+# "Allow waivers" setting is on). The strictness setting can promote warnings
+# to blockers.
+# =============================================================================
+
+machine: validationTool
+description: >
+  Runs the validation rule suite and gates Build package on the result: fix
+  errors, waive warnings with a note, re-run until the gate is green.
+
+context:
+  projectId: null
+  stageIndex: 0
+  rules: []               # Rule[] — { id, name, level:'pass'|'warn'|'error', detail, waiver? }
+  counts: null            # { pass, warn, error }
+  waiverDraft: null       # { ruleId, note } while writing a waiver
+  strictness: advisory    # 'advisory' | 'block' | 'custom'  (settings)
+  error: null
+
+initial: checking
+
+states:
+
+  checking:
+    description: Rule suite running.
+    invoke:
+      src: runChecks         # -> { rules, counts }
+      onDone:
+        - target: blocked
+          guard: hasBlockers
+          actions: [assignRules]
+        - target: passed
+          actions: [assignRules]
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: checking, actions: [clearError] }
+
+  blocked:
+    description: '"N error · build blocked" — fix errors; waive warnings if allowed.'
+    initial: idle
+    states:
+      idle:
+        on:
+          FIX:   { actions: [navigateToFix] }       # routes to the owning stage/setting
+          WAIVE: { target: waiving, guard: waiversAllowed, actions: [beginWaiver] }
+      waiving:
+        description: Writing the waiver note for one warning.
+        on:
+          SET_NOTE:      { actions: [patchWaiver] }
+          CONFIRM_WAIVE: { target: idle, actions: [applyWaiver, persistWaiver, recount] }
+          CANCEL:        { target: idle, actions: [clearWaiver] }
+    on:
+      RERUN_CHECKS: { target: checking }
+      ALL_CLEAR:    { target: passed }    # raised by recount when blockers hit 0
+
+  passed:
+    description: '"Pre-flight passed" — all blocking rules green; Build package unblocked.'
+    entry: [emitResolved]
+    on:
+      RERUN_CHECKS:     { target: checking }
+      UPSTREAM_CHANGED: { target: checking }    # any upstream re-run invalidates the gate
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  hasBlockers: blockerCount(event.data.counts, ctx.strictness) > 0
+  waiversAllowed: ctx._settings.allowWaivers === true && ruleOf(ctx, event.ruleId).level === 'warn'
+
+actions:
+  assignRules: ctx.rules = event.data.rules; ctx.counts = event.data.counts
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  beginWaiver: ctx.waiverDraft = { ruleId: event.ruleId, note: '' }
+  patchWaiver: ctx.waiverDraft = { ...ctx.waiverDraft, note: event.note }
+  applyWaiver: ctx.rules = patchRule(ctx.rules, ctx.waiverDraft.ruleId, r => ({ ...r, waiver: ctx.waiverDraft.note })); ctx.waiverDraft = null
+  clearWaiver: ctx.waiverDraft = null
+  recount: //  recompute counts; if blockerCount === 0 raise ALL_CLEAR
+  navigateToFix: //  SIDE EFFECT: route to the stage/setting the rule points at
+  persistWaiver: //  SIDE EFFECT: POST waiver { ruleId, note }
+  emitResolved: //  send parent: RESOLVE — stageRunner[validation] → clean
+
+services:
+  runChecks: 'POST /api/projects/:id/stages/validation/run -> { rules, counts }'
+
+# --- Notes -------------------------------------------------------------------
+# • blockerCount depends on strictness: 'advisory' counts only errors;
+#   'block' counts errors + warnings; 'custom' consults per-rule settings
+#   ("Require metadata complete", "Require zero open scannos").
+# • FIX is navigation, not mutation — the error is fixed in its owning surface
+#   and validation re-runs (UPSTREAM_CHANGED) to observe it.
+# • buildPackage's preflightPassed guard reads this machine's `passed` state.

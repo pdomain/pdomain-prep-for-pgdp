@@ -1,0 +1,90 @@
+# =============================================================================
+# Machine: illustrationsTool   (per-stage tool — stage · Illustrations)
+# Surface: final/illustrations/illustrations.jsx — ILMain (gate + kinds +
+#          recent plates), ILGallery, ILSettings.
+# =============================================================================
+# Extracts the illustration regions marked during Page layout (text_zones).
+# Each region has status: extracted | review | flagged, and a kind (plate /
+# line art / initial / figure) that decides its export treatment — plates stay
+# CONTONE (taken from grayscale, before Threshold), at their own DPI.
+# Extracted crops land in the proof pack's illustrations/ folder.
+# =============================================================================
+
+machine: illustrationsTool
+description: >
+  Reviews detected illustration regions, re-detects when zones change, and
+  exports the extracted crops; flags regions that overlap text for review.
+
+context:
+  projectId: null
+  stageIndex: 0
+  items: []               # Region[] — { id, page, kind, w, h, status:'extracted'|'review'|'flagged', note }
+  counts: null            # { detected, extracted, review, flagged }
+  galleryFilter: all      # 'all' | 'plates' | 'lineart' | 'initials' | 'figures'
+  error: null
+
+initial: detecting
+
+states:
+
+  detecting:
+    description: Regions gathered from Page layout zones (or auto re-detect).
+    invoke:
+      src: detectRegions       # -> { items, counts }
+      onDone:
+        - target: reviewing
+          guard: needsALook
+          actions: [assignItems]
+        - target: extracted
+          actions: [assignItems, emitResolved]
+      onError: { target: failed, actions: [assignError] }
+
+  reviewing:
+    description: '"N regions need a look" — confirm flagged detections and bounds.'
+    on:
+      CONFIRM_REGION: { actions: [markExtracted, persistRegion, recount, settleIfClear] }
+      ADJUST_BOUNDS:  { actions: [patchRegion, persistRegion] }     # bounds editing happens in the page workbench (IllustWB)
+      DROP_REGION:    { actions: [removeRegion, persistRegion, recount, settleIfClear] }
+      REDETECT:       { target: detecting }
+      SET_GALLERY_FILTER: { actions: [assignFilter] }
+
+  extracted:
+    description: '"All illustrations extracted" — crops named and ready for the proof pack.'
+    on:
+      EXPORT_CROPS:     { actions: [exportCrops] }
+      SET_GALLERY_FILTER: { actions: [assignFilter] }
+      REDETECT:         { target: detecting }
+      UPSTREAM_CHANGED: { target: detecting }     # zones changed in Page layout
+
+  failed:
+    on:
+      RETRY: { target: detecting, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  needsALook: event.data.counts.review + event.data.counts.flagged > 0
+
+actions:
+  assignItems: ctx.items = event.data.items; ctx.counts = event.data.counts
+  markExtracted: ctx.items = patchItem(ctx.items, event.regionId, r => ({ ...r, status: 'extracted' }))
+  patchRegion: ctx.items = patchItem(ctx.items, event.regionId, r => ({ ...r, ...event.patch }))
+  removeRegion: ctx.items = ctx.items.filter(r => r.id !== event.regionId)
+  recount: ctx.counts = recount(ctx.items)
+  assignFilter: ctx.galleryFilter = event.value
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  settleIfClear: //  if counts.review + counts.flagged === 0 → transition to extracted (+ emitResolved)
+  persistRegion: //  SIDE EFFECT: PATCH region
+  exportCrops: //  SIDE EFFECT: download extracted crops
+  emitResolved: //  send parent: RESOLVE — stageRunner[illustrations] → clean
+
+services:
+  detectRegions: 'POST /api/projects/:id/stages/illustrations/detect -> { items, counts }'
+
+# --- Notes -------------------------------------------------------------------
+# • Kind → treatment (kept at its own depth + resolution) is data from
+#   ILL_KINDS; "Keep plates as contone" + DPI + naming are settings inputs to
+#   the extraction, not states.
+# • "Flag overlaps with text" (setting) is what produces status:'flagged'.
+# • Per-region bounds tuning happens in the shared pageWorkbench (IllustWB
+#   body) — ADJUST_BOUNDS here records the result; don't duplicate the editor.

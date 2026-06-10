@@ -1,0 +1,77 @@
+# =============================================================================
+# Machine: buildPackage   (per-stage tool — stage · Build package)
+# Surface: final/build_package/build-package.jsx — BPMain (gate + deliverable
+#          tree + manifest excerpt), BPSettings.
+# =============================================================================
+# Assembles the final PGDP deliverable: the manifest (per-file checksums, 1,229
+# entries), the deterministic archive, metadata, and a provenance README —
+# 5 files total. Builds are gated on validation's pre-flight passing, and the
+# manifest embeds the pipeline version + per-stage settings hashes.
+# =============================================================================
+
+machine: buildPackage
+description: >
+  Builds the deliverable package once pre-flight passes: manifest with
+  per-file checksums + deterministic archive + provenance, with re-build and
+  a continue-to-submit handoff.
+
+context:
+  projectId: null
+  stageIndex: 0
+  deliverable: null       # { files: TreeRow[], count: 5 } once built | null
+  manifest: null          # { project, pages, canvas, built, pipeline, files, sha256 }
+  preflight: unknown      # 'passed' | 'blocked' | 'unknown' — mirrors validationTool
+  checksumAlgo: sha256    # 'sha256' | 'sha1' | 'md5' (settings)
+  error: null
+
+initial: idle
+
+states:
+
+  idle:
+    description: No current build (or the last build is stale).
+    on:
+      BUILD:
+        target: building
+        guard: preflightPassed     # validation gate must be green
+      PREFLIGHT_PUSH: { actions: [assignPreflight] }
+
+  building:
+    invoke:
+      src: buildArtifacts        # -> { deliverable, manifest }
+      onDone:  { target: built, actions: [assignBuild, emitResolved] }
+      onError: { target: idle, actions: [assignError] }
+
+  built:
+    description: '"Package built · ready to submit" — manifest + archive + provenance.'
+    on:
+      REBUILD:            { target: building }    # settings "Re-build package"
+      CONTINUE_TO_SUBMIT: { actions: [navigateToSubmitCheck] }
+      UPSTREAM_CHANGED:   { target: idle, actions: [markBuildStale] }   # any re-run upstream invalidates the build
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  preflightPassed: ctx.preflight === 'passed'
+
+actions:
+  assignBuild: ctx.deliverable = event.data.deliverable; ctx.manifest = event.data.manifest
+  assignPreflight: ctx.preflight = event.status
+  assignError: ctx.error = event.error
+  markBuildStale: ctx.deliverable = null; ctx.manifest = null
+  navigateToSubmitCheck: //  SIDE EFFECT: pipelineShell SELECT_STAGE(submit_check)
+  emitResolved: //  send parent: RESOLVE — stageRunner[build_package] → clean
+
+services:
+  buildArtifacts: 'POST /api/projects/:id/stages/build_package/build -> { deliverable, manifest }'
+
+# --- Notes -------------------------------------------------------------------
+# • PREFLIGHT_PUSH mirrors validationTool's state — buildPackage never runs
+#   its own checks; it reads validation's verdict (the gate card shows
+#   "pre-flight · passed").
+# • Determinism lives downstream in the zip stage; this stage owns the
+#   manifest + provenance. Settings (checksum algorithm, provenance README,
+#   embed pipeline versions) are build inputs — changing them marks the build
+#   stale exactly like UPSTREAM_CHANGED.
+# • Resolves the open questions from the original stub: BUILD requires a green
+#   pre-flight (errors block; waived warnings pass); `built` hands off to
+#   submit_check via explicit navigation, no auto-advance.

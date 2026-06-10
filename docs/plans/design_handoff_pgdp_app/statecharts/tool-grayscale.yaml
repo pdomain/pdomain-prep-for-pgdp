@@ -1,0 +1,116 @@
+# =============================================================================
+# Machine: grayscaleTool   (per-stage tool — stage 02 · Perceptual grayscale)
+# Surface: final/grayscale/grayscale.jsx — GrayscaleOverview, GrayscalePages,
+#          the settings/workbench (StageControlsLeft + viewer, "Apply & Run").
+# =============================================================================
+# Grayscale is the REDUCED member of the image-stage family: no flag taxonomy,
+# no review queue. Its decisions are (a) WHICH mode each page gets — standard
+# (luma-weighted, <1s) vs perceptual (neighbourhood-sampled, costlier) — and
+# (b) the perceptual params. The auto-detector samples 8 pages and picks a
+# profile; the user can override per page or re-run the whole stage.
+#
+# The backend chip (GPU·CUDA / CPU·numpy) is a server FACT that changes cost
+# estimates (0.18 vs 2.5 s/MP) and shows a fallback warning — context, not a
+# state the user can transition.
+# =============================================================================
+
+machine: grayscaleTool
+description: >
+  Grayscale-stage tool: auto-detected standard/perceptual mode per page,
+  perceptual parameter tuning with a before/after workbench, and an
+  Apply-&-Run that re-converts under the new settings.
+
+context:
+  projectId: null
+  stageIndex: 1
+  pages: []               # { id, mode:'perceptual'|'standard', tone }
+  backend: gpu            # 'gpu' | 'cpu' — server-reported runtime; drives estimates + fallback warning
+  detected: null          # { mode, why } — e.g. { mode:'perceptual', why:'newsprint · low contrast · low DPI' }
+  params: null            # { samplerRadius:3, gamma:1.10, outputRange:[12,248] }
+  draft: null             # unsaved param/mode edits (workbench)
+  filter: all             # 'all' | 'perceptual' | 'standard'
+  cursor: 0               # workbench page (Prev/Next + strip)
+  settingsState: default  # default | modified | preset — see tool-source.yaml pattern
+  error: null
+
+initial: detecting
+
+states:
+
+  detecting:
+    description: Auto-detect samples 8 pages and picks a mode profile.
+    invoke:
+      src: detectProfile        # -> { mode, why, backend }
+      onDone:  { target: converting, actions: [assignDetected] }
+      onError: { target: error, actions: [assignError] }
+
+  converting:
+    description: 'Converting · N/M pages (per-page mode pills fill in as rows finish).'
+    on:
+      PAGE_PUSH:
+        - target: done
+          guard: isLastPage
+          actions: [mergePage]
+        - actions: [mergePage]
+
+  done:
+    description: Every page converted; output cached for all downstream stages.
+    initial: idle
+    states:
+      idle:
+        on:
+          SET_PARAM:   { target: tuned, actions: [beginDraft, patchDraft] }
+          SET_MODE:    { target: tuned, actions: [beginDraft, patchDraft] }   # ModeCard click (standard ↔ perceptual)
+      tuned:
+        description: Unsaved mode/param edits; cost estimate re-computed live.
+        on:
+          SET_PARAM: { actions: [patchDraft] }
+          SET_MODE:  { actions: [patchDraft] }
+          RESET:     { target: idle, actions: [clearDraft] }
+          APPLY_RUN: { target: '#grayscaleTool.converting', actions: [commitDraft, requestRun, emitStaleDownstream] }
+    on:
+      SET_FILTER:  { actions: [assignFilter] }       # All | Perceptual | Standard
+      PREV_PAGE:   { guard: notFirst, actions: [stepPrev] }
+      NEXT_PAGE:   { guard: notLast,  actions: [stepNext] }
+      RERUN_PAGE:  { actions: [requestPageRun] }     # workbench "Re-run page"
+      REDETECT:    { target: detecting }             # banner "Re-detect"
+
+  error:
+    on:
+      RETRY: { target: detecting, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  isLastPage: doneCount(ctx.pages) + 1 === ctx.pages.length
+  notFirst: ctx.cursor > 0
+  notLast: ctx.cursor < ctx.pages.length - 1
+
+actions:
+  assignDetected: ctx.detected = { mode: event.data.mode, why: event.data.why }; ctx.backend = event.data.backend
+  mergePage: //  upsert event.page (id, mode) into ctx.pages
+  assignFilter: ctx.filter = event.value
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  beginDraft: ctx.draft = ctx.draft ?? clone({ mode: pageMode(ctx), ...ctx.params })
+  patchDraft: ctx.draft = { ...ctx.draft, ...event.patch }
+  clearDraft: ctx.draft = null
+  commitDraft: ctx.params = { ...ctx.params, ...ctx.draft }; ctx.draft = null
+  stepPrev: ctx.cursor -= 1
+  stepNext: ctx.cursor += 1
+  requestRun: //  SIDE EFFECT: POST run stage with new params (scope per applyTo if exposed)
+  requestPageRun: //  SIDE EFFECT: POST re-convert single page
+  emitStaleDownstream: //  send parent(pipelineShell): UPSTREAM_CHANGED from stageIndex 1
+
+services:
+  detectProfile: 'POST /api/projects/:id/stages/grayscale/detect -> { mode, why, backend }'
+
+# --- Notes -------------------------------------------------------------------
+# • Cost estimates (s/page · project total) are PURE FUNCTIONS of
+#   (pageMP, backend, mode) — estimatePerceptualSecGS — rendered live as the
+#   draft changes; no state needed.
+# • backend === 'cpu' renders a fallback warning in the controls drawer; it is
+#   server-pushed context (BackendChip), never a user transition.
+# • The settings inheritance banner (default/modified/preset) reuses the
+#   tri-state region documented in tool-source.yaml.
+# • Re-running grayscale makes EVERY downstream stage stale — it's stage 2;
+#   the emitStaleDownstream edge is the expensive one to confirm with users.

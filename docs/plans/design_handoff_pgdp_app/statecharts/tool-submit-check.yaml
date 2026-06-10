@@ -1,0 +1,102 @@
+# =============================================================================
+# Machine: submitCheck   (per-stage tool — stage · Submit check)
+# Surface: final/submit_check/submit-check.jsx — SUBMain (dry-run gate +
+#          checks list + "Submit to PGDP…"), SUBSettings.
+# =============================================================================
+# Simulates the PGDP submission end-to-end WITHOUT uploading (dry run), then
+# gates the live submit on it. Safety rails from settings: "Always dry-run
+# first" (live submit requires a passing dry run) and "Confirm on submit"
+# (extra confirmation before live upload). Target can be Production or Sandbox.
+# =============================================================================
+
+machine: submitCheck
+description: >
+  Dry-runs the PGDP submission (upload + server-side acceptance checks
+  simulated), then performs the live submit behind a confirmation gate.
+
+context:
+  projectId: null
+  stageIndex: 0
+  checks: []              # Check[] — { ok, label } from the dry run
+  target: production      # 'production' | 'sandbox' (settings)
+  dryRunOk: false         # SUB_CHECKS.every(c => c.ok)
+  submittedAt: null       # timestamp once live-submitted | null
+  error: null
+
+initial: dryRunning
+
+states:
+
+  dryRunning:
+    invoke:
+      src: dryRun            # -> Check[]  (no upload)
+      onDone:
+        - target: ready
+          guard: allChecksPass
+          actions: [assignChecks]
+        - target: blocked
+          actions: [assignChecks]
+      onError: { target: failed, actions: [assignError] }
+
+  blocked:
+    description: '"Dry run found N blockers" — nothing was uploaded.'
+    on:
+      OPEN_BLOCKER:     { actions: [navigateToBlocker] }
+      RERUN_DRY:        { target: dryRunning }
+      UPSTREAM_CHANGED: { target: dryRunning }
+
+  ready:
+    description: '"Dry run passed · safe to submit".'
+    on:
+      SUBMIT:
+        - target: confirmingSubmit
+          guard: confirmOnSubmit
+        - target: submitting
+      RERUN_DRY:        { target: dryRunning }
+      UPSTREAM_CHANGED: { target: dryRunning }    # package changed — dry run no longer valid
+
+  confirmingSubmit:
+    description: Extra confirmation before the live upload (irreversible against pgdp.net).
+    on:
+      CONFIRM: { target: submitting }
+      CANCEL:  { target: ready }
+
+  submitting:
+    invoke:
+      src: liveSubmit        # uploads to ctx.target
+      onDone:  { target: submitted, actions: [assignSubmitted, emitResolved] }
+      onError: { target: ready, actions: [assignError] }
+
+  submitted:
+    type: final
+    description: Live upload accepted by pgdp.net — the project's terminal pipeline goal.
+
+  failed:
+    on:
+      RETRY: { target: dryRunning, actions: [clearError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  allChecksPass: event.data.every(c => c.ok)
+  confirmOnSubmit: ctx._settings.confirmOnSubmit === true
+
+actions:
+  assignChecks: ctx.checks = event.data; ctx.dryRunOk = event.data.every(c => c.ok)
+  assignSubmitted: ctx.submittedAt = event.data.at
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  navigateToBlocker: //  SIDE EFFECT: route to the failing check's owner
+  emitResolved: //  send parent: RESOLVE — stageRunner[submit_check] → clean;
+                #   projectLifecycle moves toward `submitted` via STATUS_PUSH
+
+services:
+  dryRun:     'POST /api/projects/:id/stages/submit_check/dry-run -> Check[]'
+  liveSubmit: 'POST /api/projects/:id/stages/submit_check/submit { target } -> { at }'
+
+# --- Notes -------------------------------------------------------------------
+# • "Always dry-run first" is enforced structurally: SUBMIT is only reachable
+#   from `ready`, which requires a passing dry run. If the setting is off, eng
+#   may add a SUBMIT edge from `blocked` — confirm with design first.
+# • `submitted` is final HERE; the project's overall lifecycle continues in
+#   project-lifecycle.yaml (status → submitted via the server's STATUS_PUSH).
+# • Credentials ("•••• configured") are settings data, not machine state.

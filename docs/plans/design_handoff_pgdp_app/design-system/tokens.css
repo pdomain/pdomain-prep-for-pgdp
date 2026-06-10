@@ -1,0 +1,118 @@
+/* ocr-project-prep design system tokens — scoped under .pgd.
+   Dark is the default; light flips on data-theme="light".
+   Components reference vars only — never literals. */
+
+.pgd {
+  /* Surfaces — warm charcoal scale */
+  --bg-page:    #0c0c10;
+  --bg-surface: #15151b;
+  --bg-raised:  #1d1d24;
+  --bg-sunk:    #08080c;
+
+  /* Borders — 3 step */
+  --border-1:   #222229;
+  --border-2:   #2f2f38;
+  --border-3:   #3f3f49;
+
+  /* Text — 4 step */
+  --ink-1:      #f0f0f2;
+  --ink-2:      #b0b0b8;
+  --ink-3:      #7a7a85;
+  --ink-4:      #4e4e58;
+
+  /* Accent — amber on charcoal */
+  --accent:     #d6925a;
+  --accent-ink: #1a0f08;
+
+  /* Status — 5 semantic */
+  --exact:      #5fbf6a;
+  --fuzzy:      #e8a83a;
+  --mismatch:   #dc6555;
+  --ocr:        #5d9fdf;
+  --gt:         #a888d4;
+
+  /* Layers (canvas + UI chips only) */
+  --block:      #a89074;
+  --para:       #7fb56a;
+  --line:       #d088a8;
+  --word:       #6e9cdf;
+
+  /* Type families */
+  --ui-font:    'Inter', system-ui, sans-serif;
+  --mono-font:  'JetBrains Mono', ui-monospace, monospace;
+
+  /* Elevation — floating chrome only */
+  --shadow-floating: 0 3px 10px rgba(0,0,0,0.35);
+
+  /* Back-compat aliases — old names that survived the migration */
+  --font-sans: var(--ui-font);
+  --font-mono: var(--mono-font);
+
+  color: var(--ink-1);
+  background: var(--bg-page);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.pgd[data-theme="light"] {
+  --bg-page:    #f6f4ef;
+  --bg-surface: #ffffff;
+  --bg-raised:  #ecebe5;
+  --bg-sunk:    #f0eee7;
+
+  --border-1:   #d8d4c8;
+  --border-2:   #c2bdaf;
+  --border-3:   #a39e8d;
+
+  --ink-1:      #1a1810;
+  --ink-2:      #4a4538;
+  --ink-3:      #7c7665;
+  --ink-4:      #b0aa95;
+
+  --accent:     #b85a2e;
+  --accent-ink: #ffffff;
+
+  --exact:      #2d8c3a;
+  --fuzzy:      #b87b1f;
+  --mismatch:   #b13d32;
+  --ocr:        #2d6fb5;
+  --gt:         #6e4ea5;
+
+  --block:      #7a5e3a;
+  --para:       #4d8a3a;
+  --line:       #a8527a;
+  --word:       #3d6bb8;
+
+  --shadow-floating: 0 3px 10px rgba(60,40,20,0.10);
+}
+
+/* Reset within scope */
+.pgd, .pgd *, .pgd *::before, .pgd *::after { box-sizing: border-box; }
+.pgd p, .pgd h1, .pgd h2, .pgd h3, .pgd h4, .pgd h5, .pgd h6 { margin: 0; }
+.pgd button { font: inherit; color: inherit; }
+.pgd input, .pgd textarea { font: inherit; color: inherit; }
+.pgd ul, .pgd ol { margin: 0; padding: 0; list-style: none; }
+
+.pgd .mono { font-family: var(--mono-font); }
+.pgd .label {
+  font-family: var(--ui-font); font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+}
+
+/* Tiny scrollbars */
+.pgd ::-webkit-scrollbar { width: 8px; height: 8px; }
+.pgd ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+.pgd ::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
+
+@keyframes pgd-spin { to { transform: rotate(360deg); } }
+@keyframes pgd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes pgd-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes pgd-slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}

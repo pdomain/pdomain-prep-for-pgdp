@@ -1,0 +1,168 @@
+# =============================================================================
+# Machine: textZonesTool   (per-stage tool — stage · Text zones / Page layout)
+# Surface: final/text_zones/text-zones.jsx (grid shell) +
+#          final/text_zones/text-zones-editors.jsx (ZoneEditor, SplitEditor)
+# =============================================================================
+# Layout segmentation: every page gets typed zones (running head, heading,
+# body, marginalia, illustration, caption, table) + a reading order. The grid
+# shell is an imageStageReview instance (running/review/done banner, flag
+# filter incl. 'splitSuggested', bulk bar, confirm gate). What's bespoke —
+# modeled here — are the two exclusive inline editors:
+#   • zoneEditor  — select/box/lasso tools; draw, re-type, delete zones; fix
+#     reading order; Re-detect; Save layout.
+#   • splitEditor — confirm or tune a suggested column/row split. APPLYING A
+#     SPLIT TURNS ONE PAGE INTO TWO (split children flow to page_order and
+#     canvas_map, which rebuilds their cut-edge margins).
+# Page row.state adds 'split' to the family enum: running | clean | flagged |
+# reviewed | split | failed.
+# =============================================================================
+
+machine: textZonesTool
+description: >
+  Reviews detected page layouts: an exclusive inline zone editor (draw /
+  re-type / reorder zones) and a split editor that can divide a page in two,
+  on top of the shared flag-grid shell.
+
+context:
+  projectId: null
+  stageIndex: 0
+  rows: []                # PageRow[] — { idx, prefix, state, flags?, layoutKind, zones, lines, split? }
+  totals: null            # { total, done, clean, flagged, reviewed, splits, rateHz }
+  filter: all             # 'all' | 'flagged' | 'splits' | 'clean' | 'reviewed' | 'selected'
+  density: M
+  selected: []
+  editing: null           # idx of the expanded row | null
+  editorKind: null        # 'zones' | 'split' — which editor the row opened
+  tool: box               # 'select' | 'box' | 'lasso' (zone editor)
+  zoneDraft: null         # working copy of the page's zones + reading order
+  splitDraft: null        # { axis:'col'|'row', into:2, gutter:0..1, conf }
+  error: null
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchZonePages
+      onDone:  { target: reviewing, actions: [assignRows] }
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  reviewing:
+    description: Grid shell (see imageStageReview for selection/bulk semantics).
+    initial: browsing
+    states:
+      browsing:
+        on:
+          OPEN_ZONE_EDITOR:  { target: editingZones, actions: [assignEditing, beginZoneDraft] }
+          OPEN_SPLIT_EDITOR: { target: editingSplit, actions: [assignEditing, beginSplitDraft] }
+
+      editingZones:
+        description: Draw/re-type/delete zones; drag reading order; tools select/box/lasso.
+        on:
+          SET_TOOL:      { actions: [assignTool] }
+          DRAW_ZONE:     { actions: [appendZone] }          # box/lasso completes a region
+          RETYPE_ZONE:   { actions: [patchZoneType] }       # e.g. body → illustration
+          DELETE_ZONE:   { actions: [removeZone] }
+          REORDER_ZONE:  { actions: [moveZoneOrder] }       # reading order 1..n
+          REDETECT:      { target: redetecting }
+          SAVE_LAYOUT:
+            target: browsing
+            actions: [commitZones, persistLayout, markReviewed, recount, clearEditor, emitZonesChanged]
+          CANCEL: { target: browsing, actions: [clearEditor] }
+
+      editingSplit:
+        description: Suggested column/row split with gutter handle + confidence.
+        on:
+          SET_AXIS:    { actions: [patchSplit] }
+          DRAG_GUTTER: { actions: [patchSplit] }
+          APPLY_SPLIT:
+            target: applyingSplit
+          KEEP_AS_ONE:
+            target: browsing
+            actions: [dismissSplit, persistLayout, markReviewed, recount, clearEditor]
+          CANCEL: { target: browsing, actions: [clearEditor] }
+
+      applyingSplit:
+        invoke:
+          src: applySplit        # (pageId, splitDraft) -> { parentRow, childRows[2] }
+          onDone:
+            target: browsing
+            actions: [replaceWithChildren, recount, clearEditor, emitPageCountChanged]
+          onError: { target: editingSplit, actions: [assignError] }
+
+      redetecting:
+        invoke:
+          src: redetectLayout    # (pageId, currentDraft?) -> zones
+          onDone:  { target: editingZones, actions: [assignRedetected] }
+          onError: { target: editingZones, actions: [assignError] }
+
+    on:
+      SET_FILTER:  { actions: [assignFilter] }
+      SET_DENSITY: { actions: [assignDensity] }
+      CONFIRM_ADVANCE:
+        target: confirming
+        guard: allFlagsReviewed
+
+  confirming:
+    invoke:
+      src: confirmStage
+      onDone:  { target: settled, actions: [emitResolved] }
+      onError: { target: reviewing, actions: [assignError] }
+
+  settled:
+    description: Layouts confirmed; zones feed OCR, Illustrations, and reading order.
+    on:
+      UPSTREAM_CHANGED: { target: loading }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  allFlagsReviewed: ctx.totals.flagged === 0 || ctx.totals.flagged === ctx.totals.reviewed
+
+actions:
+  assignRows: ctx.rows = event.data.rows; ctx.totals = event.data.totals
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  assignFilter: ctx.filter = event.value
+  assignDensity: ctx.density = event.value
+  assignEditing: ctx.editing = event.idx
+  beginZoneDraft: ctx.editorKind = 'zones'; ctx.zoneDraft = clone(zonesOf(ctx.rows, event.idx))
+  beginSplitDraft: ctx.editorKind = 'split'; ctx.splitDraft = clone(ctx.rows[event.idx].split)
+  assignTool: ctx.tool = event.tool
+  appendZone: ctx.zoneDraft = [...ctx.zoneDraft, newZone(event.box, event.type ?? 'body')]
+  patchZoneType: ctx.zoneDraft = patchZone(ctx.zoneDraft, event.zoneId, z => ({ ...z, type: event.type }))
+  removeZone: ctx.zoneDraft = ctx.zoneDraft.filter(z => z.id !== event.zoneId)
+  moveZoneOrder: ctx.zoneDraft = reorder(ctx.zoneDraft, event.from, event.to)
+  patchSplit: ctx.splitDraft = { ...ctx.splitDraft, ...event.patch }
+  commitZones: //  write zoneDraft back onto the row
+  dismissSplit: //  drop the splitSuggested flag; row keeps one page
+  replaceWithChildren: //  swap parent row for event.data.childRows (state:'split' lineage retained)
+  assignRedetected: ctx.zoneDraft = event.data.zones
+  markReviewed: ctx.rows = setState(ctx.rows, [ctx.editing], 'reviewed')
+  recount: ctx.totals = recount(ctx.rows)
+  clearEditor: ctx.editing = null; ctx.editorKind = null; ctx.zoneDraft = null; ctx.splitDraft = null
+  persistLayout: //  SIDE EFFECT: PUT page layout (zones + order | dismissed split)
+  emitZonesChanged: //  illustration zones changed → illustrationsTool UPSTREAM_CHANGED
+  emitPageCountChanged: //  page set changed → page_order, canvas_map, counts everywhere
+  emitResolved: //  send parent: RESOLVE — stageRunner[text_zones] → clean
+
+services:
+  fetchZonePages: 'GET  /api/projects/:id/stages/text_zones/pages -> { rows, totals }'
+  applySplit:     'POST /api/projects/:id/stages/text_zones/pages/:pageId/split -> { parentRow, childRows }'
+  redetectLayout: 'POST /api/projects/:id/stages/text_zones/pages/:pageId/detect -> { zones }'
+  confirmStage:   'POST /api/projects/:id/stages/text_zones/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • The two editors are EXCLUSIVE (one expanded row, one editor kind) — same
+#   single-draft rule as attributesPanel and pagesGrid.
+# • APPLY_SPLIT is the only edge in any tool that changes the PAGE SET. It
+#   must fan out wider than normal staleness: page counts, page_order's
+#   sequence, canvas_map's split-child margins.
+# • Zone types/templates and detection granularity are settings data; the
+#   settings tri-state + downstream-stale warning follow the standard pattern.
+# • Illustration-typed zones are the feed for illustrationsTool — re-typing a
+#   zone to/from 'illustration' is what emitZonesChanged signals.

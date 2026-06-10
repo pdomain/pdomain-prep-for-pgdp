@@ -1,0 +1,180 @@
+# =============================================================================
+# Machine: projectLifecycle
+# Surface: the `status` badge + pipeline state of a single project
+#          (taxonomy from final/projects/projects.jsx STATUS + pipeline stages)
+# =============================================================================
+# Models a project's status as it moves through the 23-stage pipeline:
+#   queued → running → review → ready → submitted, with error as a
+#   cross-cutting failure, and archived as a terminal-but-reversible state.
+#
+# This is the *server-authoritative* lifecycle. The frontend mostly REFLECTS
+# it (badge tone, PipelineMini color) and can REQUEST transitions (run, submit,
+# archive); the backend confirms via STATUS_PUSH. We model both the optimistic
+# request edges and the authoritative push.
+#
+# Status → tone mapping (for the badge), from STATUS in projects.jsx:
+#   queued:neutral  running:running  review:review  ready:clean
+#   submitted:neutral  error:failed  archived:neutral
+# =============================================================================
+
+machine: projectLifecycle
+description: >
+  The status lifecycle of one project across the 23-stage pipeline. Mirrors
+  the STATUS taxonomy and drives the badge tone, PipelineMini color, and
+  available Manage actions.
+
+context:
+  projectId: null
+  status: queued           # mirrors the active state name
+  currentStage: 0          # 0..22 index into STAGE_DEFS
+  totalStages: 23
+  flagged: 0               # pages awaiting human review
+  lastError: null          # { stage, message } | null
+  archivedOn: null         # ISO date | null
+
+initial: queued
+
+states:
+
+  # Created/ingested but not yet processing. Badge: neutral.
+  queued:
+    description: Project created; pipeline not started.
+    on:
+      RUN:        { target: running, actions: [requestRun] }
+      ARCHIVE:    { target: archived, actions: [requestArchive] }
+      STATUS_PUSH: { actions: [reconcile] }   # backend may advance us directly
+
+  # Pipeline executing a stage. Badge: running (pulsing dot in PipelineMini).
+  running:
+    description: A stage is actively processing.
+    on:
+      STAGE_DONE:
+        - target: review
+          guard: stageNeedsReview        # e.g. text_review with flagged pages
+          actions: [advanceStage, assignFlagged]
+        - target: ready
+          guard: isFinalStage            # reached submit_check, nothing flagged
+          actions: [advanceStage]
+        - target: running               # ordinary advance, keep running
+          actions: [advanceStage]
+      STAGE_FAILED:
+        target: error
+        actions: [assignError]
+      PAUSE:       { target: queued, actions: [requestPause] }
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # A stage produced output needing human input. Badge: review (fuzzy tone).
+  review:
+    description: Awaiting human review (flagged pages, dictionary mismatches…).
+    on:
+      RESOLVE:
+        - target: running
+          guard: hasRemainingStages
+          actions: [clearFlagged, advanceStage]
+        - target: ready
+          actions: [clearFlagged]
+      RUN:         { target: running, actions: [requestRun] }   # re-run a stage
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # All stages clean, package built, ready to submit. Badge: clean ("ready").
+  ready:
+    description: Pipeline complete; package ready for PG submission.
+    on:
+      SUBMIT:      { target: submitted, actions: [requestSubmit] }
+      ARCHIVE:     { target: archived, actions: [requestArchive] }
+      REOPEN:      { target: review }    # found a problem after the fact
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # Submitted to Project Gutenberg. Badge: neutral. Effectively done but live.
+  submitted:
+    description: Package submitted upstream; awaiting clearance.
+    on:
+      ARCHIVE:     { target: archived, actions: [requestArchive] }
+      REOPEN:      { target: review }    # rejected upstream / needs a fix
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # A stage failed. Badge: failed. Cross-cutting; recoverable by retry.
+  error:
+    description: A pipeline stage failed. Retry the stage or roll back.
+    on:
+      RETRY:
+        target: running
+        actions: [clearError, requestRun]
+      ARCHIVE:     { target: archived, actions: [requestArchive] }
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # Zipped, read-only. Badge: neutral, rows dimmed. Reversible via RESTORE.
+  # Terminal for the *active* flow but a project can be restored or deleted.
+  archived:
+    description: Project zipped and read-only. Restore re-enters the flow.
+    entry: [stampArchivedOn]
+    on:
+      RESTORE:
+        # Restoring returns the project to whatever status it held before
+        # archiving (carried on the event by the backend).
+        target: restoring
+        actions: [requestRestore]
+      DELETE:
+        target: deleted
+        actions: [requestDelete]         # only archived projects can be deleted
+      STATUS_PUSH: { actions: [reconcile] }
+
+  # Transient: unzipping + regenerating artifacts before re-entering the flow.
+  restoring:
+    invoke:
+      src: restoreProject
+      onDone:
+        # `event.data.status` is the restored status; route accordingly.
+        - target: ready
+          guard: restoredToReady
+        - target: review
+          guard: restoredToReview
+        - target: queued
+      onError:
+        target: archived
+        actions: [assignError]
+
+  # Hard terminal — record removed. The frontend drops it from the rail.
+  deleted:
+    type: final
+    description: Permanently deleted. No transitions out.
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  stageNeedsReview: event.stage === 'text_review' || (event.flagged ?? 0) > 0
+  isFinalStage: ctx.currentStage >= ctx.totalStages - 2   # submit_check
+  hasRemainingStages: ctx.currentStage < ctx.totalStages - 1
+  restoredToReady: event.data.status === 'ready'
+  restoredToReview: event.data.status === 'review'
+
+actions:
+  advanceStage: ctx.currentStage = Math.min(ctx.currentStage + 1, ctx.totalStages - 1)
+  assignFlagged: ctx.flagged = event.flagged ?? ctx.flagged
+  clearFlagged: ctx.flagged = 0
+  assignError: ctx.lastError = { stage: event.stage, message: event.message }
+  clearError: ctx.lastError = null
+  stampArchivedOn: ctx.archivedOn = today()
+  # `reconcile` syncs local state to a server push — the authoritative source.
+  # The frontend should treat STATUS_PUSH as able to move to ANY state.
+  reconcile: >
+    ctx.status = event.status;
+    ctx.currentStage = event.currentStage ?? ctx.currentStage;
+    ctx.flagged = event.flagged ?? ctx.flagged
+  # request* actions are optimistic intents; the backend confirms via push.
+  requestRun: //  POST /api/projects/:id/run
+  requestPause: //  POST /api/projects/:id/pause
+  requestSubmit: //  POST /api/projects/:id/submit
+  requestArchive: //  POST /api/projects/:id/archive
+  requestRestore: //  POST /api/projects/:id/restore
+  requestDelete: //  DELETE /api/projects/:id   (guarded: archived only)
+
+services:
+  restoreProject: 'POST /api/projects/:id/restore -> { status, currentStage, flagged }'
+
+# --- Notes -------------------------------------------------------------------
+# • `archived` is reachable from EVERY non-terminal state (queued, running via
+#   pause→archive, review, ready, submitted, error). Drawn as a fan-in to keep
+#   the diagram readable; treat ARCHIVE as globally available when status != deleted.
+# • DELETE is ONLY valid from `archived` — this is the "two-step delete" the
+#   Manage tab implements (delete-from-active archives first, then a second
+#   delete from archived removes it). See manage-actions.yaml.

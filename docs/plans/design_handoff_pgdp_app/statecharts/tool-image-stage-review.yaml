@@ -1,0 +1,216 @@
+# =============================================================================
+# Machine: imageStageReview   (per-stage tool — SHARED ×7)
+# Surface: final/threshold · final/deskew · final/denoise · final/dewarp ·
+#          final/post_transform_crop · final/post_ocr_crop · final/canvas_map
+#          (XxxPages / XxxBanner / XxxToolbar / XxxBulkBar / XxxReviewEditor)
+# =============================================================================
+# Seven page-processing review stages share ONE architecture; this machine is
+# defined once and instantiated per stage, parameterized by:
+#   • flagTaxonomy — THRESH_FLAGS | DESKEW_FLAGS | DENOISE_FLAGS | DEWARP_FLAGS
+#     | PTC_FLAGS | POC_FLAGS | CMAP_FLAGS
+#   • editorControls — method+threshold (threshold) · angle override (deskew) ·
+#     aggressiveness + keep/drop protected marks (denoise) · mesh density +
+#     strength (dewarp) · bbox + wedge trim (post_transform_crop) · content box
+#     + keep/drop sidenote (post_ocr_crop) · margins + mirror + scale-to-fit /
+#     exclude (canvas_map)
+#   • reRunVerb — Re-binarize · Re-deskew · Re-denoise · Re-dewarp · Re-crop ·
+#     Re-place
+#   • hasConfirmGate — canvas_map / post_transform_crop / post_ocr_crop show a
+#     "Confirm and advance · N pages" button gated on every flag being reviewed
+#
+# Per-page row.state (data, not actors):
+#   running → clean | flagged | failed;  flagged → reviewed (user accepted)
+# Stage-level view state mirrors the banner: running | review | done (+ stale
+# overlay when an upstream stage re-ran).
+#
+# The inline ReviewEditor expands a flagged row in place: wipe-compare
+# before/after, stage controls, and an APPLY-TO scope (this page / selected /
+# all flagged with the same issue) — the high-leverage batch-fix affordance.
+# =============================================================================
+
+machine: imageStageReview
+description: >
+  Shared review tool for the page-processing stages: a flag-aware page grid
+  with bulk actions, an exclusive inline review editor that can accept,
+  re-tune, and re-run pages (singly or by flag cohort), and an optional
+  confirm-and-advance gate.
+
+context:
+  projectId: null
+  stageId: null           # threshold | deskew | denoise | dewarp | post_transform_crop | post_ocr_crop | canvas_map
+  stageIndex: 0
+  rows: []                # PageRow[] — { idx, prefix, state, flags?, ...stageParams, pageNumber }
+  totals: null            # { total, done, flagged, clean, reviewed, errors, running, rateHz, ... }
+  filter: all             # 'all' | 'flagged' | 'clean' | <flagKind>
+  density: M              # 'S' | 'M' | 'L'
+  selected: []            # idx[] — multi-select for the bulk bar
+  editing: null           # idx of the row expanded in the ReviewEditor | null
+  draft: null             # working copy of the editing row's stage params
+  applyTo: this           # 'this' | 'selected' | 'sameIssue' — re-run scope
+  stale: false            # upstream re-ran; banner shows stale variant
+  error: null
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchStagePages       # (projectId, stageId) -> { rows, totals }
+      onDone:
+        - target: running        # workers still processing
+          guard: anyRunning
+          actions: [assignRows]
+        - target: review
+          guard: anyFlagged
+          actions: [assignRows]
+        - target: settled
+          actions: [assignRows]
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  running:
+    description: Progress banner (e.g. 168/387 · 14.8/s); finished rows fill in, rest are skeletons.
+    on:
+      PAGE_PUSH:                  # server push — one page finished
+        - target: review
+          guard: runCompleteWithFlags
+          actions: [mergePageResult]
+        - target: settled
+          guard: runCompleteClean
+          actions: [mergePageResult]
+        - actions: [mergePageResult]
+
+  review:
+    description: Run finished with flagged pages; the grid is a triage surface.
+    initial: browsing
+    states:
+      browsing:
+        on:
+          SELECT_PAGE: { target: selecting, actions: [addToSelection] }
+          OPEN_EDITOR: { target: editing,   actions: [assignEditing, beginDraft] }
+      selecting:
+        description: ≥1 selected — bulk bar with per-flag summary.
+        on:
+          SELECT_PAGE:     { actions: [toggleSelection] }
+          BULK_ACCEPT:     { actions: [acceptSelected, recountTotals, persistAccepts, settleIfClear] }
+          BULK_RERUN:      { target: '#imageStageReview.running', actions: [queueSelected, requestReRun] }
+          CLEAR_SELECTION: { target: browsing, actions: [emptySelection] }
+          OPEN_EDITOR:     { target: editing, actions: [assignEditing, beginDraft] }
+      editing:
+        description: One row expanded inline — wipe compare + stage controls + apply-to scope.
+        on:
+          DRAG_WIPE:    { actions: [assignWipe] }
+          SET_PARAM:    { actions: [patchDraft] }          # method / threshold / angle / strength…
+          SET_APPLY_TO: { actions: [assignApplyTo] }       # this | selected | sameIssue
+          ACCEPT_AS_IS:
+            target: browsing
+            actions: [markReviewed, recountTotals, persistAccepts, clearEditing, settleIfClear]
+          RERUN:                                            # Re-binarize / Re-deskew / …
+            target: rerunning
+          CANCEL: { target: browsing, actions: [clearEditing, clearDraft] }
+      rerunning:
+        description: Re-running the editor's draft params over the chosen scope.
+        invoke:
+          src: reRunPages          # (draft, scopePageIds(applyTo)) -> PageRow[]
+          onDone:
+            - target: browsing
+              actions: [mergeReRunResults, recountTotals, clearEditing, clearDraft, settleIfClear, emitStaleDownstream]
+          onError: { target: editing, actions: [assignError] }
+    on:
+      SET_FILTER:  { actions: [assignFilter] }      # all | flagged | clean | <flagKind>
+      SET_DENSITY: { actions: [assignDensity] }
+
+  settled:
+    description: All pages clean/reviewed — stage settles; banner shows done.
+    entry: [emitResolved]
+    on:
+      OPEN_EDITOR: { target: review.editing, actions: [assignEditing, beginDraft] }   # spot-check stays possible
+
+  # Confirm-gate instances only (canvas_map, post_transform_crop, post_ocr_crop)
+  confirming:
+    description: '"Confirm and advance · N pages" — locks the stage output.'
+    invoke:
+      src: confirmStage
+      onDone:  { target: settled, actions: [emitResolved] }
+      onError: { target: review, actions: [assignError] }
+
+on:
+  UPSTREAM_CHANGED: { actions: [markStale] }    # banner gains the stale variant; runner owns the actual stale state
+  RERUN_STAGE:      { target: .running, actions: [requestStageRun] }
+  REDERIVE:         { target: .running, actions: [requestRederive] }   # canvas_map "Re-derive canvas" / PTC "Re-crop with new strategy" / POC "Re-crop with new rule"
+  CONFIRM_ADVANCE:
+    target: .confirming
+    guard: allFlagsReviewed     # button disabled while running or unreviewed flags remain
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  allFlagsReviewed: ctx.totals.flagged === 0 || ctx.totals.flagged === ctx.totals.reviewed
+  anyRunning: event.data.totals.running > 0
+  anyFlagged: event.data.totals.flagged > 0
+  runCompleteWithFlags: ctx.totals.running === 1 && ctx.totals.flagged + (event.row.state === 'flagged' ? 1 : 0) > 0
+  runCompleteClean: ctx.totals.running === 1 && ctx.totals.flagged === 0 && event.row.state !== 'flagged'
+
+actions:
+  assignRows: ctx.rows = event.data.rows; ctx.totals = event.data.totals
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  assignFilter: ctx.filter = event.value
+  assignDensity: ctx.density = event.value
+  addToSelection: ctx.selected = [event.idx]
+  toggleSelection: ctx.selected = xor(ctx.selected, event.idx)
+  emptySelection: ctx.selected = []
+  assignEditing: ctx.editing = event.idx
+  clearEditing: ctx.editing = null
+  beginDraft: ctx.draft = pickStageParams(ctx.rows[event.idx])   # method/thresh · skewDeg · aggressiveness · mesh…
+  patchDraft: ctx.draft = { ...ctx.draft, ...event.patch }
+  clearDraft: ctx.draft = null
+  assignApplyTo: ctx.applyTo = event.value
+  assignWipe: ctx._wipe = event.pct
+  markReviewed: ctx.rows = setState(ctx.rows, [ctx.editing], 'reviewed')
+  acceptSelected: ctx.rows = setState(ctx.rows, ctx.selected, 'reviewed'); ctx.selected = []
+  queueSelected: ctx.rows = setState(ctx.rows, ctx.selected, 'running'); ctx.selected = []
+  mergePageResult: //  upsert event.row into ctx.rows; recount ctx.totals
+  mergeReRunResults: //  upsert event.data rows; pages may come back clean | flagged
+  recountTotals: ctx.totals = recount(ctx.rows)
+  markStale: ctx.stale = true
+  settleIfClear: //  if totals.flagged === 0 → raise SETTLED (transition to `settled`)
+  persistAccepts: //  SIDE EFFECT: PATCH accepted page states (batch)
+  requestReRun: //  SIDE EFFECT: POST re-run for selected pages (current params)
+  requestStageRun: //  SIDE EFFECT: POST run whole stage (after UPSTREAM_CHANGED)
+  requestRederive: //  SIDE EFFECT: POST re-derive (canvas/strategy/rule) + re-run all pages
+  emitStaleDownstream: //  send parent(pipelineShell): UPSTREAM_CHANGED from this stageIndex
+  emitResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: all }
+
+services:
+  fetchStagePages: 'GET  /api/projects/:id/stages/:stageId/pages -> { rows, totals }'
+  reRunPages:      'POST /api/projects/:id/stages/:stageId/rerun { params, pageIds } -> PageRow[]'
+  confirmStage:    'POST /api/projects/:id/stages/:stageId/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • SHARED ×7 — one definition; instances differ in flagTaxonomy, editor
+#   control schema, reRunVerb label, bulk verbs, and whether the confirm gate
+#   exists. Same pattern as stageRunner (defined once, instantiated many).
+# • Per-instance bulk verbs (BULK_ACCEPT generalizes): canvas_map adds Fit to
+#   canvas / Mirror margins / Exclude from norm; the crops add re-crop-selected.
+#   Model them as MARK-style events writing rows, all sharing settleIfClear.
+# • canvas_map extras: the Spreads tab is a PROJECTION (verso/recto pairs of
+#   the same rows — no machine); its place editor resolves flags with verb
+#   events (SCALE_TO_FIT, EXCLUDE, KEEP_SIDENOTE, MIRROR_MARGINS) that are
+#   draft writes followed by RERUN/ACCEPT_AS_IS.
+# • Saving modified step-settings warns 'N downstream stages now stale' —
+#   that's the same fanOutStale flow; the warning banner is a projection of
+#   stageIndex vs. 23.
+# • 'sameIssue' apply-to scope = all flagged rows whose flags[0] matches the
+#   editing row's dominant flag (counts from THRESH_FLAG_COUNTS et al). This is
+#   the batch-fix path the design leans on — keep it cheap to trigger.
+# • A re-run from this tool makes DOWNSTREAM stages stale (emitStaleDownstream
+#   → pipelineShell.fanOutStale). The stale banner here is the local echo of
+#   the same event arriving from upstream.
+# • Denoise's editor has a Keep/Drop control per protected mark — that's a
+#   draft field (protect[i].keep), not a state.
+# • Step-settings tri-state (default/modified/preset) is the same reusable
+#   inheritance pattern noted in tool-source.yaml — not duplicated here.

@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>pd-prep-for-pgdp · final</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../design-system/tokens.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #18140f; color: #f0ece6; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    a { color: inherit; text-decoration: none; }
+    /* Big template/wf cards */
+    .card {
+      position: relative; border-radius: 14px; overflow: hidden;
+      background: #221d18; border: 1px solid #3a3128;
+      transition: border-color .15s, transform .15s, box-shadow .15s;
+      cursor: pointer; display: flex; flex-direction: column;
+    }
+    .card:hover {
+      border-color: #d6925a; transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.40), 0 0 0 1px rgba(214,146,90,.20);
+    }
+    .card:hover .open-btn { background: #d6925a; color: #1a0f08; }
+    .card:hover .preview  { background-color: #2a221b; }
+
+    /* Compact stage cards */
+    .stage {
+      position: relative; border-radius: 10px;
+      background: #221d18; border: 1px solid #2e2620;
+      padding: 12px 14px;
+      transition: border-color .15s, transform .15s, background .15s;
+      display: flex; flex-direction: column; gap: 6px;
+      min-height: 88px;
+    }
+    .stage.wired { cursor: pointer; }
+    .stage.wired:hover {
+      border-color: #d6925a; background: #29221b;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.30);
+    }
+    .stage.todo { cursor: default; opacity: 0.62; border-style: dashed; }
+    .stage.todo:hover { opacity: 0.8; border-color: #4a3f33; }
+
+    .stage-group-bar {
+      position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+      border-radius: 10px 0 0 10px;
+    }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      height: 18px; padding: 0 7px; border-radius: 99px;
+      font-size: 9.5px; font-weight: 600; letter-spacing: 0.04em;
+      font-family: 'JetBrains Mono', ui-monospace, monospace; text-transform: uppercase;
+    }
+    .pill.amber { background: rgba(214,146,90,0.12); color: #d6925a; border: 1px solid rgba(214,146,90,0.30); }
+    .pill.green { background: rgba(95,191,106,0.12); color: #5fbf6a; border: 1px solid rgba(95,191,106,0.30); }
+    .pill.dim   { background: #2a2520; color: #5e5448; border: 1px solid #3a3128; }
+    .pill.blue  { background: rgba(93,159,223,0.10); color: #5d9fdf; border: 1px solid rgba(93,159,223,0.25); }
+
+    .open-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 30px; padding: 0 12px; border-radius: 7px;
+      background: #3a3128; color: #f0ece6;
+      border: 1px solid #4a3f33;
+      font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: background .15s, color .15s;
+      font-family: inherit;
+    }
+    .open-btn:hover { background: #d6925a; color: #1a0f08; }
+    .swatch-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+    .section-head {
+      display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px;
+    }
+    .section-head h2 {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #7a6f5d; margin: 0;
+    }
+    .section-head .rule { flex: 1; height: 1px; background: #2a2520; }
+    .section-head .count {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 10px; color: #5e5448;
+    }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .ink-3 { color: #a39684; }
+    .ink-4 { color: #7a6f5d; }
+    .ink-5 { color: #5e5448; }
+    .stage-name { font-size: 13.5px; font-weight: 600; letter-spacing: -0.005em; }
+    .stage-num { font-family: 'JetBrains Mono'; font-size: 10.5px; color: #7a6f5d; }
+  </style>
+</head>
+<body>
+  <main style="max-width: 1280px; margin: 0 auto; padding: 64px 32px 80px;">
+    <header style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; gap: 24px;">
+      <div>
+        <h1 style="font-size: 32px; font-weight: 600; letter-spacing: -0.02em; margin: 0;">pd-prep-for-pgdp</h1>
+        <p style="margin: 8px 0 0; font-size: 13.5px; color: #a39684; max-width: 620px;">
+          Distributed Proofreaders prep pipeline. Each card opens a canvas.
+          <span class="ink-5">Double-click anywhere on a card, or use the Open button.</span>
+        </p>
+      </div>
+      <a href="../index.html" style="font-size: 12px; color: #7a6f5d; padding: 6px 10px; border: 1px solid #3a3128; border-radius: 6px;">↑ project root</a>
+    </header>
+
+    <!-- =================== Templates =================== -->
+    <section style="margin-top: 40px;">
+      <div class="section-head">
+        <h2>Templates &amp; landing pages</h2>
+        <span class="rule"></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+
+        <a class="card" href="template/index.html" ondblclick="location.href='template/index.html'" data-screen-label="launcher-card-template">
+          <div class="preview" style="aspect-ratio: 16/9; background: #1d1812; border-bottom: 1px solid #2a2520; position: relative; transition: background .15s;">
+            <div class="swatch-grid"></div>
+            <div style="position: absolute; inset: 24px; border: 1px solid #3a3128; border-radius: 6px; background: #221d18; display: flex; flex-direction: column;">
+              <div style="height: 22px; border-bottom: 1px solid #2a2520; display: flex; align-items: center; padding: 0 10px; gap: 8px;">
+                <span style="width: 10px; height: 10px; border-radius: 2px; background: #d6925a;"></span>
+                <span style="width: 70px; height: 4px; background: #3a3128; border-radius: 2px;"></span>
+              </div>
+              <div style="flex: 1; display: grid; place-items: center; color: #4a3f33; font-family: 'JetBrains Mono'; font-size: 10px; letter-spacing: 0.1em;">CONTENT SLOT</div>
+            </div>
+          </div>
+          <div style="padding: 16px 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+              <h3 style="font-size: 15px; font-weight: 600; margin: 0;">App shell</h3>
+              <span class="pill amber">template</span>
+            </div>
+            <p style="margin: 0 0 12px; font-size: 12px; color: #a39684; min-height: 32px;">Header + breadcrumb + content slot. Every screen drops into this.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono" style="font-size: 10.5px; color: #5e5448;">final/template/</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='template/index.html'">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="projects/index.html" ondblclick="location.href='projects/index.html'" data-screen-label="launcher-card-projects">
+          <div class="preview" style="aspect-ratio: 16/9; background: #1d1812; border-bottom: 1px solid #2a2520; position: relative; transition: background .15s;">
+            <div class="swatch-grid"></div>
+            <div style="position: absolute; inset: 24px; border: 1px solid #3a3128; border-radius: 6px; background: #221d18; padding: 8px; display: flex; flex-direction: column; gap: 5px;">
+              <div style="height: 8px; width: 80px; background: #3a3128; border-radius: 2px;"></div>
+              <div style="height: 4px; width: 120px; background: #2a2520; border-radius: 2px;"></div>
+              <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
+                <div style="height: 16px; background: #2a2520; border-radius: 4px;"></div>
+                <div style="height: 16px; background: #2a2520; border-radius: 4px;"></div>
+                <div style="height: 16px; background: #2a2520; border-radius: 4px; border-left: 2px solid #d6925a;"></div>
+              </div>
+            </div>
+          </div>
+          <div style="padding: 16px 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+              <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Projects</h3>
+              <span class="pill amber">page</span>
+            </div>
+            <p style="margin: 0 0 12px; font-size: 12px; color: #a39684; min-height: 32px;">Recent activity · Attributes · Manage. The landing page.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono" style="font-size: 10.5px; color: #5e5448;">final/projects/</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='projects/index.html'">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="pipeline/index.html" ondblclick="location.href='pipeline/index.html'" data-screen-label="launcher-card-pipeline">
+          <div class="preview" style="aspect-ratio: 16/9; background: #1d1812; border-bottom: 1px solid #2a2520; position: relative; transition: background .15s;">
+            <div class="swatch-grid"></div>
+            <div style="position: absolute; inset: 24px; border: 1px solid #3a3128; border-radius: 6px; background: #221d18; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; gap: 3px; align-items: center;">
+                <span style="height: 6px; width: 6px; border-radius: 99px; background: #5fbf6a;"></span>
+                <span style="height: 6px; width: 8px; border-radius: 99px; background: #d6925a;"></span>
+                <span style="height: 6px; width: 5px; border-radius: 99px; background: #3a3128;"></span>
+                <span style="height: 6px; width: 5px; border-radius: 99px; background: #3a3128;"></span>
+                <span style="height: 6px; width: 5px; border-radius: 99px; background: #3a3128;"></span>
+                <span style="height: 6px; width: 5px; border-radius: 99px; background: #3a3128;"></span>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <span style="height: 4px; width: 28px; background: #d6925a; border-radius: 1px;"></span>
+                <span style="height: 4px; width: 22px; background: #3a3128; border-radius: 1px;"></span>
+                <span style="height: 4px; width: 30px; background: #3a3128; border-radius: 1px;"></span>
+              </div>
+              <div style="flex: 1; background: #1d1812; border: 1px dashed #3a3128; border-radius: 3px;"></div>
+            </div>
+          </div>
+          <div style="padding: 16px 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+              <h3 style="font-size: 15px; font-weight: 600; margin: 0;">Pipeline</h3>
+              <span class="pill amber">template</span>
+            </div>
+            <p style="margin: 0 0 12px; font-size: 12px; color: #a39684; min-height: 32px;">Per-stage tab slot + Project-settings destination. Locked.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono" style="font-size: 10.5px; color: #5e5448;">final/pipeline/</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='pipeline/index.html'">Open ↗</button>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- =================== Pipeline stages =================== -->
+    <section style="margin-top: 48px;">
+      <div class="section-head">
+        <h2>Pipeline stages</h2>
+        <span class="rule"></span>
+        <span class="count">24 / 24 wired</span>
+      </div>
+
+      <!-- Group: Source -->
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #d6925a;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">Source group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">1 / 1 wired</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="source/index.html" ondblclick="location.href='source/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-source">
+            <span class="stage-group-bar" style="background: #d6925a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">01</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Source</div>
+            <div class="ink-3" style="font-size: 11px;">Thumbnails · selection · inserts · reorder</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/source/ · 10 boards</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Group: Image prep -->
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #5d9fdf;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">Image prep group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">7 / 7 wired</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">· threshold runs before dewarp/deskew</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="grayscale/index.html" ondblclick="location.href='grayscale/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-grayscale">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">02</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Grayscale</div>
+            <div class="ink-3" style="font-size: 11px;">Color → grayscale · perceptual or standard</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf11 · final/grayscale/ · 9 boards</div>
+          </a>
+
+          <a class="stage wired" href="crop/index.html" ondblclick="location.href='crop/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-crop">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">03</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Crop</div>
+            <div class="ink-3" style="font-size: 11px;">Bbox per page · review flagged</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf10 · final/crop/ · 10 boards</div>
+          </a>
+
+          <a class="stage wired" href="threshold/index.html" ondblclick="location.href='threshold/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-threshold">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">04</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Threshold</div>
+            <div class="ink-3" style="font-size: 11px;">Grayscale → bilevel · histogram review</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/threshold/ · 10 boards</div>
+          </a>
+
+          <a class="stage wired" href="dewarp/index.html" ondblclick="location.href='dewarp/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-dewarp">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">05</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Dewarp</div>
+            <div class="ink-3" style="font-size: 11px;">Warp-mesh flattening · reads bilevel</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/dewarp/ · 11 boards</div>
+          </a>
+
+          <a class="stage wired" href="deskew/index.html" ondblclick="location.href='deskew/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-deskew">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">06</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Deskew</div>
+            <div class="ink-3" style="font-size: 11px;">Rotate to true rectangle · baseline guides</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/deskew/ · 10 boards</div>
+          </a>
+
+          <a class="stage wired" href="post_transform_crop/index.html" ondblclick="location.href='post_transform_crop/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-post_transform_crop">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">07</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Post-transform crop</div>
+            <div class="ink-3" style="font-size: 11px;">Re-crop after dewarp/deskew · trim rotation wedges</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/post_transform_crop/ · 9 boards</div>
+          </a>
+
+          <a class="stage wired" href="denoise/index.html" ondblclick="location.href='denoise/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-denoise">
+            <span class="stage-group-bar" style="background: #5d9fdf;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">08</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Denoise</div>
+            <div class="ink-3" style="font-size: 11px;">First-pass detect → protect marks → despeckle</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/denoise/ · 12 boards</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Group: OCR -->
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #a888d4;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">OCR group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">3 / 3 wired</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="text_zones/index.html" ondblclick="location.href='text_zones/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-text_zones">
+            <span class="stage-group-bar" style="background: #a888d4;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">09</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Page layout</div>
+            <div class="ink-3" style="font-size: 11px;">Zones + reading order · illustrations · page splits</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/text_zones/ · 12 boards</div>
+          </a>
+
+          <a class="stage wired" href="ocr/index.html" ondblclick="location.href='ocr/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-ocr">
+            <span class="stage-group-bar" style="background: #a888d4;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">10</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">OCR</div>
+            <div class="ink-3" style="font-size: 11px;">Recognize glyphs → tokens · score review</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/ocr/ · 9 boards</div>
+          </a>
+
+          <a class="stage wired" href="page_order/index.html" ondblclick="location.href='page_order/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-page_order">
+            <span class="stage-group-bar" style="background: #a888d4;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">11</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Page order</div>
+            <div class="ink-3" style="font-size: 11px;">Auto-detect scans out of sequence · uses OCR folios</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf09 · final/page_order/ · 7 boards</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Group: Compose -->
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #5bb0a6;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">Compose group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">2 / 2 wired</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">· final crop → canvas</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="post_ocr_crop/index.html" ondblclick="location.href='post_ocr_crop/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-post_ocr_crop">
+            <span class="stage-group-bar" style="background: #5bb0a6;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">12</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Post-OCR crop</div>
+            <div class="ink-3" style="font-size: 11px;">Content-aware crop · protects sidenotes</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/post_ocr_crop/ · 10 boards</div>
+          </a>
+
+          <a class="stage wired" href="canvas_map/index.html" ondblclick="location.href='canvas_map/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-canvas_map">
+            <span class="stage-group-bar" style="background: #5bb0a6;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">13</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Canvas map</div>
+            <div class="ink-3" style="font-size: 11px;">Common aspect ratio · margins · facing sidenotes</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/canvas_map/ · 13 boards</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Group: Text -->
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #c98aa8;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">Text group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">3 / 3 wired</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">· hyphens → wordcheck → review</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="hyphen_join/index.html" ondblclick="location.href='hyphen_join/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-hyphen_join">
+            <span class="stage-group-bar" style="background: #c98aa8;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">14</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Hyphen join</div>
+            <div class="ink-3" style="font-size: 11px;">Resolve end-of-line hyphens</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf05 · final/hyphen_join/ · 7 boards</div>
+          </a>
+
+          <a class="stage wired" href="scannocheck/index.html" ondblclick="location.href='scannocheck/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-wordcheck">
+            <span class="stage-group-bar" style="background: #c98aa8;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">15</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Wordcheck</div>
+            <div class="ink-3" style="font-size: 11px;">Scannos + stealth misses · builds good/bad word lists</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf05b · final/scannocheck/ · 12 boards</div>
+          </a>
+
+          <a class="stage wired" href="text_review/index.html" ondblclick="location.href='text_review/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-text_review">
+            <span class="stage-group-bar" style="background: #c98aa8;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">16</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Text review</div>
+            <div class="ink-3" style="font-size: 11px;">Human review queue + comments · on final pages</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf05b · final/text_review/ · 13 boards</div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Group: Pack -->
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+          <span style="width: 8px; height: 8px; border-radius: 99px; background: #e8a83a;"></span>
+          <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #a39684;">Pack group</span>
+          <span class="mono" style="font-size: 10px; color: #5e5448;">8 / 8 wired</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+
+          <a class="stage wired" href="illustrations/index.html" ondblclick="location.href='illustrations/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-illust">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">17</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Illustrations</div>
+            <div class="ink-3" style="font-size: 11px;">Detect zones from Page layout → extract crops · plates kept contone</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/illustrations/ · 3 boards</div>
+          </a>
+
+          <a class="stage wired" href="regex/index.html" ondblclick="location.href='regex/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-regex">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">18</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Regex pass</div>
+            <div class="ink-3" style="font-size: 11px;">Project-scoped find/replace · ordered rules · previewed</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/regex/ · 3 boards</div>
+          </a>
+
+          <a class="stage wired" href="validation/index.html" ondblclick="location.href='validation/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-validation">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">19</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Validation</div>
+            <div class="ink-3" style="font-size: 11px;">Pre-flight check before assembly · 8 rules</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">ref wf02 · final/validation/ · 2 boards</div>
+          </a>
+
+          <a class="stage wired" href="proof_pack/index.html" ondblclick="location.href='proof_pack/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-proof_pack">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">20</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Proof pack</div>
+            <div class="ink-3" style="font-size: 11px;">Bundle pages + text + illustrations for PGDP</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/proof_pack/ · 2 boards</div>
+          </a>
+
+          <a class="stage wired" href="build_package/index.html" ondblclick="location.href='build_package/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-build_package">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">21</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Build package</div>
+            <div class="ink-3" style="font-size: 11px;">Manifest + metadata + provenance README</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/build_package/ · 2 boards</div>
+          </a>
+
+          <a class="stage wired" href="zip/index.html" ondblclick="location.href='zip/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-zip">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">22</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Zip</div>
+            <div class="ink-3" style="font-size: 11px;">Deterministic archive + SHA-256 sidecar</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/zip/ · 3 boards</div>
+          </a>
+
+          <a class="stage wired" href="submit_check/index.html" ondblclick="location.href='submit_check/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-submit_check">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">23</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Submit check</div>
+            <div class="ink-3" style="font-size: 11px;">Dry-run PGDP submission</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/submit_check/ · 2 boards</div>
+          </a>
+
+          <a class="stage wired" href="archive/index.html" ondblclick="location.href='archive/index.html'" style="border-color: #5fbf6a44;" data-screen-label="stage-archive">
+            <span class="stage-group-bar" style="background: #e8a83a;"></span>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+              <span class="stage-num">24</span>
+              <span class="pill green">wired</span>
+            </div>
+            <div class="stage-name">Archive</div>
+            <div class="ink-3" style="font-size: 11px;">Long-term storage handoff · keep/drop</div>
+            <div class="mono ink-5" style="font-size: 10px; margin-top: auto;">final/archive/ · 2 boards</div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== Wireframe references =================== -->
+    <section style="margin-top: 48px;">
+      <div class="section-head">
+        <h2>Wireframe explorations</h2>
+        <span class="rule"></span>
+        <span class="count">drafts · reference only</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+
+        <a class="card" href="../wf01/index.html" ondblclick="location.href='../wf01/index.html'" data-screen-label="wf-card-wf01">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf01 · Folder upload</h3>
+              <span class="pill blue">pre-pipeline</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Universal droplet + IA URL detection · right-hand review sheet.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf01/ · direction F</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf01/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf02/index.html" ondblclick="location.href='../wf02/index.html'" data-screen-label="wf-card-wf02">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf02 · Package validation</h3>
+              <span class="pill blue">stage 19</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Pre-flight check gating Download. PASS · WARNINGS · ERRORS.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf02/ → validation</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf02/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf03/index.html" ondblclick="location.href='../wf03/index.html'" data-screen-label="wf-card-wf03">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf03 · Source quality flags</h3>
+              <span class="pill blue">cross-cutting</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Stage-aware flag taxonomy + filter chips. Source · threshold · ocr.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf03/ · taxonomy ref</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf03/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf05/index.html" ondblclick="location.href='../wf05/index.html'" data-screen-label="wf-card-wf05">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf05 · Hyphen-join workbench</h3>
+              <span class="pill blue">stage 14</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Per-book report + global library. Auto-joined / undecided / mismatched.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf05/ → hyphen_join</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf05/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf05b/index.html" ondblclick="location.href='../wf05b/index.html'" data-screen-label="wf-card-wf05b">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf05b · Scannos workbench</h3>
+              <span class="pill blue">post-spellcheck</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Capture · Promote · Configure. Suspicion sidecar in Page Workbench.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf05b/ → text_review</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf05b/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf09/index.html" ondblclick="location.href='../wf09/index.html'" data-screen-label="wf-card-wf09">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf09 · Page reorder</h3>
+              <span class="pill blue">→ source + stage 11</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Manual drag → Source/Pages. Auto-detect → stage 11 Page order (after OCR).</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf09/ · split across two destinations</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf09/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf10/index.html" ondblclick="location.href='../wf10/index.html'" data-screen-label="wf-card-wf10">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf10 · Batch crop review</h3>
+              <span class="pill green">→ crop</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Density toggle · multi-select · sticky bulk bar. Now in Crop stage.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf10/ → wired into crop</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf10/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf11/index.html" ondblclick="location.href='../wf11/index.html'" data-screen-label="wf-card-wf11">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf11 · Perceptual grayscale</h3>
+              <span class="pill green">→ grayscale</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">Mode-chooser studies. Now in Grayscale stage.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf11/ → wired into grayscale</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf11/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+
+        <a class="card" href="../wf-pw/index.html" ondblclick="location.href='../wf-pw/index.html'" data-screen-label="wf-card-wfpw">
+          <div style="padding: 14px 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;">
+              <h3 style="font-size: 14px; font-weight: 600; margin: 0;">wf-pw · Page Workbench</h3>
+              <span class="pill blue">cross-cutting</span>
+            </div>
+            <p style="margin: 0 0 10px; font-size: 11.5px; color: #a39684;">3-column page deep-dive. Stage controls · viewer · context drawer.</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="mono ink-5" style="font-size: 10px;">wf-pw/ · per-page UI</span>
+              <button class="open-btn" onclick="event.preventDefault(); location.href='../wf-pw/index.html'" style="height:26px; font-size:11px;">Open ↗</button>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <p style="margin: 64px 0 0; font-size: 11px; color: #5e5448; text-align: center; font-family: 'JetBrains Mono';">
+      ↓ scroll · double-click to open · ↗ button opens in same tab
+    </p>
+  </main>
+</body>
+</html>

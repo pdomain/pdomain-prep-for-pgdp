@@ -1,0 +1,144 @@
+# =============================================================================
+# Machine: railList
+# Surface: Projects page → left rail (final/projects/projects.jsx)
+# =============================================================================
+# The 320px left column: New-project CTA, summary counts, Active/Archived
+# segmented tabs, and the scrollable list of compact project rows. Owns the
+# filter tab, freeform search, sort order, and which row is selected.
+#
+# Emits SELECT so the parent (projectsPage) can drive the detail pane.
+# =============================================================================
+
+machine: railList
+description: >
+  Manages the project rail: Active/Archived filter, freeform search, sort
+  order, and row selection. Re-derives the visible list whenever any of those
+  inputs change.
+
+context:
+  all: []                  # Array<Project> — full set (active + archived)
+  visible: []              # Array<Project> — after filter+search+sort
+  railTab: active          # 'active' | 'archived'
+  query: ''                # string — freeform "Filter projects…" text
+  sort: recent             # 'recent' | 'title' | 'pages' | 'size'
+  statusFilter: all        # 'all' | one of the lifecycle statuses
+  selectedId: null         # string | null — currently selected row
+  counts:                  # cached so tabs don't recompute on every keystroke
+    active: 0
+    archived: 0
+
+# Project shape mirrors PROJECTS[] in projects.jsx:
+#   { id, title, author, pages, size, status, archived?, archivedOn?,
+#     flagged?, currentStage, totalStages, updatedRel, updatedAbs, created }
+
+initial: loading
+
+states:
+
+  loading:
+    description: Fetch the project set for the rail.
+    invoke:
+      src: fetchProjects
+      onDone:
+        target: ready
+        actions: [assignAll, recomputeCounts, applyView, autoSelectFirst]
+      onError:
+        target: error
+        actions: [assignError]
+
+  error:
+    on:
+      RETRY: { target: loading }
+
+  ready:
+    description: List rendered. All interactions re-derive `visible`.
+    # `search` is a nested region so we can debounce typing without leaving ready.
+    initial: idle
+    on:
+      # ---- Filter tab (Active / Archived segmented control) -------------
+      SET_RAIL_TAB:
+        guard: tabChanged
+        actions: [assignRailTab, applyView, selectIfSelectionHidden]
+
+      # ---- Sort + status dropdowns (ProjectsControls) -------------------
+      SET_SORT:
+        actions: [assignSort, applyView]
+      SET_STATUS_FILTER:
+        actions: [assignStatusFilter, applyView]
+
+      # ---- Selection ----------------------------------------------------
+      SELECT:
+        guard: rowExists
+        actions: [assignSelected, emitSelect]   # emitSelect -> parent projectsPage
+
+      # ---- New project --------------------------------------------------
+      NEW_PROJECT:
+        actions: [startNewProject]               # SIDE EFFECT: open create flow
+
+      # ---- External: list mutated elsewhere (archive/delete/restore) ----
+      PROJECTS_CHANGED:
+        target: loading                          # simplest correct: refetch
+
+    states:
+
+      idle:
+        on:
+          SEARCH_INPUT:
+            target: debouncing
+            actions: [assignQuery]
+
+      # Debounce freeform search so we don't re-filter on every keypress.
+      debouncing:
+        after:
+          200ms:
+            target: idle
+            actions: [applyView, selectIfSelectionHidden]
+        on:
+          SEARCH_INPUT:
+            target: debouncing               # reset timer
+            actions: [assignQuery]
+          CLEAR_SEARCH:
+            target: idle
+            actions: [clearQuery, applyView]
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  tabChanged: event.tab !== ctx.railTab
+  rowExists: ctx.visible.some(p => p.id === event.id)
+  # true when the previously-selected row is no longer in the visible set
+  # (e.g. user switched to Archived but had an Active project selected)
+  selectionHidden: ctx.selectedId == null || !ctx.visible.some(p => p.id === ctx.selectedId)
+
+actions:
+  assignAll: ctx.all = event.data
+  assignRailTab: ctx.railTab = event.tab
+  assignSort: ctx.sort = event.sort
+  assignStatusFilter: ctx.statusFilter = event.value
+  assignQuery: ctx.query = event.value
+  clearQuery: ctx.query = ''
+  assignSelected: ctx.selectedId = event.id
+  assignError: ctx.error = event.error
+  recomputeCounts: >
+    ctx.counts.active = ctx.all.filter(p => !p.archived).length;
+    ctx.counts.archived = ctx.all.filter(p => p.archived).length
+  # The core derivation: filter by tab + status + query, then sort.
+  applyView: >
+    ctx.visible = sortBy(
+      ctx.all
+        .filter(p => (ctx.railTab === 'archived' ? p.archived : !p.archived))
+        .filter(p => ctx.statusFilter === 'all' || p.status === ctx.statusFilter)
+        .filter(p => matches(p, ctx.query)),
+      ctx.sort
+    )
+  autoSelectFirst: >
+    if (ctx.selectedId == null && ctx.visible.length) {
+      ctx.selectedId = ctx.visible[0].id
+    }
+  # If the current selection scrolled out of the visible set, pick the first
+  # visible row (or null) and tell the parent.
+  selectIfSelectionHidden: //  guard:selectionHidden -> assignSelected(first) + emitSelect
+  emitSelect: //  send to parent: { type: 'SELECT', id: ctx.selectedId }
+  startNewProject: //  SIDE EFFECT: open the create-project flow
+
+services:
+  fetchProjects: 'GET /api/projects -> Project[]'

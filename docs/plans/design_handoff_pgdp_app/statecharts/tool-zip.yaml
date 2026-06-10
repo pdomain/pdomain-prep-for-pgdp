@@ -1,0 +1,66 @@
+# =============================================================================
+# Machine: zipTool   (per-stage tool — stage · Zip)
+# Surface: final/zip/zip.jsx — ZIPMain (compressing / built), ZIPSettings.
+# =============================================================================
+# Compresses the deliverable into a DETERMINISTIC archive: sorted entries,
+# fixed timestamps, stripped metadata — identical inputs produce a
+# byte-identical archive (the sha-256 stat is the proof). Progress shows
+# entries compressed (e.g. 842 / 1,229).
+# =============================================================================
+
+machine: zipTool
+description: >
+  Builds the deterministic archive with live entry-level progress, exposes the
+  checksum and contents tree, and offers download.
+
+context:
+  projectId: null
+  stageIndex: 0
+  progress: null          # { entries: 842, total: 1229, pct: 68 } while compressing
+  archive: null           # { name:'belloc-survivals.zip', entries, bytes, ratio, sha256 } | null
+  tree: []                # TreeRow[] — archive contents
+  error: null
+
+initial: compressing
+
+states:
+
+  compressing:
+    description: 'Compressing… N / M entries · deterministic.'
+    on:
+      ZIP_PROGRESS: { actions: [assignProgress] }
+      ZIP_DONE:     { target: built, actions: [assignArchive, emitResolved] }
+      ZIP_FAILED:   { target: failed, actions: [assignError] }
+
+  built:
+    description: '"Archive built · <name>.zip" — checksum + contents shown.'
+    on:
+      DOWNLOAD:         { actions: [downloadArchive] }
+      REBUILD:          { target: compressing, actions: [requestRebuild] }
+      SET_FORMAT:       { target: compressing, actions: [patchSettings, requestRebuild] }   # zip/tar.gz, compression level…
+      UPSTREAM_CHANGED: { target: compressing, actions: [requestRebuild] }
+
+  failed:
+    on:
+      RETRY: { target: compressing, actions: [clearError, requestRebuild] }
+
+# --- Implementation reference ------------------------------------------------
+guards: {}
+
+actions:
+  assignProgress: ctx.progress = { entries: event.entries, total: event.total, pct: event.pct }
+  assignArchive: ctx.archive = event.archive; ctx.tree = event.tree; ctx.progress = null
+  patchSettings: ctx._settings = { ...ctx._settings, ...event.patch }
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  downloadArchive: //  SIDE EFFECT: download ctx.archive (+ .sha256 sidecar if enabled)
+  requestRebuild: //  SIDE EFFECT: POST rebuild archive with current settings
+  emitResolved: //  send parent: RESOLVE — stageRunner[zip] → clean
+
+services: {}   # compression runs server-side; ZIP_PROGRESS / ZIP_DONE are pushes
+
+# --- Notes -------------------------------------------------------------------
+# • Determinism is a setting ("Deterministic build" toggle) — turning it off
+#   changes the archive contents contract; treat like SET_FORMAT (rebuild).
+# • The sha-256 is the cross-check used by submit_check's dry run; surface it
+#   in context, never recompute client-side.

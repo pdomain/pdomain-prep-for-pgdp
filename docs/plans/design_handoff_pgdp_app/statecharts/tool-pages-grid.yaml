@@ -1,0 +1,177 @@
+# =============================================================================
+# Machine: pagesGrid   (per-stage tool — the generic "Pages" tab)
+# Surface: the default Pages tab + crop's CropPages (final/crop/crop.jsx):
+#          grid of page thumbnails, flag-filter, select page → inline editor.
+# =============================================================================
+# Mounted by pipelineShell for the active stage's Pages/workbench tab. Covers
+# the page-scoped stages that share the grid (crop, grayscale, threshold,
+# deskew, denoise, …). The bespoke stages (hyphen_join, build_package) use
+# their own tool machines.
+#
+# Two concerns as parallel regions:
+#   1. grid    — load, filter by flag, select a page.
+#   2. editor  — the inline per-page editor (e.g. crop bbox / skew) with a
+#                drag + dirty + save sub-flow; open at most one at a time.
+#
+# When a page's flag is cleared (saved as good), this tool tells the owning
+# stageRunner via the parent (PAGES_RESOLVED → RESOLVE) so the flagged count
+# drops and the stage can settle to `clean`.
+# =============================================================================
+
+machine: pagesGrid
+description: >
+  The generic per-stage Pages tool: a filterable thumbnail grid plus an
+  exclusive inline page editor (bbox/skew/etc.) with dirty tracking and save.
+
+context:
+  projectId: null
+  stageId: null
+  stageIndex: 0
+  pages: []               # PageRow[] — thumbnails + flags + bbox/skew data
+  filter: all             # 'all' | 'flagged' | <specific flag kind>
+  visible: []             # PageRow[] after filter
+  selectedPageId: null    # page open in the editor | null
+  draft: null             # working copy of the selected page's editable fields
+  resolvedThisSession: [] # pageIds cleared since mount (batched up to parent)
+  error: null
+
+# PageRow shape (from CropPages): { pageId, n, thumbUrl, flags:[kind], bbox, skewDeg }
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchPages       # (projectId, stageId) -> PageRow[]
+      onDone:  { target: ready, actions: [assignPages, applyFilter] }
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  ready:
+    type: parallel
+    states:
+
+      # ---- Region: grid -------------------------------------------------
+      grid:
+        initial: browsing
+        states:
+          browsing:
+            on:
+              SET_FILTER:
+                actions: [assignFilter, applyFilter]
+              SELECT_PAGE:
+                # opening a page is handled in the editor region; here we just
+                # track the selection for highlight.
+                actions: [assignSelected]
+              REFRESH:
+                target: '#pagesGrid.loading'
+
+      # ---- Region: editor (exclusive inline page editor) ----------------
+      editor:
+        initial: closed
+        states:
+          closed:
+            description: Grid only; no page open.
+            on:
+              OPEN_EDITOR:
+                target: editing
+                actions: [assignSelected, beginDraft]
+
+          editing:
+            description: One page open; edit bbox/skew/flags.
+            initial: clean
+            on:
+              CLOSE:
+                - target: confirmDiscard
+                  guard: isDirty
+                - target: closed
+                  actions: [clearDraft]
+              PREV_PAGE:
+                # nav within the editor advances to the next visible page;
+                # guarded discard if dirty.
+                - target: confirmDiscard
+                  guard: isDirty
+                - actions: [stepToPrevPage, beginDraft]
+              NEXT_PAGE:
+                - target: confirmDiscard
+                  guard: isDirty
+                - actions: [stepToNextPage, beginDraft]
+            states:
+              clean:
+                on:
+                  EDIT:    { target: dirty, actions: [updateDraft] }
+                  # mark a flagged page as acceptable without geometry edits:
+                  ACCEPT:  { target: '#pagesGrid.ready.editor.saving', actions: [markAccept] }
+              dirty:
+                description: Geometry/flags changed; unsaved.
+                on:
+                  EDIT:    { actions: [updateDraft] }
+                  SAVE:    { target: '#pagesGrid.ready.editor.saving' }
+                  RESET:   { target: clean, actions: [revertDraft] }
+
+          saving:
+            invoke:
+              src: savePage      # (projectId, stageId, draft) -> savedPage
+              onDone:
+                target: closed
+                actions: [commitPage, recordResolved, emitResolvedMaybe, clearDraft]
+              onError:
+                target: editing
+                actions: [assignError]
+
+          confirmDiscard:
+            on:
+              DISCARD: { target: closed, actions: [clearDraft] }
+              KEEP:    { target: editing }
+
+    on:
+      # Batch-flush resolved pages to the parent so the stageRunner can settle.
+      FLUSH_RESOLVED:
+        guard: hasResolved
+        actions: [emitResolved, clearResolvedBuffer]
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  isDirty: ctx.draft != null && !deepEqual(ctx.draft, pageOf(ctx.pages, ctx.selectedPageId))
+  hasResolved: ctx.resolvedThisSession.length > 0
+
+actions:
+  assignPages: ctx.pages = event.data
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  assignFilter: ctx.filter = event.value
+  applyFilter: >
+    ctx.visible = ctx.filter === 'all'
+      ? ctx.pages
+      : ctx.pages.filter(p => ctx.filter === 'flagged'
+          ? p.flags.length > 0
+          : p.flags.includes(ctx.filter))
+  assignSelected: ctx.selectedPageId = event.pageId
+  beginDraft: ctx.draft = clone(pageOf(ctx.pages, ctx.selectedPageId))
+  updateDraft: ctx.draft = { ...ctx.draft, ...event.patch }   # bbox / skewDeg / flags
+  revertDraft: ctx.draft = clone(pageOf(ctx.pages, ctx.selectedPageId))
+  clearDraft: ctx.draft = null; ctx.selectedPageId = null
+  markAccept: ctx.draft = { ...clone(pageOf(ctx.pages, ctx.selectedPageId)), flags: [] }
+  stepToPrevPage: //  selectedPageId = prev in ctx.visible
+  stepToNextPage: //  selectedPageId = next in ctx.visible
+  commitPage: //  merge event.data back into ctx.pages (+ re-applyFilter)
+  recordResolved: //  if saved page now has no flags, push pageId to resolvedThisSession
+  emitResolvedMaybe: //  optional: emit immediately, or wait for FLUSH_RESOLVED
+  emitResolved: //  send to parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds }
+  clearResolvedBuffer: ctx.resolvedThisSession = []
+
+services:
+  fetchPages: 'GET  /api/projects/:id/stages/:stageId/pages -> PageRow[]'
+  savePage:   'PATCH /api/projects/:id/stages/:stageId/pages/:pageId -> PageRow'
+
+# --- Notes -------------------------------------------------------------------
+# • The drag interaction in the crop bbox editor is intentionally NOT its own
+#   state — dragging just emits EDIT{patch:{bbox}} events while in `dirty`.
+#   Promote it to a `dragging` substate only if you need pointer-capture /
+#   escape-to-cancel semantics distinct from a committed edit.
+# • Resolving pages here is what eventually flips the owning stageRunner from
+#   `flagged` to `clean` (parent forwards PAGES_RESOLVED → RESOLVE).

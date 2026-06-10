@@ -1,0 +1,139 @@
+# =============================================================================
+# Machine: ocrTool   (per-stage tool — stage · OCR)
+# Surface: final/ocr/ocr.jsx — OcrPages (confidence-tinted grid), OcrRecognition
+#          (word-box review), OcrOverview, OcrStepSettings (engine + overrides).
+# =============================================================================
+# Recognition over every page. The Pages grid is an imageStageReview instance
+# (flags: garbledRun / dictMiss / …; confirm gate flagged === reviewed;
+# "Re-OCR selection"). What's UNIQUE here, modeled below:
+#   1. recognition — the per-page word-box review: low-score tokens with a
+#      suggested reading, accept-token / accept-page / next-flagged flow.
+#   2. engine config — DocTR (primary, GPU·CUDA with CPU fallback) vs
+#      Tesseract (fallback, CPU-only); model/weights (incl. Hugging Face) and
+#      PER-PAGE OVERRIDES for multilingual books.
+# Confidence tones (≥95 exact · 85–95 ocr · 70–85 fuzzy · <70 mismatch) are a
+# pure function — confTone() — not state.
+# =============================================================================
+
+machine: ocrTool
+description: >
+  Runs recognition, drives the per-page low-score token review, and manages
+  the engine/backend/weights configuration with per-page language overrides.
+
+context:
+  projectId: null
+  stageIndex: 0
+  rows: []                # PageRow[] — { idx, prefix, state, meanConf, lowConf, words, flags?, illust?, override? }
+  totals: null            # { total, done, words, meanConf, lowConfWords, flagged, clean, reviewed, rateHz }
+  engine: doctr           # 'doctr' | 'tesseract'
+  backend: gpu            # 'gpu' | 'cpu' — DocTR only; server fact (no CUDA → cpu + warning)
+  overrides: []           # Override[] — { pages, count, engine, lang, reason }
+  cursor: null            # page open in the Recognition tab | null
+  tokens: []              # low-score tokens for the cursor page — { word, suggest, conf }
+  accepted: []            # tokenIds accepted this page
+  error: null
+
+initial: recognising
+
+states:
+
+  recognising:
+    description: '"Recognising text…" N/M · engine name; Pause available.'
+    on:
+      PAGE_PUSH:
+        - target: reviewing
+          guard: runComplete
+          actions: [mergePage]
+        - actions: [mergePage]
+      PAUSE: { actions: [requestPause] }
+
+  reviewing:
+    description: Grid review (imageStageReview shape) + the Recognition deep-dive.
+    initial: grid
+    states:
+      grid:
+        on:
+          OPEN_RECOGNITION: { target: recognition, actions: [assignCursor, loadTokens] }
+          RE_OCR_SELECTION: { target: '#ocrTool.recognising', actions: [requestReOcr] }
+      recognition:
+        description: One page — word boxes tinted by confidence; token list with suggestions.
+        on:
+          ACCEPT_TOKEN: { actions: [applySuggestion, persistToken] }   # swap to the suggested reading
+          ACCEPT_PAGE:
+            actions: [markPageReviewed, recount, persistPage]
+          NEXT_FLAGGED:
+            - guard: hasNextFlagged
+              actions: [stepToNextFlagged, loadTokens, clearAccepted]
+            - target: grid          # no more flagged pages
+          RE_OCR_PAGE: { actions: [requestPageReOcr] }
+          CLOSE: { target: grid, actions: [clearCursor] }
+    on:
+      CONFIRM_ADVANCE:
+        target: confirming
+        guard: allFlagsReviewed
+
+  confirming:
+    invoke:
+      src: confirmStage
+      onDone:  { target: settled, actions: [emitResolved] }
+      onError: { target: reviewing, actions: [assignError] }
+
+  settled:
+    description: Every page recognised + reviewed; text flows to Page order.
+    on:
+      UPSTREAM_CHANGED: { target: recognising, actions: [requestReOcrAll] }
+      SETTINGS_CHANGED: { target: recognising, actions: [requestReOcrAll] }   # engine/model/threshold change → 15 downstream stages stale
+
+on:
+  # engine configuration (settings tab) — available throughout
+  SET_ENGINE:      { actions: [assignEngine] }      # doctr ↔ tesseract; changes cost estimates
+  SET_BACKEND:     { actions: [assignBackend] }     # gpu ↔ cpu (DocTR); cpu shows fallback warning
+  SET_WEIGHTS:     { actions: [assignWeights] }     # detection/recognition checkpoints incl. HF
+  ADD_OVERRIDE:    { actions: [appendOverride, persistOverride] }
+  EDIT_OVERRIDE:   { actions: [patchOverride, persistOverride] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  runComplete: ctx.totals.done + 1 === ctx.totals.total
+  allFlagsReviewed: ctx.totals.flagged === 0 || ctx.totals.flagged === ctx.totals.reviewed
+  hasNextFlagged: nextFlaggedAfter(ctx.rows, ctx.cursor) != null
+
+actions:
+  mergePage: //  upsert event.row; recount totals
+  assignCursor: ctx.cursor = event.idx
+  clearCursor: ctx.cursor = null
+  loadTokens: //  SIDE EFFECT: GET low-score tokens for cursor page → ctx.tokens
+  applySuggestion: ctx.tokens = patchToken(ctx.tokens, event.tokenId, t => ({ ...t, word: t.suggest }))
+  clearAccepted: ctx.accepted = []
+  markPageReviewed: ctx.rows = setState(ctx.rows, [ctx.cursor], 'reviewed')
+  stepToNextFlagged: ctx.cursor = nextFlaggedAfter(ctx.rows, ctx.cursor)
+  recount: ctx.totals = recount(ctx.rows)
+  assignEngine: ctx.engine = event.value
+  assignBackend: ctx.backend = event.value
+  assignWeights: ctx._weights = { ...ctx._weights, ...event.patch }
+  appendOverride: ctx.overrides = [...ctx.overrides, event.override]
+  patchOverride: ctx.overrides = patchAt(ctx.overrides, event.index, event.patch)
+  assignError: ctx.error = event.error
+  requestPause: //  SIDE EFFECT: pause the run
+  requestReOcr: //  SIDE EFFECT: POST re-OCR selected pages
+  requestPageReOcr: //  SIDE EFFECT: POST re-OCR cursor page
+  requestReOcrAll: //  SIDE EFFECT: POST re-OCR (all | flagged) under current settings
+  persistToken: //  SIDE EFFECT: PATCH token text
+  persistPage: //  SIDE EFFECT: PATCH page state
+  persistOverride: //  SIDE EFFECT: PUT overrides table
+  emitResolved: //  send parent: RESOLVE — stageRunner[ocr] → clean
+
+services:
+  confirmStage: 'POST /api/projects/:id/stages/ocr/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • Engine/backend/threshold are settings (tri-state inheritance); SAVING a
+#   change re-runs OCR and stales 15 downstream stages — the most expensive
+#   settings edit in the pipeline after grayscale.
+# • Per-page OVERRIDES (e.g. Greek pages on a different model) are data rows;
+#   a page's effective engine = override ?? project engine. Re-OCR applies
+#   per-override scope.
+# • "Keep alternatives" stores the runner-up reading per low-score word — it's
+#   what makes ACCEPT_TOKEN a one-click swap.
+# • illust pages carry no text ('no text') and are excluded from confidence
+#   aggregates — data filtering, not a state.

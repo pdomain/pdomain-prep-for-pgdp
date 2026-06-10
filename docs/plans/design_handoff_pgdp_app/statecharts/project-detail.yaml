@@ -1,0 +1,181 @@
+# =============================================================================
+# Machine: projectDetail
+# Surface: Projects page → right pane + the parent orchestration
+#          (final/projects/projects.jsx → ProjectsPage)
+# =============================================================================
+# Top-level machine for the Projects page. It owns:
+#   • which project is selected (driven by the railList child)
+#   • the detail tab: Recent activity | Attributes | Manage
+#   • spawning/refreshing the child machines (railList, recentActivity,
+#     attributesPanel, manageActions) as selection and tab change
+#
+# Selection is the hinge: changing it must re-key every child that is
+# project-scoped. We model selection as a parallel region alongside the
+# tab region so the two are independent but both react to PROJECT_SELECTED.
+# =============================================================================
+
+machine: projectDetail
+description: >
+  Orchestrates the Projects page: project selection, the detail tab strip,
+  and the lifecycle of the per-project child machines.
+
+context:
+  selectedId: null         # string | null
+  selected: null           # Project | null — resolved record for the pane
+  tab: activity            # 'activity' | 'attributes' | 'manage'
+  emptyState: false        # boolean — true when there are no projects at all
+  children:                # spawned actor refs (framework fills these in)
+    rail: null
+    activity: null
+    attributes: null
+    manage: null
+
+initial: booting
+
+states:
+
+  booting:
+    description: Spawn the rail and resolve initial selection.
+    entry: [spawnRail]
+    invoke:
+      src: fetchProjects
+      onDone:
+        - target: empty
+          guard: noProjects
+          actions: [markEmpty]
+        - target: ready
+          actions: [assignProjects, resolveInitialSelection]
+      onError:
+        target: loadError
+    on:
+      # railList reports a default/auto selection during boot
+      SELECT: { actions: [assignSelection] }
+
+  loadError:
+    on:
+      RETRY: { target: booting }
+
+  # First-run, zero projects → ProjectsEmpty hero. No detail pane, no children.
+  empty:
+    description: No projects exist. Render the empty hero.
+    on:
+      CREATE_PROJECT:   { actions: [startCreateFlow] }
+      PASTE_SOURCE_URL: { actions: [startPasteUrlFlow] }
+      IMPORT_ARCHIVE:   { actions: [startImportFlow] }
+      PROJECTS_CHANGED: { target: booting }     # a project got created
+
+  # Normal page: rail + detail pane. Two independent regions.
+  ready:
+    type: parallel
+    states:
+
+      # ---- Region A: selection ------------------------------------------
+      selection:
+        initial: hasSelection
+        states:
+          hasSelection:
+            description: A project is selected; detail pane is populated.
+            on:
+              # railList tells us the user picked a row.
+              SELECT:
+                guard: selectionChanged
+                actions:
+                  - assignSelection        # set selectedId + resolve `selected`
+                  - syncRailTabToSelection  # archived project -> rail "archived"
+                  - respawnActivity         # re-key recentActivity to new id
+                  - respawnAttributes
+                  - respawnManage
+              CLEAR_SELECTION:
+                target: noSelection
+                actions: [clearSelection, stopChildren]
+          noSelection:
+            description: >
+              Selection was cleared (e.g. the selected project was deleted and
+              the visible list is now empty). Detail pane shows a placeholder.
+            on:
+              SELECT:
+                target: hasSelection
+                actions: [assignSelection, respawnActivity, respawnAttributes, respawnManage]
+
+      # ---- Region B: detail tab strip -----------------------------------
+      tab:
+        initial: activity
+        # The active-tab child is the only project-scoped feed that needs to be
+        # "hot"; the others can stay spawned but idle. Each tab lazily ensures
+        # its child has loaded.
+        states:
+          activity:
+            description: Recent activity tab (delegates to recentActivity).
+            entry: [ensureActivityLoaded]
+            on:
+              SET_TAB:
+                - { target: attributes, guard: tabIsAttributes }
+                - { target: manage,     guard: tabIsManage }
+              VIEW_ALL_ACTIVITY: { actions: [openActivityLog] }
+          attributes:
+            description: Attributes tab (delegates to attributesPanel).
+            entry: [ensureAttributesLoaded]
+            on:
+              SET_TAB:
+                - { target: activity, guard: tabIsActivity }
+                - { target: manage,   guard: tabIsManage }
+          manage:
+            description: Manage tab (delegates to manageActions).
+            on:
+              SET_TAB:
+                - { target: activity,   guard: tabIsActivity }
+                - { target: attributes, guard: tabIsAttributes }
+              # manageActions completed a mutation that changes the list/state.
+              PROJECT_MUTATED:
+                actions: [applyMutation, refreshRail]
+
+    on:
+      # Open the selected project (primary CTA). Hands off to the router; the
+      # pipeline shell is a separate machine/route.
+      OPEN_PROJECT:
+        actions: [openProject]              # SIDE EFFECT: router.push pipeline
+      PROJECTS_CHANGED:
+        target: booting                     # structural change → resync
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  noProjects: event.data.length === 0
+  selectionChanged: event.id !== ctx.selectedId
+  tabIsActivity: event.tab === 'activity'
+  tabIsAttributes: event.tab === 'attributes'
+  tabIsManage: event.tab === 'manage'
+
+actions:
+  assignProjects: ctx.projects = event.data
+  markEmpty: ctx.emptyState = true
+  assignSelection: >
+    ctx.selectedId = event.id;
+    ctx.selected = ctx.projects.find(p => p.id === event.id) ?? null;
+    ctx.tab = 'activity'                    // reset tab on project switch
+  clearSelection: ctx.selectedId = null; ctx.selected = null
+  resolveInitialSelection: //  pick from URL param or first active project
+  syncRailTabToSelection: //  if selected.archived -> tell rail to show Archived
+  applyMutation: //  patch ctx.selected/projects from event (archived/cleaned/restored)
+  # actor lifecycle — framework-specific spawn/stop:
+  spawnRail: ctx.children.rail = spawn(railList)
+  respawnActivity: ctx.children.activity = spawn(recentActivity, { projectId: ctx.selectedId })
+  respawnAttributes: ctx.children.attributes = spawn(attributesPanel, { projectId: ctx.selectedId })
+  respawnManage: ctx.children.manage = spawn(manageActions, { project: ctx.selected })
+  stopChildren: //  stop activity/attributes/manage actors
+  ensureActivityLoaded: //  send LOAD to children.activity if idle
+  ensureAttributesLoaded: //  send LOAD to children.attributes if idle
+  refreshRail: //  send PROJECTS_CHANGED to children.rail
+  openActivityLog: //  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/activity`)
+  openProject: //  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/pipeline`)
+  startCreateFlow: //  SIDE EFFECT
+  startPasteUrlFlow: //  SIDE EFFECT
+  startImportFlow: //  SIDE EFFECT
+
+services:
+  fetchProjects: 'GET /api/projects -> Project[]'
+
+# --- Spawned children --------------------------------------------------------
+# rail        -> railList.yaml         (selection source)
+# activity    -> recent-activity.yaml  (re-keyed on selection change)
+# attributes  -> attributes-panel.yaml (re-keyed on selection change)
+# manage      -> manage-actions.yaml   (re-keyed on selection change)

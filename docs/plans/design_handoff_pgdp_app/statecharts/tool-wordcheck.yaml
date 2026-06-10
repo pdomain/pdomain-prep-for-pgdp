@@ -1,0 +1,150 @@
+# =============================================================================
+# Machine: wordcheckTool   (per-stage tool — stage · Wordcheck / Scannocheck)
+# Surface: final/scannocheck/scannocheck.jsx — ScannoSuspects (hero queue),
+#          ScannoListBuilder, ScannoPages, ScannoOverview, ScannoStepSettings.
+# =============================================================================
+# Finds scannos (OCR errors). Ordinary ones fail the lexicon; STEALTH scannos
+# are real words in the wrong place (arid/and, be/he) caught by a curated
+# stealth list + context. Two independent concerns as parallel regions:
+#   1. suspects — the per-token queue: Fix (apply suggestion) / Keep (accept
+#      as printed) per suspect, plus batch accept and the confirm gate.
+#   2. listBuilder — ranked good/bad word-list candidates with evidence; a
+#      human accepts/rejects → writes the per-book lists; confirmed entries
+#      can be promoted to the shared cross-project library.
+# Pages grid / overview are projections of suspect counts per page.
+# =============================================================================
+
+machine: wordcheckTool
+description: >
+  Works the scanno suspects queue (fix/keep per token, batch dictionary
+  fixes), builds the per-book good/bad word lists from ranked candidates, and
+  confirms the cleared text forward to Text review.
+
+context:
+  projectId: null
+  stageIndex: 0
+  suspects: []            # Suspect[] — { id, word, fix, ctxL, ctxR, type, page, line, rule, score, note }
+  totals: null            # { total, done, suspects, stealth, flagged, reviewed, clean, rateHz }
+  suspectFilter: all      # 'all' | 'stealth' | <typeKind>
+  candidates: []          # Candidate[] — { id, token, fix?, list:'good'|'bad', stealth?, rule?, ev[], rank }
+  listTotals: null        # { good, bad, bookGood, bookBad, libraryGood, libraryBad }
+  listFilter: all         # 'all' | 'good' | 'bad'
+  error: null
+
+type: parallel
+
+states:
+
+  # ---- Region: suspects (the stage lifecycle) --------------------------------
+  suspects:
+    initial: scanning
+    states:
+      scanning:
+        description: '"Scanning for scannos…" N/M pages · suspects counted live.'
+        on:
+          SCAN_PROGRESS: { actions: [assignScanProgress] }
+          SCAN_DONE:
+            - target: reviewing
+              guard: anySuspects
+              actions: [assignSuspects]
+            - target: settled
+              actions: [assignSuspects]
+      reviewing:
+        description: Suspects queue — each token in reading context with its fix.
+        on:
+          FIX:   { actions: [applyFix, persistDecision, recount, settleIfClear] }   # accept the suggestion
+          KEEP:  { actions: [keepAsIs, persistDecision, recount, settleIfClear] }   # word is correct as printed
+          VIEW_ON_PAGE: { actions: [navigateToPage] }
+          ACCEPT_DICT_FIXES: { target: batchFixing }     # "Accept all dictionary fixes"
+          SEND_CLEARED: { actions: [forwardCleared] }    # release cleared text to Text review early
+          SET_SUSPECT_FILTER: { actions: [assignSuspectFilter] }
+          CONFIRM_ADVANCE:
+            target: confirming
+            guard: notRunning
+      batchFixing:
+        invoke:
+          src: acceptDictionaryFixes    # -> { fixedIds }
+          onDone:  { target: reviewing, actions: [mergeBatchFixes, recount, settleIfClear] }
+          onError: { target: reviewing, actions: [assignError] }
+      confirming:
+        invoke:
+          src: confirmStage
+          onDone:  { target: settled, actions: [emitResolved] }
+          onError: { target: reviewing, actions: [assignError] }
+      settled:
+        description: No scannos outstanding; cleared text flows to Text review.
+        on:
+          UPSTREAM_CHANGED: { target: scanning, actions: [requestRescan] }
+          RERUN_CHECK:      { target: scanning, actions: [requestRescan] }   # settings "Re-check all / flagged"
+
+  # ---- Region: listBuilder (word-list curation) -------------------------------
+  listBuilder:
+    initial: curating
+    states:
+      curating:
+        description: Ranked candidates with evidence chips; a human decides each.
+        on:
+          ADD_TO_LIST:   { actions: [acceptCandidate, persistListEntry, recountLists] }   # Add good / Add bad
+          SKIP_CANDIDATE: { actions: [dropCandidate, recountLists] }                       # Skip / Keep
+          DEFER:          { actions: [markDeferred, persistListEntry] }                    # kebab: defer · book-only · promote
+          SET_LIST_FILTER: { actions: [assignListFilter] }
+          ACCEPT_HIGH_CONFIDENCE: { target: batchAccepting }
+          PROMOTE_TO_LIBRARY:     { target: promoting }
+      batchAccepting:
+        invoke:
+          src: acceptHighConfidence     # -> { acceptedIds }
+          onDone:  { target: curating, actions: [mergeBatchAccepts, recountLists] }
+          onError: { target: curating, actions: [assignError] }
+      promoting:
+        description: Confirmed book-list entries promoted to the shared library (all projects).
+        invoke:
+          src: promoteToLibrary
+          onDone:  { target: curating, actions: [assignListTotals] }
+          onError: { target: curating, actions: [assignError] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  anySuspects: event.data.totals.suspects > 0
+  notRunning: ctx.totals.done === ctx.totals.total
+
+actions:
+  assignScanProgress: ctx.totals = { ...ctx.totals, done: event.done, suspects: event.suspects }
+  assignSuspects: ctx.suspects = event.data.suspects; ctx.totals = event.data.totals
+  applyFix: ctx.suspects = dropSuspect(ctx.suspects, event.suspectId)   # text patched with s.fix
+  keepAsIs: ctx.suspects = dropSuspect(ctx.suspects, event.suspectId)
+  mergeBatchFixes: ctx.suspects = ctx.suspects.filter(s => !event.data.fixedIds.includes(s.id))
+  recount: ctx.totals = recount(ctx.suspects)
+  assignSuspectFilter: ctx.suspectFilter = event.value
+  acceptCandidate: ctx.candidates = dropCandidate(ctx.candidates, event.candidateId)
+  dropCandidate: ctx.candidates = dropCandidate(ctx.candidates, event.candidateId)
+  markDeferred: //  candidate stays, marked deferred / book-only
+  mergeBatchAccepts: ctx.candidates = ctx.candidates.filter(c => !event.data.acceptedIds.includes(c.id))
+  recountLists: ctx.listTotals = recount(ctx.candidates)
+  assignListTotals: ctx.listTotals = event.data
+  assignListFilter: ctx.listFilter = event.value
+  assignError: ctx.error = event.error
+  settleIfClear: //  if totals.suspects === 0 → suspects region to settled (+ emitResolved)
+  navigateToPage: //  SIDE EFFECT: open page with the suspect highlighted
+  persistDecision: //  SIDE EFFECT: POST fix/keep { suspectId }
+  persistListEntry: //  SIDE EFFECT: POST book-list entry { token, list }
+  forwardCleared: //  SIDE EFFECT: release cleared pages to text_review
+  requestRescan: //  SIDE EFFECT: POST re-check (all | flagged) — clears decisions
+  emitResolved: //  send parent: RESOLVE — stageRunner[scannocheck] → clean
+
+services:
+  acceptDictionaryFixes: 'POST /api/projects/:id/stages/scannocheck/accept-dict -> { fixedIds }'
+  acceptHighConfidence:  'POST /api/projects/:id/stages/scannocheck/lists/accept-high -> { acceptedIds }'
+  promoteToLibrary:      'POST /api/projects/:id/stages/scannocheck/lists/promote -> ListTotals'
+  confirmStage:          'POST /api/projects/:id/stages/scannocheck/confirm -> { ok }'
+
+# --- Notes -------------------------------------------------------------------
+# • Recommendations are review aids, not edits — nothing in listBuilder
+#   touches page text; only the suspects region patches text (via FIX).
+# • The library promotion is the one CROSS-PROJECT write in the pipeline —
+#   gate it server-side; the UI treats it as a normal invoke.
+# • Lexicon, rule-sets, stealth list, and auto-clear score are settings inputs
+#   to the scan (tri-state inheritance pattern); changing them → RERUN_CHECK
+#   with the downstream-stale warning.
+# • Pages grid + type-counts are projections of ctx.suspects; no page actors.
+# • See research/wordlist-curation-research-brief.md for the ranking model
+#   behind candidate evidence (frequency · OCR score · edit-distance · NER).

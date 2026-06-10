@@ -1,0 +1,154 @@
+# =============================================================================
+# Machine: postImport   (projects page — after "Start on a new project")
+# Surface: final/projects/post-import.jsx (Pa redirect + Pb drawer scenarios)
+# =============================================================================
+# Owns the moment between clicking "Start" in the new-project flow and the
+# project being ready: a background IMPORT JOB (thumbnails → ingest → done)
+# plus WHERE the user is parked while it runs. Two locked placements:
+#   Pa  — the folder index finished fast (~1s), so we auto-redirected into the
+#         new project's pipeline view (stage 1 · source) while thumbnails
+#         generate. "Open project" is disabled until the job completes.
+#   Pb  — the user closed the new-project flow; they're anchored back on their
+#         previously selected project, and the import lives on in the
+#         bottom-right JobsDrawer (mirrored by the header JobsPill).
+# The job itself is project-agnostic plumbing (same shape as JobsPill /
+# JobsDrawer rows); two-jobs scenario shows the drawer aggregating jobs from
+# other projects (e.g. an OCR run on Pudd'nhead Wilson).
+# =============================================================================
+
+machine: postImport
+description: >
+  Runs one project-import job in the background (thumbnails → ingest → done)
+  while parking the user either inside the new project (auto-redirect) or on
+  their previous selection with the import in the JobsDrawer.
+
+context:
+  projectId: null         # the importing project ('belloc-survivals-new')
+  job: null               # Job — { id, project, projectId, phase, pct, state, cancelable }
+  otherJobs: []           # Job[] — unrelated running jobs shown in the same drawer/pill
+  anchorId: null          # projectId the user is parked on in Pb ('austen-emma-vol2')
+  toasts: []              # Toast[] — { id, project, message } after job completes
+  # Job.state: 'running' | 'done';  phase strings: 'thumbnails · 165/387 · 14.2/s',
+  # 'ingest · stems + stages · 87%', '387 pages · ready for pipeline'
+
+type: parallel
+
+states:
+
+  # ---- Region: placement (where the user is parked) -------------------------
+  placement:
+    initial: deciding
+    states:
+      deciding:
+        description: Folder index just finished; pick Pa or Pb.
+        always:
+          - target: redirected      # Pa — index was fast, jump straight in
+            guard: indexWasFast
+          - target: anchored        # Pb — flow closed; stay where the user was
+      redirected:
+        description: >
+          Pa — new project's pipeline view (stage 1 · source). PipelineMini
+          shows stage 1/23 running; "Open project" disabled while importing.
+        on:
+          BACK_TO_PROJECTS: { target: anchored, actions: [assignAnchorToList] }
+          OPEN_PROJECT:
+            # enabled only once the import job is done
+            guard: jobDone
+            actions: [navigateToProject]
+      anchored:
+        description: >
+          Pb — rail shows the importing pseudo-row pinned at top; the main pane
+          shows the previously selected project; JobsDrawer keeps the import alive.
+        on:
+          SELECT_PROJECT: { actions: [assignAnchor] }   # rail row click
+          OPEN_IMPORTING_ROW:
+            target: redirected      # clicking the pinned importing row re-enters Pa
+          OPEN_PROJECT: { actions: [navigateToProject] }
+
+  # ---- Region: importJob (server-authoritative progress) --------------------
+  importJob:
+    initial: thumbnails
+    states:
+      thumbnails:
+        description: Generating page thumbnails (the source stage), e.g. 165/387 at 14.2/s.
+        on:
+          JOB_PROGRESS: { actions: [assignJobProgress] }
+          PHASE_PUSH:   { target: ingest, guard: isIngestPhase, actions: [assignJobPhase] }
+          CANCEL_JOB:   { target: cancelled, guard: isCancelable, actions: [requestCancel] }
+      ingest:
+        description: Ingesting stems + stages (e.g. 87%).
+        on:
+          JOB_PROGRESS: { actions: [assignJobProgress] }
+          PHASE_PUSH:   { target: done, guard: isDonePhase, actions: [assignJobPhase] }
+          CANCEL_JOB:   { target: cancelled, guard: isCancelable, actions: [requestCancel] }
+      done:
+        description: '"387 pages · ready for pipeline". Job row turns done; toast offered.'
+        entry: [markJobDone, pushCompletionToast]
+        on:
+          DISMISS_TOAST: { target: settled, actions: [removeToast] }
+          OPEN_PROJECT:  { target: settled, actions: [navigateToProject] }
+      cancelled:
+        type: final
+        description: Import cancelled; pseudo-row and job disappear.
+        entry: [removeJobRow]
+      settled:
+        type: final
+        description: Import absorbed into the normal projects list (railList resyncs).
+        entry: [emitProjectMutated]    # rail re-fetches; importing pseudo-row becomes a real row
+
+  # ---- Region: jobsDrawer (bottom-right, Pb only visually) ------------------
+  jobsDrawer:
+    initial: expanded
+    states:
+      expanded:
+        on:
+          COLLAPSE_DRAWER: { target: collapsed }
+      collapsed:
+        on:
+          EXPAND_DRAWER: { target: expanded }
+
+  # ---- Region: jobsPill (header, mirrors ALL running jobs) ------------------
+  jobsPill:
+    initial: closed
+    states:
+      closed:
+        on:
+          OPEN_JOBS: { target: open }
+      open:
+        description: Header popover listing every running job across all projects.
+        on:
+          CLOSE_JOBS: { target: closed }
+          CANCEL_JOB: { guard: isCancelable, actions: [requestCancel] }
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  indexWasFast: ctx._indexMs < 1500          # "folder index finished in ~1 s, so we redirected"
+  jobDone: ctx.job.state === 'done'
+  isCancelable: jobOf(ctx, event.jobId).cancelable === true
+  isIngestPhase: event.phase.startsWith('ingest')
+  isDonePhase: event.state === 'done'
+
+actions:
+  assignJobProgress: ctx.job = { ...ctx.job, pct: event.pct, phase: event.phase }
+  assignJobPhase: ctx.job = { ...ctx.job, phase: event.phase, pct: event.pct }
+  markJobDone: ctx.job = { ...ctx.job, state: 'done', pct: 100 }
+  pushCompletionToast: ctx.toasts = [{ id: uid(), project: ctx.job.project, message: 'Import complete · 387 pages' }]
+  removeToast: ctx.toasts = ctx.toasts.filter(t => t.id !== event.toastId)
+  assignAnchor: ctx.anchorId = event.projectId
+  assignAnchorToList: ctx.anchorId = previousSelectionOrDefault()
+  requestCancel: //  SIDE EFFECT: POST /api/jobs/:jobId/cancel (optimistic; PHASE_PUSH reconciles)
+  navigateToProject: //  SIDE EFFECT: route to /projects/:projectId/pipeline
+  removeJobRow: //  drop the pinned importing pseudo-row from the rail
+  emitProjectMutated: //  send parent(projectDetail): { type:'PROJECT_MUTATED' } → rail resync
+
+services: {}   # progress arrives as JOB_PROGRESS / PHASE_PUSH pushes, not an invoke
+
+# --- Notes -------------------------------------------------------------------
+# • The importing rail row is a PSEUDO-ROW pinned above the real projects; it
+#   only exists while importJob is non-final. Active count = real + (job ? 1 : 0).
+# • JOB_PROGRESS / PHASE_PUSH are server pushes — the job is server-
+#   authoritative, like project-lifecycle's STATUS_PUSH.
+# • The JobsPill in the header reflects ctx.job + ctx.otherJobs ('two-jobs'
+#   scenario); it's a projection, the pill itself holds no job state.
+# • In Pa, "Open project" is rendered disabled until jobDone — the guard above
+#   encodes that.

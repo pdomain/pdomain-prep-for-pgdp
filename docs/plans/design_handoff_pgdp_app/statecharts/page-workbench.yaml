@@ -1,0 +1,149 @@
+# =============================================================================
+# Machine: pageWorkbench   (pipeline — shared "Page workbench" tab)
+# Surface: final/pipeline/page-workbench.jsx (scaffold) +
+#          final/pipeline/page-workbench-stages.jsx (12 per-stage bodies)
+# =============================================================================
+# The per-page deep-dive surface mounted by pipelineShell as a stage tab.
+# ONE machine, instantiated with a stageId; the stage-specific control panel
+# (crop / threshold / dewarp / deskew / post_transform_crop / denoise /
+# text_zones / ocr / post_ocr_crop / wordcheck / text_review / illust) is a
+# DATA-driven body picked from WB_MAP — not 12 machines.
+#
+# The loop it encodes: pick a page (strip / Prev / Next) → tune stage params
+# (sliders, segments, toggles) → optionally re-detect to refresh the preview +
+# stats → Apply & Continue, which commits the page and advances the cursor.
+# =============================================================================
+
+machine: pageWorkbench
+description: >
+  Generic per-page workbench: page cursor, stage-parameter draft with dirty
+  tracking, re-detect preview, compare view, and an Apply-&-Continue commit
+  that advances to the next page.
+
+context:
+  projectId: null
+  stageId: null           # key into WB_MAP — decides which control body renders
+  stageIndex: 0
+  pages: []               # PageRef[] — strip thumbnails; { pageId, stem, idx, flagged }
+  cursor: 122             # index of the page on the bench (stem 'p0123', '123 / 387')
+  params: null            # stage param set as shipped (e.g. { method:'sauvola', cut:142, window:31 })
+  draft: null             # edited copy of params; null = no edits
+  pageStats: null         # detector readouts (WBStatGrid) — e.g. { box:'1980×3120', confidence:0.71 }
+  flagNote: null          # "Why flagged" explanation for flagged pages | null
+  compare: false          # before/after curtain (or side-by-side pair) showing
+  error: null
+
+initial: loading
+
+states:
+
+  loading:
+    invoke:
+      src: fetchBenchPage     # (projectId, stageId, cursor) -> { params, pageStats, flagNote }
+      onDone:  { target: bench, actions: [assignBench] }
+      onError: { target: loadError, actions: [assignError] }
+
+  loadError:
+    on:
+      RETRY: { target: loading, actions: [clearError] }
+
+  bench:
+    type: parallel
+    states:
+
+      # ---- Region: params (the left control drawer) ----------------------
+      params:
+        initial: pristine
+        states:
+          pristine:
+            description: Controls show the stage's stored params for this page.
+            on:
+              SET_PARAM: { target: dirty, actions: [beginDraft, patchDraft] }
+          dirty:
+            description: Unsaved tuning; stats/preview reflect the draft.
+            on:
+              SET_PARAM: { actions: [patchDraft] }
+              RESET:     { target: pristine, actions: [clearDraft] }
+          # Re-detect / Re-estimate — refresh detector output under current draft
+          redetecting:
+            invoke:
+              src: redetect       # (pageId, draft ?? params) -> { pageStats, overlays }
+              onDone:  { target: dirty, actions: [assignStats] }
+              onError: { target: dirty, actions: [assignError] }
+        on:
+          REDETECT: { target: .redetecting }
+
+      # ---- Region: viewer (right pane) ------------------------------------
+      viewer:
+        initial: single
+        states:
+          single:
+            on:
+              COMPARE: { target: comparing }
+          comparing:
+            description: Before/after — curtain split (threshold) or side-by-side pair (deskew, dewarp, denoise).
+            on:
+              DRAG_SPLIT: { actions: [assignSplit] }
+              COMPARE:    { target: single }
+        on:
+          FIT: { actions: [fitZoom] }
+
+  # ---- Apply & Continue (commits the page, advances) ------------------------
+  applying:
+    invoke:
+      src: applyPage        # (pageId, draft ?? params) -> committed PageRef
+      onDone:
+        - target: loading       # advance + load next page onto the bench
+          guard: hasNextPage
+          actions: [commitPage, emitResolvedMaybe, stepNext, clearDraft]
+        - target: bench         # last page — stay put
+          actions: [commitPage, emitResolvedMaybe, clearDraft]
+      onError: { target: bench, actions: [assignError] }
+
+on:
+  # page navigation (Prev/Next buttons + strip click) — available from bench
+  PREV_PAGE: { target: .loading, guard: notFirst, actions: [stepPrev, clearDraft] }
+  NEXT_PAGE: { target: .loading, guard: notLast,  actions: [stepNext, clearDraft] }
+  JUMP_PAGE: { target: .loading, guard: indexInRange, actions: [moveTo, clearDraft] }
+  APPLY:     { target: .applying }   # per-stage verb: Apply crop / Accept page / Mark reviewed / Clear page / Extract plate / Confirm layout
+
+# --- Implementation reference ------------------------------------------------
+guards:
+  hasNextPage: ctx.cursor < ctx.pages.length - 1
+  notFirst: ctx.cursor > 0
+  notLast: ctx.cursor < ctx.pages.length - 1
+  indexInRange: event.index >= 0 && event.index < ctx.pages.length
+
+actions:
+  assignBench: ctx.params = event.data.params; ctx.pageStats = event.data.pageStats; ctx.flagNote = event.data.flagNote
+  assignStats: ctx.pageStats = event.data.pageStats
+  assignError: ctx.error = event.error
+  clearError: ctx.error = null
+  beginDraft: ctx.draft = clone(ctx.params)
+  patchDraft: ctx.draft = { ...ctx.draft, ...event.patch }    # slider / segment / toggle / select
+  clearDraft: ctx.draft = null
+  assignSplit: ctx._split = event.pct        # curtain handle position
+  fitZoom: //  viewer zoom-to-fit (view concern; no context)
+  stepPrev: ctx.cursor -= 1
+  stepNext: ctx.cursor += 1
+  moveTo: ctx.cursor = event.index
+  commitPage: //  merge event.data into ctx.pages[cursor]; params ← applied draft
+  emitResolvedMaybe: //  if the page was flagged and now isn't: send parent { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[pageId] }
+
+services:
+  fetchBenchPage: 'GET  /api/projects/:id/stages/:stageId/pages/:pageId/bench -> { params, pageStats, flagNote }'
+  redetect:       'POST /api/projects/:id/stages/:stageId/pages/:pageId/detect -> { pageStats, overlays }'
+  applyPage:      'POST /api/projects/:id/stages/:stageId/pages/:pageId/apply -> PageRef'
+
+# --- Notes -------------------------------------------------------------------
+# • WB_MAP is configuration, not state: stageId picks which field schema the
+#   params region edits and which apply verb/label the APPLY event carries.
+#   The machine is identical across all 12 stages.
+# • text_review's body adds comments — those are data appended via SET_PARAM-
+#   style events (ADD_COMMENT as a context write), not extra states; the page
+#   status segment (Reviewing / OK / Hold) is a param like any other.
+# • The dirty draft + guarded nav mirrors pagesGrid's editor; here navigation
+#   simply drops the draft (clearDraft) because Apply-&-Continue is the
+#   expected path. Add a confirmDiscard gate if product wants parity with
+#   pagesGrid (open question for eng).
+# • Re-detect runs under the CURRENT draft so tuning + re-detection iterate.
