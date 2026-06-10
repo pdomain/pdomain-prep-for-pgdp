@@ -1,6 +1,6 @@
 """/api/data/projects/{id}/project-stages/* — project-scoped stage routes.
 
-Spec: docs/specs/api-v2-deltas.md §1.2, §1.5
+Spec: docs/specs/api-v2-deltas.md §1.2, §1.5, §2
 
 Routes:
   GET  /projects/{id}/pipeline                               PipelineSnapshot
@@ -8,6 +8,7 @@ Routes:
   GET  /projects/{id}/project-stages/{stage_id}             ProjectStageState
   POST /projects/{id}/project-stages/{stage_id}/run         Job (always async)
   GET  /projects/{id}/project-stages/{stage_id}/artifact    bytes or redirect
+  GET  /projects/{id}/events                                 SSE project channel
 
 All project-stage routes enforce the registry-version 409 guard.
 """
@@ -21,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from pdomain_prep_for_pgdp.api.dependencies import (
@@ -499,3 +500,57 @@ async def get_project_stage_artifact(
 
     content_type = _PROJECT_STAGE_CONTENT_TYPES.get(stage_id, "application/octet-stream")
     return Response(content=artifact_path.read_bytes(), media_type=content_type)
+
+
+# ─── Project-level SSE channel ────────────────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/events",
+    operation_id="stream_project_stage_events",
+)
+async def stream_project_stage_events(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> Response:
+    """SSE — project-level event channel.
+
+    On connect: emits a `project-snapshot` frame with all 8 project-stage rows.
+    Subsequent frames are incremental events published to `project:{project_id}`:
+      - project-stage-status  (stage status transition)
+      - project-stage-progress  (long-running stage progress ticks)
+      - page-reorder  (page order mutation)
+      - validation-updated  (validation stage run completes)
+
+    Spec: docs/specs/api-v2-deltas.md §2.
+    """
+    import json as _json
+    from collections.abc import AsyncIterator
+
+    from sse_starlette.sse import EventSourceResponse
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    store = _get_store(settings.data_root, project_id)
+    project_stages = _lazy_init_project_stages(store, project_id)
+    project_key = f"project:{project_id}"
+
+    async def _stream() -> AsyncIterator[dict[str, str]]:
+        snapshot = {
+            "type": "project-snapshot",
+            "project_stages": [s.model_dump(mode="json") for s in project_stages],
+        }
+        yield {"event": "project-snapshot", "data": _json.dumps(snapshot)}
+
+        async for ev in stage_events.subscribe(project_key):
+            yield {"event": str(ev.get("type", "project-stage-status")), "data": _json.dumps(ev)}
+
+    return EventSourceResponse(_stream())  # type: ignore[return-value]
