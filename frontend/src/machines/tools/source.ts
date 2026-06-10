@@ -15,9 +15,9 @@
  *   F5-1 — recorded in DIVERGENCES.md
  *   F5-2 — `canConfirm` reads `context.settingsState` via machine-level context
  *           mirror (not via snapshot.matches) — see below.
- *   F5-3 — `confirmSelection` actor is the only invoke.src; thumb-progress and
- *           insert mutations are modelled as synchronous assign actions (no
- *           server round-trips at F5 — they'll flip to real calls at I1).
+ *   F5-3 — Settings service actors wired as fromPromise invocations with
+ *           transient `saving` / `reverting` states (per YAML spec).
+ *           SAVE_AS_PRESET is fire-and-forget (synchronous onSavedAsPreset).
  *   F5-4 — `thumbnailsRegionIn` guard in the YAML reads a parallel region state;
  *           in XState v5 we mirror it as `context._thumbsDone: boolean`.
  *   F5-5 — `recountTotals` is NOT a separate action; it is folded into the
@@ -829,7 +829,6 @@ export const sourceToolMachine = setup({
         default: {
           entry: ["enterSettingsDefault"],
           on: {
-            // recordSettingChange and assignPreset are from stageSettingsActions (cast as any)
             CHANGE_SETTING: {
               target: "modified",
               actions: ["recordSettingChange"],
@@ -847,17 +846,104 @@ export const sourceToolMachine = setup({
             CHANGE_SETTING: {
               actions: ["recordSettingChange"],
             },
+            /**
+             * YAML: SAVE_AS_DEFAULT → invoke services.persistAsProjectDefault
+             * F5-3: wired as fromPromise actor with transient "saving" state.
+             */
             SAVE_AS_DEFAULT: {
-              target: "default",
-              actions: ["onSavedAsDefault"],
+              target: "saving",
             },
+            /**
+             * YAML: REVERT → invoke services.revertSettings
+             * F5-3: wired as fromPromise actor with transient "reverting" state.
+             */
             REVERT: {
-              target: "default",
-              actions: ["revertSettingsAction"],
+              target: "reverting",
             },
+            /**
+             * YAML: SAVE_AS_PRESET — fire-and-forget (no YAML round-trip specified).
+             * F5-3: synchronous assign; no transient state needed.
+             */
             SAVE_AS_PRESET: {
               target: "preset",
               actions: ["onSavedAsPreset"],
+            },
+          },
+        },
+
+        /**
+         * Transient state: invoking saveAsDefault service.
+         * On success → default; on error → back to modified.
+         */
+        saving: {
+          invoke: {
+            id: "saveAsDefault",
+            src: "saveAsDefault",
+            input: ({ context }: { context: SourceToolContext }) => ({
+              projectId: context.projectId,
+              stageId: context.stageId,
+              draft: context._settingsDraft ?? {},
+              services: context.services,
+            }),
+            onDone: {
+              target: "default",
+              actions: ["onSavedAsDefault"],
+            },
+            onError: {
+              target: "modified",
+              actions: [
+                {
+                  type: "assignError",
+                  params: ({
+                    event,
+                  }: {
+                    event: { output?: unknown; error?: unknown };
+                  }) => ({
+                    error:
+                      (event.output as string | undefined) ??
+                      (event.error as string | undefined) ??
+                      "Save failed",
+                  }),
+                },
+              ],
+            },
+          },
+        },
+
+        /**
+         * Transient state: invoking revertSettings service.
+         * On success → default; on error → back to modified.
+         */
+        reverting: {
+          invoke: {
+            id: "revertSettings",
+            src: "revertSettings",
+            input: ({ context }: { context: SourceToolContext }) => ({
+              projectId: context.projectId,
+              stageId: context.stageId,
+              services: context.services,
+            }),
+            onDone: {
+              target: "default",
+              actions: ["revertSettingsAction"],
+            },
+            onError: {
+              target: "modified",
+              actions: [
+                {
+                  type: "assignError",
+                  params: ({
+                    event,
+                  }: {
+                    event: { output?: unknown; error?: unknown };
+                  }) => ({
+                    error:
+                      (event.output as string | undefined) ??
+                      (event.error as string | undefined) ??
+                      "Revert failed",
+                  }),
+                },
+              ],
             },
           },
         },
@@ -869,9 +955,50 @@ export const sourceToolMachine = setup({
               target: "modified",
               actions: ["recordSettingChange"],
             },
+            /**
+             * YAML: RESET_TO_DEFAULT → invoke services.resetSettings
+             * F5-3: wired as fromPromise actor with transient "resetting" state.
+             */
             RESET_TO_DEFAULT: {
+              target: "resetting",
+            },
+          },
+        },
+
+        /**
+         * Transient state: invoking resetSettings service.
+         * On success → default; on error → back to preset.
+         */
+        resetting: {
+          invoke: {
+            id: "resetSettings",
+            src: "resetSettings",
+            input: ({ context }: { context: SourceToolContext }) => ({
+              projectId: context.projectId,
+              stageId: context.stageId,
+              services: context.services,
+            }),
+            onDone: {
               target: "default",
               actions: ["revertSettingsAction"],
+            },
+            onError: {
+              target: "preset",
+              actions: [
+                {
+                  type: "assignError",
+                  params: ({
+                    event,
+                  }: {
+                    event: { output?: unknown; error?: unknown };
+                  }) => ({
+                    error:
+                      (event.output as string | undefined) ??
+                      (event.error as string | undefined) ??
+                      "Reset failed",
+                  }),
+                },
+              ],
             },
           },
         },

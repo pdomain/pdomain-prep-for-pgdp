@@ -21,6 +21,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  InsertDivider,
   SourceBanner,
   FileToolbar,
   BulkBar,
@@ -908,6 +909,204 @@ describe("SourcePageWorkbench — with file", () => {
     );
     fireEvent.click(screen.getByTestId("workbench-next-btn"));
     expect(onNext).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: InsertDivider — Src-D hover affordance
+// ---------------------------------------------------------------------------
+
+describe("InsertDivider — Src-D artboard", () => {
+  it("renders insert-divider element", () => {
+    render(<InsertDivider />);
+    expect(screen.getByTestId("insert-divider")).toBeDefined();
+  });
+
+  it("is visually hidden by default (visible=false)", () => {
+    render(<InsertDivider visible={false} />);
+    const el = screen.getByTestId("insert-divider");
+    // opacity 0 via inline style
+    expect(el.style.opacity).toBe("0");
+  });
+
+  it("is visible when visible=true", () => {
+    render(<InsertDivider visible={true} />);
+    const el = screen.getByTestId("insert-divider");
+    expect(el.style.opacity).toBe("1");
+  });
+
+  it("calls onClick when clicked", () => {
+    const onClick = vi.fn();
+    render(<InsertDivider visible onClick={onClick} />);
+    fireEvent.click(screen.getByTestId("insert-divider"));
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it("renders a divider between each pair of thumb cards in SourceFiles", () => {
+    const files = makeFiles(3);
+    render(<SourceFiles {...makeSourceFilesProps({ files })} />);
+    // 3 cards → 2 gaps → 2 insert-dividers
+    const dividers = screen.getAllByTestId("insert-divider");
+    expect(dividers.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: SourceFiles — Src-F inserts filter
+// ---------------------------------------------------------------------------
+
+describe("SourceFiles — Src-F inserts filter", () => {
+  it("shows only inserted files when filter='inserts'", () => {
+    const files: ReturnType<typeof makeFile>[] = [
+      makeFile({ idx: 0, stem: "img001", state: "page" }),
+      makeFile({ idx: 1, stem: "ins001", state: "inserted" }),
+      makeFile({ idx: 2, stem: "ins002", state: "inserted" }),
+      makeFile({ idx: 3, stem: "img004", state: "cover" }),
+    ];
+    render(
+      <SourceFiles
+        {...makeSourceFilesProps({ files, filter: "inserts" as const })}
+      />,
+    );
+    // Only the 2 inserted files should render thumb cards
+    expect(screen.queryByTestId("thumb-card-0")).toBeDefined();
+    expect(screen.queryByTestId("thumb-card-1")).toBeDefined();
+    // The page/cover file cards won't be at these indexes after filtering
+    // Verify by total rendered card count — 2 inserted out of 4 total
+    const cards = screen
+      .getAllByTestId(/^thumb-card-/)
+      .filter((el) =>
+        el.getAttribute("data-testid")?.startsWith("thumb-card-"),
+      );
+    expect(cards.length).toBe(2);
+  });
+
+  it("shows all files when filter='all'", () => {
+    const files = [
+      makeFile({ idx: 0, stem: "img001", state: "page" }),
+      makeFile({ idx: 1, stem: "ins001", state: "inserted" }),
+      makeFile({ idx: 2, stem: "img003", state: "page" }),
+    ];
+    render(
+      <SourceFiles
+        {...makeSourceFilesProps({ files, filter: "all" as const })}
+      />,
+    );
+    const cards = screen.getAllByTestId(/^thumb-card-/);
+    expect(cards.length).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: SourcePageWorkbench — Src-WB2 inserted page with note
+// ---------------------------------------------------------------------------
+
+describe("SourcePageWorkbench — Src-WB2 inserted page with note", () => {
+  it("renders workbench-insert-note when state=inserted and note is set", () => {
+    const file = makeFile({
+      idx: 1,
+      stem: "ins001",
+      state: "inserted",
+      note: "Missing frontispiece",
+    });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={vi.fn()}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    const noteEl = screen.getByTestId("workbench-insert-note");
+    expect(noteEl).toBeDefined();
+    expect(noteEl.textContent).toContain("Missing frontispiece");
+  });
+
+  it("does not render workbench-insert-note when state=page", () => {
+    const file = makeFile({ idx: 0, stem: "img001", state: "page" });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={vi.fn()}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("workbench-insert-note")).toBeNull();
+  });
+
+  it("does not render workbench-insert-note when state=inserted but note is empty", () => {
+    const file = makeFile({ idx: 1, stem: "ins001", state: "inserted" });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={vi.fn()}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("workbench-insert-note")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: SourcePageWorkbench — Src-WB3 cover page role active
+// ---------------------------------------------------------------------------
+
+describe("SourcePageWorkbench — Src-WB3 cover page role", () => {
+  it("highlights role-btn-cover as active for a cover file", () => {
+    const file = makeFile({ idx: 0, stem: "img001", state: "cover" });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={vi.fn()}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    // The role segment must be visible
+    expect(screen.getByTestId("workbench-role-segment")).toBeDefined();
+    // The cover role button must exist
+    const coverBtn = screen.getByTestId("role-btn-cover");
+    expect(coverBtn).toBeDefined();
+    // Active styling is applied via border/background on the button element;
+    // the active button has a higher font-weight (600) vs inactive (500).
+    expect((coverBtn as HTMLButtonElement).style.fontWeight).toBe("600");
+  });
+
+  it("does NOT highlight role-btn-page as active for a cover file", () => {
+    const file = makeFile({ idx: 0, stem: "img001", state: "cover" });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={vi.fn()}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    const pageBtn = screen.getByTestId("role-btn-page");
+    expect((pageBtn as HTMLButtonElement).style.fontWeight).toBe("500");
+  });
+
+  it("clicking role-btn-page calls onRoleChange with 'page'", () => {
+    const onRoleChange = vi.fn();
+    const file = makeFile({ idx: 0, stem: "img001", state: "cover" });
+    render(
+      <SourcePageWorkbench
+        file={file}
+        onRoleChange={onRoleChange}
+        onApply={vi.fn()}
+        onPrev={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("role-btn-page"));
+    expect(onRoleChange).toHaveBeenCalledWith(0, "page");
   });
 });
 

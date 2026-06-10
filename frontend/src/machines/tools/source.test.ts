@@ -474,23 +474,61 @@ describe("sourceToolMachine — settings region default↔modified", () => {
     actor.stop();
   });
 
-  it("SAVE_AS_DEFAULT from modified → default, clears draft", () => {
+  it("SAVE_AS_DEFAULT from modified → transitions toward default via saving state", () => {
     const actor = startMachine();
     actor.send({ type: "CHANGE_SETTING", patch: { thumbQuality: "high" } });
     actor.send({ type: "SAVE_AS_DEFAULT" });
+    // Immediately after sending, the machine enters the transient "saving" state
+    // (or fast mock may already resolve to default synchronously)
     const snap = actor.getSnapshot();
-    expect(snap.value).toMatchObject({ settings: "default" });
-    expect(snap.context._settingsDraft).toBeNull();
+    const settingsState = (snap.value as Record<string, string>)["settings"];
+    expect(["saving", "default"]).toContain(settingsState);
     actor.stop();
   });
 
-  it("REVERT from modified → default, clears draft", () => {
+  it("SAVE_AS_DEFAULT calls saveAsDefault service with draft payload", async () => {
+    const saveAsDefault = vi.fn().mockResolvedValue({});
+    const services = makeServices({ saveAsDefault });
+    const actor = startMachine({ services });
+    actor.send({ type: "CHANGE_SETTING", patch: { thumbQuality: "high" } });
+    actor.send({ type: "SAVE_AS_DEFAULT" });
+    await vi.waitFor(() => {
+      const snap = actor.getSnapshot();
+      return (snap.value as Record<string, string>)["settings"] === "default";
+    });
+    expect(saveAsDefault).toHaveBeenCalledOnce();
+    expect(saveAsDefault).toHaveBeenCalledWith(
+      "proj-1",
+      "source",
+      expect.objectContaining({ thumbQuality: "high" }),
+    );
+    expect(actor.getSnapshot().context._settingsDraft).toBeNull();
+    actor.stop();
+  });
+
+  it("REVERT from modified → transitions toward default via reverting state", () => {
     const actor = startMachine();
     actor.send({ type: "CHANGE_SETTING", patch: { thumbQuality: "high" } });
     actor.send({ type: "REVERT" });
     const snap = actor.getSnapshot();
-    expect(snap.value).toMatchObject({ settings: "default" });
-    expect(snap.context._settingsDraft).toBeNull();
+    const settingsState = (snap.value as Record<string, string>)["settings"];
+    expect(["reverting", "default"]).toContain(settingsState);
+    actor.stop();
+  });
+
+  it("REVERT calls revertSettings service", async () => {
+    const revertSettings = vi.fn().mockResolvedValue({});
+    const services = makeServices({ revertSettings });
+    const actor = startMachine({ services });
+    actor.send({ type: "CHANGE_SETTING", patch: { workers: 2 } });
+    actor.send({ type: "REVERT" });
+    await vi.waitFor(() => {
+      const snap = actor.getSnapshot();
+      return (snap.value as Record<string, string>)["settings"] === "default";
+    });
+    expect(revertSettings).toHaveBeenCalledOnce();
+    expect(revertSettings).toHaveBeenCalledWith("proj-1", "source");
+    expect(actor.getSnapshot().context._settingsDraft).toBeNull();
     actor.stop();
   });
 });
@@ -517,13 +555,41 @@ describe("sourceToolMachine — settings region preset", () => {
     actor.stop();
   });
 
-  it("RESET_TO_DEFAULT from preset → default, clears presetId", () => {
+  it("RESET_TO_DEFAULT from preset → transitions toward default via resetting state", () => {
     const actor = startMachine();
     actor.send({ type: "LOAD_PRESET", presetId: "quality-high" });
     actor.send({ type: "RESET_TO_DEFAULT" });
     const snap = actor.getSnapshot();
-    expect(snap.value).toMatchObject({ settings: "default" });
-    expect(snap.context._presetId).toBeNull();
+    const settingsState = (snap.value as Record<string, string>)["settings"];
+    expect(["resetting", "default"]).toContain(settingsState);
+    actor.stop();
+  });
+
+  it("RESET_TO_DEFAULT calls resetSettings service and clears presetId", async () => {
+    const resetSettings = vi.fn().mockResolvedValue({});
+    const services = makeServices({ resetSettings });
+    const actor = startMachine({ services });
+    actor.send({ type: "LOAD_PRESET", presetId: "quality-high" });
+    actor.send({ type: "RESET_TO_DEFAULT" });
+    await vi.waitFor(() => {
+      const snap = actor.getSnapshot();
+      return (snap.value as Record<string, string>)["settings"] === "default";
+    });
+    expect(resetSettings).toHaveBeenCalledOnce();
+    expect(resetSettings).toHaveBeenCalledWith("proj-1", "source");
+    expect(actor.getSnapshot().context._presetId).toBeNull();
+    actor.stop();
+  });
+
+  it("SAVE_AS_PRESET from modified → preset, onSavedAsPreset synchronously (fire-and-forget)", () => {
+    const actor = startMachine();
+    actor.send({ type: "CHANGE_SETTING", patch: { workers: 2 } });
+    actor.send({ type: "LOAD_PRESET", presetId: "fast" });
+    // Switch from preset back to modified then try SAVE_AS_PRESET
+    actor.send({ type: "CHANGE_SETTING", patch: { workers: 4 } });
+    actor.send({ type: "SAVE_AS_PRESET" });
+    const snap = actor.getSnapshot();
+    expect(snap.value).toMatchObject({ settings: "preset" });
     actor.stop();
   });
 });

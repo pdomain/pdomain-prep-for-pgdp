@@ -593,25 +593,37 @@ Any future thumbnail-path change must also update `_thumbsDone`.
 
 ---
 
-## F5-3 — Settings actor invocations deferred to I1 (sourceTool)
+## F5-3 — Settings actor invocations fully wired as `fromPromise` (sourceTool) {#resolved}
 
-**YAML:** `SAVE_AS_DEFAULT` and `REVERT` transitions in the `modified` state
-call `services.persistAsProjectDefault` and `services.revertSettings` respectively
-as invoke.src actors (server round-trips).
+**YAML:** `SAVE_AS_DEFAULT`, `REVERT`, and `RESET_TO_DEFAULT` transitions call
+`services.persistAsProjectDefault`, `services.revertSettings`, and
+`services.resetSettings` respectively as invoke.src actors (server round-trips).
+`SAVE_AS_PRESET` is fire-and-forget (no await).
 
-**XState v5 (F5):** At F5, these are modelled as synchronous `assign` actions
-(`onSavedAsDefault`, `revertSettingsAction`) — no server round-trip. The transition
-updates context immediately and moves to `default` state without waiting for a
-promise.
+**XState v5 (F5.1 fix):** All three blocking transitions are now wired as proper
+`fromPromise` actor invocations with transient intermediate states:
 
-**Rationale:** The mock server's `saveAsDefault` / `revertSettings` return promptly.
-A full `invoke` with `onDone` / `onError` handling adds complexity that is deferred
-to I1 when the real API routes are wired.
+- `SAVE_AS_DEFAULT` in `modified` → transitions to `saving` state, invokes
+  `"saveAsDefault"` actor, `onDone` → `default` (runs `onSavedAsDefault` action),
+  `onError` → back to `modified` (runs `assignError`).
+- `REVERT` in `modified` → transitions to `reverting` state, invokes
+  `"revertSettings"` actor, `onDone` → `default` (runs `revertSettingsAction`),
+  `onError` → back to `modified` (runs `assignError`).
+- `RESET_TO_DEFAULT` in `preset` → transitions to `resetting` state, invokes
+  `"resetSettings"` actor, `onDone` → `default` (runs `revertSettingsAction`),
+  `onError` → back to `preset` (runs `assignError`).
+- `SAVE_AS_PRESET` in `modified` → synchronous fire-and-forget; calls
+  `onSavedAsPreset` action then immediately targets `preset` state.
 
-**Impact:** At I1, `SAVE_AS_DEFAULT` in `modified` must change from a synchronous
-target transition to an actor invocation with loading + error states. The
-`stageSettingsActors.saveAsDefault` and `stageSettingsActors.revertSettings` actors
-are already defined in `stageSettings.ts` ready for I1 wiring.
+**UI handling:** `SourceStepSettings` accepts `settingsState` values of
+`"saving" | "reverting" | "resetting"` (in addition to `"default" | "modified" | "preset"`)
+to disable buttons and show "Saving…" / "Resetting…" labels during in-flight requests.
+
+**Tests:** `source.test.ts` asserts each service method is called exactly once
+with the correct payload (projectId, stageId, draft).
+
+**Impact at I1:** No further changes needed — the actor pattern is live.
+Only the mock server implementations need to be swapped for real API calls.
 
 ---
 
