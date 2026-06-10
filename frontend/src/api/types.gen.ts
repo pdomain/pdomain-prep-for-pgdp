@@ -563,13 +563,17 @@ export interface paths {
         };
         /**
          * List Page Stages
-         * @description Return ordered per-page stage state for the 22-stage DAG.
+         * @description Return ordered per-page stage state for the v2 16-stage page DAG.
          *
-         *     Spec: `docs/specs/pipeline-task-model.md` §"API surface" (§Per-page
-         *     stage routes). Lazy-init contract (Q1-followup): if no rows exist
-         *     yet for this page, materialise 22 ``not-run`` rows in one
-         *     transaction (`INSERT OR IGNORE`) and return them in topological
-         *     order. Concurrent first-touch reads converge on exactly 22 rows.
+         *     Spec: `docs/specs/api-v2-deltas.md` §1.1 — returns the 16 v2 page-scoped
+         *     stages in V2_PAGE_STAGE_IDS topological order (sources first). Project-
+         *     scoped stages (source, page_order, validation, …) are served via the
+         *     /project-stages routes.
+         *
+         *     Lazy-init contract (Q1-followup): if no rows exist yet for this page,
+         *     materialise 16 ``not-run`` rows in one transaction (`INSERT OR IGNORE`)
+         *     and return them in topological order. Concurrent first-touch reads
+         *     converge on exactly 16 rows.
          *
          *     Auth follows the existing pattern — every project read is filtered
          *     by `user.user_id`. 404 (not 403) is returned on miss to avoid leaking
@@ -595,33 +599,24 @@ export interface paths {
         put?: never;
         /**
          * Run Page Stage
-         * @description Run one stage on one page synchronously and return the new row.
+         * @description Run one stage on one page and return the new row or a Job.
          *
-         *     Spec: `docs/specs/pipeline-task-model.md` §"Per-page stage runner"
-         *     + §"API surface". Slice 4 ships the synchronous path for the simple
-         *     image-processing stages (grayscale/threshold/invert today; more land
-         *     stage-by-stage). When slow stages (`ocr`, `extract_illustrations`)
-         *     get wired, this route gains an optional `?async=true` that returns a
-         *     Job id instead — the chip rail will poll the job's status.
+         *     Spec: `docs/specs/api-v2-deltas.md` §1.1 — page-stage run, v2 stage IDs.
+         *     Accepts a `StageRunRequest` body (B5: force, async fields). The `?async`
+         *     query-param form is deprecated; the body form is canonical in v2. Both
+         *     are accepted during the B5→I1 transition window.
          *
          *     Status codes:
          *
          *     - 200: stage ran cleanly; body is the freshly-committed PageStageState.
-         *     - 404: project not found, page not found, or cross-user access (the
-         *       404-not-403 pattern matches the list endpoint and avoids leaking
-         *       project existence).
-         *     - 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).
+         *     - 202: async=True (body or query param); body is a Job.
+         *     - 404: project not found, page not found, or cross-user access.
+         *     - 422: unknown `stage_id` (validated against V2_PAGE_STAGE_IDS).
          *     - 409 Conflict: the stage's `depends_on` rows aren't all `clean`.
          *       Body names the missing parents so the UI can prompt the user to
          *       run them first.
-         *     - 501 Not Implemented: the stage emits a compound output (`ocr`,
-         *       `extract_illustrations`, `text_review`) and the multi-artifact
-         *       writer hasn't shipped yet. Body has a clear "queued for a future
-         *       slice" message.
-         *     - 500: the registered stage impl raised, OR the dual-write commit
-         *       failed. The page_stages row is already marked `failed` with the
-         *       error_message — the chip rail's next refresh will show the
-         *       failure inline.
+         *     - 501 Not Implemented: compound output stage or no impl yet.
+         *     - 500: stage impl raised, or dual-write commit failed.
          */
         post: operations["run_page_stage"];
         delete?: never;
@@ -660,7 +655,7 @@ export interface paths {
          *     - 404: project not found (also covers cross-user) / page not found
          *       / row's status is not `clean` / file missing on disk (drift; the
          *       reconciler is the right tool to surface that systematically).
-         *     - 422: unknown stage_id (validated against PAGE_STAGE_IDS).
+         *     - 422: unknown stage_id (validated against V2_PAGE_STAGE_IDS).
          */
         get: operations["get_page_stage_artifact"];
         put?: never;
@@ -716,6 +711,228 @@ export interface paths {
         get: operations["stream_page_stage_events"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Stage Settings
+         * @description Return effective settings for a page-scoped stage.
+         *
+         *     Resolution: override > saved default > registry default.
+         *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         */
+        get: operations["get_page_stage_settings"];
+        /**
+         * Put Page Stage Settings
+         * @description Save a project override for this stage's settings.
+         *
+         *     The override is used for the next run (not saved as "my default").
+         *     Appends a SettingsChange event.
+         *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         */
+        put: operations["put_page_stage_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/save-as-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Page Stage Settings As Default
+         * @description Save the body as the project-level default for this stage's settings.
+         *
+         *     Appends a SettingsChange event.
+         *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         */
+        post: operations["save_page_stage_settings_as_default"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert Page Stage Settings
+         * @description Revert the override for this stage, falling back to default or registry.
+         *
+         *     Appends a SettingsChange event.
+         *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         */
+        post: operations["revert_page_stage_settings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Page Stage Settings
+         * @description Reset both override and saved default, reverting to registry default.
+         *
+         *     Appends a SettingsChange event.
+         *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         */
+        post: operations["reset_page_stage_settings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/wordcheck/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Wordcheck Flags
+         * @description Return current wordcheck flags projection for a page.
+         *
+         *     Reads the wordcheck stage artifact (JSON blob) and returns flags.
+         *     Returns 404 if the wordcheck stage is not clean.
+         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         */
+        get: operations["get_wordcheck_flags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/wordcheck/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Wordcheck Decisions
+         * @description Record wordcheck decisions and return the updated flags projection.
+         *
+         *     Each decision dict must have {word_id, word_text, decision} where
+         *     decision is "accepted" | "rejected" | "deferred".
+         *     Returns 404 if the wordcheck stage is not clean.
+         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         */
+        post: operations["post_wordcheck_decisions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/wordlist-promotion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Wordlist Promotion
+         * @description Promote a word to the project or global word list.
+         *
+         *     Appends a WordlistPromotion event and updates the persistent word list store
+         *     at data_root/projects/{project_id}/wordlists.json.
+         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         */
+        post: operations["post_wordlist_promotion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/hyphen-join/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Hyphen Join Candidates
+         * @description Return hyphen-join candidates detected from the stage artifact.
+         *
+         *     Reads the hyphen_join stage artifact (text) and detects end-of-line
+         *     hyphen candidates. Returns 404 if no clean artifact is available.
+         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         */
+        get: operations["get_hyphen_join_candidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/hyphen-join/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Hyphen Join Decisions
+         * @description Record hyphen-join decisions and return updated candidates.
+         *
+         *     Reads the hyphen_join stage artifact, re-detects candidates, and
+         *     annotates each with the submitted decision where applicable.
+         *     Returns 404 if no clean artifact is available.
+         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         */
+        post: operations["post_hyphen_join_decisions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1345,6 +1562,13 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HyphenJoinDecisionsRequest */
+        HyphenJoinDecisionsRequest: {
+            /** Decisions */
+            decisions: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * IllustrationRegion
@@ -2464,6 +2688,27 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WordcheckDecisionsRequest */
+        WordcheckDecisionsRequest: {
+            /** Decisions */
+            decisions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** WordlistPromotionRequest */
+        WordlistPromotionRequest: {
+            /** Word */
+            word: string;
+            /**
+             * Source Stage
+             * @default wordcheck
+             */
+            source_stage: string;
+            /** Source Page Id */
+            source_page_id: string;
+            /** List Scope */
+            list_scope: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3474,7 +3719,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StageRunRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -3607,6 +3856,354 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_page_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_page_stage_settings_as_default: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_page_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_page_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wordcheck_flags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wordcheck_decisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordcheckDecisionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_wordlist_promotion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordlistPromotionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_hyphen_join_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_hyphen_join_decisions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HyphenJoinDecisionsRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

@@ -1667,7 +1667,7 @@
           "pages"
         ],
         "summary": "List Page Stages",
-        "description": "Return ordered per-page stage state for the 22-stage DAG.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"API surface\" (\u00a7Per-page\nstage routes). Lazy-init contract (Q1-followup): if no rows exist\nyet for this page, materialise 22 ``not-run`` rows in one\ntransaction (`INSERT OR IGNORE`) and return them in topological\norder. Concurrent first-touch reads converge on exactly 22 rows.\n\nAuth follows the existing pattern \u2014 every project read is filtered\nby `user.user_id`. 404 (not 403) is returned on miss to avoid leaking\nproject existence to non-owners.",
+        "description": "Return ordered per-page stage state for the v2 16-stage page DAG.\n\nSpec: `docs/specs/api-v2-deltas.md` \u00a71.1 \u2014 returns the 16 v2 page-scoped\nstages in V2_PAGE_STAGE_IDS topological order (sources first). Project-\nscoped stages (source, page_order, validation, \u2026) are served via the\n/project-stages routes.\n\nLazy-init contract (Q1-followup): if no rows exist yet for this page,\nmaterialise 16 ``not-run`` rows in one transaction (`INSERT OR IGNORE`)\nand return them in topological order. Concurrent first-touch reads\nconverge on exactly 16 rows.\n\nAuth follows the existing pattern \u2014 every project read is filtered\nby `user.user_id`. 404 (not 403) is returned on miss to avoid leaking\nproject existence to non-owners.",
         "operationId": "list_page_stages",
         "security": [
           {
@@ -1728,7 +1728,7 @@
           "pages"
         ],
         "summary": "Run Page Stage",
-        "description": "Run one stage on one page synchronously and return the new row.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"Per-page stage runner\"\n+ \u00a7\"API surface\". Slice 4 ships the synchronous path for the simple\nimage-processing stages (grayscale/threshold/invert today; more land\nstage-by-stage). When slow stages (`ocr`, `extract_illustrations`)\nget wired, this route gains an optional `?async=true` that returns a\nJob id instead \u2014 the chip rail will poll the job's status.\n\nStatus codes:\n\n- 200: stage ran cleanly; body is the freshly-committed PageStageState.\n- 404: project not found, page not found, or cross-user access (the\n  404-not-403 pattern matches the list endpoint and avoids leaking\n  project existence).\n- 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).\n- 409 Conflict: the stage's `depends_on` rows aren't all `clean`.\n  Body names the missing parents so the UI can prompt the user to\n  run them first.\n- 501 Not Implemented: the stage emits a compound output (`ocr`,\n  `extract_illustrations`, `text_review`) and the multi-artifact\n  writer hasn't shipped yet. Body has a clear \"queued for a future\n  slice\" message.\n- 500: the registered stage impl raised, OR the dual-write commit\n  failed. The page_stages row is already marked `failed` with the\n  error_message \u2014 the chip rail's next refresh will show the\n  failure inline.",
+        "description": "Run one stage on one page and return the new row or a Job.\n\nSpec: `docs/specs/api-v2-deltas.md` \u00a71.1 \u2014 page-stage run, v2 stage IDs.\nAccepts a `StageRunRequest` body (B5: force, async fields). The `?async`\nquery-param form is deprecated; the body form is canonical in v2. Both\nare accepted during the B5\u2192I1 transition window.\n\nStatus codes:\n\n- 200: stage ran cleanly; body is the freshly-committed PageStageState.\n- 202: async=True (body or query param); body is a Job.\n- 404: project not found, page not found, or cross-user access.\n- 422: unknown `stage_id` (validated against V2_PAGE_STAGE_IDS).\n- 409 Conflict: the stage's `depends_on` rows aren't all `clean`.\n  Body names the missing parents so the UI can prompt the user to\n  run them first.\n- 501 Not Implemented: compound output stage or no impl yet.\n- 500: stage impl raised, or dual-write commit failed.",
         "operationId": "run_page_stage",
         "security": [
           {
@@ -1774,6 +1774,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StageRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1812,7 +1829,7 @@
           "pages"
         ],
         "summary": "Get Page Stage Artifact",
-        "description": "Stream the bytes of a clean stage's on-disk artifact.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"API surface\" (\u00a7Per-page\nstage routes). Lets the workbench (or a direct-link user) view what\na stage actually produced. M2 ships the minimal single-file shape;\ncompound-output stages stay 404 here until the multi-artifact writer\nlands (their bytes don't fit a single file/Content-Type pair).\n\nCaching: the response carries an ETag header echoing the row's\n`input_hash` (sha256 of the artifact bytes). Browsers re-fetching\nthe same artifact pass the value back as `If-None-Match`; we return\n304 in that case so the existing in-browser copy is reused.\nBackend never caches anything itself.\n\nStatus code mapping:\n\n- 200: row clean, file exists, body is the raw bytes.\n- 304: `If-None-Match` matched the current ETag.\n- 404: project not found (also covers cross-user) / page not found\n  / row's status is not `clean` / file missing on disk (drift; the\n  reconciler is the right tool to surface that systematically).\n- 422: unknown stage_id (validated against PAGE_STAGE_IDS).",
+        "description": "Stream the bytes of a clean stage's on-disk artifact.\n\nSpec: `docs/specs/pipeline-task-model.md` \u00a7\"API surface\" (\u00a7Per-page\nstage routes). Lets the workbench (or a direct-link user) view what\na stage actually produced. M2 ships the minimal single-file shape;\ncompound-output stages stay 404 here until the multi-artifact writer\nlands (their bytes don't fit a single file/Content-Type pair).\n\nCaching: the response carries an ETag header echoing the row's\n`input_hash` (sha256 of the artifact bytes). Browsers re-fetching\nthe same artifact pass the value back as `If-None-Match`; we return\n304 in that case so the existing in-browser copy is reused.\nBackend never caches anything itself.\n\nStatus code mapping:\n\n- 200: row clean, file exists, body is the raw bytes.\n- 304: `If-None-Match` matched the current ETag.\n- 404: project not found (also covers cross-user) / page not found\n  / row's status is not `clean` / file missing on disk (drift; the\n  reconciler is the right tool to surface that systematically).\n- 422: unknown stage_id (validated against V2_PAGE_STAGE_IDS).",
         "operationId": "get_page_stage_artifact",
         "security": [
           {
@@ -2017,6 +2034,644 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Stage Settings",
+        "description": "Return effective settings for a page-scoped stage.\n\nResolution: override > saved default > registry default.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "operationId": "get_page_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Put Page Stage Settings",
+        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "operationId": "put_page_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/save-as-default": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Save Page Stage Settings As Default",
+        "description": "Save the body as the project-level default for this stage's settings.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "operationId": "save_page_stage_settings_as_default",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/revert": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Revert Page Stage Settings",
+        "description": "Revert the override for this stage, falling back to default or registry.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "operationId": "revert_page_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/reset": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Reset Page Stage Settings",
+        "description": "Reset both override and saved default, reverting to registry default.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "operationId": "reset_page_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/wordcheck/flags": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Wordcheck Flags",
+        "description": "Return current wordcheck flags projection for a page.\n\nReads the wordcheck stage artifact (JSON blob) and returns flags.\nReturns 404 if the wordcheck stage is not clean.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "operationId": "get_wordcheck_flags",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/wordcheck/decisions": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Post Wordcheck Decisions",
+        "description": "Record wordcheck decisions and return the updated flags projection.\n\nEach decision dict must have {word_id, word_text, decision} where\ndecision is \"accepted\" | \"rejected\" | \"deferred\".\nReturns 404 if the wordcheck stage is not clean.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "operationId": "post_wordcheck_decisions",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WordcheckDecisionsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/wordlist-promotion": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Post Wordlist Promotion",
+        "description": "Promote a word to the project or global word list.\n\nAppends a WordlistPromotion event and updates the persistent word list store\nat data_root/projects/{project_id}/wordlists.json.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "operationId": "post_wordlist_promotion",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WordlistPromotionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/hyphen-join/candidates": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Hyphen Join Candidates",
+        "description": "Return hyphen-join candidates detected from the stage artifact.\n\nReads the hyphen_join stage artifact (text) and detects end-of-line\nhyphen candidates. Returns 404 if no clean artifact is available.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "operationId": "get_hyphen_join_candidates",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/hyphen-join/decisions": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Post Hyphen Join Decisions",
+        "description": "Record hyphen-join decisions and return updated candidates.\n\nReads the hyphen_join stage artifact, re-detects candidates, and\nannotates each with the submitted decision where applicable.\nReturns 404 if no clean artifact is available.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "operationId": "post_hyphen_join_decisions",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HyphenJoinDecisionsRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3600,6 +4255,23 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HyphenJoinDecisionsRequest": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decisions"
+        ],
+        "title": "HyphenJoinDecisionsRequest"
       },
       "IllustrationRegion-Input": {
         "properties": {
@@ -6542,6 +7214,51 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WordcheckDecisionsRequest": {
+        "properties": {
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Decisions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decisions"
+        ],
+        "title": "WordcheckDecisionsRequest"
+      },
+      "WordlistPromotionRequest": {
+        "properties": {
+          "word": {
+            "type": "string",
+            "title": "Word"
+          },
+          "source_stage": {
+            "type": "string",
+            "title": "Source Stage",
+            "default": "wordcheck"
+          },
+          "source_page_id": {
+            "type": "string",
+            "title": "Source Page Id"
+          },
+          "list_scope": {
+            "type": "string",
+            "title": "List Scope"
+          }
+        },
+        "type": "object",
+        "required": [
+          "word",
+          "source_page_id",
+          "list_scope"
+        ],
+        "title": "WordlistPromotionRequest"
       }
     },
     "securitySchemes": {
