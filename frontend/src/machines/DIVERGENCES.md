@@ -337,6 +337,46 @@ destroyed on CLEAR_SELECTION) is preserved.
 
 ---
 
+## F3-5 — `size` / `reclaimable` view-fields omitted from ManageTabPanel header
+
+**YAML / canvas:** The `manage-actions.yaml` artboard shows an optional header
+row with the project's on-disk size and reclaimable bytes after a `clean` run.
+
+**XState v5 (current):** The `ManageActionsResult` struct includes
+`reclaimedBytes` and `zippedSize`, but the `ManageTabPanel` component does
+not render a size/reclaimable header row. The action list and the confirm
+dialog are fully wired; the stat display is deferred.
+
+**Rationale:** The size fields are view-only metadata. They require an
+additional backend call (`GET /api/data/projects/:id` size field) that is
+already surfaced in the `detail-stats` grid. Adding a redundant stat row
+in Manage would duplicate data without adding actionable value at I1.
+
+**Pending at I1:** If the canvas design is load-bearing (shows post-clean
+reclaim result inline), add a `lastCleanResult: ManageActionResult | null`
+state slot to the component and render it after the `done` toast.
+
+---
+
+## F3-6 — `spawnRail` implemented in React, not in the machine (projectDetail)
+
+**YAML:** `projectDetail` owns the full lifecycle including spawning the
+`railList` actor so both machines share a project-list subscription.
+
+**XState v5 (current):** `railList` and `projectDetail` are spawned
+independently via `useActor` at the `ProjectsPage` component level.
+Cross-machine communication (rail refresh on mutation) is handled by the
+`onRefreshRail` callback in `projectDetailMachine` input, which directly
+calls `railSend({ type: "PROJECTS_CHANGED" })` from the component.
+
+**Rationale:** Avoids `spawnChild` complexity at I1. The behavioral contract
+(rail re-fetches on project mutation) is preserved.
+
+**At I1:** Promote to `spawnChild` inside `projectDetail` when the full
+actor-model integration is needed (F3-4 and F3-6 can be addressed together).
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.

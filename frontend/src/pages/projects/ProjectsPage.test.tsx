@@ -19,7 +19,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectRecord } from "@/mocks/types";
+import type { ProjectRecord, ManageActionResult } from "@/mocks/types";
 import { ProjectsPage, type ProjectsPageServices } from "./ProjectsPage";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +72,12 @@ function makeServices(
     },
     detail: {
       fetchProjects: vi.fn().mockResolvedValue(projects),
+    },
+    manage: {
+      runManageAction: vi.fn().mockResolvedValue({
+        action: "archive",
+        status: "archived",
+      } satisfies ManageActionResult),
     },
     ...overrides,
   };

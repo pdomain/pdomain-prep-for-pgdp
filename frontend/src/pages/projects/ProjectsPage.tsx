@@ -14,13 +14,18 @@
  *   - attributes — attributes tab
  *   - manage    — manage tab (active project)
  */
-import { useCallback, useMemo, useState } from "react";
+import JSZip from "jszip";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useActor } from "@xstate/react";
-import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import type { components } from "@/api/types.gen";
+import { FormErrorBanner } from "@/components/FormErrorBanner";
 import { Badge, type BadgeStatus } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/Dialog";
+import { Input } from "@/components/ui/Input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +39,7 @@ import type {
   ProjectRecord,
   ProjectLifecycleStatus,
   ManageAction,
+  ManageActionResult,
 } from "@/mocks/types";
 import {
   railListMachine,
@@ -43,8 +49,15 @@ import {
   projectDetailMachine,
   type ProjectDetailServices,
 } from "@/machines/projects/projectDetail";
+import {
+  manageActionsMachine,
+  type ManageActionsServices,
+} from "@/machines/projects/manageActions";
 import { ProjectsEmpty } from "./ProjectsEmpty";
 import type { StateValue } from "xstate";
+
+type CreateProjectRequest = components["schemas"]["CreateProjectRequest"];
+type CreateProjectResponse = components["schemas"]["CreateProjectResponse"];
 
 // ---------------------------------------------------------------------------
 // Status → Badge mapping
@@ -196,6 +209,7 @@ function PipelineMini({
 export interface ProjectsPageServices {
   rail: RailListServices;
   detail: ProjectDetailServices;
+  manage: ManageActionsServices;
 }
 
 export function ProjectsPage({
@@ -205,6 +219,7 @@ export function ProjectsPage({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showCreate, setShowCreate] = useState(false);
 
   // Build services from QueryClient if not injected (production path).
   const resolvedServices = useMemo<ProjectsPageServices>(() => {
@@ -216,7 +231,46 @@ export function ProjectsPage({
       });
     const rail: RailListServices = { fetchProjects };
     const detail: ProjectDetailServices = { fetchProjects };
-    return { rail, detail };
+
+    // Real manage action service: maps action to the backend endpoints.
+    const manage: ManageActionsServices = {
+      async runManageAction(
+        projectId: string,
+        action: ManageAction,
+        step?: 1 | 2,
+      ): Promise<ManageActionResult> {
+        switch (action) {
+          case "clean":
+            return api.post<ManageActionResult>(
+              `/api/data/projects/${projectId}/clean`,
+            );
+          case "archive":
+            return api.post<ManageActionResult>(
+              `/api/data/projects/${projectId}/archive`,
+            );
+          case "restore":
+            return api.post<ManageActionResult>(
+              `/api/data/projects/${projectId}/unarchive`,
+            );
+          case "saveCopy":
+            return api.post<ManageActionResult>(
+              `/api/data/projects/${projectId}/export`,
+            );
+          case "delete":
+            if (step === 2) {
+              return api.delete<ManageActionResult>(
+                `/api/data/projects/${projectId}?permanent=true`,
+              );
+            }
+            // step 1 — archive first
+            return api.post<ManageActionResult>(
+              `/api/data/projects/${projectId}/archive`,
+            );
+        }
+      },
+    };
+
+    return { rail, detail, manage };
   }, [services, queryClient]);
 
   const [detailSnap, detailSend] = useActor(projectDetailMachine, {
@@ -306,7 +360,15 @@ export function ProjectsPage({
         data-testid="projects-page"
         data-screen-label="Projects"
       >
-        <ProjectsEmpty onNewProject={() => void navigate("/projects/new")} />
+        <ProjectsEmpty onNewProject={() => setShowCreate(true)} />
+        <CreateProjectModal
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          onCreated={(projectId) => {
+            void navigate(`/projects/${projectId}/import`);
+          }}
+          onRailRefresh={() => railSend({ type: "PROJECTS_CHANGED" })}
+        />
       </section>
     );
   }
@@ -373,7 +435,7 @@ export function ProjectsPage({
               variant="primary"
               className="w-full"
               data-testid="new-project-btn"
-              onClick={() => void navigate("/projects/new")}
+              onClick={() => setShowCreate(true)}
             >
               New project
             </Button>
@@ -533,10 +595,24 @@ export function ProjectsPage({
               onViewAllActivity={() =>
                 detailSend({ type: "VIEW_ALL_ACTIVITY" })
               }
+              manageServices={resolvedServices.manage}
+              onProjectMutated={() => {
+                railSend({ type: "PROJECTS_CHANGED" });
+                detailSend({ type: "PROJECTS_CHANGED" });
+              }}
             />
           )}
         </div>
       </div>
+
+      <CreateProjectModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={(projectId) => {
+          void navigate(`/projects/${projectId}/import`);
+        }}
+        onRailRefresh={() => railSend({ type: "PROJECTS_CHANGED" })}
+      />
     </section>
   );
 }
@@ -551,12 +627,16 @@ function ProjectDetailPane({
   onTabChange,
   onOpenProject,
   onViewAllActivity,
+  manageServices,
+  onProjectMutated,
 }: {
   project: ProjectRecord;
   tab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
   onOpenProject: () => void;
   onViewAllActivity: () => void;
+  manageServices: ManageActionsServices;
+  onProjectMutated: () => void;
 }) {
   const s = toBadgeStatus(project.status, project.archived);
   const label = statusLabel(project.status, project.archived);
@@ -721,7 +801,13 @@ function ProjectDetailPane({
           <ActivityTabPanel project={project} onViewAll={onViewAllActivity} />
         )}
         {tab === "attributes" && <AttributesTabPanel project={project} />}
-        {tab === "manage" && <ManageTabPanel project={project} />}
+        {tab === "manage" && (
+          <ManageTabPanel
+            project={project}
+            services={manageServices}
+            onProjectMutated={onProjectMutated}
+          />
+        )}
       </div>
     </div>
   );
@@ -781,139 +867,246 @@ function AttributesTabPanel({ project }: { project: ProjectRecord }) {
 }
 
 // ---------------------------------------------------------------------------
-// Manage tab panel
+// Manage tab panel — wired to manageActions machine
 // ---------------------------------------------------------------------------
 
-interface ManageActionDef {
-  id: ManageAction;
-  label: string;
-  desc: string;
-  danger?: boolean;
-  twoStep?: boolean;
-}
-
-function ManageTabPanel({ project }: { project: ProjectRecord }) {
+function ManageTabPanel({
+  project,
+  services,
+  onProjectMutated,
+}: {
+  project: ProjectRecord;
+  services: ManageActionsServices;
+  onProjectMutated: () => void;
+}) {
   const navigate = useNavigate();
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const actions: ManageActionDef[] = project.archived
-    ? [
-        {
-          id: "restore",
-          label: "Restore project",
-          desc: "Unarchive and make the project editable again.",
-        },
-        {
-          id: "saveCopy",
-          label: "Save a copy…",
-          desc: "Download the archived zip to a different location.",
-        },
-        {
-          id: "delete",
-          label: "Delete project",
-          desc: "Permanently remove everything. Only archived projects can be deleted.",
-          danger: true,
-        },
-      ]
-    : [
-        {
-          id: "clean",
-          label: "Clean intermediate artifacts",
-          desc: "Drop stage outputs that can be re-derived automatically.",
-        },
-        {
-          id: "archive",
-          label: "Archive project",
-          desc: "Zip the project in place and mark it read-only.",
-        },
-        {
-          id: "saveCopy",
-          label: "Save a copy…",
-          desc: "Download a zip of the full project.",
-        },
-        {
-          id: "delete",
-          label: "Delete project",
-          desc: "Step 1 of 2 — archives the project (run delete again from archived to remove permanently).",
-          twoStep: true,
-        },
-      ];
+  const [manageSnap, manageSend] = useActor(manageActionsMachine, {
+    input: {
+      projectId: project.id,
+      isArchived: project.archived ?? false,
+      services,
+      onMutated: (_action: ManageAction, _result: ManageActionResult) => {
+        onProjectMutated();
+      },
+    },
+  });
+
+  // Acknowledge checkbox ref for the danger-confirm dialog
+  const ackRef = useRef<HTMLInputElement>(null);
+
+  const isConfirming =
+    manageSnap.matches("confirming") ||
+    manageSnap.matches({ confirmingDanger: "armed" }) ||
+    manageSnap.matches({ confirmingDanger: "ready" });
+  const isDangerConfirm =
+    manageSnap.matches({ confirmingDanger: "armed" }) ||
+    manageSnap.matches({ confirmingDanger: "ready" });
+  const isArmed = manageSnap.matches({ confirmingDanger: "armed" });
+  const isReady = manageSnap.matches({ confirmingDanger: "ready" });
+  const isExecuting = manageSnap.matches("executing");
+  const isDone = manageSnap.matches("done");
+  const isFailed = manageSnap.matches("failed");
+
+  // Dialog open: any of the confirm/danger/executing/done/failed states
+  const dialogOpen = isConfirming || isExecuting || isDone || isFailed;
+
+  // Confirm button enabled: non-danger confirming OR danger+ready
+  const confirmEnabled =
+    (manageSnap.matches("confirming") || (isDangerConfirm && isReady)) &&
+    !isExecuting;
+
+  // Pending action label for dialog copy
+  const pendingAction = manageSnap.context.pendingAction;
+
+  function pendingActionCopy(): { title: string; body: string } {
+    switch (pendingAction) {
+      case "clean":
+        return {
+          title: "Clean intermediate artifacts?",
+          body: "Stage outputs that can be re-derived will be deleted. The project remains intact.",
+        };
+      case "archive":
+        return {
+          title: "Archive this project?",
+          body: "The project will be zipped and marked read-only. You can restore it later.",
+        };
+      case "restore":
+        return {
+          title: "Restore this project?",
+          body: "The project will be unarchived and made editable again.",
+        };
+      case "delete":
+        if (manageSnap.context._step === 2) {
+          return {
+            title: "Delete project permanently?",
+            body: `This will remove all pages, OCR output, and pipeline state for "${project.title}". This cannot be undone.`,
+          };
+        }
+        return {
+          title: "Delete project?",
+          body: `Step 1 of 2: "${project.title}" will be archived (zipped, read-only). Run delete again from the Archived tab to remove permanently.`,
+        };
+      default:
+        return { title: "Confirm action", body: "" };
+    }
+  }
+
+  const { title: dialogTitle, body: dialogBody } = pendingActionCopy();
 
   return (
     <div
       className="mt-3 rounded-lg border border-border-1 bg-bg-surface"
       data-testid="manage-panel"
     >
-      {actions.map((a, i) => (
-        <div
-          key={a.id}
-          data-testid={`manage-action-${a.id}`}
-          className={`flex items-center gap-3.5 px-4 py-3.5 ${
-            i > 0 ? "border-t border-border-1" : ""
-          }`}
-        >
-          <div className="min-w-0 flex-1">
-            <div
-              className={`text-[13px] font-semibold ${
-                a.danger === true ? "text-status-error" : "text-ink-1"
-              }`}
-            >
-              {a.label}
-            </div>
-            <div className="mt-0.5 text-xs text-ink-3">{a.desc}</div>
-          </div>
-          <Button
-            variant={a.danger === true ? "danger" : "outline"}
-            size="sm"
-            data-testid={`manage-action-btn-${a.id}`}
-            onClick={() => {
-              if (a.id === "saveCopy") {
+      {/* Active project actions */}
+      {!project.archived && (
+        <>
+          <ManageRow
+            id="clean"
+            label="Clean intermediate artifacts"
+            desc="Drop stage outputs that can be re-derived automatically."
+            onAction={() => manageSend({ type: "CLEAN" })}
+          />
+          <ManageRow
+            id="archive"
+            label="Archive project"
+            desc="Zip the project in place and mark it read-only."
+            onAction={() => manageSend({ type: "ARCHIVE" })}
+          />
+          <ManageRow
+            id="saveCopy"
+            label="Save a copy…"
+            desc="Download a zip of the full project."
+            onAction={() => {
+              if (project.archived !== true) {
                 void navigate(`/projects/${project.id}/export`);
-              } else if (a.id === "delete" && project.archived === true) {
-                setDeleteOpen(true);
+              } else {
+                manageSend({ type: "SAVE_COPY" });
               }
-              // Connect manageActions machine here in a follow-on slice.
             }}
-          >
-            {a.id === "delete" && project.archived !== true
-              ? "Delete…"
-              : a.id === "delete"
-                ? "Delete permanently"
-                : a.label.replace("…", "")}
-          </Button>
-        </div>
-      ))}
+          />
+          <ManageRow
+            id="delete"
+            label="Delete project"
+            desc="Step 1 of 2 — archives the project (run delete again from archived to remove permanently)."
+            danger
+            buttonLabel="Delete…"
+            onAction={() => manageSend({ type: "DELETE" })}
+          />
+        </>
+      )}
 
+      {/* Archived project actions */}
+      {project.archived && (
+        <>
+          <ManageRow
+            id="restore"
+            label="Restore project"
+            desc="Unarchive and make the project editable again."
+            onAction={() => manageSend({ type: "RESTORE" })}
+          />
+          <ManageRow
+            id="saveCopy"
+            label="Save a copy…"
+            desc="Download the archived zip to a different location."
+            onAction={() => manageSend({ type: "SAVE_COPY" })}
+          />
+          <ManageRow
+            id="delete"
+            label="Delete project"
+            desc="Permanently remove everything. Only archived projects can be deleted."
+            danger
+            buttonLabel="Delete permanently"
+            onAction={() => manageSend({ type: "DELETE" })}
+          />
+        </>
+      )}
+
+      {/* Executing / done / failed inline notice */}
+      {isExecuting && (
+        <div className="border-t border-border-1 px-4 py-3 text-xs text-ink-3">
+          Working…
+        </div>
+      )}
+      {isDone && (
+        <div className="border-t border-border-1 px-4 py-3 text-xs text-ink-2">
+          Done.{" "}
+          <button
+            className="text-accent underline"
+            onClick={() => manageSend({ type: "DISMISS" })}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      {isFailed && (
+        <div className="border-t border-border-1 px-4 py-3 text-xs text-status-error">
+          {manageSnap.context.error ?? "Action failed."}{" "}
+          <button
+            className="text-accent underline"
+            onClick={() => manageSend({ type: "RETRY" })}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Confirm / danger-confirm dialog */}
       <AlertDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
+        open={dialogOpen && !isExecuting && !isDone && !isFailed}
+        onOpenChange={(open) => {
+          if (!open) manageSend({ type: "CANCEL" });
+        }}
         data-testid="delete-confirm-dialog"
       >
         <AlertDialogContent>
-          <AlertDialogTitle>Delete project permanently?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This will remove all pages, OCR output, and pipeline state for
-            &ldquo;{project.title}&rdquo;. This cannot be undone.
-          </AlertDialogDescription>
+          <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
+          <AlertDialogDescription>{dialogBody}</AlertDialogDescription>
+
+          {/* Danger-gate: checkbox acknowledge step (armed sub-state only) */}
+          {isDangerConfirm && (
+            <div className="flex items-center gap-2 py-2">
+              <input
+                ref={ackRef}
+                id="delete-ack-checkbox"
+                type="checkbox"
+                data-testid="delete-acknowledge"
+                checked={!isArmed}
+                disabled={isReady}
+                onChange={() => {
+                  if (isArmed) manageSend({ type: "ACKNOWLEDGE" });
+                }}
+                className="h-4 w-4 rounded border border-border-2"
+              />
+              <label
+                htmlFor="delete-ack-checkbox"
+                className="text-sm text-ink-2"
+              >
+                I understand this cannot be undone.
+              </label>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <AlertDialogCancel asChild>
               <Button
                 variant="outline"
                 size="sm"
                 data-testid="delete-cancel-btn"
+                onClick={() => manageSend({ type: "CANCEL" })}
               >
                 Cancel
               </Button>
             </AlertDialogCancel>
             <AlertDialogAction asChild>
               <Button
-                variant="danger"
+                variant={isDangerConfirm ? "danger" : "outline"}
                 size="sm"
                 data-testid="delete-confirm-btn"
-                onClick={() => {
-                  // Connect manageActions machine delete here in a follow-on slice.
-                }}
+                disabled={!confirmEnabled}
+                onClick={() => manageSend({ type: "CONFIRM" })}
               >
-                Delete permanently
+                {isDangerConfirm ? "Delete permanently" : "Confirm"}
               </Button>
             </AlertDialogAction>
           </div>
@@ -921,4 +1114,338 @@ function ManageTabPanel({ project }: { project: ProjectRecord }) {
       </AlertDialog>
     </div>
   );
+}
+
+function ManageRow({
+  id,
+  label,
+  desc,
+  danger,
+  buttonLabel,
+  onAction,
+}: {
+  id: ManageAction;
+  label: string;
+  desc: string;
+  danger?: boolean;
+  buttonLabel?: string;
+  onAction: () => void;
+}) {
+  return (
+    <div
+      data-testid={`manage-action-${id}`}
+      className="flex items-center gap-3.5 border-t border-border-1 first:border-t-0 px-4 py-3.5"
+    >
+      <div className="min-w-0 flex-1">
+        <div
+          className={`text-[13px] font-semibold ${
+            danger === true ? "text-status-error" : "text-ink-1"
+          }`}
+        >
+          {label}
+        </div>
+        <div className="mt-0.5 text-xs text-ink-3">{desc}</div>
+      </div>
+      <Button
+        variant={danger === true ? "danger" : "outline"}
+        size="sm"
+        data-testid={`manage-action-btn-${id}`}
+        onClick={onAction}
+      >
+        {buttonLabel ?? label.replace("…", "")}
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CreateProjectModal — ported from deleted ProjectListPage (git: f588108)
+// ---------------------------------------------------------------------------
+
+type Step =
+  | { kind: "form" }
+  | { kind: "zipping" }
+  | { kind: "uploading"; pct: number };
+
+type UploadMode = "zip" | "folder";
+
+function CreateProjectModal({
+  open,
+  onClose,
+  onCreated,
+  onRailRefresh,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Called with the new project id when creation + upload succeeds. */
+  onCreated: (projectId: string) => void;
+  /** Callback to tell the rail to re-fetch after a successful create. */
+  onRailRefresh: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [folderFiles, setFolderFiles] = useState<File[]>([]);
+  const [mode, setMode] = useState<UploadMode>("zip");
+  const [step, setStep] = useState<Step>({ kind: "form" });
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      let uploadFile_: File;
+      if (mode === "folder") {
+        if (folderFiles.length === 0)
+          throw new Error("Select a folder of images first.");
+        setStep({ kind: "zipping" });
+        const zip = new JSZip();
+        for (const f of folderFiles) {
+          zip.file(f.name, f);
+        }
+        const blob = await zip.generateAsync({ type: "blob" });
+        uploadFile_ = new File([blob], "upload.zip", {
+          type: "application/zip",
+        });
+      } else {
+        if (!file) throw new Error("Choose a zip file first.");
+        uploadFile_ = file;
+      }
+
+      const created = await api.post<CreateProjectResponse>(
+        "/api/data/projects",
+        { name, source_type: "zip" } satisfies CreateProjectRequest,
+      );
+      if (!created.upload_url || !created.upload_key) {
+        throw new Error("Server did not return an upload URL.");
+      }
+
+      setStep({ kind: "uploading", pct: 0 });
+      await uploadFileXhr(created.upload_url, uploadFile_, (pct) =>
+        setStep({ kind: "uploading", pct }),
+      );
+
+      await api.post<{ job_id: string; status: string }>("/api/gpu/ingest", {
+        project_id: created.project.id,
+        source_key: created.upload_key,
+        source_type: "zip",
+      });
+
+      return created.project;
+    },
+    onSuccess: async (project) => {
+      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      onRailRefresh();
+      onClose();
+      onCreated(project.id);
+    },
+    onError: () => {
+      setStep({ kind: "form" });
+    },
+  });
+
+  const isReady =
+    name.trim().length > 0 &&
+    (mode === "zip" ? file !== null : folderFiles.length > 0);
+
+  function handleClose() {
+    if (createMut.isPending) return; // block close while uploading
+    setName("");
+    setFile(null);
+    setFolderFiles([]);
+    setMode("zip");
+    setStep({ kind: "form" });
+    createMut.reset();
+    onClose();
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) handleClose();
+      }}
+    >
+      <DialogContent>
+        <div data-testid="create-project-dialog">
+          <DialogTitle className="text-lg font-semibold">
+            New project
+          </DialogTitle>
+
+          {step.kind === "form" && (
+            <>
+              {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- Input wraps a native <input>; jsx-a11y cannot see through the component boundary */}
+              <label className="block">
+                <span className="text-sm text-ink-2">Book name</span>
+                <Input
+                  className="mt-1"
+                  data-testid="create-project-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Belloc — The Four Men"
+                />
+              </label>
+
+              {/* Mode toggle — ZIP file vs Folder */}
+              <div
+                role="tablist"
+                aria-label="Upload source"
+                className="flex gap-1 rounded border border-border-2 p-0.5 w-fit"
+              >
+                <button
+                  role="tab"
+                  aria-selected={mode === "zip"}
+                  onClick={() => {
+                    setMode("zip");
+                    setFolderFiles([]);
+                  }}
+                  className={`rounded px-3 py-1 text-sm transition-colors ${
+                    mode === "zip"
+                      ? "bg-accent text-white"
+                      : "text-ink-2 hover:bg-bg-raised"
+                  }`}
+                >
+                  ZIP file
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={mode === "folder"}
+                  onClick={() => {
+                    setMode("folder");
+                    setFile(null);
+                  }}
+                  className={`rounded px-3 py-1 text-sm transition-colors ${
+                    mode === "folder"
+                      ? "bg-accent text-white"
+                      : "text-ink-2 hover:bg-bg-raised"
+                  }`}
+                >
+                  Folder
+                </button>
+              </div>
+
+              {mode === "zip" && (
+                <label className="block">
+                  <span className="text-sm text-ink-2">Source zip</span>
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    data-testid="create-project-zip-input"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    className="mt-1 block w-full text-sm"
+                  />
+                </label>
+              )}
+
+              {mode === "folder" && (
+                <label className="block">
+                  <span className="text-sm text-ink-2">
+                    Image folder{" "}
+                    <span className="text-ink-3">
+                      (select your scans folder)
+                    </span>
+                  </span>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    data-testid="create-project-folder-input"
+                    data-folder-input="true"
+                    {...({ webkitdirectory: "" } as object)}
+                    onChange={(e) => {
+                      const files = e.target.files
+                        ? Array.from(e.target.files)
+                        : [];
+                      setFolderFiles(files);
+                    }}
+                    className="mt-1 block w-full text-sm"
+                  />
+                  {folderFiles.length > 0 && (
+                    <p className="mt-1 text-xs text-ink-3">
+                      {folderFiles.length} image
+                      {folderFiles.length !== 1 ? "s" : ""} selected — will be
+                      zipped before upload
+                    </p>
+                  )}
+                </label>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={handleClose}>
+                  Cancel
+                </Button>
+                <Button
+                  data-testid="create-project-submit-btn"
+                  onClick={() => createMut.mutate()}
+                  disabled={!isReady || createMut.isPending}
+                >
+                  Create + Upload
+                </Button>
+              </div>
+            </>
+          )}
+
+          {step.kind === "zipping" && <ProgressLine label="Zipping…" pct={0} />}
+
+          {step.kind === "uploading" && (
+            <ProgressLine
+              label={`Uploading… ${step.pct}%`}
+              pct={step.pct}
+              testid="create-upload-progress"
+            />
+          )}
+
+          <FormErrorBanner
+            prefix="create project failed"
+            error={createMut.isError ? createMut.error : null}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProgressLine({
+  label,
+  pct,
+  testid,
+}: {
+  label: string;
+  pct: number;
+  testid?: string;
+}) {
+  return (
+    <div className="space-y-2" data-testid={testid}>
+      <div className="text-sm text-ink-2">{label}</div>
+      <div className="h-2 w-full overflow-hidden rounded bg-bg-raised">
+        <div
+          className="h-full bg-accent transition-[width]"
+          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+async function uploadFileXhr(
+  url: string,
+  file: File,
+  onProgress: (pct: number) => void,
+  contentType = "application/zip",
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("Upload network error"));
+    xhr.send(file);
+  });
 }
