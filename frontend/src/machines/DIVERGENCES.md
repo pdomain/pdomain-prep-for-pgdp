@@ -534,6 +534,115 @@ a run-all-stale sweep.
 
 ---
 
+---
+
+## F5-1 — Settings region extracted into `stageSettings.ts` (sourceTool)
+
+**YAML:** The settings parallel region (`default` / `modified` / `preset` states,
+CHANGE_SETTING / SAVE_AS_DEFAULT / REVERT / SAVE_AS_PRESET / LOAD_PRESET /
+RESET_TO_DEFAULT events) is declared inline inside `tool-source.yaml`.
+
+**XState v5:** The settings region types, actors, guards, and action implementations
+are extracted into `src/machines/tools/stageSettings.ts`. Each stage tool machine
+(F5.1–F5.6) imports `stageSettingsActors`, `stageSettingsGuards`, and the exported
+action implementation as documentation.
+
+**Phantom-type constraint (important for F5.2–F5.6):** XState v5 `ActionFunction`
+carries phantom type markers (`_out_TEvent`, `_out_TActor`, etc.) that make an
+`ActionFunction<StageSettingsContext, StageSettingsEvent, ...>` structurally
+incompatible with `ActionFunction<SourceToolContext, SourceToolEvent, ...>` even
+though `SourceToolContext extends StageSettingsContext`. Spreading the pre-built
+`stageSettingsActions` object into a machine with an extended context type causes
+a TypeScript error that cascades to break ALL string action references in the machine.
+
+**Resolution:** Each tool machine inlines the 9 settings actions directly in its
+`setup({ actions })` block, typed with its own `TContext`/`TEvent`. The canonical
+implementations are documented in `stageSettings.ts` as `stageSettingsActions`
+(used only for the base `StageSettingsContext`/`StageSettingsEvent` machine,
+and exported as documentation for F5.2–F5.6 to copy verbatim).
+
+**Pattern for F5.2–F5.6:** Copy the 9 settings action bodies from `source.ts`
+directly — change only the `SourceToolContext` / `SourceToolEvent` type annotations.
+The implementations are identical; TypeScript requires separate typed copies.
+
+**Impact:** The parallel `settings` region state machine in each tool is identical.
+Actors (`stageSettingsActors`) can still be spread without cast — only `ActionFunction`
+types have this restriction.
+
+---
+
+## F5-2 — `canConfirm` reads `context._thumbsDone` mirror (sourceTool)
+
+**YAML:** `canConfirm: ctx.totals.unmarked === 0 && thumbnailsRegionIn('done')`
+
+`thumbnailsRegionIn('done')` tests the parallel `thumbnails` sub-state from inside
+the `files` region guard.
+
+**XState v5:** Guards in one parallel region cannot directly read the state of
+another parallel region without a full snapshot traversal. Using
+`snapshot.matches({ thumbnails: 'done' })` inside a guard is not possible since the
+guard only receives `{ context, event }`, not the snapshot.
+
+**Resolution:** `_thumbsDone: boolean` is stored in context. It is set to `true` by
+the `markAllThumbed` action (triggered on `THUMBS_DONE`) and cleared to `false` by
+`requestRegenerate` (triggered on `REGENERATE`). The `canConfirm` guard reads
+`context._thumbsDone` instead of the parallel sub-state.
+
+**Impact:** `_thumbsDone` must be kept in sync with the `thumbnails` region.
+Any future thumbnail-path change must also update `_thumbsDone`.
+
+---
+
+## F5-3 — Settings actor invocations deferred to I1 (sourceTool)
+
+**YAML:** `SAVE_AS_DEFAULT` and `REVERT` transitions in the `modified` state
+call `services.persistAsProjectDefault` and `services.revertSettings` respectively
+as invoke.src actors (server round-trips).
+
+**XState v5 (F5):** At F5, these are modelled as synchronous `assign` actions
+(`onSavedAsDefault`, `revertSettingsAction`) — no server round-trip. The transition
+updates context immediately and moves to `default` state without waiting for a
+promise.
+
+**Rationale:** The mock server's `saveAsDefault` / `revertSettings` return promptly.
+A full `invoke` with `onDone` / `onError` handling adds complexity that is deferred
+to I1 when the real API routes are wired.
+
+**Impact:** At I1, `SAVE_AS_DEFAULT` in `modified` must change from a synchronous
+target transition to an actor invocation with loading + error states. The
+`stageSettingsActors.saveAsDefault` and `stageSettingsActors.revertSettings` actors
+are already defined in `stageSettings.ts` ready for I1 wiring.
+
+---
+
+## F5-4 — `_thumbsDone` context mirror for parallel sub-state (sourceTool)
+
+_See F5-2 above — this entry records the specific context field pattern._
+
+**Pattern rule for F5.2–F5.6:** Any YAML guard of the form
+`parallelRegionIn('someState')` must be resolved via a `_stateName: boolean`
+context field updated by the entry/exit actions of the relevant parallel states.
+This is the canonical solution whenever a guard in region A needs to test the
+state of region B.
+
+---
+
+## F5-5 — `recountTotals` folded inline (sourceTool)
+
+**YAML:** `recountTotals` appears as a separate step after file mutations
+(markSelected, assignRole, removeSelected, createInsertedRow, markAllThumbed,
+requestRegenerate).
+
+**XState v5:** Follows DIVERGENCES.md #9 convention. The `recount(files)` helper
+is called inside the same `assign` action that mutates `files`, returning the new
+`totals` in the same assignment object. No standalone `recountTotals` action exists.
+
+**Impact:** None — the recount result is identical. The convention prevents
+a class of bugs where `files` and `totals` drift out of sync because a caller
+forgot to chain the separate action.
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.
