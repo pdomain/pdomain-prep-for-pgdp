@@ -5093,6 +5093,11 @@
             "type": "integer",
             "title": "Source Zip Bytes",
             "default": 0
+          },
+          "registry_version": {
+            "type": "integer",
+            "title": "Registry Version",
+            "default": 2
           }
         },
         "type": "object",
@@ -5110,7 +5115,8 @@
           "storage_prefix",
           "archived",
           "stage_artifacts_bytes",
-          "source_zip_bytes"
+          "source_zip_bytes",
+          "registry_version"
         ],
         "title": "Project"
       },

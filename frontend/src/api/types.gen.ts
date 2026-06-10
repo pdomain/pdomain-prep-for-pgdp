@@ -1791,6 +1791,11 @@ export interface components {
              * @default 0
              */
             source_zip_bytes: number;
+            /**
+             * Registry Version
+             * @default 2
+             */
+            registry_version: number;
         };
         /** ProjectConfig */
         ProjectConfig: {
