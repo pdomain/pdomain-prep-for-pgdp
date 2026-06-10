@@ -942,6 +942,8 @@ export function createMockServer(): MockServer {
         propagateStaleProjectStage("source");
       }
       return { pages };
+    },
+
     // ---- F5.3: OCR group tool endpoints -------------------------------------
 
     async fetchZonePages(_projectId) {

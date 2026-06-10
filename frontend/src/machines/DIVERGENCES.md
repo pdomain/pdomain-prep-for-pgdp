@@ -536,7 +536,7 @@ a run-all-stale sweep.
 
 ---
 
-# Task F5.1 (source tool) divergences
+## Task F5.1 (source tool) divergences
 
 ## F5-1 — Settings region extracted into `stageSettings.ts` (sourceTool)
 
@@ -654,9 +654,10 @@ is called inside the same `assign` action that mutates `files`, returning the ne
 **Impact:** None — the recount result is identical. The convention prevents
 a class of bugs where `files` and `totals` drift out of sync because a caller
 forgot to chain the separate action.
+
 ---
 
-# Task F5.2 (image-prep tools) divergences
+## Task F5.2 (image-prep tools) divergences
 
 ## F5-1 — `APPLY_RUN` uses absolute state ID `#grayscaleTool.converting` (grayscaleTool)
 
