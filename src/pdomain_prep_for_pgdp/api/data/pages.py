@@ -6,9 +6,13 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated, cast
+from typing import TYPE_CHECKING, Annotated, cast
+
+if TYPE_CHECKING:
+    from pdomain_prep_for_pgdp.core.models import Project
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag
@@ -51,6 +55,10 @@ from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     stage_artifact_path,
     stage_thumbnail_path,
 )
+from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
+    RegistryVersionMismatchError,
+    check_registry_version,
+)
 from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_stage, topological_order
 from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
@@ -65,6 +73,19 @@ from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["pages"])
+
+
+def _check_registry_page(project: Project) -> JSONResponse | None:
+    """Return 409 JSONResponse if the project is on a legacy registry version.
+
+    Page-stage routes return the same 409 shape as project-stage routes
+    per api-v2-deltas.md §1.3.
+    """
+    try:
+        check_registry_version(project)
+        return None
+    except RegistryVersionMismatchError as exc:
+        return JSONResponse(status_code=409, content=exc.as_dict())
 
 
 class ListPagesResponse(BaseModel):
@@ -945,6 +966,10 @@ async def list_page_stages(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
@@ -1027,6 +1052,10 @@ async def run_page_stage(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
@@ -1039,8 +1068,6 @@ async def run_page_stage(
         raise HTTPException(422, f"stage {stage_id!r} is not-applicable for this page type")
 
     if async_:
-        from fastapi.responses import JSONResponse
-
         job = Job(
             id=uuid.uuid4().hex,
             project_id=project_id,
@@ -1174,6 +1201,10 @@ async def get_page_stage_artifact(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
@@ -1255,6 +1286,10 @@ async def get_page_stage_thumbnail(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
