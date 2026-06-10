@@ -950,3 +950,158 @@ The `markReviewed` action updates the single row in `context.rows` and recompute
 `totals` inline (DIVERGENCES.md #9 pattern). There is no separate `recountTotals`
 step. The inline recount is correct for the mock (single row updated); at I1 the
 same pattern applies to the real persist response.
+
+---
+
+## Task F5.4 (compose tools) divergences
+
+### F5.4-1 — Naming as workspace-level event, not parallel region (pageOrderTool)
+
+**YAML:** Defines `naming` as a fourth parallel region alongside `ledger`,
+`inspector`, and `runs`. The naming region has no sub-states — it only handles
+`SET_NAME_PART` to update `namingScheme`.
+
+**XState v5:** Four-region parallel states impose a combinatorial explosion of
+compound state keys with no behavioral benefit when one region is stateless.
+
+**Resolution:** Naming is implemented as a `SET_NAME_PART` event handler on the
+`workspace` state directly (not a parallel child). `namingScheme` lives in
+machine context and is updated by an inline `assign` action. The three genuine
+parallel regions are retained: `ledger` × `inspector` × `runs`.
+
+**Impact:** Machine snapshot has three parallel sub-states instead of four. No
+semantic difference — naming behaviour is identical.
+
+---
+
+### F5.4-2 — Inspector watches `SELECT_LEAF` directly (pageOrderTool)
+
+**YAML:** `ledger.browsing` dispatches `assignSelectedLeaf` which raises an
+internal `LEAF_SELECTED` event; `inspector.closed` listens for `LEAF_SELECTED`
+to open.
+
+**XState v5:** Internal events raised via `raise()` from one parallel region are
+not reliably delivered to sibling regions in the same microstep (the precise
+ordering depends on XState v5 internals and is not part of the public contract).
+
+**Resolution:** `inspector.closed` listens for `SELECT_LEAF` (the original
+external event) directly. Both `ledger.browsing` and `inspector.closed` handle
+`SELECT_LEAF`: ledger assigns the selected leaf into context; inspector
+transitions from `closed` → `open`. No internal `LEAF_SELECTED` event is raised.
+
+**Impact:** Same outward behaviour. Eliminates a cross-region raise that was
+fragile in XState v5's parallel delivery model.
+
+---
+
+### F5.4-3 — `computeLabels` + `reconcile` as pure assign helpers (pageOrderTool)
+
+**YAML:** Models `computeLabels` and `reconcile` as named actions that update
+context.
+
+**XState v5:** Both are pure functions of `(leaves, runs, namingScheme)` →
+updated context. Implemented as private module-level functions (`computeLabels`,
+`reconcile`) called inside `assign` callbacks. No separate named action entries
+in the machine definition are needed — the calling `assign` is the action.
+
+**Impact:** No behavioural difference. The `assign` callbacks are the XState v5
+equivalent of named context-mutating actions.
+
+---
+
+### F5.4-4 — Side-effect services paired with assign actions (pageOrderTool)
+
+**YAML:** Some actions both update context and call a persistence service
+(e.g. `persistLeaf`, `persistOrder`, `persistRuns`, `persistNaming`,
+`emitOrderChanged`).
+
+**XState v5:** `assign` is pure — it must not call services. Side effects
+belong in separate `void`-typed action entries.
+
+**Resolution:** Each mutation spawns two action entries in sequence:
+
+1. An `assign(...)` action that updates context.
+2. A companion `({ context }, _ev, { input }) => { input.services.persistFoo(...) }`
+   action that calls the injected service (fire-and-forget, no awaiting).
+
+Both actions are listed in the event's `actions` array in order.
+
+**Impact:** Two action entries per mutating event instead of one, but the
+XState v5 action contract is preserved (assigns are pure; side effects are
+separate).
+
+---
+
+### F5.4-5 — `needsALook` guard uses params pattern (illustrationsTool)
+
+**YAML:** `needsALook` reads `event.output.counts` from the `detectRegions`
+`onDone` transition to decide whether to enter `reviewing` or `extracted`.
+
+**XState v5:** DIVERGENCES.md #3: `event.data` is `event.output` in XState v5.
+Additionally, the guard cannot access `event.output` directly at the call site
+without a params extraction.
+
+**Resolution:** `needsALook` uses the params pattern (DIVERGENCES.md #3):
+
+```ts
+guard: {
+  type: "needsALook",
+  params: ({ event }) => ({ counts: event.output.counts }),
+},
+```
+
+The guard function signature is `(_args, params: { counts: IllustrationCounts })`.
+The implementation reads `params.counts.review + params.counts.flagged > 0`.
+
+**Impact:** Same semantic as the YAML guard. Fully type-safe under XState v5's
+static inference.
+
+---
+
+### F5.4-6 — `settleIfClear` → `always` guard on `reviewing` (illustrationsTool)
+
+**YAML:** `settleIfClear` is a named action that inspects context and raises
+`SETTLED` internally when all items are extracted.
+
+**XState v5:** Internal `raise` inside a non-entry action to trigger a
+state-machine transition is an anti-pattern in XState v5 (creates implicit
+ordering dependencies). DIVERGENCES.md #5 establishes the canonical pattern.
+
+**Resolution:** `reviewing` has an `always` transition with `guard: "allExtracted"`
+that targets `extracted` and runs `emitResolved`. This fires automatically after
+any action that modifies `context.counts` (e.g. `markExtracted`, `removeRegion`).
+
+**Impact:** Same externally observable behaviour — `reviewing` auto-transitions
+to `extracted` when all items are confirmed or dropped. No internal event needed.
+
+---
+
+### F5.4-7 — `recount` folded into assign actions (illustrationsTool)
+
+**YAML:** `recount` is a separate named action called after `markExtracted` and
+`removeRegion`.
+
+**XState v5:** DIVERGENCES.md #9 pattern. `counts` is recomputed inline within
+the `assign` callback of `markExtracted` and `removeRegion` by reducing over
+`context.items`. No separate `recount` action entry is needed.
+
+**Impact:** One fewer action entry per mutation. The `always` guard
+(`allExtracted`) fires immediately after the assign, so `counts` is fresh before
+the guard evaluates.
+
+---
+
+### F5.4-8 — Mock FOLIOS_DONE trigger (pageOrderTool surface)
+
+**YAML / real API:** `pageOrderToolMachine` starts in `readingFolios` and waits
+for a `FOLIOS_DONE` event carrying the initial `leaves` and `runs` from the API.
+
+**F5 mock:** No real SSE stream exists. The `PageOrderTool` surface component
+detects when the machine is in `readingFolios` state with no leaves and triggers
+`FOLIOS_DONE` via a `setTimeout(0)` on mount. Fixture data (`_mockLeaves`,
+`_mockRuns`) is attached to the injected `services` object so the mock adapter
+can reference it without importing the fixtures directly into the machine.
+
+**Impact:** At I1, remove the `_mockLeaves`/`_mockRuns` convention. Wire the
+real `pageOrder` API response (delivered via SSE or REST) to the machine's
+`FOLIOS_DONE` event instead.

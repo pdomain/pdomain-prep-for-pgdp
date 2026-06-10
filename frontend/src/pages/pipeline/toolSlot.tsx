@@ -28,6 +28,9 @@ import { PagesGridTool } from "./tools/PagesGridTool";
 import { ImageStageReviewTool } from "./tools/ImageStageReviewTool";
 import { TextZonesTool } from "./tools/TextZonesTool";
 import { OcrTool } from "./tools/OcrTool";
+import { PageOrderTool } from "./tools/PageOrderTool";
+import { CanvasMapTool } from "./tools/CanvasMapTool";
+import { IllustrationsTool } from "./tools/IllustrationsTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -67,6 +70,10 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   // F5.3 — OCR group (task/f53-ocr-tools)
   text_zones: TextZonesTool,
   ocr: OcrTool,
+  // F5.4 — Compose group (task/f54-compose-tools)
+  page_order: PageOrderTool,
+  canvas_map: CanvasMapTool,
+  illustrations: IllustrationsTool,
 };
 
 /**
