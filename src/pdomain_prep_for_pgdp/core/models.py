@@ -328,6 +328,11 @@ class Project(ApiModel):
     # and the banner hides itself.  `source_zip_bytes` is set once at ingest.
     stage_artifacts_bytes: int = 0
     source_zip_bytes: int = 0
+    # Registry version stamp — stage-registry-v2.md §1.
+    # 2 for all new projects; 1 for projects created before the B1 re-cut.
+    # The guard in core/pipeline/registry_version.py raises RegistryVersionMismatch
+    # (HTTP 409) for v1 projects.
+    registry_version: int = 2
 
 
 # ─── ResolvedPageConfig (output of resolver; not persisted) ──────────────────
@@ -496,6 +501,105 @@ class PageStageState(ApiModel):
     duration_ms: int | None = None
     error_message: str | None = None
     job_id: str | None = None  # last job that touched this row
+
+
+# ─── Registry v2 stage IDs (stage-registry-v2.md §2) ────────────────────────
+#
+# PAGE_STAGE_IDS above is the v1 tuple retained for backward-compat with
+# existing DB rows and tests. V2_PAGE_STAGE_IDS / V2_PROJECT_STAGE_IDS are the
+# canonical v2 sets per stage-registry-v2.md §2.1-2.2 (B1 re-cut).
+#
+# Order in V2_PAGE_STAGE_IDS matches a valid topological walk of the page-
+# scoped subgraph (each stage's page-scoped deps appear before it). Cross-scope
+# deps (source → grayscale) are omitted from topological ordering because
+# `source` is project-scoped; the page-scoped chain starts at `grayscale`.
+#
+# The SQLite CHECK constraint for new DBs is built from V2_PAGE_STAGE_IDS.
+# Old DBs with v1 stage IDs are invalid by design (breaking change; no
+# migration — stage-registry-v2.md §2 note).
+
+V2_PAGE_STAGE_IDS: tuple[str, ...] = (
+    "grayscale",
+    "crop",
+    "threshold",
+    "deskew",
+    "denoise",
+    "dewarp",
+    "post_transform_crop",
+    "text_zones",
+    "canvas_map",
+    "post_ocr_crop",
+    "ocr",
+    "wordcheck",
+    "hyphen_join",
+    "regex",
+    "illustrations",
+    "text_review",
+)
+
+V2_PROJECT_STAGE_IDS: tuple[str, ...] = (
+    "source",
+    "page_order",
+    "validation",
+    "proof_pack",
+    "build_package",
+    "zip",
+    "submit_check",
+    "archive",
+)
+
+
+# ─── ProjectStageStatus (api-v2-deltas.md §3) ────────────────────────────────
+#
+# Distinct from PageStageStatus: project-scoped stages do NOT have a
+# `not_applicable` state — all 8 project stages apply to every project.
+# Do not alias or reuse PageStageStatus for project-scoped stage fields.
+
+
+class ProjectStageStatus(str, Enum):
+    """Per-project-stage status — api-v2-deltas.md §3.
+
+    No `not_applicable` value: all 8 project stages apply to every project.
+    """
+
+    not_run = "not-run"
+    running = "running"
+    clean = "clean"
+    dirty = "dirty"
+    failed = "failed"
+
+
+# ─── ProjectStageState (api-v2-deltas.md §3) ─────────────────────────────────
+
+
+class ProjectStageState(ApiModel):
+    """One project-stage row — state of project-scoped stage `stage_id`.
+
+    Mirrors PageStageState but scoped to a project (no `page_id` field;
+    `project_id` is the scope). api-v2-deltas.md §3.
+    """
+
+    project_id: str
+    stage_id: str  # one of the 8 V2_PROJECT_STAGE_IDS
+    status: ProjectStageStatus = ProjectStageStatus.not_run
+    stage_version: int = 2
+    artifact_key: str | None = None
+    config_hash: str | None = None
+    input_hash: str | None = None
+    last_run_at: float | None = None  # epoch seconds
+    duration_ms: int | None = None
+    error_message: str | None = None
+    job_id: str | None = None
+
+
+# ─── v2 schema additions on Project ──────────────────────────────────────────
+#
+# registry_version is stamped at project-creation time (REGISTRY_VERSION = 2
+# for new projects). The guard in core/pipeline/registry_version.py raises
+# RegistryVersionMismatch (HTTP 409) for v1 projects.
+# Default=2 so existing code paths that construct Project(...) without
+# this field produce v2 rows; callers that load v1 rows from the DB pass
+# registry_version=1 explicitly.
 
 
 # ─── OCR ─────────────────────────────────────────────────────────────────────

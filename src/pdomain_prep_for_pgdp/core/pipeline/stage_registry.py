@@ -50,7 +50,12 @@ from typing import Literal, NoReturn, Protocol, TypedDict, cast
 import numpy as np
 import numpy.typing as npt
 
-from pdomain_prep_for_pgdp.core.models import PAGE_STAGE_IDS, ResolvedPageConfig
+from pdomain_prep_for_pgdp.core.models import (
+    PAGE_STAGE_IDS,
+    V2_PAGE_STAGE_IDS,
+    V2_PROJECT_STAGE_IDS,
+    ResolvedPageConfig,
+)
 
 log = logging.getLogger(__name__)
 
@@ -871,3 +876,169 @@ def get_stage_impl(stage_id: str, device: str) -> StageImpl:
     """
     devices = STAGE_IMPL[stage_id]
     return devices[device]
+
+
+# ─── V2 registry (stage-registry-v2.md §2) ──────────────────────────────────
+#
+# V2_STAGE_IMPL maps every v2 stage ID (24 total: 16 page-scoped + 8
+# project-scoped) to its cpu callable. Stages that already have a real
+# implementation in _REAL_CPU_IMPLS are reused — the v2 runner dispatches
+# them after mapping v2 stage IDs to the correct v1 impls via _V2_IMPL_MAP.
+# Genuinely new stages (denoise, dewarp, text_zones, wordcheck, hyphen_join,
+# post_transform_crop, page_order, validation, proof_pack, build_package,
+# zip, submit_check, archive) get placeholders until B2-B4 land.
+#
+# Composed stage mappings (v2 stage → v1 step functions):
+#   source       → (_ingest_source_cpu + _thumbnail_cpu + _auto_detect_attrs_cpu + _decode_source_cpu)
+#   grayscale    → (_manual_deskew_pre_cpu [pre-crop] + _grayscale_cpu)
+#   crop         → (_initial_crop_cpu + _find_content_edges_cpu + _crop_to_content_cpu)
+#   threshold    → (_threshold_cpu + _invert_cpu)
+#   deskew       → (_manual_deskew_pre_cpu [post-crop] + _auto_deskew_cpu)
+#   canvas_map   → (_morph_fill_cpu + _rescale_cpu + _canvas_map_cpu [+ blank_proof_synth branch])
+#   post_ocr_crop → _ocr_crop_cpu
+#   ocr          → _ocr_cpu
+#   regex        → _text_postprocess_cpu
+#   text_review  → _text_review_cpu
+#   illustrations → (_auto_detect_illustrations_cpu + extract_illustrations placeholder)
+#
+# See Behavior 2 tests (test_composed_stage_execution.py) for the artifact
+# equivalence contract.
+
+# Composed stage impls that chain the v1 step functions in order.
+# Each receives the input artifact appropriate for the v2 stage's input_type.
+
+
+def _source_cpu(source_bytes: bytes, cfg: StageConfig = None) -> bytes:
+    """v2 source stage: pass through source bytes (project-scope, ingest is separate).
+
+    The full source stage (ingest + thumbnail + attrs + decode) runs via the
+    project-stage runner. This cpu impl is a placeholder that passes through
+    the bytes; the runner handles the four sub-steps separately.
+    """
+    return _ingest_source_cpu(source_bytes, cfg)
+
+
+def _grayscale_v2_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 grayscale stage: pre-crop flip/rotate then grayscale.
+
+    Folds manual_deskew_pre (pre-crop component) into the source-to-gray path.
+    """
+    flipped = _manual_deskew_pre_cpu(image, cfg)
+    return _grayscale_cpu(flipped, cfg)
+
+
+def _crop_v2_cpu(gray: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 crop stage: initial_crop → find_content_edges → crop_to_content."""
+    cropped = _initial_crop_cpu(gray, cfg)
+    bbox = _find_content_edges_cpu(cropped, cfg)
+    return _crop_to_content_cpu(cropped, bbox, cfg)
+
+
+def _threshold_v2_cpu(binary: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 threshold stage: threshold + invert."""
+    thresh = _threshold_cpu(binary, cfg)
+    return _invert_cpu(thresh, cfg)
+
+
+def _deskew_v2_cpu(binary: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 deskew stage: post-crop manual rotation + auto_deskew.
+
+    manual_deskew_pre in post-crop mode means deskew_after_crop (the second
+    rotation point). For default config this is a no-op.
+    """
+    # Build a post-crop rotation config stub that only applies deskew_after_crop.
+
+    if cfg is not None and hasattr(cfg, "deskew_after_crop") and cfg.deskew_after_crop is not None:
+        rotate_image = cast(
+            "Callable[[ImageArray, float], ImageArray]",
+            _load_attr("pdomain_book_tools.image_processing.cv2_processing", "rotate_image"),
+        )
+        binary = rotate_image(binary, cfg.deskew_after_crop)
+    return _auto_deskew_cpu(binary, cfg)
+
+
+def _canvas_map_v2_cpu(binary: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 canvas_map stage: morph_fill + rescale + canvas_map (+ blank branch internal).
+
+    The blank-page short-circuit (blank_proof_synth) is an internal branch:
+    if cfg.page_type is blank/plate_b/plate_r, synthesise a blank proof instead
+    of running the morph→rescale→canvas chain.
+    """
+
+    # Check page type for blank branch
+    if cfg is not None and hasattr(cfg, "page_type"):
+        from pdomain_prep_for_pgdp.core.models import PageType
+
+        if cfg.page_type in (PageType.blank, PageType.plate_b, PageType.plate_r):
+            # Internal blank branch: synthesise a blank proof image
+            h, w = cast("tuple[int, int]", binary.shape[:2])
+            h_w_ratio = h / w if w > 0 else 1.65
+            page_attrs: PageAttrsOutput = {
+                "suggested_type": "blank",
+                "suggested_alignment": "default",
+                "confidence": 1.0,
+                "height": h,
+                "width": w,
+                "h_w_ratio": h_w_ratio,
+            }
+            return _blank_proof_synth_cpu(page_attrs, cfg)
+
+    # Normal branch: morph_fill + rescale + canvas_map
+    filled = _morph_fill_cpu(binary, cfg)
+    rescaled = _rescale_cpu(filled, cfg)
+    return _canvas_map_cpu(rescaled, cfg)
+
+
+def _illustrations_v2_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
+    """v2 illustrations stage: auto_detect + extract (placeholder for extract).
+
+    auto_detect_illustrations runs and returns regions; extract_illustrations
+    is a B3 placeholder until hi_res_crops wiring lands.
+    """
+    import json
+
+    regions = _auto_detect_illustrations_cpu(image, cfg)
+    # Persist both regions JSON and a stub for hi_res_crops (B3 fills in real crops)
+    return {
+        "regions.json": json.dumps(regions).encode(),
+    }
+
+
+# Map of v2 stage IDs to their composed cpu impls.
+_V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
+    "source": _source_cpu,
+    "grayscale": _grayscale_v2_cpu,
+    "crop": _crop_v2_cpu,
+    "threshold": _threshold_v2_cpu,
+    "deskew": _deskew_v2_cpu,
+    "canvas_map": _canvas_map_v2_cpu,
+    "post_ocr_crop": _ocr_crop_cpu,
+    "ocr": _ocr_cpu,
+    "regex": _text_postprocess_cpu,
+    "text_review": _text_review_cpu,
+    "illustrations": _illustrations_v2_cpu,
+}
+
+_ALL_V2_STAGE_IDS: tuple[str, ...] = V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS
+
+
+def _build_v2_registry() -> dict[str, dict[str, StageImpl]]:
+    """Build V2_STAGE_IMPL: 24 v2 stage IDs → cpu callables."""
+    registry: dict[str, dict[str, StageImpl]] = {}
+    for sid in _ALL_V2_STAGE_IDS:
+        impl = _V2_REAL_CPU_IMPLS.get(sid) or _make_placeholder(sid)
+        registry[sid] = {"cpu": impl}
+    return registry
+
+
+V2_STAGE_IMPL: dict[str, dict[str, StageImpl]] = _build_v2_registry()
+"""V2 dispatch table. Keys: v2 stage_id (str) → device (str) → callable.
+
+Covers all 24 v2 stage IDs (16 page-scoped + 8 project-scoped). New stages
+without a real implementation raise StageNotImplemented; B2-B4 will wire them.
+"""
+
+
+def get_v2_stage_impl(stage_id: str, device: str) -> StageImpl:
+    """Return the v2 callable registered for ``(stage_id, device)``."""
+    return V2_STAGE_IMPL[stage_id][device]
