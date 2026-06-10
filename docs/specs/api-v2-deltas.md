@@ -90,6 +90,9 @@ The `pipeline-shell.yaml` `fetchPipeline` service is annotated as:
 GET /api/projects/:id/pipeline -> { project, stages: StageState[23], automation }
 ```
 
+(The YAML uses Express-style `:id` shorthand. The registered FastAPI route is
+`GET /api/data/projects/{id}/pipeline` — under the `/api/data/` router prefix.)
+
 This consolidates what would otherwise be 3 sequential fetches
 (`GET /project`, `GET /pages/{idx0}/stages` ×N, `GET /project-stages`).
 
@@ -260,7 +263,7 @@ is the scope). Added to `core/models.py` and the new `project_stages` DB table.
 class ProjectStageState(ApiModel):
     project_id: str
     stage_id: str                               # one of the 8 project-scoped IDs
-    status: PageStageStatus = PageStageStatus.not_run   # reuses existing enum
+    status: ProjectStageStatus = ProjectStageStatus.not_run
     stage_version: int = 2
     artifact_key: str | None = None
     config_hash: str | None = None
@@ -286,8 +289,8 @@ class StageRunRequest(ApiModel):
 
 **Note:** The existing `run_page_stage` route currently uses `async_` as a query
 parameter. In v2 it moves into the request body for consistency with the new
-project-stage run route. The query parameter form is deprecated in B5 and removed
-at I1.
+project-stage run route. The query parameter form is deprecated in B5 (new body
+form added, old form still accepted) and removed at I1.
 
 ### `PageOrderUpdate`
 
@@ -353,14 +356,13 @@ class SubmitCheckReport(ApiModel):
 | `PipelineSnapshot` | Response for `GET /projects/{id}/pipeline` | `api/data/projects.py` (route-local) or `models.py` if reused |
 | `PageStageSummary` | Per-stage-ID aggregate for `PipelineSnapshot.page_stages_summary` | `models.py` |
 | `ProjectAutomation` | Automation toggles embedded in `PipelineSnapshot` and `ProjectSettings` | `models.py` |
-| `ProjectStageStatus` | Enum: `not_run`, `running`, `clean`, `dirty`, `failed` | `models.py` — consider aliasing to `PageStageStatus` if values are identical; see note below |
+| `ProjectStageStatus` | Enum: `not_run \| running \| clean \| dirty \| failed` | `models.py` — distinct from `PageStageStatus` (no `not_applicable` value); used by `ProjectStageState.status` and by the `project-stage-status` and `project-snapshot` SSE payloads |
 
-**Note on `ProjectStageStatus` vs `PageStageStatus`:** `PageStageStatus` includes
-`not_applicable` (blank-page short-circuit). Project-scoped stages do not have
-a `not_applicable` state — all 8 project-scoped stages apply to every project.
-Recommend a separate `ProjectStageStatus` enum without `not_applicable` to avoid
-confusion, but this is a refinement detail for B1 to decide; the shared enum
-is an acceptable starting point.
+**Decision on `ProjectStageStatus` vs `PageStageStatus`:** `PageStageStatus`
+includes `not_applicable` (blank-page short-circuit). Project-scoped stages do
+not have a `not_applicable` state — all 8 project stages apply to every project.
+`ProjectStageStatus` is a separate enum: `not_run | running | clean | dirty |
+failed`. Do not alias or reuse `PageStageStatus` for project-scoped stage fields.
 
 ---
 
@@ -379,7 +381,7 @@ is an acceptable starting point.
 | `POST /projects/{id}/build-package` | `api/data/projects.py` | `POST /projects/{id}/project-stages/build_package/run` | I1 (Pack group) |
 | `POST /projects/{id}/run-dirty` | `api/data/projects.py` | `pipelineShell.RUN_ALL_STALE` + per-stage run routes | I1 (final) |
 | `GET /projects/{id}/review-status` | `api/data/projects.py` | `GET /projects/{id}/pipeline` `page_stages_summary` | I1 (Text group) |
-| `async` query param on stage run | `api/data/pages.py` | `StageRunRequest.async_` body field | B5 |
+| `async` query param on stage run | `api/data/pages.py` | `StageRunRequest.async_` body field | I1 (deprecated B5, body form added; old form removed I1) |
 | `PipelineState` + `StepState` + `StepId` | `core/models.py` | `ProjectStageState` + `PageStageState` | B1/I3 |
 | v1 SSE-only per-page channel covering all stages | `core/stage_events.py` | Per-page channel (page-scoped stages only) + new project channel | B5 |
 

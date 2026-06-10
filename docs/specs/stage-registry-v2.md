@@ -291,9 +291,11 @@ New SSE type strings for v2:
 
 | SSE type string | Payload added | Notes |
 |----------------|---------------|-------|
-| `project-stage-status` | `{"type": "project-stage-status", "stage_id": ..., "status": ...}` | Project-scoped equivalent of `stage-status`; emitted on the new project-level channel |
+| `project-snapshot` | `{"type": "project-snapshot", "project_stages": [...]}` | On-connect snapshot of all 8 project-stage rows; first frame on the project channel (mirrors per-page `snapshot`) |
+| `project-stage-status` | `{"type": "project-stage-status", "stage_id": ..., "status": ..., "job_id": ..., "error_message": ...}` | Project-scoped equivalent of `stage-status`; emitted on the new project-level channel |
+| `project-stage-progress` | `{"type": "project-stage-progress", "stage_id": ..., "progress": 0.0–1.0, "message": ...}` | Progress ticks for long-running project stages (build_package, zip); project-scoped equivalent of `stage-progress` |
 | `page-reorder` | `{"type": "page-reorder", "new_order": [...]}` | Pushed to all connected clients on the project channel |
-| `validation-updated` | `{"type": "validation-updated", "blockers": N, "warnings": N}` | Pushed when validation stage re-runs |
+| `validation-updated` | `{"type": "validation-updated", "blockers": N, "warnings": N, "status": ...}` | Pushed when validation stage re-runs; `status` is a `ProjectStageStatus` value |
 
 ---
 
