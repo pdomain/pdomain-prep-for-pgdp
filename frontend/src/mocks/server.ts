@@ -42,6 +42,76 @@ import type {
   AttributeSection,
 } from "./types";
 
+// ---------------------------------------------------------------------------
+// F5.3: OCR group tool types (inline — moved to api types at I1)
+// ---------------------------------------------------------------------------
+
+/** A detected layout zone on a page. */
+export interface ZoneItem {
+  id: string;
+  type:
+    | "body"
+    | "heading"
+    | "header"
+    | "footer"
+    | "caption"
+    | "footnote"
+    | "illustration"
+    | "table"
+    | "marginalia";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  order: number | null;
+}
+
+export interface SplitDraft {
+  axis: "col" | "row";
+  into: 2;
+  gutter: number;
+  conf: number;
+}
+
+/** Row in the text_zones page grid. */
+export interface ZonePageRow {
+  idx: string;
+  prefix: string;
+  state: "running" | "clean" | "flagged" | "reviewed" | "split" | "failed";
+  flags?: string[];
+  layoutKind?: string;
+  zones?: number;
+  lines?: number;
+  words?: number;
+  pageNumber?: number;
+  split?: SplitDraft & { applied?: boolean };
+  [key: string]: unknown;
+}
+
+export interface ZoneTotals {
+  total: number;
+  done: number;
+  clean: number;
+  flagged: number;
+  reviewed: number;
+  splits: number;
+  rateHz?: number;
+  zonesAvg?: number;
+}
+
+export interface SplitResult {
+  parentRow: ZonePageRow;
+  childRows: [ZonePageRow, ZonePageRow];
+}
+
+/** Low-confidence OCR token with suggested correction. */
+export interface OcrToken {
+  id: string;
+  word: string;
+  suggest: string;
+  conf: number;
+}
+
 import {
   MOCK_PROJECT,
   MOCK_PAGE_IDS,
@@ -188,6 +258,72 @@ export interface MockServer {
     projectId: string,
     files: { idx: number; state: string }[],
   ): Promise<{ pages: number }>;
+  // ---- F5.3: OCR group — text_zones + ocr tool endpoints ------------------
+
+  /**
+   * GET /api/projects/:id/stages/text_zones/pages
+   * Returns zone page rows + totals for the text_zones stage tool.
+   */
+  fetchZonePages(projectId: string): Promise<{
+    rows: ZonePageRow[];
+    totals: ZoneTotals;
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/text_zones/pages/:pageId/split
+   * Applies a column or row split, producing 2 sibling child pages.
+   *
+   * CRITICAL APPLY_SPLIT invariant:
+   *   - Mutates the page set: 1 page → 2 sibling pages (new page_ids)
+   *   - Fans staleness NARROW: page_order + canvas_map for each child
+   *   - Does NOT stale: ocr (sibling DAG path)
+   */
+  applySplit(
+    projectId: string,
+    pageId: string,
+    draft: SplitDraft,
+  ): Promise<SplitResult>;
+
+  /**
+   * POST /api/projects/:id/stages/text_zones/pages/:pageId/detect
+   * Re-runs layout detection for one page, returning detected zones.
+   */
+  redetectLayout(
+    projectId: string,
+    pageId: string,
+    currentDraft: ZoneItem[] | null,
+  ): Promise<{ zones: ZoneItem[] }>;
+
+  /**
+   * PUT /api/projects/:id/stages/text_zones/pages/:pageId/layout
+   * Persists the zone draft (or dismissed split) for one page.
+   */
+  persistLayout(
+    projectId: string,
+    pageId: string,
+    data: { zones?: ZoneItem[]; dismissed?: boolean },
+  ): Promise<{ ok: boolean }>;
+
+  /**
+   * GET /api/projects/:id/stages/ocr/pages/:pageId/tokens
+   * Returns low-confidence OCR tokens for one page.
+   */
+  fetchPageTokens(
+    projectId: string,
+    pageId: string,
+  ): Promise<{ tokens: OcrToken[] }>;
+
+  /**
+   * POST /api/projects/:id/stages/text_zones/confirm
+   * Confirms the text_zones stage, forwarding zones to OCR.
+   */
+  confirmTextZones(projectId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * POST /api/projects/:id/stages/ocr/confirm
+   * Confirms the OCR stage, forwarding results to Page order.
+   */
+  confirmOcr(projectId: string): Promise<{ ok: boolean }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -806,6 +942,195 @@ export function createMockServer(): MockServer {
         propagateStaleProjectStage("source");
       }
       return { pages };
+    // ---- F5.3: OCR group tool endpoints -------------------------------------
+
+    async fetchZonePages(_projectId) {
+      // Deterministic fixture: 3 pages with zone data
+      const [pid0, pid1, pid2] = [
+        MOCK_PAGE_IDS[0] ?? "page-0001",
+        MOCK_PAGE_IDS[1] ?? "page-0002",
+        MOCK_PAGE_IDS[2] ?? "page-0003",
+      ];
+      const rows: ZonePageRow[] = [
+        {
+          idx: pid0,
+          prefix: "p0001",
+          state: "flagged",
+          flags: ["splitSuggested"],
+          zones: 4,
+          lines: 42,
+          words: 310,
+          pageNumber: 1,
+          layoutKind: "double",
+          split: { axis: "col", into: 2, gutter: 0.49, conf: 0.92 },
+        },
+        {
+          idx: pid1,
+          prefix: "p0002",
+          state: "clean",
+          zones: 3,
+          lines: 38,
+          words: 285,
+          pageNumber: 2,
+          layoutKind: "single",
+        },
+        {
+          idx: pid2,
+          prefix: "p0003",
+          state: "flagged",
+          flags: ["mergedBlocks"],
+          zones: 5,
+          lines: 44,
+          words: 330,
+          pageNumber: 3,
+          layoutKind: "single",
+        },
+      ];
+      const totals: ZoneTotals = {
+        total: rows.length,
+        done: rows.length,
+        clean: rows.filter((r) => r.state === "clean").length,
+        flagged: rows.filter((r) => r.state === "flagged").length,
+        reviewed: 0,
+        splits: rows.filter((r) => (r.flags ?? []).includes("splitSuggested"))
+          .length,
+      };
+      return { rows, totals };
+    },
+
+    async applySplit(_projectId, pageId, draft) {
+      /**
+       * APPLY_SPLIT — critical page-set mutation.
+       *
+       * Narrow stale fan-out:
+       *   page_order → dirty (new pages change sequence)
+       *   canvas_map for each child page → dirty (crop-edge margins)
+       *   ocr → NOT dirty (sibling DAG path)
+       *
+       * The server returns parentRow (state:'split') + 2 child rows.
+       * The shell (pipelineShell) must receive PAGE_SET_CHANGED and mark
+       * page_order + canvas_map(children) dirty; ocr is NOT staled.
+       */
+
+      // Produce deterministic child IDs
+      const childAId = `${pageId}-split-a`;
+      const childBId = `${pageId}-split-b`;
+
+      // Add child pages to the page stage matrix
+      // Both children need canvas_map re-run (stale); ocr is NOT touched.
+      for (const childId of [childAId, childBId]) {
+        const freshStages = makeFreshPageStages();
+        const templatePageId = MOCK_PAGE_IDS[0] ?? pageId;
+        const childRow = freshStages.get(templatePageId); // template from first page
+        if (childRow) {
+          // Canvas_map is dirty for child pages (narrow stale)
+          const canvasMapState = childRow.get("canvas_map");
+          if (canvasMapState) {
+            childRow.set("canvas_map", { ...canvasMapState, status: "dirty" });
+          }
+          // OCR is NOT staled (sibling DAG path)
+          pageStages.set(childId, childRow);
+        }
+      }
+
+      // Mark page_order as dirty (sequence changed)
+      const poState = projectStages.get("page_order");
+      if (poState) {
+        projectStages.set("page_order", { ...poState, status: "dirty" });
+      }
+
+      const parentRow: ZonePageRow = {
+        idx: pageId,
+        prefix: `p${pageId}`,
+        state: "split",
+        layoutKind: draft.axis === "col" ? "double" : "stacked",
+        split: { ...draft, applied: true },
+      };
+
+      const childRows: [ZonePageRow, ZonePageRow] = [
+        {
+          idx: childAId,
+          prefix: `p${pageId}a`,
+          state: "clean",
+          zones: 3,
+          lines: 22,
+          words: 160,
+          layoutKind: "single",
+        },
+        {
+          idx: childBId,
+          prefix: `p${pageId}b`,
+          state: "clean",
+          zones: 2,
+          lines: 20,
+          words: 150,
+          layoutKind: "single",
+        },
+      ];
+
+      // Emit page-reorder event so the shell re-keys the page set
+      const updatedOrder = [...pageOrder];
+      const parentIdx = updatedOrder.indexOf(pageId);
+      if (parentIdx !== -1) {
+        updatedOrder.splice(parentIdx, 1, childAId, childBId);
+        pageOrder = updatedOrder;
+      }
+
+      emitProject({
+        type: "page-reorder",
+        new_order: pageOrder,
+      });
+
+      return { parentRow, childRows };
+    },
+
+    async redetectLayout(_projectId, _pageId, _currentDraft) {
+      // Return a minimal schematic zone set
+      const zones: ZoneItem[] = [
+        {
+          id: "z1",
+          type: "body",
+          x: 0.08,
+          y: 0.08,
+          w: 0.84,
+          h: 0.68,
+          order: 1,
+        },
+        {
+          id: "z2",
+          type: "footer",
+          x: 0.08,
+          y: 0.84,
+          w: 0.84,
+          h: 0.08,
+          order: null,
+        },
+      ];
+      return { zones };
+    },
+
+    async persistLayout(_projectId, _pageId, _data) {
+      // No-op at F5; marks page_stage row as clean at I1
+      return { ok: true };
+    },
+
+    async fetchPageTokens(_projectId, _pageId) {
+      // Deterministic low-conf token fixture
+      const tokens: OcrToken[] = [
+        { id: "t1", word: "tbe", suggest: "the", conf: 0.71 },
+        { id: "t2", word: "ligbt", suggest: "light", conf: 0.64 },
+        { id: "t3", word: "ond", suggest: "and", conf: 0.68 },
+        { id: "t4", word: "Wben", suggest: "When", conf: 0.73 },
+      ];
+      return { tokens };
+    },
+
+    async confirmTextZones(_projectId) {
+      return { ok: true };
+    },
+
+    async confirmOcr(_projectId) {
+      return { ok: true };
     },
   };
 

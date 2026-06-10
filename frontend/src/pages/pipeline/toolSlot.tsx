@@ -26,6 +26,8 @@ import { SourceTool } from "@/pages/pipeline/tools/SourceTool";
 import { GrayscaleTool } from "./tools/GrayscaleTool";
 import { PagesGridTool } from "./tools/PagesGridTool";
 import { ImageStageReviewTool } from "./tools/ImageStageReviewTool";
+import { TextZonesTool } from "./tools/TextZonesTool";
+import { OcrTool } from "./tools/OcrTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -62,6 +64,9 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   denoise: ImageStageReviewTool,
   dewarp: ImageStageReviewTool,
   post_transform_crop: ImageStageReviewTool,
+  // F5.3 — OCR group (task/f53-ocr-tools)
+  text_zones: TextZonesTool,
+  ocr: OcrTool,
 };
 
 /**

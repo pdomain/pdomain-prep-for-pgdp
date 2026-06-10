@@ -787,3 +787,86 @@ controls. At I1, decide whether to:
 7. `SET_FILTER` / `SET_DENSITY` style display-preference events → promote to
    machine-level `on` (not scoped to a single super-state) unless the YAML's
    scoping is genuinely load-bearing UX.
+
+---
+
+---
+
+## F5-3-1 — `runComplete` guard checks post-merge totals not YAML's `done + 1 === total` (ocrTool)
+
+**YAML:** `runComplete: ctx.totals.done + 1 === ctx.totals.total`
+
+The YAML assumes exactly one `PAGE_PUSH` event arrives at a time (serial stream).
+The check `done + 1 === total` means "this push is the last one."
+
+**XState v5 (F5.3):** Guards run before `mergePage` fires on the same transition.
+`context.totals.done` does NOT yet reflect the incoming `event.row`. Furthermore,
+in a batched mock scenario multiple pages may already be done when the guard fires.
+The YAML's `done + 1 === total` formula can miss the terminal case if 2+ pages
+arrive before the guard runs.
+
+**Resolution:** `runComplete` calls `upsertOcrRow(context.rows, event.row)` inline
+and checks `running === 0` on the post-merge set. This is equivalent in the
+single-page case and correct in the multi-page case.
+
+**Impact:** Guard reads post-merge state; `mergePage` assign fires on the same
+transition immediately after. No double-merge (upsert is idempotent by idx).
+
+---
+
+## F5-3-2 — `density` / `filter` are local React state in OcrTool (view-only) (ocrTool)
+
+**YAML:** `tool-ocr.yaml` implies `density` and `filter` as machine context fields.
+The canvas shows them as grid display controls (filter chip set, density toggle).
+
+**XState v5 (F5.3) / DIVERGENCES.md #8:** `density` and `filter` are never read by
+a guard or service in `ocrTool`. They are pure display preferences — the machine never
+transitions based on them. Storing them in machine context adds noise to snapshots.
+
+**Resolution:** Both fields are local `useState` in `OcrTool.tsx`. The component
+derives the filtered row list from `rows` using the local filter value.
+
+**Convention:** Any YAML field that is (a) never guarded on and (b) never passed to
+a service is a view-only field. Own it in local React state; do not put it in the
+machine. (Same rule as `_wipe`, `_split`, `compare` — documented in #8.)
+
+---
+
+## F5-3-3 — `textZonesTool` starts in `loading` (not active) vs `ocrTool` starts in `recognising` (ocrTool, textZonesTool)
+
+**YAML:** Both tools start with a fetch/run phase.
+
+- `text_zones` fetches existing zone data before showing the page grid.
+- `ocr` starts already running; there is no initial fetch — the tool receives
+  PAGE_PUSH events from the SSE actor.
+
+**XState v5 (F5.3):**
+
+- `textZonesToolMachine` initial state: `"loading"` (invokes `fetchZonePages`).
+- `ocrToolMachine` initial state: `"recognising"` (waits for PAGE_PUSH events).
+
+This asymmetry is intentional and faithful to the YAML intents. The two tools are
+behaviorally distinct: text_zones reviews existing detector output; ocr runs and
+streams live results.
+
+**Impact at I1:** When wiring the SSE actor, the integrator must start `ocrTool`
+before the SSE stream begins (or buffer early PAGE_PUSH events). `textZonesTool`
+can be mounted at any time since it fetches on entry to `loading`.
+
+---
+
+## F5-3-4 — `_weights` kept in context despite DIVERGENCES.md #8 view-field rule (ocrTool)
+
+**YAML:** `SET_WEIGHTS: ctx._weights = { ...ctx._weights, ...event.patch }`
+
+**DIVERGENCES.md #8** says view-only fields should be omitted from context. At first
+glance `_weights` looks view-only (underscore prefix, display-preference-like name).
+
+**Resolution:** `_weights` IS kept in context because it is not view-only. At I1
+it is read by the `confirmStage` / engine-config service input to select the
+detection + recognition checkpoint. A field passed to a service is NOT view-only
+regardless of naming convention.
+
+**Convention:** The `_` prefix in the YAML does NOT automatically mean view-only.
+Check whether the field is read by a guard or service. If yes, keep it in context.
+Only omit if it is exclusively used for display.
