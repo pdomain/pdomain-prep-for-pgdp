@@ -22,6 +22,7 @@
 
 import type { ReactNode } from "react";
 import type { StageRunnerRef } from "@/machines/pipelineShell";
+import { SourceTool } from "@/pages/pipeline/tools/SourceTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -48,10 +49,8 @@ export type ToolSlotComponent = (props: ToolSlotProps) => ReactNode;
  * Until then, `resolveToolSlot` returns the placeholder for every stage.
  */
 export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
-  // F5 fills this registry.
-  // Example entry (when F5 ships):
-  //   threshold: ThresholdTool,
-  //   deskew: DeskewTool,
+  // F5.1 — Source stage tool (task/f51-source-tool)
+  source: SourceTool,
 };
 
 /**
