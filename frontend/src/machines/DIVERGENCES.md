@@ -1157,3 +1157,135 @@ Cross-check whether the field is read by any guard or action — if yes, keep
 it in context (see also DIVERGENCES.md F5-3-4 `_weights` rule).
 
 ---
+## Task F5.5 (text tools) divergences
+
+### F5.5-D1 — wordcheckTool: parallel regions (suspects + listBuilder)
+
+The spec yaml describes the wordcheck machine as a flat linear flow. The
+implementation uses a XState v5 `type: "parallel"` machine with two independent
+regions:
+
+- `suspects` — the per-token scan → reviewing → settled flow with FIX/KEEP events.
+- `listBuilder` — the candidate curation flow (ADD_TO_LIST / SKIP / DEFER /
+  PROMOTE_TO_LIBRARY).
+
+This matches the actual UI separation (suspects tab vs word-list tab) and
+prevents the list builder from blocking the suspects flow or vice versa.
+
+**I1 note:** `WordcheckToolServices.confirmStage` is called when the `suspects`
+region settles — the `listBuilder` region may still be active. At I1, confirm
+must wait for both regions to reach a stable state before calling the backend.
+
+### F5.5-D2 — wordcheckTool: SCAN_DONE mock vs real SSE
+
+The real wordcheck/scannocheck stage emits scan progress via SSE as:
+`{ type: "SCAN_PROGRESS", done: N, suspects: M }` followed by a terminal
+`{ type: "SCAN_DONE", ... }`.
+
+At F5 the `WordcheckTool.tsx` surface simulates this on mount by sending
+`SCAN_DONE` with a minimal mock fixture (3 suspects). The `scanning` state
+accepts `SCAN_PROGRESS` and `SCAN_DONE` events per the machine contract —
+F5 just short-circuits directly to `SCAN_DONE`.
+
+**I1 note:** Replace the `SCAN_DONE` mount-stub with a real SSE subscription
+to `GET /api/projects/:id/stages/scannocheck/scan-stream`.
+
+### F5.5-D3 — hyphenJoin: hasNothingToDecide checks all 4 dimensions
+
+The spec `allDecided` guard only checks undecided + flagged. The implementation
+widens it to all 4 dimensions that can block settlement:
+
+```ts
+function hasNothingToDecide(
+  cases: HyphenCase[],
+  totals: HyphenTotals,
+): boolean {
+  return (
+    totals.undecided === 0 &&
+    totals.flagged === 0 &&
+    totals.unvalidated === 0 &&
+    totals.mismatch === 0
+  );
+}
+```
+
+`unvalidated` (joined-but-not-validated) and `mismatch` cases must both be
+resolved before the stage can advance. This is a conservative extension — the
+UI will not gate on items the user cannot clear.
+
+### F5.5-D4 — hyphenJoin: nothingPendingAfter guard reads params not context
+
+XState v5 fires guards **before** the matching action on the same transition.
+In `regexPass.ts`, the `nothingPendingAfter` guard checks whether the stage
+should auto-settle after a `RUN_RULE` response. The guard must read
+`params.output.counts` (the fresh counts from the actor response) rather than
+`context.counts` (still the pre-action stale value):
+
+```ts
+nothingPendingAfter: (
+  _args,
+  params: { output: { rule: RegexRule; counts: RegexCounts } },
+) => params.output.counts.review + params.output.counts.pending === 0,
+```
+
+This pattern applies to any guard that needs a value an `assign` action would
+have set on the same transition. Always use `params` (event output) in such guards.
+
+### F5.5-D5 — textReviewTool: DISCUSSIONS-GATE invariant
+
+Named invariant: `gateOpen` blocks `CONFIRM_ADVANCE` when:
+
+```
+ctx.totals.discuss > 0
+  OR (ctx._settings.requireCommentsResolved AND any thread.status === "open")
+```
+
+The guard fires even when the queue appears empty. An item in `discuss` status
+does **not** count toward the queue-clear `always` guard — so a queue with only
+`discuss` items does not auto-settle. The UI shows a gate warning banner when
+`!gateOpen` at the reviewing stage.
+
+`requireCommentsResolved` is a machine-level display preference (convention
+\#7 in this file) — toggled via `SET_REQUIRE_COMMENTS_RESOLVED` and stored in
+`context._settings`. It is **not** sent to the server; it is a client-side
+review discipline setting.
+
+### F5.5-D6 — textReviewTool: queueClearAndGateOpen always guard fires immediately
+
+The `reviewing` state has an `always` transition:
+
+```yaml
+always:
+  - guard: queueClearAndGateOpen
+    target: confirming
+```
+
+This fires immediately on every entry into `reviewing`, including after
+`APPROVE_ITEM`. Tests that approve the last item must NOT expect the machine to
+stay in `reviewing` — it will auto-advance to `confirming` (or `settled` if
+`confirmStage` resolves immediately).
+
+Test pattern for REOPEN: approve items, reach `settled`, send `REOPEN`, then
+verify the machine is in `settled` or `confirming` (not `reviewing`), because
+the always guard fires before any test assertion.
+
+### F5.5-D7 — regexPass: `requirePreviewToCommit` and `rerunOnTextChange` are read-only at F5
+
+The `RegexPassInput` type accepts `requirePreviewToCommit` and
+`rerunOnTextChange`. At F5, `RegexTool.tsx` hard-codes both to `false` (the
+permissive defaults). The settings tab displays these as read-only fields.
+
+**I1 note:** Wire these to the stage settings API so users can toggle them via
+`putStageSettings` / `saveStageSettingsAsDefault`.
+
+### F5.5-D8 — Mock server: scannocheck routes use shared wordcheck endpoint names
+
+The mock server `MockServer` interface exposes `acceptDictionaryFixes`,
+`acceptHighConfidence`, `promoteToLibrary`, `confirmWordcheck` under their
+canonical names (matching the real route paths for the `scannocheck` stage).
+The `wordcheck` stage in the registry is an alias — both stages share the same
+backend route prefix `/api/projects/:id/stages/scannocheck/`.
+
+**I1 note:** At I1, confirm whether `wordcheck` and `scannocheck` share a single
+route namespace or have separate prefixes, and update the service adapters
+accordingly.

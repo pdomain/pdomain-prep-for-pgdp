@@ -324,6 +324,133 @@ export interface MockServer {
    * Confirms the OCR stage, forwarding results to Page order.
    */
   confirmOcr(projectId: string): Promise<{ ok: boolean }>;
+
+  // ---- F5.5: Text group — wordcheck/scannocheck/hyphen_join/text_review/regex --
+
+  /**
+   * POST /api/projects/:id/stages/scannocheck/accept-dict
+   * Auto-applies dictionary-suggested fixes; returns list of fixed suspect IDs.
+   */
+  acceptDictionaryFixes(projectId: string): Promise<{ fixedIds: string[] }>;
+
+  /**
+   * POST /api/projects/:id/stages/scannocheck/lists/accept-high
+   * Accepts all high-confidence suspects into the good word list.
+   */
+  acceptHighConfidence(projectId: string): Promise<{ acceptedIds: string[] }>;
+
+  /**
+   * POST /api/projects/:id/stages/scannocheck/lists/promote
+   * Promotes curated good/bad candidates into the project library.
+   */
+  promoteToLibrary(projectId: string): Promise<{
+    good: number;
+    bad: number;
+    bookGood: number;
+    bookBad: number;
+    libraryGood: number;
+    libraryBad: number;
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/scannocheck/confirm
+   * Confirms the scannocheck/wordcheck stage.
+   */
+  confirmWordcheck(projectId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * POST /api/projects/:id/stages/hyphen_join/scan
+   * Scans the book for hyphenation cases; returns { cases, totals }.
+   */
+  scanHyphenation(projectId: string): Promise<{
+    cases: {
+      caseId: string;
+      kind: "auto" | "mismatch";
+      head: string;
+      tail: string;
+      line: number;
+      page: string;
+      status:
+        | "undecided"
+        | "flagged"
+        | "joined"
+        | "crosspage"
+        | "validated"
+        | "mismatch";
+      validated: boolean;
+      conf: number;
+      book: { inBody: boolean; joinedElsewhere: boolean; mismatch: boolean };
+    }[];
+    totals: {
+      total: number;
+      joined: number;
+      validated: number;
+      undecided: number;
+      flagged: number;
+      crosspage: number;
+      mismatch: number;
+      unvalidated: number;
+    };
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/text_review/approve-low-risk
+   * Bulk-approves all low-risk items; returns their IDs.
+   */
+  approveLowRisk(projectId: string): Promise<{ approvedIds: string[] }>;
+
+  /**
+   * POST /api/projects/:id/stages/text_review/confirm
+   * Confirms the text_review stage.
+   */
+  confirmTextReview(projectId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * GET /api/projects/:id/stages/regex/rules
+   * Returns the full rule set + current apply counts + snapshotId for rollback.
+   */
+  fetchRegexRules(projectId: string): Promise<{
+    rules: {
+      id: string;
+      label: string;
+      pattern: string;
+      replacement: string;
+      status: "applied" | "review" | "pending" | "disabled";
+      matchCount: number;
+      previewHunks?: { before: string; after: string; page: string }[];
+    }[];
+    counts: {
+      applied: number;
+      review: number;
+      pending: number;
+      disabled: number;
+    };
+    snapshotId: string | null;
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/regex/rules/:ruleId/apply
+   * Applies a single regex rule; returns the updated rule + counts.
+   */
+  applyRegexRule(
+    projectId: string,
+    ruleId: string,
+  ): Promise<{
+    rule: {
+      id: string;
+      label: string;
+      pattern: string;
+      replacement: string;
+      status: "applied" | "review" | "pending" | "disabled";
+      matchCount: number;
+    };
+    counts: {
+      applied: number;
+      review: number;
+      pending: number;
+      disabled: number;
+    };
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1133,6 +1260,142 @@ export function createMockServer(): MockServer {
 
     async confirmOcr(_projectId) {
       return { ok: true };
+    },
+
+    // ---- F5.5: Text group -------------------------------------------------------
+
+    async acceptDictionaryFixes(_projectId) {
+      return { fixedIds: ["s1"] };
+    },
+
+    async acceptHighConfidence(_projectId) {
+      return { acceptedIds: ["s2"] };
+    },
+
+    async promoteToLibrary(_projectId) {
+      return {
+        good: 3,
+        bad: 1,
+        bookGood: 3,
+        bookBad: 1,
+        libraryGood: 12,
+        libraryBad: 4,
+      };
+    },
+
+    async confirmWordcheck(_projectId) {
+      return { ok: true };
+    },
+
+    async scanHyphenation(_projectId) {
+      return {
+        cases: [
+          {
+            caseId: "hc1",
+            kind: "auto" as const,
+            head: "house",
+            tail: "hold",
+            line: 22,
+            page: "p0004",
+            status: "undecided" as const,
+            validated: false,
+            conf: 0.88,
+            book: { inBody: true, joinedElsewhere: true, mismatch: false },
+          },
+          {
+            caseId: "hc2",
+            kind: "auto" as const,
+            head: "break",
+            tail: "fast",
+            line: 7,
+            page: "p0005",
+            status: "joined" as const,
+            validated: false,
+            conf: 0.91,
+            book: { inBody: true, joinedElsewhere: false, mismatch: false },
+          },
+          {
+            caseId: "hc3",
+            kind: "mismatch" as const,
+            head: "over",
+            tail: "coat",
+            line: 14,
+            page: "p0006",
+            status: "mismatch" as const,
+            validated: false,
+            conf: 0.77,
+            book: { inBody: false, joinedElsewhere: true, mismatch: true },
+          },
+        ],
+        totals: {
+          total: 3,
+          joined: 1,
+          validated: 0,
+          undecided: 1,
+          flagged: 0,
+          crosspage: 0,
+          mismatch: 1,
+          unvalidated: 1,
+        },
+      };
+    },
+
+    async approveLowRisk(_projectId) {
+      return { approvedIds: ["qi1", "qi2"] };
+    },
+
+    async confirmTextReview(_projectId) {
+      return { ok: true };
+    },
+
+    async fetchRegexRules(_projectId) {
+      return {
+        rules: [
+          {
+            id: "r1",
+            label: "Fix 'tbe' → 'the'",
+            pattern: "\\btbe\\b",
+            replacement: "the",
+            status: "applied" as const,
+            matchCount: 12,
+          },
+          {
+            id: "r2",
+            label: "Fix 'arid' → 'and'",
+            pattern: "\\barid\\b",
+            replacement: "and",
+            status: "review" as const,
+            matchCount: 4,
+            previewHunks: [
+              { before: "land arid sea", after: "land and sea", page: "p0003" },
+            ],
+          },
+          {
+            id: "r3",
+            label: "Smart-quote fix",
+            pattern: '"',
+            replacement: "“",
+            status: "pending" as const,
+            matchCount: 0,
+          },
+        ],
+        counts: { applied: 1, review: 1, pending: 1, disabled: 0 },
+        snapshotId: "snap-001",
+      };
+    },
+
+    async applyRegexRule(_projectId, ruleId) {
+      return {
+        rule: {
+          id: ruleId,
+          label: "Applied rule",
+          pattern: ".*",
+          replacement: "",
+          status: "applied" as const,
+          matchCount: 5,
+        },
+        counts: { applied: 2, review: 0, pending: 1, disabled: 0 },
+      };
     },
   };
 
