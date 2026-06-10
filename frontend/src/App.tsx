@@ -58,7 +58,7 @@ import { THEME_STORAGE_KEY } from "./stores/uiPrefs";
 
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
-import { ProjectListPage } from "./pages/ProjectListPage";
+import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { ProjectConfigurePage } from "./pages/ProjectConfigurePage";
 import { PageWorkbenchPage } from "./pages/PageWorkbenchPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -349,7 +349,7 @@ export default function App() {
                 <div className="flex-1 overflow-auto mx-auto max-w-7xl p-4 w-full">
                   <Routes>
                     <Route path="/login" element={<LoginPage />} />
-                    <Route path="/" element={<ProjectListPage />} />
+                    <Route path="/" element={<ProjectsPage />} />
                     <Route path="/jobs" element={<JobsPage />} />
                     <Route
                       path="/projects/:projectId"

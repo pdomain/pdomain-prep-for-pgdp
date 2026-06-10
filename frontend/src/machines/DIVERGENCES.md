@@ -280,6 +280,63 @@ XState machines, this helper (or a version of it) belongs there.
 
 ---
 
+---
+
+## F3-1 — Poll timer uses `after:` instead of side-effect start/stop (projectDetail)
+
+**YAML:** `startPollTimer` / `stopPollTimer` actions manage a polling side-channel.
+
+**XState v5:** Used `after: 10000` delayed transition from the
+`ready.selection.hasSelection.polling` state back to a `refetch` invoke.
+This is idiomatic XState v5 and avoids external timer cleanup.
+
+**Impact:** Polling cadence is 10s, configurable at machine setup time.
+The YAML's intent (periodic background refresh) is preserved.
+
+---
+
+## F3-2 — `isDirty` computed inline (attributesPanel)
+
+**YAML:** `isDirty` is declared as a named helper function / getter.
+
+**XState v5:** Computed inline in guards and context initialization using
+`deepEqual(context.draft, context.original)`. No named helper needed —
+inlining keeps the guard self-contained.
+
+---
+
+## F3-3 — 4-section collapse state consolidated into `tracking` (attributesPanel)
+
+**YAML:** Four separate parallel binary regions
+(`bib.open/closed`, `pgdp.open/closed`, `fmt.open/closed`, `comments.open/closed`).
+
+**XState v5:** Parallel binary regions for display state add significant state
+combinatorics with no behavioral gain. Consolidated into a single
+`collapsed: Set<AttributeSection>` context field, toggled by `TOGGLE_SECTION`
+event.
+
+**Impact:** Section open/close state is still fully deterministic and
+testable; just stored as a context set instead of 4 parallel regions.
+
+---
+
+## F3-4 — Child actor spawning delegated to React component layer (projectDetail)
+
+**YAML:** `projectDetail` spawns `recentActivity`, `attributesPanel`, and `manageActions` child actors via `spawnChild`.
+
+**XState v5 (current):** Spawning is delegated to the React component via
+`onRespawnActivity`, `onRespawnAttributes`, `onRespawnManage` callbacks
+(F3-4 divergence). The component mounts/unmounts child machines as
+`useActor` hooks when the project selection changes.
+
+**Rationale:** Avoids the complexity of `spawnChild` + snapshot serialization
+at I1. The behavioral contract (child machines are created on SELECT,
+destroyed on CLEAR_SELECTION) is preserved.
+
+**At I1:** Promote to `spawnChild` inside the machine when the full actor model integration is needed.
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.

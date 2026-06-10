@@ -7,5 +7,5 @@
     "src/design/index.ts",
     "src/machines/**"
   ],
-  "ignoreDependencies": ["lucide-react", "@xstate/react"]
+  "ignoreDependencies": ["lucide-react", "jszip"]
 }

@@ -114,11 +114,38 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "page-drawer", // PageDrawer component default testid
   // ── Stage pipeline rail ─────────────────────────────────────────────────
   "stage-chain-rail", // StageChainRail root — visible on all project pages
-  // ── Project grid (ProjectListPage) ──────────────────────────────────────
-  "project-grid", // Grid of project cards
-  "stat-tile-row", // Statistics tile row (top of project list)
-  "stat-total-pages", // "Total pages" stat tile
-  "stat-awaiting-review", // "Awaiting review" stat tile
+  // ── Projects surface (ProjectsPage — F3) ────────────────────────────────
+  "projects-page", // ProjectsPage root section
+  "projects-rail", // Left rail (project list)
+  "projects-list", // Scrollable project rows container
+  "projects-detail", // Right pane (detail view)
+  "projects-empty", // Empty-state hero (no projects)
+  "projects-loading", // Loading spinner (booting state)
+  "projects-error", // Error state with retry
+  "projects-retry", // Retry button in error state
+  "projects-search", // Search input in header
+  "rail-tabs", // Active/Archived segmented tabs
+  "detail-pane", // Detail pane content wrapper
+  "detail-title", // Project title heading
+  "detail-status-badge", // Status badge in detail header
+  "detail-header", // Detail pane header row
+  "detail-stats", // 6-cell stats grid
+  "detail-pipeline", // Pipeline strip section
+  "detail-tabs", // Tab strip (activity/attributes/manage)
+  "new-project-btn", // New project button in rail
+  "open-project-btn", // Open project button in detail
+  "activity-panel", // Recent activity tab panel
+  "attributes-panel", // Attributes tab panel
+  "manage-panel", // Manage tab panel
+  "post-import-page", // PostImportPage root section
+  "redirected-pane", // Pa (redirected) placement pane
+  "anchored-pane", // Pb (anchored) placement pane
+  "jobs-drawer", // Import jobs drawer (Pb)
+  "jobs-drawer-header", // Jobs drawer header row
+  "jobs-drawer-body", // Jobs drawer expanded body
+  "import-progress", // Import progress bar container
+  "import-job-row", // Active import job row in drawer
+  "import-cancelled-row", // Cancelled import row
   // ── Stage controls (StageControlsPanel) ─────────────────────────────────
   "stage-controls-panel", // Right-side controls panel
   // ── Artifact viewer (ArtifactViewer) ────────────────────────────────────
