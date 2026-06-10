@@ -732,6 +732,42 @@ banner inside the editor.
 
 ---
 
+## F5-5 — Dewarp inline-editor controls differ from design canvas (stageSchemas) {#I1-reconcile}
+
+**Design canvas (`dewarp.jsx` DewarpReviewEditor) inline-editor controls:**
+
+- `Warp strength` (Off / Mild / Standard / Strong) — 4-position segmented
+- `Anchor mode` (Auto / Manual anchors) — 2-position segmented
+
+These are canvas-design controls for interactive per-page warp tuning.
+
+**`stageSchemas.ts` DEWARP_SCHEMA controls:**
+
+- `model` (select: thin_plate_spline / polynomial / cylinder)
+- `stiffness` (slider: 0.0–1.0)
+- `gutterRemove` (toggle)
+
+**Delta:** The schema uses the settings-panel control vocabulary (model
+algorithm + numeric stiffness + gutter toggle) while the design canvas uses a
+simplified end-user vocabulary (warp-strength segmented + anchor-mode toggle).
+Neither set is wrong — they represent different levels of the same
+configuration.
+
+**Status:** Deferred to I1. The schema controls match the settings-panel spec
+and drive the inline editor in F5. The canvas vocabulary (`warpStrength`,
+`anchorMode`) is a higher-level UX abstraction that maps onto the schema
+controls. At I1, decide whether to:
+
+1. Keep the schema controls as the canonical inline-editor controls (exposes
+   raw parameters), or
+2. Replace with canvas-vocabulary controls (`warpStrength` segmented +
+   `anchorMode` toggle) backed by a parameter-mapping layer.
+
+**At I1:** Reconcile by choosing option 1 or 2 above. If option 2, add a
+`warpStrengthToStiffness` mapping in the dewarp stage handler.
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.

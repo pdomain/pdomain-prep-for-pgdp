@@ -459,10 +459,15 @@ function CropFilterBar({
 export function PagesGridTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps) {
+  _testServices,
+}: ToolSlotProps & { _testServices?: PagesGridServices }) {
   const { projectId = "mock-project" } = useParams();
 
-  const services = useMemo(() => makePagesGridServices(projectId), [projectId]);
+  const services = useMemo(
+    () => _testServices ?? makePagesGridServices(projectId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId],
+  );
 
   const [snapshot, send] = useActor(pagesGridMachine, {
     input: {
@@ -696,6 +701,48 @@ export function PagesGridTool({
                     }}
                   >
                     Saving…
+                  </div>
+                )}
+
+              {/* Confirm-discard prompt */}
+              {snapshot.matches({ ready: { editor: "confirmDiscard" } }) &&
+                ctx.selectedPageId === row.pageId && (
+                  <div
+                    data-testid={`confirm-discard-${row.pageId}`}
+                    style={{
+                      padding: "8px 10px",
+                      background:
+                        "color-mix(in oklab, var(--fuzzy) 10%, var(--bg-surface))",
+                      border:
+                        "1px solid color-mix(in oklab, var(--fuzzy) 35%, var(--border-1))",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      color: "var(--fuzzy)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span>Discard changes?</span>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => send({ type: "KEEP" })}
+                        data-testid={`confirm-discard-keep-${row.pageId}`}
+                      >
+                        Keep
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => send({ type: "DISCARD" })}
+                        data-testid={`confirm-discard-ok-${row.pageId}`}
+                      >
+                        Discard
+                      </Button>
+                    </div>
                   </div>
                 )}
             </div>

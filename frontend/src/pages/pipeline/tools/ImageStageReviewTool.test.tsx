@@ -374,6 +374,85 @@ describe("ImageStageReviewTool — confirm gate", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Artboard: settled state (all flagged pages reviewed)
+// ---------------------------------------------------------------------------
+
+describe("ImageStageReviewTool — settled state", () => {
+  it("renders review-banner-settled after all flagged pages are accepted", async () => {
+    // Drive machine: load → open editor on page-2 (flagged) → accept → open
+    // editor on page-4 (flagged) → accept → machine reaches settled.
+    renderReview("threshold");
+
+    // Wait for load
+    await waitFor(() => {
+      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+    });
+
+    // Accept page-2
+    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+    await waitFor(() => {
+      expect(screen.getByTestId("inline-editor-page-2")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("accept-as-is-btn"));
+
+    // Accept page-4
+    await waitFor(() => {
+      expect(screen.getByTestId("page-thumb-page-4")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("page-thumb-page-4"));
+    await waitFor(() => {
+      expect(screen.getByTestId("inline-editor-page-4")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("accept-as-is-btn"));
+
+    // Machine should now be settled
+    await waitFor(() => {
+      expect(screen.getByTestId("review-banner-settled")).toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: confirming state (confirm in flight)
+// ---------------------------------------------------------------------------
+
+describe("ImageStageReviewTool — confirming state", () => {
+  it("renders review-banner-confirming after CONFIRM_ADVANCE from settled", async () => {
+    renderReview("threshold");
+
+    // Load and accept both flagged pages to reach settled
+    await waitFor(() => {
+      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+    await waitFor(() => {
+      expect(screen.getByTestId("inline-editor-page-2")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("accept-as-is-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("page-thumb-page-4")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("page-thumb-page-4"));
+    await waitFor(() => {
+      expect(screen.getByTestId("inline-editor-page-4")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("accept-as-is-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("review-banner-settled")).toBeDefined();
+    });
+
+    // Click confirm — from settled the banner button fires CONFIRM_ADVANCE
+    fireEvent.click(screen.getByTestId("bottom-confirm-advance-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("review-banner-confirming")).toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Artboard: stageSchemas — controls per stage
 // ---------------------------------------------------------------------------
 
@@ -386,6 +465,17 @@ describe("ImageStageReviewTool — controls via stageSchemas (threshold)", () =>
     fireEvent.click(screen.getByTestId("page-thumb-page-2"));
     await waitFor(() => {
       expect(screen.getByTestId("select-method")).toBeDefined();
+    });
+  });
+
+  it("threshold controls include threshold slider (0–255)", async () => {
+    renderReview("threshold");
+    await waitFor(() => {
+      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+    await waitFor(() => {
+      expect(screen.getByTestId("slider-threshold")).toBeDefined();
     });
   });
 

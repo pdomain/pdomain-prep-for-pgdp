@@ -3,6 +3,7 @@
  *
  * DCArtboard states:
  *   - detecting    — auto-detect in flight → detecting banner
+ *   - converting   — pages being converted → converting-progress shown
  *   - done/idle    — detection resolved, pages converted → settings panel
  *   - done/tuned   — draft modified → Apply & re-run enabled
  *   - error        — detection failed → retry shown
@@ -16,6 +17,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { GrayscaleTool } from "./GrayscaleTool";
 import type { ToolSlotProps } from "../toolSlot";
+import type { GrayscaleToolServices } from "@/machines/tools/grayscaleTool";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,7 +25,11 @@ import type { ToolSlotProps } from "../toolSlot";
 
 const MOCK_RUNNER_REF = {} as ToolSlotProps["runnerRef"];
 
-function renderGrayscale(props: Partial<ToolSlotProps> = {}) {
+function renderGrayscale(
+  props: Partial<ToolSlotProps> & {
+    _testServices?: GrayscaleToolServices;
+  } = {},
+) {
   return render(
     <MemoryRouter>
       <GrayscaleTool
@@ -135,6 +141,48 @@ describe("GrayscaleTool — done/idle (detection resolved)", () => {
     renderGrayscale();
     await waitFor(() => {
       expect(screen.getByTestId("slider-gamma")).toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: converting state (pages being processed)
+// ---------------------------------------------------------------------------
+
+describe("GrayscaleTool — converting state", () => {
+  it("renders converting-progress banner while pages are being converted", async () => {
+    // Machine flow: detecting → converting (after detectProfile resolves).
+    // The converting-progress testid appears before PAGE_PUSH events complete.
+    renderGrayscale();
+    await waitFor(() => {
+      expect(screen.getByTestId("converting-progress")).toBeDefined();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Artboard: error state (detection failed)
+// ---------------------------------------------------------------------------
+
+describe("GrayscaleTool — error state", () => {
+  it("renders grayscale-tool-error when detectProfile rejects", async () => {
+    const errorServices: GrayscaleToolServices = {
+      detectProfile: () => Promise.reject(new Error("network error")),
+    };
+    renderGrayscale({ _testServices: errorServices });
+    await waitFor(() => {
+      expect(screen.getByTestId("grayscale-tool-error")).toBeDefined();
+    });
+  });
+
+  it("error banner shows retry button", async () => {
+    const errorServices: GrayscaleToolServices = {
+      detectProfile: () => Promise.reject(new Error("detect failed")),
+    };
+    renderGrayscale({ _testServices: errorServices });
+    await waitFor(() => {
+      const errorEl = screen.getByTestId("grayscale-tool-error");
+      expect(errorEl.textContent).toContain("Retry");
     });
   });
 });

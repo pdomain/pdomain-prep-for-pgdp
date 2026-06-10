@@ -99,6 +99,15 @@ const THRESHOLD_SCHEMA: StageSchema = {
       description: "Binarization algorithm. Sauvola is best for newsprint.",
     },
     {
+      key: "threshold",
+      label: "Threshold",
+      kind: "slider",
+      range: [0, 255, 1],
+      defaultValue: 140,
+      description:
+        "Global cut point (0–255). Values below go black, above go white.",
+    },
+    {
       key: "windowSize",
       label: "Window size",
       kind: "slider",

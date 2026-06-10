@@ -657,10 +657,15 @@ function StepSettings({
 export function GrayscaleTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps) {
+  _testServices,
+}: ToolSlotProps & { _testServices?: GrayscaleToolServices }) {
   const { projectId = "mock-project" } = useParams();
 
-  const services = useMemo(() => makeGrayscaleServices(projectId), [projectId]);
+  const services = useMemo(
+    () => _testServices ?? makeGrayscaleServices(projectId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectId],
+  );
 
   const [snapshot, send] = useActor(grayscaleToolMachine, {
     input: {
