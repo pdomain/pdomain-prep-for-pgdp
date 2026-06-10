@@ -25,24 +25,35 @@ import type {
 // Stage ID constants
 // ---------------------------------------------------------------------------
 
-/** 16 page-scoped v2 stage IDs in topological order. */
+/** 16 page-scoped v2 stage IDs in topological order.
+ *
+ * Order is derived from STAGE_DEPS (Kahn's algorithm):
+ *   grayscale, illustrations — roots (only depend on project-scoped `source`)
+ *   crop → threshold → deskew → denoise → dewarp → post_transform_crop
+ *   canvas_map and text_zones both depend on post_transform_crop
+ *   post_ocr_crop depends on canvas_map; ocr depends on post_ocr_crop
+ *   wordcheck → hyphen_join → regex → text_review
+ *
+ * The corrected cluster vs the previous (wrong) ordering:
+ *   … post_transform_crop, canvas_map, text_zones, post_ocr_crop, ocr …
+ */
 export const PAGE_STAGE_IDS = [
   "grayscale",
+  "illustrations",
   "crop",
   "threshold",
   "deskew",
   "denoise",
   "dewarp",
   "post_transform_crop",
+  "canvas_map",
   "text_zones",
+  "post_ocr_crop",
   "ocr",
   "wordcheck",
-  "canvas_map",
   "hyphen_join",
-  "text_review",
-  "illustrations",
   "regex",
-  "post_ocr_crop",
+  "text_review",
 ] as const;
 
 /** 8 project-scoped v2 stage IDs in topological order. */

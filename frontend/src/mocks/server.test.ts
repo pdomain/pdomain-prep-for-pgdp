@@ -21,6 +21,7 @@ import {
   FLAGGED_PAGE_ID,
   FAILED_PAGE_ID,
   DESIGNATED_STAGE_ID,
+  STAGE_DEPS,
   computeDownstream,
 } from "./fixtures";
 import type { ProjectChannelEvent } from "./types";
@@ -571,5 +572,50 @@ describe("page stages completeness", () => {
       "grayscale",
     );
     expect(result.status).toBe("clean");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Topological order: listPageStages must return stages in valid topo order
+// (api-v2-deltas.md §1.1 contract)
+// ---------------------------------------------------------------------------
+
+describe("listPageStages topological order", () => {
+  let server: MockServer;
+
+  beforeEach(() => {
+    server = createMockServer();
+  });
+
+  it("every stage's page-scoped upstream deps appear earlier in the list", async () => {
+    const stages = await server.listPageStages("proj-mock-0001", "0000");
+    const pageStageIds = new Set(PAGE_STAGE_IDS as readonly string[]);
+    const positionOf = new Map<string, number>(
+      stages.map((s, i) => [s.stage_id, i]),
+    );
+
+    for (const stage of stages) {
+      const deps = STAGE_DEPS[stage.stage_id] ?? [];
+      for (const dep of deps) {
+        // Only check deps that are page-scoped (project-scoped deps like
+        // "source" are not in the returned list and are acceptable to skip)
+        if (!pageStageIds.has(dep)) continue;
+
+        const depPos = positionOf.get(dep);
+        const stagePos = positionOf.get(stage.stage_id);
+        expect(
+          depPos,
+          `dep "${dep}" must appear in listPageStages result`,
+        ).toBeDefined();
+        expect(
+          stagePos,
+          `stage "${stage.stage_id}" must appear in listPageStages result`,
+        ).toBeDefined();
+        expect(
+          depPos! < stagePos!,
+          `"${dep}" (pos ${depPos}) must precede "${stage.stage_id}" (pos ${stagePos})`,
+        ).toBe(true);
+      }
+    }
   });
 });
