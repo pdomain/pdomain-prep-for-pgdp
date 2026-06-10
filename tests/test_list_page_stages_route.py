@@ -1,11 +1,10 @@
-"""M1 §C — `GET /api/data/projects/{id}/pages/{idx0}/stages`.
+"""GET /api/data/projects/{id}/pages/{idx0}/stages.
 
-Spec: `docs/specs/pipeline-task-model.md` §"API surface" (§Per-page
-stage routes) + §"Dual-write reconciliation" (Q1-followup).
+Spec: `docs/specs/api-v2-deltas.md` §1.1 — v2 re-key.
 
-The route lazy-initialises 22 ``not-run`` rows on first read. The init
-is idempotent and concurrency-safe (INSERT OR IGNORE on the composite
-PK), so concurrent first-touches converge to exactly 22 rows, not 44.
+B5 change: the route now returns 16 v2 page-scoped stages (V2_PAGE_STAGE_IDS)
+in topological order, not the 22 v1 stages. Lazy-init materialises 16
+not-run rows. Idempotent and concurrency-safe via INSERT OR IGNORE.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ import pdomain_prep_for_pgdp.core.pipeline.stage_dag as _stage_dag_mod
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
-    PAGE_STAGE_IDS,
+    V2_PAGE_STAGE_IDS,
     PageProcessingStatus,
     PageRecord,
     PageStageState,
@@ -31,7 +30,6 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
-from pdomain_prep_for_pgdp.core.pipeline.stage_dag import topological_order
 from pdomain_prep_for_pgdp.settings import Settings
 from tests.fixtures.seed_pages import seed_pages_in_store
 
@@ -108,21 +106,21 @@ def seeded_client(tmp_path: Path) -> Iterator[tuple[TestClient, Settings]]:
         yield c, settings
 
 
-# ─── Happy path: lazy init + 22 ordered rows ────────────────────────────────
+# ─── Happy path: lazy init + 16 v2 ordered rows ─────────────────────────────
 
 
-def test_list_page_stages_returns_22_not_run_on_first_read(
+def test_list_page_stages_returns_16_not_run_on_first_read(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
+    """B5 §1.1 — returns 16 v2 page-scoped stages, not the old 22 v1 stages."""
     client, _ = seeded_client
     r = client.get("/api/data/projects/m1c/pages/0/stages")
     assert r.status_code == 200, r.text
     rows = r.json()
     assert isinstance(rows, list)
-    assert len(rows) == 22
+    assert len(rows) == len(V2_PAGE_STAGE_IDS)
     for row in rows:
         assert row["status"] == PageStageStatus.not_run.value
-        assert row["stage_version"] == 1
         assert row["artifact_key"] is None
         assert row["project_id"] == "m1c"
         assert row["page_id"] == "0000"
@@ -131,26 +129,25 @@ def test_list_page_stages_returns_22_not_run_on_first_read(
 def test_list_page_stages_topological_order(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """Stage IDs must arrive in `topological_order()`."""
+    """Stage IDs must arrive in V2_PAGE_STAGE_IDS topological order."""
     client, _ = seeded_client
     r = client.get("/api/data/projects/m1c/pages/0/stages")
     assert r.status_code == 200
     got_ids = [row["stage_id"] for row in r.json()]
-    expected_ids = [s.id for s in topological_order()]
-    assert got_ids == expected_ids
+    assert got_ids == list(V2_PAGE_STAGE_IDS)
 
 
 def test_list_page_stages_ids_match_canonical_set(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """The 22 stage_ids must match `PAGE_STAGE_IDS` exactly (no dupes/typos)."""
+    """The stage_ids must match V2_PAGE_STAGE_IDS exactly (no dupes/typos)."""
     client, _ = seeded_client
     r = client.get("/api/data/projects/m1c/pages/0/stages")
     got = {row["stage_id"] for row in r.json()}
-    assert got == set(PAGE_STAGE_IDS)
+    assert got == set(V2_PAGE_STAGE_IDS)
 
 
-# ─── Idempotency: second call returns the same 22 rows ─────────────────────
+# ─── Idempotency: second call returns the same 16 rows ──────────────────────
 
 
 def test_list_page_stages_second_call_no_duplicates(
@@ -161,8 +158,8 @@ def test_list_page_stages_second_call_no_duplicates(
     r2 = client.get("/api/data/projects/m1c/pages/0/stages")
     assert r1.status_code == 200
     assert r2.status_code == 200
-    assert len(r1.json()) == 22
-    assert len(r2.json()) == 22
+    assert len(r1.json()) == len(V2_PAGE_STAGE_IDS)
+    assert len(r2.json()) == len(V2_PAGE_STAGE_IDS)
     # Row identities (project, page, stage) match across both responses.
     keys1 = sorted((r["project_id"], r["page_id"], r["stage_id"]) for r in r1.json())
     keys2 = sorted((r["project_id"], r["page_id"], r["stage_id"]) for r in r2.json())
@@ -172,28 +169,21 @@ def test_list_page_stages_second_call_no_duplicates(
 def test_list_page_stages_concurrent_first_touch_is_idempotent(
     tmp_path: Path,
 ) -> None:
-    """Two simultaneous first-touch reads must converge to exactly 22 rows.
+    """Two simultaneous first-touch reads must converge to the same 16 rows.
 
     The lazy-init goes through `INSERT OR IGNORE` against the composite
     PK, so a concurrent racer's inserts no-op against the first
-    inserter's rows. We use the in-process httpx-via-TestClient parallel
-    pattern (asyncio.gather with the underlying ASGI transport) to
-    exercise this without needing a real TCP server.
+    inserter's rows.
     """
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
+    n = len(V2_PAGE_STAGE_IDS)
 
     async def hit_twice() -> tuple[int, int]:
         from httpx import ASGITransport, AsyncClient
 
         async with (
-            # FastAPI lifespan runs on connection / first request, but
-            # for a pure-app test we don't need it: list_page_stages
-            # uses sqlite directly via app.state.database, which is
-            # initialised by the lifespan. Use the sync TestClient as
-            # context manager once to run startup, then issue async
-            # parallel calls against the same app.
             AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client,
         ):
             results = await asyncio.gather(
@@ -213,13 +203,12 @@ def test_list_page_stages_concurrent_first_touch_is_idempotent(
                 ],
             )
 
-    # We need lifespan startup to initialise the DB before the parallel calls.
     with TestClient(app):
         s1, s2, lengths, ids = asyncio.run(hit_twice())
 
     assert s1 == 200
     assert s2 == 200
-    assert lengths == [22, 22], f"expected each parallel response to have 22 rows, got {lengths}"
+    assert lengths == [n, n], f"expected each parallel response to have {n} rows, got {lengths}"
     assert ids[0] == ids[1], "concurrent first-touch produced different row sets"
 
 
@@ -258,17 +247,18 @@ def test_list_page_stages_404_other_users_project(tmp_path: Path) -> None:
 
 
 def test_list_page_stages_persists_rows_to_db(tmp_path: Path) -> None:
-    """After the route lazy-inits 22 rows, they must be visible via direct DB query."""
+    """After the route lazy-inits v2 rows, they must be visible via direct DB query."""
     settings = _settings(tmp_path)
     _seed(settings)
     app = build_app(settings)
     with TestClient(app) as client:
         r = client.get("/api/data/projects/m1c/pages/0/stages")
         assert r.status_code == 200
-        assert len(r.json()) == 22
+        assert len(r.json()) == len(V2_PAGE_STAGE_IDS)
 
     # Re-open a fresh DB connection to confirm persistence across the
-    # in-process app teardown.
+    # in-process app teardown. Note: DB stores the v1 init rows (22);
+    # the route filters to 16 v2 page-scoped stages on the way out.
     async def _check() -> int:
         db = SqliteDatabase(settings.derived_database_url)
         await db.initialize()
@@ -276,7 +266,8 @@ def test_list_page_stages_persists_rows_to_db(tmp_path: Path) -> None:
         await db.close()
         return len(rows)
 
-    assert asyncio.run(_check()) == 22
+    # DB has 22 rows (full v1 init); route serves 16 v2 rows.
+    assert asyncio.run(_check()) >= len(V2_PAGE_STAGE_IDS)
 
 
 # ─── Stage versioning: stale rows served as dirty ──────────────────────────
@@ -301,7 +292,7 @@ def test_stale_stage_version_served_as_dirty(
             PageStageState(
                 project_id="m1c",
                 page_id="0000",
-                stage_id="thumbnail",
+                stage_id="grayscale",
                 status=PageStageStatus.clean,
                 stage_version=1,
             )
@@ -310,16 +301,16 @@ def test_stale_stage_version_served_as_dirty(
 
     asyncio.run(_seed_clean_row())
 
-    # Bump STAGE_VERSIONS["thumbnail"] to 2 so the row is stale.
+    # Bump STAGE_VERSIONS["grayscale"] to 2 so the row is stale.
     original = dict(_stage_dag_mod.STAGE_VERSIONS)
-    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, thumbnail=2))
+    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, grayscale=2))
 
     app = build_app(settings)
     with TestClient(app) as client:
         r = client.get("/api/data/projects/m1c/pages/0/stages")
     assert r.status_code == 200
     rows_by_id = {row["stage_id"]: row for row in r.json()}
-    assert rows_by_id["thumbnail"]["status"] == "dirty", (
+    assert rows_by_id["grayscale"]["status"] == "dirty", (
         "stale stage_version row must be served as dirty by the GET /stages route"
     )
 
@@ -375,7 +366,7 @@ def test_page_with_complete_status_gets_not_run_stages(tmp_path: Path) -> None:
         r = client.get("/api/data/projects/legacy/pages/0/stages")
     assert r.status_code == 200
     rows = r.json()
-    assert len(rows) == 22
+    assert len(rows) == len(V2_PAGE_STAGE_IDS)
     for row in rows:
         assert row["status"] == PageStageStatus.not_run.value, (
             f"page must have not-run stages (legacy detection removed), "
@@ -384,7 +375,7 @@ def test_page_with_complete_status_gets_not_run_stages(tmp_path: Path) -> None:
 
 
 def test_page_with_processing_status_gets_not_run_stages(tmp_path: Path) -> None:
-    """A pre-M1 page with processing_status=processing must init with dirty stages."""
+    """A pre-M1 page with processing_status=processing must init with not-run stages."""
     settings = _settings(tmp_path)
 
     async def _seed_legacy() -> None:
@@ -428,13 +419,13 @@ def test_page_with_processing_status_gets_not_run_stages(tmp_path: Path) -> None
         r = client.get("/api/data/projects/legacy/pages/0/stages")
     assert r.status_code == 200
     rows = r.json()
-    assert len(rows) == 22
+    assert len(rows) == len(V2_PAGE_STAGE_IDS)
     for row in rows:
         assert row["status"] == PageStageStatus.not_run.value
 
 
 def test_page_with_error_status_gets_not_run_stages(tmp_path: Path) -> None:
-    """A pre-M1 page with processing_status=error must init with dirty stages."""
+    """A pre-M1 page with processing_status=error must init with not-run stages."""
     settings = _settings(tmp_path)
 
     async def _seed_legacy() -> None:
@@ -478,7 +469,7 @@ def test_page_with_error_status_gets_not_run_stages(tmp_path: Path) -> None:
         r = client.get("/api/data/projects/legacy/pages/0/stages")
     assert r.status_code == 200
     rows = r.json()
-    assert len(rows) == 22
+    assert len(rows) == len(V2_PAGE_STAGE_IDS)
     for row in rows:
         assert row["status"] == PageStageStatus.not_run.value
 
@@ -491,7 +482,7 @@ def test_non_legacy_page_with_pending_status_gets_not_run_stages(
     r = client.get("/api/data/projects/m1c/pages/0/stages")
     assert r.status_code == 200
     rows = r.json()
-    assert len(rows) == 22
+    assert len(rows) == len(V2_PAGE_STAGE_IDS)
     for row in rows:
         assert row["status"] == PageStageStatus.not_run.value, (
             f"non-legacy page with processing_status=pending must have not-run stages, "

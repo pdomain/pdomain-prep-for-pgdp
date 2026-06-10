@@ -274,7 +274,11 @@ def test_run_stage_route_500_when_impl_raises_with_failed_row(
 def test_run_stage_route_422_for_not_applicable_stage(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """POST to run a stage whose current status is `not-applicable` returns 422."""
+    """POST to run a stage whose current status is `not-applicable` returns 422.
+
+    B5 §1.1: uses v2 stage ID (grayscale). The stage is seeded as not-applicable
+    for this page, so the route returns 422 with a not-applicable message.
+    """
     client, settings = seeded_client
 
     async def _mark_not_applicable() -> None:
@@ -286,7 +290,7 @@ def test_run_stage_route_422_for_not_applicable_stage(
                 PageStageState(
                     project_id="m2s4",
                     page_id="0000",
-                    stage_id="decode_source",
+                    stage_id="grayscale",
                     status=PageStageStatus.not_applicable,
                 )
             )
@@ -295,6 +299,6 @@ def test_run_stage_route_422_for_not_applicable_stage(
 
     asyncio.run(_mark_not_applicable())
 
-    r = client.post("/api/data/projects/m2s4/pages/0/stages/decode_source/run")
+    r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run")
     assert r.status_code == 422, r.text
     assert "not-applicable" in r.text.lower()

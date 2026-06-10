@@ -26,6 +26,7 @@ from pdomain_prep_for_pgdp.api.dependencies import (
 )
 from pdomain_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
+    V2_PAGE_STAGE_IDS,
     AlignmentOverride,
     IllustrationRegion,
     Job,
@@ -39,6 +40,7 @@ from pdomain_prep_for_pgdp.core.models import (
     PageStageState,
     PageStageStatus,
     PageType,
+    StageRunRequest,
 )
 from pdomain_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
 from pdomain_prep_for_pgdp.core.page_service_helpers import (
@@ -59,7 +61,7 @@ from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     RegistryVersionMismatchError,
     check_registry_version,
 )
-from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_stage, topological_order
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_v2_stage
 from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageOutputUnsupported,
@@ -951,13 +953,17 @@ async def list_page_stages(
     db: DatabaseDep,
     page_service: PageServiceDep,
 ) -> list[PageStageState]:
-    """Return ordered per-page stage state for the 22-stage DAG.
+    """Return ordered per-page stage state for the v2 16-stage page DAG.
 
-    Spec: `docs/specs/pipeline-task-model.md` §"API surface" (§Per-page
-    stage routes). Lazy-init contract (Q1-followup): if no rows exist
-    yet for this page, materialise 22 ``not-run`` rows in one
-    transaction (`INSERT OR IGNORE`) and return them in topological
-    order. Concurrent first-touch reads converge on exactly 22 rows.
+    Spec: `docs/specs/api-v2-deltas.md` §1.1 — returns the 16 v2 page-scoped
+    stages in V2_PAGE_STAGE_IDS topological order (sources first). Project-
+    scoped stages (source, page_order, validation, …) are served via the
+    /project-stages routes.
+
+    Lazy-init contract (Q1-followup): if no rows exist yet for this page,
+    materialise 16 ``not-run`` rows in one transaction (`INSERT OR IGNORE`)
+    and return them in topological order. Concurrent first-touch reads
+    converge on exactly 16 rows.
 
     Auth follows the existing pattern — every project read is filtered
     by `user.user_id`. 404 (not 403) is returned on miss to avoid leaking
@@ -980,17 +986,21 @@ async def list_page_stages(
     _ = await db.init_page_stages_for_page(project_id, page_id)
     rows = await db.list_page_stages_for_page(project_id, page_id)
 
-    # Order by topological order — matches spec §"Per-page stage DAG"
-    # (sources first). Stages absent from the DAG (shouldn't happen because
-    # the CHECK constraint pins to PAGE_STAGE_IDS) are silently dropped.
-    # Apply stage-version check: rows whose stored stage_version is behind
-    # STAGE_VERSIONS are served as dirty so the UI queues a rerun.
+    # Order by v2 page-scoped DAG topological order (V2_PAGE_STAGE_IDS).
+    # Only the 16 page-scoped v2 stages are returned; project-scoped stages
+    # (source, page_order, validation, etc.) are served via /project-stages.
     by_id: dict[str, PageStageState] = {r.stage_id: r for r in rows}
     ordered: list[PageStageState] = []
-    for stage in topological_order():
-        row = by_id.get(stage.id)
+    for sid in V2_PAGE_STAGE_IDS:
+        row = by_id.get(sid)
         if row is None:
-            continue
+            # Lazy-init row missing — create a not-run placeholder in-memory.
+            row = PageStageState(
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=sid,
+                status=PageStageStatus.not_run,
+            )
         current_version = _stage_dag.STAGE_VERSIONS.get(row.stage_id, 1)
         if row.stage_version < current_version and row.status == PageStageStatus.clean:
             row = row.model_copy(update={"status": PageStageStatus.dirty})
@@ -1016,38 +1026,33 @@ async def run_page_stage(
     settings: SettingsDep,
     stage_events: StageEventsDep,
     page_service: PageServiceDep,
+    body: StageRunRequest | None = None,
     async_: Annotated[bool, Query(alias="async")] = False,
 ) -> Job | PageStageState:
-    """Run one stage on one page synchronously and return the new row.
+    """Run one stage on one page and return the new row or a Job.
 
-    Spec: `docs/specs/pipeline-task-model.md` §"Per-page stage runner"
-    + §"API surface". Slice 4 ships the synchronous path for the simple
-    image-processing stages (grayscale/threshold/invert today; more land
-    stage-by-stage). When slow stages (`ocr`, `extract_illustrations`)
-    get wired, this route gains an optional `?async=true` that returns a
-    Job id instead — the chip rail will poll the job's status.
+    Spec: `docs/specs/api-v2-deltas.md` §1.1 — page-stage run, v2 stage IDs.
+    Accepts a `StageRunRequest` body (B5: force, async fields). The `?async`
+    query-param form is deprecated; the body form is canonical in v2. Both
+    are accepted during the B5→I1 transition window.
 
     Status codes:
 
     - 200: stage ran cleanly; body is the freshly-committed PageStageState.
-    - 404: project not found, page not found, or cross-user access (the
-      404-not-403 pattern matches the list endpoint and avoids leaking
-      project existence).
-    - 422: unknown `stage_id` (validated against PAGE_STAGE_IDS).
+    - 202: async=True (body or query param); body is a Job.
+    - 404: project not found, page not found, or cross-user access.
+    - 422: unknown `stage_id` (validated against V2_PAGE_STAGE_IDS).
     - 409 Conflict: the stage's `depends_on` rows aren't all `clean`.
       Body names the missing parents so the UI can prompt the user to
       run them first.
-    - 501 Not Implemented: the stage emits a compound output (`ocr`,
-      `extract_illustrations`, `text_review`) and the multi-artifact
-      writer hasn't shipped yet. Body has a clear "queued for a future
-      slice" message.
-    - 500: the registered stage impl raised, OR the dual-write commit
-      failed. The page_stages row is already marked `failed` with the
-      error_message — the chip rail's next refresh will show the
-      failure inline.
+    - 501 Not Implemented: compound output stage or no impl yet.
+    - 500: stage impl raised, or dual-write commit failed.
     """
-    if stage_id not in PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    # Resolve async flag: body form takes precedence over deprecated query-param form.
+    _async = (body.async_ if body is not None else False) or async_
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -1067,7 +1072,7 @@ async def run_page_stage(
     if existing_row is not None and existing_row.status == PageStageStatus.not_applicable:
         raise HTTPException(422, f"stage {stage_id!r} is not-applicable for this page type")
 
-    if async_:
+    if _async:
         job = Job(
             id=uuid.uuid4().hex,
             project_id=project_id,
@@ -1135,6 +1140,12 @@ _STAGE_OUTPUT_CONTENT_TYPES: dict[str, str] = {
     "binary": "image/png",
     "jpeg_bytes": "image/jpeg",
     "text": "text/plain; charset=utf-8",
+    # v2 additional output types
+    "zone_json": "application/json",
+    "words+text": "application/json",  # compound — served as JSON summary
+    "text+attestation": "application/json",
+    "hi_res_crops": "application/json",
+    # legacy
     "page_attrs": "application/json",
     "illustration_regions": "application/json",
     "bbox": "application/json",
@@ -1193,9 +1204,9 @@ async def get_page_stage_artifact(
     - 404: project not found (also covers cross-user) / page not found
       / row's status is not `clean` / file missing on disk (drift; the
       reconciler is the right tool to surface that systematically).
-    - 422: unknown stage_id (validated against PAGE_STAGE_IDS).
+    - 422: unknown stage_id (validated against V2_PAGE_STAGE_IDS).
     """
-    if stage_id not in PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1244,7 +1255,7 @@ async def get_page_stage_artifact(
     if etag is not None and if_none_match is not None and if_none_match.strip() == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    output_type = get_stage(stage_id).output_type
+    output_type = get_v2_stage(stage_id).output_type
     content_type = _STAGE_OUTPUT_CONTENT_TYPES.get(output_type, "application/octet-stream")
 
     body = path.read_bytes()
@@ -1280,7 +1291,7 @@ async def get_page_stage_thumbnail(
     404 when the stage row is not-run, not-applicable, failed, or dirty.
     ETag echoes the stage row's input_hash so the browser can revalidate.
     """
-    if stage_id not in PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)

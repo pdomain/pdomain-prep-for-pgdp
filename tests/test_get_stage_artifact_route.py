@@ -185,13 +185,14 @@ def test_get_artifact_conditional_returns_304_when_etag_matches(
     """Browser revalidation: If-None-Match equal to current ETag returns 304."""
     client, settings = seeded_client
     payload = _checkerboard_bgr_png()
-    asyncio.run(_seed_clean_stage(settings, "m2art", "0000", "invert", payload))
+    # Use a v2 stage ID (threshold = binary output, image/png).
+    asyncio.run(_seed_clean_stage(settings, "m2art", "0000", "threshold", payload))
 
-    r1 = client.get("/api/data/projects/m2art/pages/0/stages/invert/artifact")
+    r1 = client.get("/api/data/projects/m2art/pages/0/stages/threshold/artifact")
     etag = r1.headers["etag"]
 
     r2 = client.get(
-        "/api/data/projects/m2art/pages/0/stages/invert/artifact",
+        "/api/data/projects/m2art/pages/0/stages/threshold/artifact",
         headers={"If-None-Match": etag},
     )
     assert r2.status_code == 304
