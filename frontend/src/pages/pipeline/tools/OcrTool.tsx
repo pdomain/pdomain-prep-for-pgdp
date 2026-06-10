@@ -1,14 +1,14 @@
 /**
  * OcrTool.tsx — React surface for the OCR stage tool.
  *
- * Registered in TOOL_REGISTRY as `ocr`. Renders:
- * - Banner: progress bar while recognising, confidence summary when done
- * - Page grid coloured by mean OCR confidence
- * - Recognition tab: one page open with word boxes + low-score token panel
- * - CONFIRM_ADVANCE gate (gated on allFlagsReviewed)
+ * Registered in TOOL_REGISTRY as `ocr`. Renders three tabs:
+ * - **Overview**   — stats projection from machine context (derived, never stored)
+ * - **Pages**      — confidence-tinted page grid + inline Recognition panel
+ * - **Settings**   — OCR engine / backend / model settings (minimal at F5; wired at I1)
  *
  * At F5: mock-only wiring (PAGE_PUSH events from a simulated run).
- * At I1: real SSE actor feeds PAGE_PUSH events; confirmStage hits the backend.
+ * At I1: real SSE actor feeds PAGE_PUSH events; confirmStage hits the backend;
+ * settings tab wires to stageSettings machine pattern from F5.1 stageSettings.ts.
  *
  * @see src/machines/tools/ocrTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/final/ocr/ — design canvas
@@ -726,6 +726,437 @@ function RecognitionPanel({
 }
 
 // ---------------------------------------------------------------------------
+// OCR Overview tab — derived stats projection; never stored in machine context
+// ---------------------------------------------------------------------------
+
+function OcrOverviewTab({ totals }: { totals: OcrTotals | null }): ReactNode {
+  const t = totals ?? {
+    total: 0,
+    done: 0,
+    words: 0,
+    meanConf: 1,
+    lowConfWords: 0,
+    flagged: 0,
+    clean: 0,
+    reviewed: 0,
+  };
+
+  const stats: {
+    label: string;
+    value: string | number;
+    tone: string;
+    sub?: string;
+  }[] = [
+    { label: "pages", value: t.total, tone: "var(--ink-1)" },
+    {
+      label: "recognised",
+      value: `${t.done}/${t.total}`,
+      tone: t.done < t.total ? "var(--ocr)" : "var(--exact)",
+    },
+    { label: "words", value: t.words, tone: "var(--ink-1)" },
+    {
+      label: "mean score",
+      value: `${Math.round(t.meanConf * 100)}%`,
+      tone: confTone(t.meanConf),
+    },
+    {
+      label: "low-score",
+      value: t.lowConfWords,
+      tone: t.lowConfWords > 0 ? "var(--fuzzy)" : "var(--ink-2)",
+      sub: "words",
+    },
+    {
+      label: "flagged",
+      value: t.flagged,
+      tone: t.flagged > 0 ? "var(--fuzzy)" : "var(--ink-2)",
+      sub: "pages",
+    },
+  ];
+
+  return (
+    <div
+      data-testid="ocr-overview-tab"
+      style={{
+        flex: 1,
+        padding: "16px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      {/* Stats grid — derived from machine context rows/totals */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(6, 1fr)",
+          gap: 1,
+          background: "var(--border-1)",
+          border: "1px solid var(--border-1)",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        {stats.map((s) => (
+          <div
+            key={s.label}
+            data-testid={`ocr-overview-stat-${s.label.replace(" ", "-")}`}
+            style={{
+              background: "var(--bg-surface)",
+              padding: "14px 12px 12px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10.5,
+                fontWeight: 600,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--ink-4)",
+              }}
+            >
+              {s.label}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 18,
+                fontWeight: 600,
+                color: s.tone,
+                fontFamily: "var(--mono-font, monospace)",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {s.value}
+            </div>
+            {s.sub ? (
+              <div
+                style={{
+                  marginTop: 2,
+                  fontSize: 10.5,
+                  fontFamily: "var(--mono-font, monospace)",
+                  color: "var(--ink-4)",
+                }}
+              >
+                {s.sub}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      {/* Word-score distribution — placeholder (I1: derive from rows) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            padding: "14px 16px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--ink-1)",
+              marginBottom: 8,
+            }}
+          >
+            Word score distribution
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-4)" }}>
+            Confidence histogram across {t.words} words (I1: derive from rows)
+          </div>
+        </div>
+        <div
+          style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            padding: "14px 16px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--ink-1)",
+              marginBottom: 8,
+            }}
+          >
+            Page flags
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-4)" }}>
+            Flag breakdown across {t.total} pages (I1: derive from rows)
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OCR StepSettings tab — local settings panel (F5 minimal; wired at I1)
+// ---------------------------------------------------------------------------
+
+/**
+ * F5-3-6 — OcrStepSettings uses local state only (no stageSettings machine).
+ *
+ * stageSettings.ts exists in the f51-source worktree (F5.1) but NOT in this
+ * worktree at F5.3 time. Per task instructions, we use a local minimal panel
+ * driven by local state + no-op handlers. When F5.1 is rebased in, each
+ * machine must inline the 9 settings actions typed to its own Context/Event
+ * (ActionFunction phantom-type constraint from stageSettings.ts).
+ */
+function OcrStepSettingsTab({
+  engine,
+  backend,
+}: {
+  engine: "doctr" | "tesseract";
+  backend: "gpu" | "cpu";
+}): ReactNode {
+  const isDoctr = engine === "doctr";
+
+  return (
+    <div
+      data-testid="ocr-step-settings-tab"
+      style={{
+        flex: 1,
+        padding: "16px 18px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>
+          Stage settings · OCR
+        </div>
+        <div style={{ marginTop: 3, fontSize: 12, color: "var(--ink-3)" }}>
+          The recognition engine (and GPU/CPU backend), its model + languages,
+          and per-page overrides. Changes re-run OCR and stale 15 downstream
+          stages. (Full panel wired at I1 via stageSettings machine pattern.)
+        </div>
+      </div>
+
+      {/* Engine selector */}
+      <div
+        style={{
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border-1)",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "200px 1fr",
+            gap: 12,
+            padding: "14px 16px",
+            alignItems: "flex-start",
+          }}
+        >
+          <div>
+            <div
+              style={{ fontSize: 12.5, fontWeight: 500, color: "var(--ink-1)" }}
+            >
+              Engine
+            </div>
+            <div
+              style={{ marginTop: 2, fontSize: 11.5, color: "var(--ink-3)" }}
+            >
+              DocTR is the primary model; Tesseract is the fallback
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["doctr", "tesseract"] as const).map((eng) => {
+              const active = engine === eng;
+              return (
+                <div
+                  key={eng}
+                  data-testid={`ocr-settings-engine-${eng}`}
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    background: active
+                      ? "color-mix(in oklab, var(--accent) 8%, var(--bg-surface))"
+                      : "var(--bg-surface)",
+                    border: `1.5px solid ${active ? "var(--accent)" : "var(--border-1)"}`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: active ? "var(--accent)" : "var(--ink-1)",
+                    }}
+                  >
+                    {eng === "doctr" ? "DocTR" : "Tesseract"}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      fontSize: 10.5,
+                      fontFamily: "var(--mono-font, monospace)",
+                      color: "var(--ink-4)",
+                    }}
+                  >
+                    {eng === "doctr"
+                      ? "GPU + CPU · ~0.3s/page"
+                      : "CPU only · ~1.2s/page"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Backend */}
+        {isDoctr ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "200px 1fr",
+              gap: 12,
+              padding: "14px 16px",
+              alignItems: "center",
+              borderTop: "1px solid var(--border-1)",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: "var(--ink-1)",
+                }}
+              >
+                Compute backend
+              </div>
+              <div
+                style={{ marginTop: 2, fontSize: 11.5, color: "var(--ink-3)" }}
+              >
+                DocTR runs on GPU with a CPU fallback
+              </div>
+            </div>
+            <div
+              data-testid="ocr-settings-backend"
+              style={{
+                display: "inline-flex",
+                padding: 3,
+                gap: 2,
+                background: "var(--bg-raised)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 7,
+              }}
+            >
+              {(["gpu", "cpu"] as const).map((b) => {
+                const active = backend === b;
+                return (
+                  <div
+                    key={b}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 5,
+                      background: active ? "var(--bg-surface)" : "transparent",
+                      boxShadow: active ? "0 0 0 1px var(--border-1)" : "none",
+                      fontSize: 12,
+                      fontFamily: "var(--mono-font, monospace)",
+                      fontWeight: active ? 600 : 500,
+                      color: active ? "var(--ink-1)" : "var(--ink-3)",
+                    }}
+                  >
+                    {b === "gpu" ? "GPU · CUDA" : "CPU · fallback"}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        style={{
+          padding: "10px 14px",
+          borderRadius: 8,
+          border: "1px dashed var(--border-2)",
+          background: "var(--bg-raised)",
+          fontSize: 11.5,
+          color: "var(--ink-4)",
+        }}
+      >
+        Full settings panel (model weights, language packs, per-page overrides,
+        low-score threshold, re-run controls) wired at I1 via stageSettings
+        machine.
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab bar — shared between OcrTool tab modes
+// ---------------------------------------------------------------------------
+
+type OcrTab = "overview" | "pages" | "settings";
+
+function OcrTabBar({
+  active,
+  onChange,
+}: {
+  active: OcrTab;
+  onChange: (tab: OcrTab) => void;
+}): ReactNode {
+  return (
+    <div
+      data-testid="ocr-tab-bar"
+      style={{
+        display: "flex",
+        gap: 2,
+        padding: "0 16px",
+        borderBottom: "1px solid var(--border-1)",
+        background: "var(--bg-raised)",
+      }}
+    >
+      {(["overview", "pages", "settings"] as const).map((tab) => {
+        const isActive = active === tab;
+        const labels: Record<OcrTab, string> = {
+          overview: "Overview",
+          pages: "Pages",
+          settings: "Settings",
+        };
+        return (
+          <button
+            key={tab}
+            data-testid={`ocr-tab-${tab}`}
+            onClick={() => onChange(tab)}
+            style={{
+              padding: "9px 14px",
+              border: "none",
+              borderBottom: `2px solid ${isActive ? "var(--accent)" : "transparent"}`,
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 12.5,
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? "var(--ink-1)" : "var(--ink-3)",
+            }}
+          >
+            {labels[tab]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main OcrTool component
 // ---------------------------------------------------------------------------
 
@@ -738,11 +1169,14 @@ export function OcrTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
   const [snapshot, send] = useActor(ocrToolMachine, {
     input: { projectId, stageIndex: 10, services },
   });
-  const { rows, totals, cursor, tokens } = snapshot.context;
+  const { rows, totals, cursor, tokens, engine, backend } = snapshot.context;
 
-  // View-only display preferences — local state per DIVERGENCES.md #8
+  // View-only display preferences — local state per DIVERGENCES.md #8 / F5-3-2
   const [density, setDensity] = useState<"S" | "M" | "L">("M");
   const [filter, setFilter] = useState<string>("all");
+
+  // Tab state — local per F5-3-2 convention (view-only, not guarded by machine)
+  const [activeTab, setActiveTab] = useState<OcrTab>("pages");
 
   // Simulate mock recognition run on mount
   useEffect(() => {
@@ -819,262 +1253,300 @@ export function OcrTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
         minHeight: 480,
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-        padding: "12px 16px",
       }}
     >
-      {/* Banner */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 12,
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <OcrBanner
-            state={
-              isRecognising
-                ? "recognising"
-                : isReviewing
-                  ? "reviewing"
-                  : "other"
-            }
-            totals={totals}
-          />
-        </div>
-        {isReviewing ? (
-          <button
-            data-testid="ocr-confirm-advance"
-            disabled={!isConfirmable}
-            onClick={() => send({ type: "CONFIRM_ADVANCE" })}
-            style={{
-              padding: "6px 16px",
-              borderRadius: 6,
-              border: "none",
-              background: isConfirmable ? "var(--accent)" : "var(--bg-raised)",
-              color: isConfirmable ? "var(--accent-ink, #fff)" : "var(--ink-4)",
-              cursor: isConfirmable ? "pointer" : "not-allowed",
-              fontSize: 12.5,
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            Confirm and advance
-          </button>
-        ) : null}
-      </div>
+      {/* Tab bar */}
+      <OcrTabBar active={activeTab} onChange={setActiveTab} />
 
-      {/* Toolbar (review state) */}
-      {isReviewing ? (
-        <div
-          data-testid="ocr-toolbar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          {/* Filter chips */}
-          <div
-            style={{
-              display: "flex",
-              gap: 3,
-              padding: 3,
-              background: "var(--bg-raised)",
-              borderRadius: 7,
-              border: "1px solid var(--border-1)",
-            }}
-          >
-            {(
-              [
-                { id: "all", label: "All", count: totals?.total },
-                { id: "flagged", label: "Flagged", count: totals?.flagged },
-                { id: "clean", label: "Clean", count: totals?.clean },
-                { id: "reviewed", label: "Reviewed", count: totals?.reviewed },
-              ] as const
-            ).map((chip) => (
-              <button
-                key={chip.id}
-                data-testid={`ocr-filter-${chip.id}`}
-                onClick={() => setFilter(chip.id)}
-                style={{
-                  padding: "4px 9px",
-                  borderRadius: 5,
-                  border: "none",
-                  background:
-                    filter === chip.id ? "var(--bg-surface)" : "transparent",
-                  boxShadow:
-                    filter === chip.id ? "0 0 0 1px var(--border-1)" : "none",
-                  cursor: "pointer",
-                  fontSize: 11.5,
-                  fontWeight: filter === chip.id ? 600 : 500,
-                  color: filter === chip.id ? "var(--ink-1)" : "var(--ink-3)",
-                }}
-              >
-                {chip.label}{" "}
-                <span
-                  style={{
-                    fontFamily: "var(--mono-font)",
-                    fontSize: 10,
-                    color: "var(--ink-4)",
-                  }}
-                >
-                  {chip.count}
-                </span>
-              </button>
-            ))}
-          </div>
+      {/* Overview tab */}
+      {activeTab === "overview" ? <OcrOverviewTab totals={totals} /> : null}
 
-          {/* Confidence legend */}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              marginLeft: 4,
-            }}
-          >
-            {(
-              [
-                ["≥95", 0.97],
-                ["85–95", 0.9],
-                ["70–85", 0.77],
-                ["<70", 0.6],
-              ] as const
-            ).map(([label, c]) => (
-              <span
-                key={label}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 10.5,
-                  color: "var(--ink-4)",
-                }}
-              >
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 2,
-                    background: confTone(c),
-                  }}
-                />
-                {label}%
-              </span>
-            ))}
-          </div>
-
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {/* Re-OCR button */}
-            <button
-              data-testid="ocr-reocr-selection"
-              onClick={() => send({ type: "RE_OCR_SELECTION" })}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 5,
-                border: "1px solid var(--border-2)",
-                background: "var(--bg-surface)",
-                cursor: "pointer",
-                fontSize: 11.5,
-                color: "var(--ink-2)",
-              }}
-            >
-              Re-OCR selection
-            </button>
-
-            {/* Density toggle */}
-            <div
-              style={{
-                display: "inline-flex",
-                padding: 2,
-                background: "var(--bg-raised)",
-                border: "1px solid var(--border-1)",
-                borderRadius: 6,
-              }}
-            >
-              {(["S", "M", "L"] as const).map((d) => (
-                <button
-                  key={d}
-                  data-testid={`ocr-density-${d}`}
-                  onClick={() => setDensity(d)}
-                  style={{
-                    padding: "2px 8px",
-                    borderRadius: 4,
-                    border: "none",
-                    background:
-                      density === d ? "var(--bg-surface)" : "transparent",
-                    cursor: "pointer",
-                    fontSize: 11,
-                    fontFamily: "var(--mono-font)",
-                    fontWeight: density === d ? 600 : 500,
-                    color: density === d ? "var(--ink-1)" : "var(--ink-3)",
-                  }}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* Settings tab */}
+      {activeTab === "settings" ? (
+        <OcrStepSettingsTab engine={engine} backend={backend} />
       ) : null}
 
-      {/* Page grid — shown in recognising (progress view) and reviewing.grid */}
-      {isRecognising || isInGrid ? (
+      {/* Pages tab */}
+      {activeTab === "pages" ? (
         <div
-          data-testid="ocr-page-grid"
+          data-testid="ocr-pages-tab"
           style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${density === "S" ? 9 : density === "L" ? 4 : 6}, 1fr)`,
-            gap: 6,
-            padding: 10,
-            borderRadius: 8,
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-1)",
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: "12px 16px",
           }}
         >
-          {filteredRows.map((row) => (
-            <OcrPageCard
-              key={row.idx}
-              row={row}
-              density={density}
-              isExpanded={cursor === row.idx}
-              onClick={() => {
-                if (row.state !== "running") {
-                  send({ type: "OPEN_RECOGNITION", idx: row.idx });
+          {/* Banner */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <OcrBanner
+                state={
+                  isRecognising
+                    ? "recognising"
+                    : isReviewing
+                      ? "reviewing"
+                      : "other"
                 }
-              }}
-            />
-          ))}
-          {rows.length === 0 && isRecognising ? (
+                totals={totals}
+              />
+            </div>
+            {isReviewing ? (
+              <button
+                data-testid="ocr-confirm-advance"
+                disabled={!isConfirmable}
+                onClick={() => send({ type: "CONFIRM_ADVANCE" })}
+                style={{
+                  padding: "6px 16px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: isConfirmable
+                    ? "var(--accent)"
+                    : "var(--bg-raised)",
+                  color: isConfirmable
+                    ? "var(--accent-ink, #fff)"
+                    : "var(--ink-4)",
+                  cursor: isConfirmable ? "pointer" : "not-allowed",
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  flexShrink: 0,
+                }}
+              >
+                Confirm and advance
+              </button>
+            ) : null}
+          </div>
+
+          {/* Toolbar (review state) */}
+          {isReviewing ? (
             <div
+              data-testid="ocr-toolbar"
               style={{
-                gridColumn: "1 / -1",
-                padding: "20px",
-                textAlign: "center",
-                color: "var(--ink-4)",
-                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
               }}
             >
-              Waiting for first page result…
+              {/* Filter chips */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 3,
+                  padding: 3,
+                  background: "var(--bg-raised)",
+                  borderRadius: 7,
+                  border: "1px solid var(--border-1)",
+                }}
+              >
+                {(
+                  [
+                    { id: "all", label: "All", count: totals?.total },
+                    { id: "flagged", label: "Flagged", count: totals?.flagged },
+                    { id: "clean", label: "Clean", count: totals?.clean },
+                    {
+                      id: "reviewed",
+                      label: "Reviewed",
+                      count: totals?.reviewed,
+                    },
+                  ] as const
+                ).map((chip) => (
+                  <button
+                    key={chip.id}
+                    data-testid={`ocr-filter-${chip.id}`}
+                    onClick={() => setFilter(chip.id)}
+                    style={{
+                      padding: "4px 9px",
+                      borderRadius: 5,
+                      border: "none",
+                      background:
+                        filter === chip.id
+                          ? "var(--bg-surface)"
+                          : "transparent",
+                      boxShadow:
+                        filter === chip.id
+                          ? "0 0 0 1px var(--border-1)"
+                          : "none",
+                      cursor: "pointer",
+                      fontSize: 11.5,
+                      fontWeight: filter === chip.id ? 600 : 500,
+                      color:
+                        filter === chip.id ? "var(--ink-1)" : "var(--ink-3)",
+                    }}
+                  >
+                    {chip.label}{" "}
+                    <span
+                      style={{
+                        fontFamily: "var(--mono-font)",
+                        fontSize: 10,
+                        color: "var(--ink-4)",
+                      }}
+                    >
+                      {chip.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Confidence legend */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  marginLeft: 4,
+                }}
+              >
+                {(
+                  [
+                    ["≥95", 0.97],
+                    ["85–95", 0.9],
+                    ["70–85", 0.77],
+                    ["<70", 0.6],
+                  ] as const
+                ).map(([label, c]) => (
+                  <span
+                    key={label}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      fontSize: 10.5,
+                      color: "var(--ink-4)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 2,
+                        background: confTone(c),
+                      }}
+                    />
+                    {label}%
+                  </span>
+                ))}
+              </div>
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                {/* Re-OCR button */}
+                <button
+                  data-testid="ocr-reocr-selection"
+                  onClick={() => send({ type: "RE_OCR_SELECTION" })}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 5,
+                    border: "1px solid var(--border-2)",
+                    background: "var(--bg-surface)",
+                    cursor: "pointer",
+                    fontSize: 11.5,
+                    color: "var(--ink-2)",
+                  }}
+                >
+                  Re-OCR selection
+                </button>
+
+                {/* Density toggle */}
+                <div
+                  style={{
+                    display: "inline-flex",
+                    padding: 2,
+                    background: "var(--bg-raised)",
+                    border: "1px solid var(--border-1)",
+                    borderRadius: 6,
+                  }}
+                >
+                  {(["S", "M", "L"] as const).map((d) => (
+                    <button
+                      key={d}
+                      data-testid={`ocr-density-${d}`}
+                      onClick={() => setDensity(d)}
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        border: "none",
+                        background:
+                          density === d ? "var(--bg-surface)" : "transparent",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        fontFamily: "var(--mono-font)",
+                        fontWeight: density === d ? 600 : 500,
+                        color: density === d ? "var(--ink-1)" : "var(--ink-3)",
+                      }}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : null}
-        </div>
-      ) : null}
 
-      {/* Recognition panel (inline — Recognition tab) */}
-      {isInRecognition && cursorRow ? (
-        <RecognitionPanel
-          row={cursorRow}
-          tokens={tokens}
-          onAcceptToken={(tokenId) => send({ type: "ACCEPT_TOKEN", tokenId })}
-          onAcceptPage={() => send({ type: "ACCEPT_PAGE" })}
-          onNextFlagged={() => send({ type: "NEXT_FLAGGED" })}
-          onClose={() => send({ type: "CLOSE" })}
-        />
+          {/* Page grid — shown in recognising (progress view) and reviewing.grid */}
+          {isRecognising || isInGrid ? (
+            <div
+              data-testid="ocr-page-grid"
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${density === "S" ? 9 : density === "L" ? 4 : 6}, 1fr)`,
+                gap: 6,
+                padding: 10,
+                borderRadius: 8,
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-1)",
+              }}
+            >
+              {filteredRows.map((row) => (
+                <OcrPageCard
+                  key={row.idx}
+                  row={row}
+                  density={density}
+                  isExpanded={cursor === row.idx}
+                  onClick={() => {
+                    if (row.state !== "running") {
+                      send({ type: "OPEN_RECOGNITION", idx: row.idx });
+                    }
+                  }}
+                />
+              ))}
+              {rows.length === 0 && isRecognising ? (
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "var(--ink-4)",
+                    fontSize: 12,
+                  }}
+                >
+                  Waiting for first page result…
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Recognition panel (inline — Recognition sub-state) */}
+          {isInRecognition && cursorRow ? (
+            <RecognitionPanel
+              row={cursorRow}
+              tokens={tokens}
+              onAcceptToken={(tokenId) =>
+                send({ type: "ACCEPT_TOKEN", tokenId })
+              }
+              onAcceptPage={() => send({ type: "ACCEPT_PAGE" })}
+              onNextFlagged={() => send({ type: "NEXT_FLAGGED" })}
+              onClose={() => send({ type: "CLOSE" })}
+            />
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

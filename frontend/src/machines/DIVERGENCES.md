@@ -870,3 +870,82 @@ regardless of naming convention.
 **Convention:** The `_` prefix in the YAML does NOT automatically mean view-only.
 Check whether the field is read by a guard or service. If yes, keep it in context.
 Only omit if it is exclusively used for display.
+
+---
+
+## F5-3-5 — ZoneStepSettings uses local state only (no stageSettings machine) (textZonesTool)
+
+**Spec / F5.1:** The `stageSettings.ts` machine pattern (defined in F5.1) provides
+a shared `stageSettingsMachine` with `stageSettingsActions` for storing and
+applying stage configuration. The ActionFunction phantom-type constraint in
+`stageSettings.ts` requires each consumer to inline the 9 settings actions
+typed to its own `Context/Event` union — they cannot be spread from a shared
+`stageSettingsActions` object.
+
+**XState v5 (F5.3):** `stageSettings.ts` is implemented in the F5.1 worktree
+but is NOT present in this worktree at the time F5.3 was written. Per task
+guidance, `ZoneStepSettingsTab` uses local `useState` for `splitsOn` and
+`granularity`, with no-op handlers. This is documented here as an intentional
+divergence, not an omission.
+
+**At I1 (rebase reconcile):** When `stageSettings.ts` is rebased into the tree,
+`textZonesToolMachine` must add the 9 settings actions inline (typed to
+`TextZonesToolContext / TextZonesToolEvent`) and `ZoneStepSettingsTab` must be
+wired to read from / send to the machine via the standard `stageSettings` pattern.
+Do NOT spread `stageSettingsActions` from the F5.1 file — that breaks the phantom-type.
+
+---
+
+## F5-3-6 — OcrStepSettings uses local state only (no stageSettings machine) (ocrTool)
+
+**Same situation as F5-3-5** but for `OcrStepSettingsTab`. The `engine` and `backend`
+props are passed from `snapshot.context` (both fields are machine context, not
+view-only — they will be passed to `confirmStage` at I1). The Settings tab renders
+them as read-only display cards at F5; no active controls (the engine selector is
+display-only and the backend segmented control shows the current value but is not
+interactive).
+
+**At I1:** Wire the engine / backend controls to `SET_ENGINE` / `SET_BACKEND`
+events on `ocrToolMachine`. When `stageSettings.ts` is rebased in, inline the 9
+settings actions as per the ActionFunction phantom-type rule (see F5-3-5).
+
+---
+
+## F5-3-I1 — SplitDraft mock shape vs real API shape (textZonesTool — I1 translation note)
+
+**F5 mock shape (SplitDraft):**
+
+```ts
+{ axis: "col" | "row", into: 2, gutter: number, conf: number }
+```
+
+`SplitDraft` is the F5 internal representation used in the mock split editor and
+carried in `context.splitDraft` for the gutter-drag preview. `axis`, `into`,
+`gutter`, and `conf` are all derived from the mock layout detector's output.
+
+**Real API shape (I1 — POST .../text_zones/apply_split response):**
+The real backend responds with:
+
+```json
+{ "suffixes": ["a", "b"], "bbox": { "x": ..., "y": ..., "w": ..., "h": ... }, "split_at_stage": "post_transform_crop" }
+```
+
+where `suffixes` are the child page ID suffixes, `bbox` is the split boundary, and
+`split_at_stage` identifies which pipeline stage owns the split geometry.
+
+**Translation required at I1:**
+
+- `SplitDraft.gutter` → must be mapped to `bbox` coordinates for the `applySplit` API call.
+- The `parentRow` / `childRows` result returned by the real endpoint will have proper
+  `parent_page_id` / `source_crop_bbox` / `split_index` set (spec: splits-as-sibling-pages).
+  The mock `SplitResult` shape only carries `parentRow` + `childRows` — this is
+  sufficient for F5 but the real result will carry more fields.
+- At I1, `textZonesToolServices.applySplit` must translate the `SplitDraft` into
+  the API's expected request body and map the API response back to `SplitResult`.
+
+**SAVE_LAYOUT recount note:**
+`SAVE_LAYOUT` in the machine calls `persistLayout` and transitions to `browsing`.
+The `markReviewed` action updates the single row in `context.rows` and recomputes
+`totals` inline (DIVERGENCES.md #9 pattern). There is no separate `recountTotals`
+step. The inline recount is correct for the mock (single row updated); at I1 the
+same pattern applies to the real persist response.
