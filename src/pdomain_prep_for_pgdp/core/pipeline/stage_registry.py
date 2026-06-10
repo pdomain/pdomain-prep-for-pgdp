@@ -698,9 +698,8 @@ def _denoise_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """
     import cv2
 
-    _ = cfg
     # Skip if explicitly configured
-    if cfg is not None and getattr(cfg, "skip_denoise", False):
+    if cfg is not None and cfg.skip_denoise:
         return image
 
     # Bridge: text=255→text=0 for denoise_binary

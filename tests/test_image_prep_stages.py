@@ -43,13 +43,8 @@ def _binary_text_on_white(h: int = 120, w: int = 100) -> np.ndarray:
 
 
 def _warped_text_lines(h: int = 200, w: int = 160) -> np.ndarray:
-    """Synthetic binary page with curved text lines (text=255/bg=0).
-
-    We synthesise text "lines" as sinusoidal curves so a dewarp should
-    reduce row-projection variance (lines become straighter / more aligned).
-    """
-    img = np.zeros((h, w), dtype=np.uint8)  # bg=0
-    # draw text lines following a sine wave
+    """Small synthetic page — used by shape/polarity tests that do not need dewarp to fire."""
+    img = np.zeros((h, w), dtype=np.uint8)
     amplitude = 6
     for base_row in range(15, h - 15, 14):
         for col in range(5, w - 5):
@@ -57,6 +52,36 @@ def _warped_text_lines(h: int = 200, w: int = 160) -> np.ndarray:
             row = base_row + warp
             if 0 <= row < h and 0 <= row + 2 < h:
                 img[row : row + 2, col] = 255
+    return img
+
+
+def _warped_page_for_dewarp_test(
+    h: int = 1000,
+    w: int = 760,
+    n_lines: int = 20,
+    top: int = 60,
+    gap: int = 42,
+    amplitude: int = 14,
+) -> np.ndarray:
+    """Synthetic page that exercises TextlineDisparityDewarp (needs ≥15 textlines).
+
+    Uses white background / black text (bg=255, text=0) — Otsu binarization in
+    the detector handles either polarity.  Returns a uint8 array sized (h, w).
+
+    Text lines are drawn as sinusoidal arcs so that row-projection variance
+    of the un-dewarped image is measurably lower than after dewarping:
+    warped lines spread ink across more rows → lower row-sum variance;
+    straight lines concentrate ink into sharp peaks → higher variance.
+    """
+    img = np.full((h, w), 255, dtype=np.uint8)  # white bg
+    for i in range(n_lines):
+        base_row = top + i * gap
+        for x0 in range(40, w - 40, 60):
+            col_centre = x0 + 25
+            warp = int(amplitude * np.sin(2 * np.pi * col_centre / w))
+            y = base_row + warp
+            if 0 <= y < h and y + 10 < h:
+                img[y : y + 10, x0 : x0 + 50] = 0  # black rectangle (text blob)
     return img
 
 
@@ -210,29 +235,67 @@ def test_dewarp_output_polarity_matches_input() -> None:
     assert bg_fraction > 0.5, f"bg=0 should dominate after dewarp, got {bg_fraction:.2%}"
 
 
-def test_dewarp_on_warped_image_reduces_row_variance() -> None:
-    """Dewarp on a synthetically warped image reduces row-projection variance.
+def _row_projection_variance(img: np.ndarray) -> float:
+    """Variance of per-row ink sums (axis=1).
 
-    Row-projection variance measures how much ink density varies across rows.
-    A straighter image has more uniform row projection → lower variance.
-    Note: TextlineDisparityDewarp needs enough textlines (default min=15); our
-    synthetic image may not provide sufficient textlines, so we accept identity
-    (low-confidence no-op) as a valid outcome too — the key test is no crash and
-    correct output shape/dtype.
+    Straight text lines concentrate ink into sharp row-peaks; curved/warped
+    lines spread ink more uniformly.  After a successful dewarp the lines
+    straighten → peak/trough contrast rises → variance *increases*.
+    """
+    row_sums = img.astype(np.float64).sum(axis=1)
+    return float(np.var(row_sums))
+
+
+def test_dewarp_on_warped_image_increases_row_projection_variance() -> None:
+    """Dewarp on a synthetically warped page increases row-projection variance.
+
+    Metric: variance of per-row ink sums (img.sum(axis=1)).
+
+    Straight lines concentrate ink into sharp peaks → higher variance.
+    Warped lines distribute ink more uniformly → lower variance.
+    After dewarping, variance must increase by at least 5 %.
+
+    The synthetic image uses 20 sinusoidal text-block rows at h=1000/w=760,
+    which reliably provides ≥15 detected textlines for TextlineDisparityDewarp.
     """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
-    img = _warped_text_lines(h=200, w=160)
+    img = _warped_page_for_dewarp_test()
 
     out = fn(img)
 
     assert isinstance(out, np.ndarray)
     assert out.shape == img.shape
     assert out.dtype == np.uint8
-    # Values must still be binary
-    unique_vals = set(np.unique(out).tolist())
-    assert unique_vals.issubset({0, 255}), f"non-binary output after dewarp: {unique_vals}"
+
+    var_before = _row_projection_variance(img)
+    var_after = _row_projection_variance(out)
+
+    assert var_after > var_before * 1.05, (
+        f"dewarp should increase row-projection variance by ≥5 %: "
+        f"before={var_before:.2f}, after={var_after:.2f}"
+    )
+
+
+def test_dewarp_low_textline_image_is_identity() -> None:
+    """Dewarp with fewer than min_textlines (15) returns shape/dtype-identical output.
+
+    TextlineDisparityDewarp falls back to identity + confidence=0 when fewer
+    than 15 textlines are detected.  The output must have the same shape and
+    dtype as the input (graceful pass-through, no crash).
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
+
+    fn = get_v2_stage_impl("dewarp", "cpu")
+    # Small image with only ~8 text lines — well below the min_textlines=15 threshold
+    img = _warped_text_lines(h=200, w=160)
+
+    out = fn(img)
+
+    assert isinstance(out, np.ndarray)
+    assert out.shape == img.shape, f"identity path must preserve shape: {out.shape} vs {img.shape}"
+    assert out.dtype == np.uint8
 
 
 def test_dewarp_output_is_binary() -> None:

@@ -212,6 +212,41 @@ def test_save_as_default_appends_settings_change_event(tmp_path: Path) -> None:
     assert ev.after == new_settings
 
 
+def test_save_override_appends_settings_change_event(tmp_path: Path) -> None:
+    """save_override appends a SettingsChange event with before/after payload."""
+    from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepProjectAggregate
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import StageSettingsStore
+
+    store = StageSettingsStore(tmp_path / "settings.db")
+    project_id = uuid.uuid4()
+    stage_id = "denoise"
+    reg_default: dict[str, Any] = {"min_component_area": 6}
+    saved_default: dict[str, Any] = {"min_component_area": 10}
+    override: dict[str, Any] = {"min_component_area": 25}
+
+    # Establish a saved default so "before" is not just the registry default
+    store.save_as_default(str(project_id), stage_id, saved_default)
+
+    agg = PrepProjectAggregate(project_id=project_id)
+    store.save_override(
+        str(project_id),
+        stage_id,
+        override,
+        aggregate=agg,
+        registry_default=reg_default,
+        actor_id="default",
+    )
+
+    events = list(agg.pending_events)
+    settings_events = [e for e in events if type(e).__name__ == "SettingsChange"]
+    assert len(settings_events) == 1, f"expected 1 SettingsChange, got {len(settings_events)}"
+    ev = settings_events[0]
+    assert ev.scope == "stage"
+    assert ev.stage_id == stage_id
+    assert ev.before == saved_default  # saved default was active before the override
+    assert ev.after == override
+
+
 def test_revert_appends_settings_change_event(tmp_path: Path) -> None:
     """revert appends a SettingsChange event."""
     from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepProjectAggregate
