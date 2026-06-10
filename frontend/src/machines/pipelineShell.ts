@@ -52,8 +52,31 @@ export interface StageDef {
 }
 
 /**
- * All 24 stages in pipeline order.
+ * All 24 stages in topological (execution) order.
  * Index 0 = source (no runner); indices 1–23 = runner stages.
+ *
+ * Order is derived from STAGE_DEPS (Kahn's algorithm) — mirrors
+ * fixtures.ts PAGE_STAGE_IDS for page-scoped stages with project-scoped
+ * stages slotted at their earliest valid position:
+ *
+ *   source (root)
+ *   grayscale → crop → threshold → deskew → denoise → dewarp → post_transform_crop
+ *   canvas_map ← post_transform_crop (also blank_proof_synth alt)
+ *   text_zones ← post_transform_crop
+ *   post_ocr_crop ← canvas_map
+ *   ocr ← post_ocr_crop
+ *   page_order ← source + text_zones (project-scoped; must follow text_zones)
+ *   wordcheck ← ocr
+ *   hyphen_join ← wordcheck
+ *   regex ← hyphen_join
+ *   text_review ← hyphen_join + regex
+ *   illustrations ← source (project-scoped; slotted before validation gate)
+ *   validation ← text_review + illustrations + page_order
+ *   proof_pack → build_package → zip → submit_check → archive
+ *
+ * Display labels (short) and groups are unchanged from the design numbering —
+ * only the list order changed to satisfy the topological constraint.
+ * See docs/specs/machine-stage-map.md for the design-numbering table.
  */
 export const STAGE_DEFS: StageDef[] = [
   { id: "source", short: "source", group: "Source", pageScoped: false },
@@ -69,21 +92,21 @@ export const STAGE_DEFS: StageDef[] = [
     group: "Image",
     pageScoped: true,
   },
+  { id: "canvas_map", short: "canvas", group: "Compose", pageScoped: true },
   { id: "text_zones", short: "zones", group: "OCR", pageScoped: true },
-  { id: "ocr", short: "ocr", group: "OCR", pageScoped: true },
-  { id: "page_order", short: "order", group: "OCR", pageScoped: false },
   {
     id: "post_ocr_crop",
     short: "crop2",
     group: "Compose",
     pageScoped: true,
   },
-  { id: "canvas_map", short: "canvas", group: "Compose", pageScoped: true },
-  { id: "hyphen_join", short: "hyphen", group: "Text", pageScoped: true },
+  { id: "ocr", short: "ocr", group: "OCR", pageScoped: true },
+  { id: "page_order", short: "order", group: "OCR", pageScoped: false },
   { id: "wordcheck", short: "wordcheck", group: "Text", pageScoped: true },
+  { id: "hyphen_join", short: "hyphen", group: "Text", pageScoped: true },
+  { id: "regex", short: "regex", group: "Pack", pageScoped: true },
   { id: "text_review", short: "review", group: "Text", pageScoped: true },
   { id: "illustrations", short: "illust", group: "Pack", pageScoped: true },
-  { id: "regex", short: "regex", group: "Pack", pageScoped: true },
   { id: "validation", short: "validate", group: "Pack", pageScoped: false },
   { id: "proof_pack", short: "proof", group: "Pack", pageScoped: false },
   { id: "build_package", short: "package", group: "Pack", pageScoped: false },

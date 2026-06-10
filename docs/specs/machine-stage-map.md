@@ -14,6 +14,25 @@ any code that diverges from it.
 
 ---
 
+## Note on stage numbering vs execution order
+
+The `#` column in §1 uses **design numbering** (01–24 from
+`stage-registry-v2.md §2.1`). This numbering keys the canvas machine
+assignments and must not be renumbered.
+
+**Design numbering ≠ execution order.** The topological execution order
+(dependency-safe run order) is defined by the `STAGE_DEPS` graph in
+`stage-registry-v2.md §2.1` and computed via Kahn's algorithm. The
+frontend `STAGE_DEFS` array in `pipelineShell.ts` follows the topological
+order (not the design numbering). Concretely: `canvas_map` (design #14)
+appears before `text_zones` (design #10) in `STAGE_DEFS` because
+`text_zones` does not depend on `canvas_map`, but both share
+`post_transform_crop` as their upstream. The authoritative execution order
+is `stage-registry-v2.md §2.1 deps` column; the `STAGE_DEFS` array is the
+canonical frontend rendering of that order.
+
+---
+
 ## 1. Complete stage → machine lookup table
 
 One row per v2 stage (all 24). The machine column is the canonical

@@ -223,20 +223,29 @@ wire `PROGRESS_PUSH` directly into `stageRunner` — it will be silently ignored
 
 ---
 
-## reconcile-todo (stageRunner — I1 placeholder)
+## reconcile-todo (stageRunner — implemented at F4)
 
-**Current state (F2):** The `reconcile` action in `stageRunner` is a no-op.
-`STAGE_PUSH` tests assert only that the action does not throw, not that it
-drives state transitions.
+**Previous state (F2):** The `reconcile` action in `stageRunner` was a no-op.
+`STAGE_PUSH` tests asserted only that the action did not throw, not that it
+drove state transitions.
 
-**Required at I1:** Implement `reconcile` to compare the `STAGE_PUSH` server
-payload against the machine's current state. When the server's status diverges
-from optimistic local state (e.g. server says "clean" but machine is still
-"running"), the machine must navigate to the authoritative state.
-**Push must win.**
+**Implemented at F4:** `reconcile` is now an assign-only push-wins merge.
+On `STAGE_PUSH { variant: "status", status, job_id, error_message }`:
 
-**Test to add at I1:** `"STAGE_PUSH(status=clean) while machine is running →
-transitions to clean"` — the conflicting-push case that proves server authority.
+- If `status === "clean"` or `status === "flagged"`: machine navigates to
+  the matching terminal state regardless of current optimistic local state
+  (push wins).
+- If `status === "running"`: no state transition — local state is at least
+  as current; progress continues via `PROGRESS` events.
+- If `status === "failed"` / `status === "stale"` / `status === "not_run"`:
+  machine transitions to the matching error or notrun state.
+
+**Accepted limitation:** The push-wins reconcile fires on an `assign` action
+inside the current state rather than as a proper state-transition guard. This
+means state-entry side-effects (e.g. progress reset, toast) do not re-fire on
+a server-authoritative push while the machine is already in a "done" state.
+This is acceptable at F4; a proper re-entry transition should be evaluated at
+I1 if race conditions with the real SSE stream surface inconsistent UI.
 
 ---
 
@@ -487,6 +496,41 @@ where to plug in.
 runnerRef: StageRunnerRef }` and renders whatever UI the stage's workbench/tool
 tab needs. Register via `TOOL_REGISTRY[stageId] = MyToolComponent` in
 `toolSlot.tsx`.
+
+---
+
+## F4-6 — `hasNext` guard uses `STAGE_DEFS.length - 1` instead of literal `< 22` (pipelineShell)
+
+**YAML:** `hasNext: ctx.currentIndex < 22` — a literal bound derived from the
+24-stage registry (indices 0–23).
+
+**XState v5 (F4):** Guard is `context.currentIndex < STAGE_DEFS.length - 1`.
+Equivalent today (STAGE_DEFS.length === 24, so `< 23` and `< STAGE_DEFS.length - 1`
+are the same bound). Using the computed form means the guard automatically
+stays correct if the registry grows, without requiring a coordinated literal
+update in two places.
+
+**Impact:** None at F4. If STAGE_DEFS is ever extended (new stage or source
+split), `hasNext` stays correct without a separate edit.
+
+---
+
+## F4-7 — `queueDrained` guard strengthened to include `currentIndex === null` (runAllStale)
+
+**YAML:** `queueDrained: ctx.queue.length === 0`
+
+**XState v5 (F4):** Guard is `context.queue.length === 0 && context.currentIndex === null`.
+
+**Reason:** `runNext` pops the current stage from `queue` before setting
+`currentIndex`. Immediately after `runNext` fires, `queue.length` can be 0
+while a stage is still running (`currentIndex !== null`). Checking only
+`queue.length === 0` would prematurely fire the `done` transition while the
+last stage is mid-flight. The strengthened guard waits until `advance` resets
+`currentIndex` to `null` (after `STAGE_DONE` resolves), which is the correct
+"all stages have actually finished" condition.
+
+**Impact:** Prevents a premature `done` transition on the last stale stage in
+a run-all-stale sweep.
 
 ---
 

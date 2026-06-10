@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createActor } from "xstate";
 import {
   pipelineShellMachine,
+  STAGE_DEFS,
   RUNNER_STAGE_DEFS,
   runnerIndexOf,
   stageDefIndexOf,
@@ -28,6 +29,7 @@ import {
   MOCK_PROJECT_ID,
   MOCK_PROJECT,
   MOCK_AUTOMATION,
+  STAGE_DEPS,
   makeFreshPageStages,
   makeFreshProjectStages,
   computeDownstream,
@@ -631,5 +633,36 @@ describe("pipelineShell — helpers", () => {
   it("tabsForStage falls back to default tabs for unknown stage", () => {
     const tabs = tabsForStage("totally_unknown_stage");
     expect(tabs.some((t) => t.id === "overview")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Topological order invariant
+// ---------------------------------------------------------------------------
+
+describe("pipelineShell — STAGE_DEFS topological order", () => {
+  it("every stage's deps appear earlier in STAGE_DEFS", () => {
+    const positionOf: Record<string, number> = {};
+    for (let i = 0; i < STAGE_DEFS.length; i++) {
+      positionOf[STAGE_DEFS[i]!.id] = i;
+    }
+
+    const violations: string[] = [];
+    for (const def of STAGE_DEFS) {
+      const deps = STAGE_DEPS[def.id] ?? [];
+      for (const dep of deps) {
+        // Cross-scope deps that reference another stage in STAGE_DEFS must
+        // appear earlier. Deps not in STAGE_DEFS (e.g. blank_proof_synth alt)
+        // are internal implementation details and are skipped.
+        if (!(dep in positionOf)) continue;
+        if (positionOf[dep]! >= positionOf[def.id]!) {
+          violations.push(
+            `${def.id} (index ${positionOf[def.id]!.toString()}) depends on ` +
+              `${dep} (index ${positionOf[dep]!.toString()}) which appears later`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });
