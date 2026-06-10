@@ -131,16 +131,15 @@ def test_v2_stage_impl_covers_all_24() -> None:
 def test_new_stages_have_placeholder_impls() -> None:
     """New/unimplemented v2 stages raise StageNotImplemented when invoked.
 
-    Note: denoise, dewarp, post_transform_crop were in this list but were
-    implemented in Task B2 — see tests/test_image_prep_stages.py.
+    B2 stages (denoise, dewarp, post_transform_crop) implemented — see
+    tests/test_image_prep_stages.py. B3 stages (text_zones, wordcheck,
+    hyphen_join) implemented — see tests/test_b3_ocr_text_stages.py.
+    Only the B4 tail stages remain placeholders.
     """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import V2_STAGE_IMPL, StageNotImplemented
 
-    # These are new stages with no implementation yet (B3-B4 will wire them)
+    # B4 tail stages: no implementation yet (B4 will wire them)
     new_stages = {
-        "text_zones",
-        "wordcheck",
-        "hyphen_join",
         "page_order",
         "validation",
         "proof_pack",
