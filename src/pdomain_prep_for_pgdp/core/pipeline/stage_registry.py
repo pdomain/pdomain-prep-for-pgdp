@@ -1144,6 +1144,51 @@ def _get_hyphen_join_cpu() -> StageImpl:
     return cast("StageImpl", hyphen_join_v2_cpu)
 
 
+# ─── B4 stage getters (project-scoped tail stages) ──────────────────────────
+
+
+def _get_page_order_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import page_order_v2_cpu
+
+    return cast("StageImpl", page_order_v2_cpu)
+
+
+def _get_validation_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.validation import validation_v2_cpu
+
+    return cast("StageImpl", validation_v2_cpu)
+
+
+def _get_proof_pack_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.proof_pack import proof_pack_v2_cpu
+
+    return cast("StageImpl", proof_pack_v2_cpu)
+
+
+def _get_build_package_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_package_v2_cpu
+
+    return cast("StageImpl", build_package_v2_cpu)
+
+
+def _get_zip_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.zip_stage import zip_v2_cpu
+
+    return cast("StageImpl", zip_v2_cpu)
+
+
+def _get_submit_check_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.submit_check import submit_check_v2_cpu
+
+    return cast("StageImpl", submit_check_v2_cpu)
+
+
+def _get_archive_cpu() -> StageImpl:
+    from pdomain_prep_for_pgdp.core.pipeline.steps.archive_stage import archive_v2_cpu
+
+    return cast("StageImpl", archive_v2_cpu)
+
+
 # Map of v2 stage IDs to their composed cpu impls.
 _V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "source": _source_cpu,
@@ -1165,6 +1210,14 @@ _V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "text_zones": _get_text_zones_cpu(),
     "wordcheck": _get_wordcheck_cpu(),
     "hyphen_join": _get_hyphen_join_cpu(),
+    # B4: Project-scoped tail stages
+    "page_order": _get_page_order_cpu(),
+    "validation": _get_validation_cpu(),
+    "proof_pack": _get_proof_pack_cpu(),
+    "build_package": _get_build_package_cpu(),
+    "zip": _get_zip_cpu(),
+    "submit_check": _get_submit_check_cpu(),
+    "archive": _get_archive_cpu(),
 }
 
 _ALL_V2_STAGE_IDS: tuple[str, ...] = V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS

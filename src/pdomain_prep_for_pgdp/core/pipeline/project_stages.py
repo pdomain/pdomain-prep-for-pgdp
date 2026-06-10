@@ -22,6 +22,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStageState,
     ProjectStageStatus,
 )
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import compute_v2_dirty_descendants
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -233,6 +234,74 @@ def infer_project_stage_from_artifact(
         status=status,
         artifact_key=artifact_key,
     )
+
+
+def mark_dirty_descendants(
+    project_id: str,
+    caused_by_stage_id: str,
+    store: ProjectStageStore,
+) -> list[str]:
+    """Mark all project-scoped downstream stages as 'dirty'.
+
+    Uses compute_v2_dirty_descendants to find all stages downstream of
+    caused_by_stage_id (traverses cross-scope edges). Only project-scoped
+    stage IDs (V2_PROJECT_STAGE_IDS) are updated in the store.
+
+    This is the gate chain cascade: any upstream re-run (page-scoped OR
+    project-scoped) calls this to mark downstream project stages stale.
+
+    Returns the list of stage IDs that were updated.
+    """
+    try:
+        descendants = compute_v2_dirty_descendants(caused_by_stage_id)
+    except KeyError:
+        # caused_by_stage_id not in v2 DAG (e.g. legacy stage ID) — no-op
+        return []
+
+    updated: list[str] = []
+    for stage_id in V2_PROJECT_STAGE_IDS:
+        if stage_id not in descendants:
+            continue
+        with store._connect() as conn:
+            conn.execute(
+                "UPDATE project_stages SET status = 'dirty' WHERE project_id = ? AND stage_id = ?",
+                (project_id, stage_id),
+            )
+        updated.append(stage_id)
+
+    return updated
+
+
+def check_stage_gate(
+    project_id: str,
+    stage_id: str,
+    store: ProjectStageStore,
+) -> tuple[bool, str | None]:
+    """Check whether all direct project-scoped deps of stage_id are clean.
+
+    Returns (ok, reason):
+      ok=True  — all direct project-scoped deps are clean; stage may run.
+      ok=False — at least one dep is not clean; reason describes the blocker.
+
+    Only checks project-scoped deps (V2_PROJECT_STAGE_IDS). Page-scoped deps
+    are checked separately by the page-stage runner.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_v2_stage
+
+    try:
+        stage = get_v2_stage(stage_id)
+    except KeyError:
+        return False, f"Unknown stage {stage_id!r}"
+
+    project_scoped_deps = [d for d in stage.depends_on if d in V2_PROJECT_STAGE_IDS]
+
+    for dep_id in project_scoped_deps:
+        dep_row = store.read(project_id, dep_id)
+        if dep_row is None or dep_row.status != ProjectStageStatus.clean:
+            status_str = dep_row.status.value if dep_row else "not-run"
+            return False, f"Dep {dep_id!r} is {status_str!r} (must be clean)"
+
+    return True, None
 
 
 def reindex_project_stages(
