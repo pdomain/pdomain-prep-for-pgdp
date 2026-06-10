@@ -451,6 +451,123 @@ export interface MockServer {
       disabled: number;
     };
   }>;
+  // ---- F5.6: Pack group tool endpoints ----------------------------------------
+
+  /**
+   * POST /api/projects/:id/stages/validation/run
+   * -> { rules: ValidationRule[], counts: ValidationCounts }
+   * Blocks build_package when blockerCount > 0.
+   */
+  runValidationChecks(projectId: string): Promise<{
+    rules: PackValidationRule[];
+    counts: PackValidationCounts;
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/validation/waive
+   * { ruleId, note } -> { ok }
+   */
+  waiveValidationRule(
+    projectId: string,
+    ruleId: string,
+    note: string,
+  ): Promise<{ ok: boolean }>;
+
+  /**
+   * POST /api/projects/:id/stages/proof_pack/assemble
+   * -> { tree, completeness }
+   * Gate: all page stages must be clean.
+   */
+  assembleProofPack(
+    projectId: string,
+    include: { images: boolean; text: boolean; illustrations: boolean },
+  ): Promise<{
+    tree: PackTreeRow[];
+    completeness: { complete: number; total: number };
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/build_package/build
+   * -> { deliverable, manifest }
+   * Gate: validation must have passed (no blockers).
+   */
+  buildPackageArtifacts(
+    projectId: string,
+    checksumAlgo: string,
+  ): Promise<{
+    deliverable: { files: PackTreeRow[]; count: number };
+    manifest: PackManifest;
+  }>;
+
+  /**
+   * POST /api/projects/:id/stages/submit_check/dry-run
+   * -> SubmitCheckItem[]  (no upload)
+   */
+  dryRunSubmitCheck(
+    projectId: string,
+    target: "production" | "sandbox",
+  ): Promise<SubmitCheckItem[]>;
+
+  /**
+   * POST /api/projects/:id/stages/submit_check/submit
+   * { target } -> { at: string }
+   * Live upload to pgdp.net (or sandbox).
+   * Gate: dry run must have passed.
+   */
+  liveSubmit(
+    projectId: string,
+    target: "production" | "sandbox",
+  ): Promise<{ at: string }>;
+
+  /**
+   * POST /api/projects/:id/stages/archive/run
+   * -> { kept, dropped }
+   * Terminal stage — cold storage handoff.
+   */
+  archiveProject(
+    projectId: string,
+    keepNames: string[],
+    destination: string,
+    retention: string,
+  ): Promise<{ kept: string; dropped: string }>;
+}
+
+// ---- F5.6 pack group types --------------------------------------------------
+
+export interface PackValidationRule {
+  id: string;
+  name: string;
+  level: "pass" | "warn" | "error";
+  detail: string;
+  waiver?: string;
+}
+
+export interface PackValidationCounts {
+  pass: number;
+  warn: number;
+  error: number;
+}
+
+export interface PackTreeRow {
+  name: string;
+  dir?: boolean;
+  d?: number;
+  meta?: string;
+}
+
+export interface PackManifest {
+  project: string;
+  pages: number;
+  canvas: string;
+  built: string;
+  pipeline: string;
+  files: number;
+  sha256: string;
+}
+
+export interface SubmitCheckItem {
+  ok: boolean;
+  label: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1395,9 +1512,149 @@ export function createMockServer(): MockServer {
           matchCount: 5,
         },
         counts: { applied: 2, review: 0, pending: 1, disabled: 0 },
+    // ---- F5.6: Pack group tool endpoints ----------------------------------------
+
+    async runValidationChecks(_projectId) {
+      const rules: PackValidationRule[] = [
+        {
+          id: "r-image-res",
+          name: "Image resolution",
+          level: "pass",
+          detail: "All 12 pages meet minimum 300 dpi requirement.",
+        },
+        {
+          id: "r-utf8",
+          name: "Text encoding",
+          level: "pass",
+          detail: "All OCR output files are valid UTF-8.",
+        },
+        {
+          id: "r-missing-ocr",
+          name: "OCR coverage",
+          level: "warn",
+          detail:
+            "Page p0003 has low OCR confidence (0.64 avg). Review recommended.",
+        },
+        {
+          id: "r-page-count",
+          name: "Page count parity",
+          level: "error",
+          detail:
+            "Image count (12) does not match OCR file count (11). One text file missing.",
+        },
+        {
+          id: "r-filename",
+          name: "Filename conventions",
+          level: "pass",
+          detail: "All files follow pgdp_{title}_{nnn}.png convention.",
+        },
+      ];
+      const counts: PackValidationCounts = {
+        pass: rules.filter((r) => r.level === "pass").length,
+        warn: rules.filter((r) => r.level === "warn").length,
+        error: rules.filter((r) => r.level === "error").length,
+      };
+      return { rules, counts };
+    },
+
+    async waiveValidationRule(_projectId, ruleId, note) {
+      // The mock simply accepts the waiver — the machine patches counts client-side
+      // A real server would persist the waiver record.
+      void ruleId;
+      void note;
+      return { ok: true };
+    },
+
+    async assembleProofPack(_projectId, _include) {
+      const tree: PackTreeRow[] = [
+        { name: "images/", dir: true, d: 0 },
+        { name: "pgdp_title_001.png", d: 1, meta: "300 dpi · 2.1 MB" },
+        { name: "pgdp_title_002.png", d: 1, meta: "300 dpi · 1.9 MB" },
+        { name: "pgdp_title_003.png", d: 1, meta: "300 dpi · 2.3 MB" },
+        { name: "text/", dir: true, d: 0 },
+        { name: "pgdp_title_001.txt", d: 1, meta: "1.4 kB" },
+        { name: "pgdp_title_002.txt", d: 1, meta: "1.2 kB" },
+        { name: "pgdp_title_003.txt", d: 1, meta: "1.6 kB" },
+        { name: "illustrations/", dir: true, d: 0 },
+        { name: "illus_001.png", d: 1, meta: "72 dpi · 0.4 MB" },
+      ];
+      return {
+        tree,
+        completeness: { complete: 10, total: 12 },
+      };
+    },
+
+    async buildPackageArtifacts(_projectId, _checksumAlgo) {
+      const files: PackTreeRow[] = [
+        { name: "pgdp_submission/", dir: true, d: 0 },
+        { name: "images/", dir: true, d: 1 },
+        { name: "pgdp_title_001.png", d: 2, meta: "300 dpi" },
+        { name: "pgdp_title_002.png", d: 2, meta: "300 dpi" },
+        { name: "pgdp_title_003.png", d: 2, meta: "300 dpi" },
+        { name: "text/", dir: true, d: 1 },
+        { name: "pgdp_title_001.txt", d: 2, meta: "UTF-8" },
+        { name: "pgdp_title_002.txt", d: 2, meta: "UTF-8" },
+        { name: "pgdp_title_003.txt", d: 2, meta: "UTF-8" },
+        { name: "manifest.json", d: 1, meta: "SHA-256 verified" },
+        { name: "metadata.xml", d: 1, meta: "Dublin Core" },
+      ];
+      const manifest: PackManifest = {
+        project: "mock-project-001",
+        pages: 12,
+        canvas: "300dpi",
+        built: new Date().toISOString(),
+        pipeline: "v2.0.0",
+        files: 11,
+        sha256:
+          "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      };
+      return { deliverable: { files, count: 11 }, manifest };
+    },
+
+    async dryRunSubmitCheck(_projectId, _target) {
+      const checks: SubmitCheckItem[] = [
+        { ok: true, label: "Project ID registered at pgdp.net" },
+        {
+          ok: true,
+          label: "Image count matches pgdp.net expectation (12 pages)",
+        },
+        { ok: true, label: "ZIP integrity — no corrupt entries" },
+        { ok: true, label: "Manifest SHA-256 verified" },
+        { ok: false, label: "Credentials pre-flight — API token valid" },
+        { ok: true, label: "Package size within 500 MB limit (42 MB)" },
+      ];
+      return checks;
+    },
+
+    async liveSubmit(_projectId, target) {
+      // Simulate a live submission by returning a timestamp.
+      // A real server would POST to pgdp.net and record the submission.
+      if (target === "sandbox") {
+        return { at: new Date().toISOString() };
+      }
+      return { at: new Date().toISOString() };
+    },
+
+    async archiveProject(_projectId, keepNames, _destination, _retention) {
+      const dropped = DEFAULT_ARCHIVE_ITEMS_LIST.filter(
+        (n) => !keepNames.includes(n),
+      );
+      return {
+        kept: `${keepNames.length} items`,
+        dropped: `${dropped.length} items`,
       };
     },
   };
 
   return server;
 }
+
+// Matches ArchiveTool DEFAULT_ARCHIVE_ITEMS names (used by archiveProject mock)
+const DEFAULT_ARCHIVE_ITEMS_LIST = [
+  "final-zip",
+  "source-images",
+  "ocr-text",
+  "manifest",
+  "activity-log",
+  "temp-files",
+];

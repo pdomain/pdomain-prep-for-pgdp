@@ -1335,3 +1335,174 @@ The `ADD_WORD_RULE` event is intended for use inside that dialog.
 **Resolution (F5.5 fix round):** `ADD_WORD_RULE` is not surfaced at F5 in
 the main tool panel. The machine event is wired; the UI affordance lives inside
 the global library dialog, which is the I1 workstream.
+## Task F5.6 (pack tools) divergences
+
+Pack group: `validationTool`, `proofPackTool`, `buildPackageTool`, `zipTool`,
+`submitCheckTool`, `archiveTool`.
+
+### F5.6-1 — `blockerCount` helper (advisory/block/custom)
+
+**YAML:** Gate transitions use a raw `blockerCount > 0` guard without parameterisation.
+
+**XState v5:** The `validationTool` exports a standalone `blockerCount(counts, strictness)`
+helper. `advisory` = errors only; `block` = errors + warnings; `custom` = advisory at F5.
+The `always` guard in `blocked` calls `blockerCount(ctx.counts, ctx.strictness) === 0`.
+
+**Rationale:** Strictness mode is a user-configurable setting that should not be
+hardcoded into individual guards. The helper also makes the unit tests (Suite C in
+`packTools.test.ts`) self-contained.
+
+**I1 migration:** No change needed — the helper is a pure function and the guard is
+already correct for all three modes.
+
+---
+
+### F5.6-2 — `always` guard for noBlockersRemain (instead of raised ALL_CLEAR)
+
+**YAML:** When a waiver reduces the blocker count to zero, an `ALL_CLEAR` event
+is raised internally (self-dispatch).
+
+**XState v5:** Self-dispatch of internal events is error-prone in v5 and causes
+ordering hazards (see DIVERGENCES.md #5). Instead, the `blocked` state has an
+`always` transition guarded by `noBlockersRemain` that fires automatically after
+any context mutation.
+
+**Impact:** `CONFIRM_WAIVE` → `applyWaiver` (reduces counts) → XState re-evaluates
+`always` guards → if zero blockers, transitions to `passed` without an explicit event.
+This is more deterministic than event-based self-dispatch.
+
+---
+
+### F5.6-3 — `zipTool` is event-driven (no fromPromise)
+
+**YAML:** The zip actor models compression as a streaming operation that emits
+`ZIP_PROGRESS` ticks and terminates with `ZIP_DONE` or `ZIP_FAILED`.
+
+**XState v5:** `zipTool` has no `fromPromise` actor. The machine starts in
+`compressing` and receives server-pushed events (`ZIP_PROGRESS`, `ZIP_DONE`,
+`ZIP_FAILED`) directly. The `requestRebuild` action fires on entry to `compressing`
+(and on `UPSTREAM_CHANGED` from `built`) and triggers the server to begin streaming.
+
+**Impact:** At I1, the SSE channel for zip progress integrates unchanged — the
+machine already handles the exact event shapes the real server will push. The
+surface component's `useEffect` simulation is replaced by the real SSE actor.
+
+---
+
+### F5.6-4 — `requestRebuild` fires on compressing entry AND UPSTREAM_CHANGED
+
+**YAML:** `requestRebuild` is modeled as a single entry action on the `compressing`
+state.
+
+**XState v5:** In addition to the state entry action, `requestRebuild` also fires
+on the `UPSTREAM_CHANGED` event from `built` (which auto-transitions back to
+`compressing`). This ensures the server re-starts compression whenever the upstream
+build changes without requiring an explicit user action.
+
+---
+
+### F5.6-5 — `submitCheckTool` SUBMIT → guarded branch (GateConfirmation)
+
+**YAML:** `SUBMIT` transitions directly to `submitting`.
+
+**XState v5:** `SUBMIT` dispatches to an array of guarded transitions:
+
+- First guard: `{ guard: "confirmOnSubmit", target: "confirmingSubmit" }`
+- Default (no guard): `{ target: "submitting" }`
+
+XState v5 evaluates guards in order; the first matching guard wins. When
+`ctx.confirmOnSubmit` is false, the machine skips `confirmingSubmit` entirely.
+
+**Impact:** The `confirmingSubmit` state and `CONFIRM`/`CANCEL` events do not
+exist in the YAML — they are an XState-idiomatic implementation of the
+GateConfirmation pattern specified in the design handoff.
+
+---
+
+### F5.6-6 — `submitted` has `type: "final"`
+
+**YAML:** `submitted` is the terminal state for `submitCheckTool` but is not
+explicitly typed as final.
+
+**XState v5:** `submitted` has `type: "final"`. This enables the parent machine
+(`pipelineShell`) to detect completion via `onDone` at I1. The `submitted` state
+also carries `submittedAt` in context for the UI to display the submission timestamp.
+
+---
+
+### F5.6-7 — `proofPackTool` and `buildPackageTool` share `TreeRow`
+
+**YAML:** Both tools define their own tree-row type inline.
+
+**XState v5:** `TreeRow` is exported from `proofPackTool.ts` and re-imported by
+`buildPackageTool.ts`, `zipTool.ts`, and the surface components. This avoids a
+duplicated interface that would drift.
+
+**I1 migration:** When proper API types are generated (openapi-typescript), `TreeRow`
+should be replaced with the canonical generated type and the re-export removed.
+
+---
+
+### F5.6-8 — `archiveTool` TOGGLE_KEEP fires two actions in sequence
+
+**YAML:** `TOGGLE_KEEP` is a single `updateItem` mutation.
+
+**XState v5:** `TOGGLE_KEEP` triggers an action array `["toggleItem", "persistItem"]`.
+`toggleItem` is a pure `assign` that flips `item.keep`; `persistItem` is a side-effect
+action that calls `ctx.services.persistItem` (fire-and-forget). This separates the
+optimistic UI update from the persistence side-effect without introducing a child actor.
+
+**I1 migration:** At I1, `persistItem` should be replaced with a spawned actor so
+persistence errors can be surfaced to the user.
+
+---
+
+### F5.6-9 — `buildPackageTool` preflight gate via PREFLIGHT_PUSH
+
+**YAML:** The build gate is modeled as a guard on the page entering `build_package`
+stage, not as a machine-level event.
+
+**XState v5:** `buildPackageToolMachine` tracks preflight status in `ctx.preflight`
+(type `PreflightStatus = "passed" | "blocked" | "unknown"`). The `BUILD` event is
+silently ignored when `ctx.preflight !== "passed"` (guard `preflightPassed`). The
+`PREFLIGHT_PUSH` event updates `ctx.preflight` from outside the machine (fan-in from
+`pipelineShell` at I1 or from `validationTool` via the orchestrator).
+
+**Impact:** Surface components should not render the BUILD button as enabled when
+preflight is unknown or blocked — the machine won't accept the event anyway, but
+the UI should be consistent with the gate semantics.
+
+---
+
+### F5.6-10 — Mock-only services injected via `input` (no closure capture)
+
+All six pack-group machines receive services via `input.services`. The surface
+components each define a `makeMock*Services` factory that constructs deterministic
+mock implementations. At I1, these factories are replaced with real service adapters.
+
+No machine directly imports from `server.ts` or any network layer — the dependency
+inversion is complete.
+
+---
+
+### F5.6-11 — `archiveTool` starts in `reviewing` (not a loading state)
+
+**YAML:** `archiveTool` enters `reviewing` directly with a default item list.
+
+**XState v5:** The machine is initialized with `initialItems` via `input`. There is
+no async load in the `reviewing` state — the item list is injected at construction.
+If items need to be loaded from the server, a loading state should be added at I1.
+
+---
+
+### F5.6-12 — `zipTool` surface auto-simulates via `useEffect`
+
+The `ZipTool` surface component includes a `useEffect` that fires `ZIP_PROGRESS`
+and `ZIP_DONE` events with 300ms / 600ms / 900ms delays using real `setTimeout`.
+
+This simulation is in the **surface component** (not the machine), so it does not
+affect machine tests in `packTools.test.ts` (which drive events directly). The
+effect is cleaned up on unmount via `clearTimeout`.
+
+**I1 migration:** Remove the `useEffect` block and wire the real SSE actor. The
+machine's event handling is already correct.

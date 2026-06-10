@@ -35,6 +35,12 @@ import { WordcheckTool } from "./tools/WordcheckTool";
 import { HyphenJoinTool } from "./tools/HyphenJoinTool";
 import { TextReviewTool } from "./tools/TextReviewTool";
 import { RegexTool } from "./tools/RegexTool";
+import { ValidationTool } from "./tools/ValidationTool";
+import { ProofPackTool } from "./tools/ProofPackTool";
+import { BuildPackageTool } from "./tools/BuildPackageTool";
+import { ZipTool } from "./tools/ZipTool";
+import { SubmitCheckTool } from "./tools/SubmitCheckTool";
+import { ArchiveTool } from "./tools/ArchiveTool";
 
 // ---------------------------------------------------------------------------
 // Tool slot interface (F5 contract)
@@ -86,6 +92,13 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   hyphen_join: HyphenJoinTool,
   text_review: TextReviewTool,
   regex: RegexTool,
+  // F5.6 — Pack group (task/f56-pack-tools)
+  validation: ValidationTool,
+  proof_pack: ProofPackTool,
+  build_package: BuildPackageTool,
+  zip: ZipTool,
+  submit_check: SubmitCheckTool,
+  archive: ArchiveTool,
 };
 
 /**
