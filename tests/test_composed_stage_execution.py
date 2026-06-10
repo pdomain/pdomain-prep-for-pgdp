@@ -255,10 +255,7 @@ def test_text_review_v2_passes_through() -> None:
 @pytest.mark.parametrize(
     "stage_id",
     [
-        # New page-scoped stages without implementations yet
-        "denoise",
-        "dewarp",
-        "post_transform_crop",
+        # New page-scoped stages without implementations yet (B3+ work)
         "text_zones",
         "wordcheck",
         "hyphen_join",
@@ -274,7 +271,11 @@ def test_text_review_v2_passes_through() -> None:
     ],
 )
 def test_new_stage_placeholder_raises_stage_not_implemented(stage_id: str) -> None:
-    """New/unimplemented v2 stages raise StageNotImplemented when invoked."""
+    """New/unimplemented v2 stages raise StageNotImplemented when invoked.
+
+    Note: denoise, dewarp, post_transform_crop were in this list but were
+    implemented in Task B2 — see tests/test_image_prep_stages.py.
+    """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
         StageNotImplemented,
         get_v2_stage_impl,

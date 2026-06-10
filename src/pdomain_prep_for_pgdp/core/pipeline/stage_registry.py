@@ -670,6 +670,124 @@ def _text_postprocess_cpu(text_bytes: object, cfg: StageConfig = None) -> str:
     return normalize_em_dash(text)
 
 
+# ─── Real implementations: denoise (B2) ─────────────────────────────────────
+#
+# `denoise` sits between `deskew` and `dewarp` in the v2 DAG.
+# Polarity contract: the v2 pipeline after `threshold` uses text=255/bg=0
+# (inverted binary). `denoise_binary` in pdomain-book-tools expects text=0/bg=255.
+# The impl inverts, calls denoise_binary, inverts back.
+#
+# Requires: pdomain-book-tools local main (not in pinned v0.17.1 release).
+# See B2 commit for DEP APPROACH details.
+
+
+def _denoise_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """Remove speckle noise from the deskewed binary page image.
+
+    Polarity bridge: the v2 pipeline carries text=255/bg=0 (from threshold+invert).
+    ``denoise_binary`` in pdomain-book-tools expects text=0/bg=255.
+    This impl:
+      1. Inverts the input to text=0/bg=255.
+      2. Calls ``denoise_binary`` (connected-component area filter).
+      3. Inverts the result back to text=255/bg=0.
+
+    At default config (``cfg.skip_denoise`` is False, ``min_component_area=6``)
+    speckle is removed while genuine glyphs (area ≥ 6 px²) are preserved.
+    When ``cfg.skip_denoise`` is True (or cfg is None and the stage is configured
+    to skip), the image is passed through unchanged.
+    """
+    import cv2
+
+    _ = cfg
+    # Skip if explicitly configured
+    if cfg is not None and getattr(cfg, "skip_denoise", False):
+        return image
+
+    # Bridge: text=255→text=0 for denoise_binary
+    inverted = cast("ImageArray", cv2.bitwise_not(image))
+
+    denoise_binary = cast(
+        "Callable[..., ImageArray]",
+        _load_attr("pdomain_book_tools.image_processing.cv2_processing", "denoise_binary"),
+    )
+    cleaned_inv = denoise_binary(inverted, min_component_area=6, median_kernel_size=0)
+
+    # Bridge back: text=0→text=255
+    return cast("ImageArray", cv2.bitwise_not(cleaned_inv))
+
+
+# ─── Real implementations: dewarp (B2) ───────────────────────────────────────
+#
+# `dewarp` sits between `denoise` and `post_transform_crop` in the v2 DAG.
+# Uses ``TextlineDisparityDewarp`` from pdomain-book-tools geometry_correction.
+# Polarity: receives text=255/bg=0 — the dewarp backend handles binary images by
+# internally using Otsu if needed; since the image is already binary (all values
+# are 0 or 255), the disparity maps are computed from the existing intensity.
+# The ``apply`` method (cv2.remap) is polarity-neutral; the output keeps the
+# same text=255/bg=0 convention.
+# If fewer than min_textlines are found, DewarpResult.confidence=0 and
+# GeometryTransform.identity is returned → identity pass-through.
+#
+# Requires: pdomain-book-tools local main (geometry_correction package).
+
+
+def _dewarp_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """Apply textline-disparity dewarp to the denoised binary page.
+
+    Wraps ``TextlineDisparityDewarp`` from pdomain-book-tools
+    ``geometry_correction``.  On insufficient textlines (low confidence),
+    returns an identity pass-through.
+
+    Polarity: input and output are text=255/bg=0 — the cv2.remap in
+    ``GeometryTransform.apply`` is polarity-neutral; no conversion needed.
+
+    After applying the warp, the output is thresholded back to binary
+    (0/255) because remap introduces sub-pixel interpolation artifacts.
+    """
+    import cv2
+
+    _ = cfg
+    TextlineDisparityDewarp = cast(
+        "type",
+        _load_attr("pdomain_book_tools.geometry_correction", "TextlineDisparityDewarp"),
+    )
+
+    dewarper = TextlineDisparityDewarp(prefer_gpu=False)
+    result = dewarper.estimate(image)
+
+    # identity when confidence is 0 (not enough textlines)
+    transform = result.transform  # type: ignore[attr-defined]
+    warped = transform.apply(image)
+
+    # Re-binarise after interpolation (remap may introduce intermediate values)
+    _, binary = cv2.threshold(
+        cast("ImageArray", warped).astype(np.uint8),
+        127,
+        255,
+        cv2.THRESH_BINARY,
+    )
+    return cast("ImageArray", binary)
+
+
+# ─── Real implementations: post_transform_crop (B2) ─────────────────────────
+#
+# `post_transform_crop` sits between `dewarp` and `text_zones` / `canvas_map`
+# in the v2 DAG. At default config it is a pass-through; the full crop logic
+# (user-adjustable post-transform insets) lands when config plumbing is wired
+# (B5 routes). This is structurally identical to `post_ocr_crop`.
+
+
+def _post_transform_crop_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """Apply optional post-transform crop insets to the dewarped binary image.
+
+    At default config (all insets = 0) this is a pass-through — the dewarped
+    binary ndarray is forwarded unchanged. ResolvedPageConfig plumbing
+    (actual post_transform_crop values) lands in B5.
+    """
+    _ = cfg
+    return image
+
+
 # ─── Real implementations: ocr + text_review (Slice 14) ─────────────────────
 #
 # `ocr` is the first compound-output stage in the registry: it emits
@@ -1011,6 +1129,10 @@ _V2_REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "crop": _crop_v2_cpu,
     "threshold": _threshold_v2_cpu,
     "deskew": _deskew_v2_cpu,
+    # B2: new image-prep stages
+    "denoise": _denoise_cpu,
+    "dewarp": _dewarp_cpu,
+    "post_transform_crop": _post_transform_crop_cpu,
     "canvas_map": _canvas_map_v2_cpu,
     "post_ocr_crop": _ocr_crop_cpu,
     "ocr": _ocr_cpu,
