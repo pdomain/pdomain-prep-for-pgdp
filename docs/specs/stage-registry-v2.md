@@ -51,7 +51,7 @@ function traverses them). Cross-scope edges are noted explicitly.
 | # | stage_id | Launcher group | Scope | Upstream deps | Inputs → Outputs | Folded legacy micro-stages | Status | Owning machine(s) |
 |---|----------|---------------|-------|---------------|-----------------|---------------------------|--------|--------------------|
 | 01 | `source` | Source | project | _(root)_ | source bytes → ingested pages + thumbnails + page-attrs | `ingest_source`, `thumbnail`, `auto_detect_attrs`, `decode_source` | re-cut | `sourceTool` |
-| 02 | `grayscale` | Image prep | page | `source` | image → gray | `manual_deskew_pre` (pre-crop flip/rotate, folded into the source-to-gray path) | re-cut | `pageWorkbench` (×1 in WB_MAP) |
+| 02 | `grayscale` | Image prep | page | `source` | image → gray | `manual_deskew_pre` (pre-crop flip/rotate, folded into the source-to-gray path) | re-cut | `grayscaleTool` |
 | 03 | `crop` | Image prep | page | `grayscale` | image → cropped binary | `initial_crop`, `find_content_edges`, `crop_to_content` | re-cut | `pagesGrid` |
 | 04 | `threshold` | Image prep | page | `crop` | binary → binary (binarised + inverted) | `threshold`, `invert` | re-cut | `imageStageReview` |
 | 05 | `deskew` | Image prep | page | `threshold` | binary → binary (deskewed) | `manual_deskew_pre` (post-crop rotation), `auto_deskew` | re-cut | `imageStageReview` |
@@ -227,11 +227,13 @@ Two separate event mechanisms exist today:
 
 2. **Event-sourcing store** (`core/page_store_factory.py`, backed by
    `pdomain_ops.page_aggregate`): per-project `events.db` via the
-   `eventsourcing` library. Existing event names (from
-   `pdomain_ops/page_aggregate.py`): `ImageIngested`, `ImagePreprocessed`,
-   `OcrCompleted`, `GtMapped`, `LabelerEdited`, `Exported`, `RotationUpdated`,
-   `ExtensionSet`, `ProjectCreated`, `PageAdded`, `PageReordered`,
+   `eventsourcing` library. Existing event names (from the pinned installed
+   wheel's `pdomain_ops/page_aggregate.py`): `ImageIngested`,
+   `ImagePreprocessed`, `OcrCompleted`, `GtMapped`, `LabelerEdited`,
+   `Exported`, `ExtensionSet`, `ProjectCreated`, `PageAdded`, `PageReordered`,
    `PageRemoved`, `ProjectExported`.
+   (`RotationUpdated` exists in the pdomain-ops source repo but is not present
+   in the pinned installed release; it is excluded from this collision list.)
 
 The convergence spec §4.4 (D5) says "the existing event store remains the
 system of record" and vocabulary extends with new event types. The event-store
