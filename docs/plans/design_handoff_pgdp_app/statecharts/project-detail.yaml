@@ -158,15 +158,15 @@ actions:
   applyMutation: //  patch ctx.selected/projects from event (archived/cleaned/restored)
   # actor lifecycle — framework-specific spawn/stop:
   spawnRail: ctx.children.rail = spawn(railList)
-  respawnActivity: ctx.children.activity = spawn(recentActivity, { projectId: ctx.selectedId })
-  respawnAttributes: ctx.children.attributes = spawn(attributesPanel, { projectId: ctx.selectedId })
-  respawnManage: ctx.children.manage = spawn(manageActions, { project: ctx.selected })
+  respawnActivity: "ctx.children.activity = spawn(recentActivity, { projectId: ctx.selectedId })"
+  respawnAttributes: "ctx.children.attributes = spawn(attributesPanel, { projectId: ctx.selectedId })"
+  respawnManage: "ctx.children.manage = spawn(manageActions, { project: ctx.selected })"
   stopChildren: //  stop activity/attributes/manage actors
   ensureActivityLoaded: //  send LOAD to children.activity if idle
   ensureAttributesLoaded: //  send LOAD to children.attributes if idle
   refreshRail: //  send PROJECTS_CHANGED to children.rail
-  openActivityLog: //  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/activity`)
-  openProject: //  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/pipeline`)
+  openActivityLog: "//  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/activity`)"
+  openProject: "//  SIDE EFFECT: router.push(`/projects/${ctx.selectedId}/pipeline`)"
   startCreateFlow: //  SIDE EFFECT
   startPasteUrlFlow: //  SIDE EFFECT
   startImportFlow: //  SIDE EFFECT

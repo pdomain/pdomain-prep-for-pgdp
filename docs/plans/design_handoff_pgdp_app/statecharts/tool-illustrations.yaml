@@ -66,7 +66,7 @@ guards:
 
 actions:
   assignItems: ctx.items = event.data.items; ctx.counts = event.data.counts
-  markExtracted: ctx.items = patchItem(ctx.items, event.regionId, r => ({ ...r, status: 'extracted' }))
+  markExtracted: "ctx.items = patchItem(ctx.items, event.regionId, r => ({ ...r, status: 'extracted' }))"
   patchRegion: ctx.items = patchItem(ctx.items, event.regionId, r => ({ ...r, ...event.patch }))
   removeRegion: ctx.items = ctx.items.filter(r => r.id !== event.regionId)
   recount: ctx.counts = recount(ctx.items)
@@ -74,9 +74,9 @@ actions:
   assignError: ctx.error = event.error
   clearError: ctx.error = null
   settleIfClear: //  if counts.review + counts.flagged === 0 → transition to extracted (+ emitResolved)
-  persistRegion: //  SIDE EFFECT: PATCH region
-  exportCrops: //  SIDE EFFECT: download extracted crops
-  emitResolved: //  send parent: RESOLVE — stageRunner[illustrations] → clean
+  persistRegion: "//  SIDE EFFECT: PATCH region"
+  exportCrops: "//  SIDE EFFECT: download extracted crops"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[illustrations] → clean"
 
 services:
   detectRegions: 'POST /api/projects/:id/stages/illustrations/detect -> { items, counts }'

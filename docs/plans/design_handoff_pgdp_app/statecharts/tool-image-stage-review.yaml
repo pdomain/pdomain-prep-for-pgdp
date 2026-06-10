@@ -151,7 +151,7 @@ guards:
   allFlagsReviewed: ctx.totals.flagged === 0 || ctx.totals.flagged === ctx.totals.reviewed
   anyRunning: event.data.totals.running > 0
   anyFlagged: event.data.totals.flagged > 0
-  runCompleteWithFlags: ctx.totals.running === 1 && ctx.totals.flagged + (event.row.state === 'flagged' ? 1 : 0) > 0
+  runCompleteWithFlags: "ctx.totals.running === 1 && ctx.totals.flagged + (event.row.state === 'flagged' ? 1 : 0) > 0"
   runCompleteClean: ctx.totals.running === 1 && ctx.totals.flagged === 0 && event.row.state !== 'flagged'
 
 actions:
@@ -178,12 +178,12 @@ actions:
   recountTotals: ctx.totals = recount(ctx.rows)
   markStale: ctx.stale = true
   settleIfClear: //  if totals.flagged === 0 → raise SETTLED (transition to `settled`)
-  persistAccepts: //  SIDE EFFECT: PATCH accepted page states (batch)
-  requestReRun: //  SIDE EFFECT: POST re-run for selected pages (current params)
-  requestStageRun: //  SIDE EFFECT: POST run whole stage (after UPSTREAM_CHANGED)
-  requestRederive: //  SIDE EFFECT: POST re-derive (canvas/strategy/rule) + re-run all pages
-  emitStaleDownstream: //  send parent(pipelineShell): UPSTREAM_CHANGED from this stageIndex
-  emitResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: all }
+  persistAccepts: "//  SIDE EFFECT: PATCH accepted page states (batch)"
+  requestReRun: "//  SIDE EFFECT: POST re-run for selected pages (current params)"
+  requestStageRun: "//  SIDE EFFECT: POST run whole stage (after UPSTREAM_CHANGED)"
+  requestRederive: "//  SIDE EFFECT: POST re-derive (canvas/strategy/rule) + re-run all pages"
+  emitStaleDownstream: "//  send parent(pipelineShell): UPSTREAM_CHANGED from this stageIndex"
+  emitResolved: "//  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: all }"
 
 services:
   fetchStagePages: 'GET  /api/projects/:id/stages/:stageId/pages -> { rows, totals }'

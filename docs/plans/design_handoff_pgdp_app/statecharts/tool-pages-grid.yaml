@@ -155,13 +155,13 @@ actions:
   updateDraft: ctx.draft = { ...ctx.draft, ...event.patch }   # bbox / skewDeg / flags
   revertDraft: ctx.draft = clone(pageOf(ctx.pages, ctx.selectedPageId))
   clearDraft: ctx.draft = null; ctx.selectedPageId = null
-  markAccept: ctx.draft = { ...clone(pageOf(ctx.pages, ctx.selectedPageId)), flags: [] }
+  markAccept: "ctx.draft = { ...clone(pageOf(ctx.pages, ctx.selectedPageId)), flags: [] }"
   stepToPrevPage: //  selectedPageId = prev in ctx.visible
   stepToNextPage: //  selectedPageId = next in ctx.visible
   commitPage: //  merge event.data back into ctx.pages (+ re-applyFilter)
   recordResolved: //  if saved page now has no flags, push pageId to resolvedThisSession
-  emitResolvedMaybe: //  optional: emit immediately, or wait for FLUSH_RESOLVED
-  emitResolved: //  send to parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds }
+  emitResolvedMaybe: "//  optional: emit immediately, or wait for FLUSH_RESOLVED"
+  emitResolved: "//  send to parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds }"
   clearResolvedBuffer: ctx.resolvedThisSession = []
 
 services:

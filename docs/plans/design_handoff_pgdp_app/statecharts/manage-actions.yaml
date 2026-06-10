@@ -166,7 +166,7 @@ actions:
   #   clean    -> (no status change)            archive  -> status:archived
   #   delete#1 -> status:archived               delete#2 -> deleted (drop row)
   #   restore  -> status:<restored>
-  emitMutation: //  send to parent: { type:'PROJECT_MUTATED', action:ctx.pendingAction, result:ctx.result }
+  emitMutation: "//  send to parent: { type:'PROJECT_MUTATED', action:ctx.pendingAction, result:ctx.result }"
 
 services:
   runManageAction: >

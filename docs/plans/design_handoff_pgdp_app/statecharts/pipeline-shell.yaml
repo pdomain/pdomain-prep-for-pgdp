@@ -155,13 +155,13 @@ actions:
     ctx.runners.slice(event.fromIndex + 1).forEach(r =>
       send(r, { type:'UPSTREAM_CHANGED', autoRerun: ctx.automation.rerunDownstreamOnStale }))
   markStageSettingsStale: send(ctx.runners[ctx.currentIndex], { type:'SETTINGS_CHANGED' })
-  forwardResolveToRunner: send(ctx.runners[event.stageIndex], { type:'RESOLVE', resolvedIds: event.resolvedIds })
+  forwardResolveToRunner: "send(ctx.runners[event.stageIndex], { type:'RESOLVE', resolvedIds: event.resolvedIds })"
   routeStagePush: send(ctx.runners[indexOf(event.stageId)], { type:'STAGE_PUSH', ...event })
   launchRunAllStale: //  spawn/send runAllStale with the stale runner set
-  spawnSettings: ctx.settingsRef = spawn(projectSettings, { projectId: ctx.projectId })
+  spawnSettings: "ctx.settingsRef = spawn(projectSettings, { projectId: ctx.projectId })"
   stopSettings: //  stop ctx.settingsRef
   syncAutomationFromSettings: //  pull automation toggles back from settings actor
-  navigate: //  SIDE EFFECT: router
+  navigate: "//  SIDE EFFECT: router"
 
 services:
   fetchPipeline: 'GET /api/projects/:id/pipeline -> { project, stages:StageState[23], automation }'

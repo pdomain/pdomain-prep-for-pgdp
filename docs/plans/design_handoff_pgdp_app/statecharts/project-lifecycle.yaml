@@ -151,7 +151,7 @@ actions:
   advanceStage: ctx.currentStage = Math.min(ctx.currentStage + 1, ctx.totalStages - 1)
   assignFlagged: ctx.flagged = event.flagged ?? ctx.flagged
   clearFlagged: ctx.flagged = 0
-  assignError: ctx.lastError = { stage: event.stage, message: event.message }
+  assignError: "ctx.lastError = { stage: event.stage, message: event.message }"
   clearError: ctx.lastError = null
   stampArchivedOn: ctx.archivedOn = today()
   # `reconcile` syncs local state to a server push — the authoritative source.
@@ -166,7 +166,7 @@ actions:
   requestSubmit: //  POST /api/projects/:id/submit
   requestArchive: //  POST /api/projects/:id/archive
   requestRestore: //  POST /api/projects/:id/restore
-  requestDelete: //  DELETE /api/projects/:id   (guarded: archived only)
+  requestDelete: "//  DELETE /api/projects/:id   (guarded: archived only)"
 
 services:
   restoreProject: 'POST /api/projects/:id/restore -> { status, currentStage, flagged }'

@@ -128,7 +128,7 @@ actions:
   stepNext: ctx.cursor += 1
   moveTo: ctx.cursor = event.index
   commitPage: //  merge event.data into ctx.pages[cursor]; params ← applied draft
-  emitResolvedMaybe: //  if the page was flagged and now isn't: send parent { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[pageId] }
+  emitResolvedMaybe: "//  if the page was flagged and now isn't: send parent { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[pageId] }"
 
 services:
   fetchBenchPage: 'GET  /api/projects/:id/stages/:stageId/pages/:pageId/bench -> { params, pageStats, flagNote }'

@@ -85,8 +85,8 @@ actions:
   assignSubmitted: ctx.submittedAt = event.data.at
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  navigateToBlocker: //  SIDE EFFECT: route to the failing check's owner
-  emitResolved: //  send parent: RESOLVE — stageRunner[submit_check] → clean;
+  navigateToBlocker: "//  SIDE EFFECT: route to the failing check's owner"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[submit_check] → clean;"
                 #   projectLifecycle moves toward `submitted` via STATUS_PUSH
 
 services:

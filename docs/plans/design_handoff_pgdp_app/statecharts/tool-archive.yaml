@@ -49,11 +49,11 @@ states:
 guards: {}
 
 actions:
-  toggleItem: ctx.items = patchItem(ctx.items, event.name, it => ({ ...it, keep: !it.keep }))
+  toggleItem: "ctx.items = patchItem(ctx.items, event.name, it => ({ ...it, keep: !it.keep }))"
   assignResult: ctx.result = event.data
   assignError: ctx.error = event.error
-  persistItem: //  SIDE EFFECT: PATCH keep/drop choice
-  emitResolved: //  send parent: RESOLVE — stageRunner[archive] → clean (pipeline complete)
+  persistItem: "//  SIDE EFFECT: PATCH keep/drop choice"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[archive] → clean (pipeline complete)"
 
 services:
   archiveProject: 'POST /api/projects/:id/stages/archive/run -> { kept, dropped }'

@@ -127,8 +127,8 @@ guards:
   canConfirm: ctx.totals.unmarked === 0 && thumbnailsRegionIn('done')
 
 actions:
-  assignThumbProgress: ctx.totals = { ...ctx.totals, thumbed: event.thumbed, rateHz: event.rateHz, remaining: event.remaining }
-  markAllThumbed: ctx.files = ctx.files.map(f => f.state === 'pending' ? { ...f, state: 'ready' } : f)
+  assignThumbProgress: "ctx.totals = { ...ctx.totals, thumbed: event.thumbed, rateHz: event.rateHz, remaining: event.remaining }"
+  markAllThumbed: "ctx.files = ctx.files.map(f => f.state === 'pending' ? { ...f, state: 'ready' } : f)"
   assignFilter: ctx.filter = event.value      # all | page | skipped | unmarked | inserts
   assignDensity: ctx.density = event.value    # S | M | L
   assignQuery: ctx.query = event.value
@@ -136,11 +136,11 @@ actions:
   toggleSelection: ctx.selected = xor(ctx.selected, event.idx)
   addRangeToSelection: ctx.selected = union(ctx.selected, range(lastAnchor, event.idx))
   emptySelection: ctx.selected = []
-  markSelected: ctx.files = ctx.files.map(f => ctx.selected.includes(f.idx) ? { ...f, state: event.state } : f)
+  markSelected: "ctx.files = ctx.files.map(f => ctx.selected.includes(f.idx) ? { ...f, state: event.state } : f)"
   assignRole: ctx.files = setRole(ctx.files, event.idx, event.role)   # workbench single-page variant of markSelected
   removeSelected: ctx.files = ctx.files.filter(f => !ctx.selected.includes(f.idx)); ctx.selected = []
   recountTotals: ctx.totals = recount(ctx.files)
-  beginInsertDraft: ctx.insertDraft = { anchorStem: event.anchorStem ?? null, position: 'after', kind: 'missing', note: '', image: null }
+  beginInsertDraft: "ctx.insertDraft = { anchorStem: event.anchorStem ?? null, position: 'after', kind: 'missing', note: '', image: null }"
   patchInsertDraft: ctx.insertDraft = { ...ctx.insertDraft, ...event.patch }
   createInsertedRow: ctx.files = insertAt(ctx.files, ctx.insertDraft)   # state:'inserted', dashed-thumb placeholder unless image given
   clearInsertDraft: ctx.insertDraft = null
@@ -148,13 +148,13 @@ actions:
   recordSettingChange: ctx._settingsDraft = { ...ctx._settingsDraft, ...event.patch }
   assignPreset: ctx._preset = event.presetId
   revertSettings: ctx._settingsDraft = null
-  persistMarks: //  SIDE EFFECT: PATCH file states (batch)
-  persistRemoval: //  SIDE EFFECT: DELETE files from project
-  persistInsert: //  SIDE EFFECT: POST inserted page (+ optional image upload)
-  persistAsProjectDefault: //  SIDE EFFECT: save stage settings as project default
-  persistPreset: //  SIDE EFFECT: save named preset
-  requestRegenerate: //  SIDE EFFECT: POST regenerate-thumbnails (clears cache)
-  emitStageComplete: //  send parent(pipelineShell): RESOLVE for stageRunner[source] → clean
+  persistMarks: "//  SIDE EFFECT: PATCH file states (batch)"
+  persistRemoval: "//  SIDE EFFECT: DELETE files from project"
+  persistInsert: "//  SIDE EFFECT: POST inserted page (+ optional image upload)"
+  persistAsProjectDefault: "//  SIDE EFFECT: save stage settings as project default"
+  persistPreset: "//  SIDE EFFECT: save named preset"
+  requestRegenerate: "//  SIDE EFFECT: POST regenerate-thumbnails (clears cache)"
+  emitStageComplete: "//  send parent(pipelineShell): RESOLVE for stageRunner[source] → clean"
 
 services:
   confirmSelection: 'POST /api/projects/:id/stages/source/confirm -> { pages }'

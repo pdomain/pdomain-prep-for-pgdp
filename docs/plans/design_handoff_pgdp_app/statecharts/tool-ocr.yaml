@@ -102,8 +102,8 @@ actions:
   mergePage: //  upsert event.row; recount totals
   assignCursor: ctx.cursor = event.idx
   clearCursor: ctx.cursor = null
-  loadTokens: //  SIDE EFFECT: GET low-score tokens for cursor page → ctx.tokens
-  applySuggestion: ctx.tokens = patchToken(ctx.tokens, event.tokenId, t => ({ ...t, word: t.suggest }))
+  loadTokens: "//  SIDE EFFECT: GET low-score tokens for cursor page → ctx.tokens"
+  applySuggestion: "ctx.tokens = patchToken(ctx.tokens, event.tokenId, t => ({ ...t, word: t.suggest }))"
   clearAccepted: ctx.accepted = []
   markPageReviewed: ctx.rows = setState(ctx.rows, [ctx.cursor], 'reviewed')
   stepToNextFlagged: ctx.cursor = nextFlaggedAfter(ctx.rows, ctx.cursor)
@@ -114,14 +114,14 @@ actions:
   appendOverride: ctx.overrides = [...ctx.overrides, event.override]
   patchOverride: ctx.overrides = patchAt(ctx.overrides, event.index, event.patch)
   assignError: ctx.error = event.error
-  requestPause: //  SIDE EFFECT: pause the run
-  requestReOcr: //  SIDE EFFECT: POST re-OCR selected pages
-  requestPageReOcr: //  SIDE EFFECT: POST re-OCR cursor page
-  requestReOcrAll: //  SIDE EFFECT: POST re-OCR (all | flagged) under current settings
-  persistToken: //  SIDE EFFECT: PATCH token text
-  persistPage: //  SIDE EFFECT: PATCH page state
-  persistOverride: //  SIDE EFFECT: PUT overrides table
-  emitResolved: //  send parent: RESOLVE — stageRunner[ocr] → clean
+  requestPause: "//  SIDE EFFECT: pause the run"
+  requestReOcr: "//  SIDE EFFECT: POST re-OCR selected pages"
+  requestPageReOcr: "//  SIDE EFFECT: POST re-OCR cursor page"
+  requestReOcrAll: "//  SIDE EFFECT: POST re-OCR (all | flagged) under current settings"
+  persistToken: "//  SIDE EFFECT: PATCH token text"
+  persistPage: "//  SIDE EFFECT: PATCH page state"
+  persistOverride: "//  SIDE EFFECT: PUT overrides table"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[ocr] → clean"
 
 services:
   confirmStage: 'POST /api/projects/:id/stages/ocr/confirm -> { ok }'

@@ -134,7 +134,7 @@ actions:
   beginSplitDraft: ctx.editorKind = 'split'; ctx.splitDraft = clone(ctx.rows[event.idx].split)
   assignTool: ctx.tool = event.tool
   appendZone: ctx.zoneDraft = [...ctx.zoneDraft, newZone(event.box, event.type ?? 'body')]
-  patchZoneType: ctx.zoneDraft = patchZone(ctx.zoneDraft, event.zoneId, z => ({ ...z, type: event.type }))
+  patchZoneType: "ctx.zoneDraft = patchZone(ctx.zoneDraft, event.zoneId, z => ({ ...z, type: event.type }))"
   removeZone: ctx.zoneDraft = ctx.zoneDraft.filter(z => z.id !== event.zoneId)
   moveZoneOrder: ctx.zoneDraft = reorder(ctx.zoneDraft, event.from, event.to)
   patchSplit: ctx.splitDraft = { ...ctx.splitDraft, ...event.patch }
@@ -145,10 +145,10 @@ actions:
   markReviewed: ctx.rows = setState(ctx.rows, [ctx.editing], 'reviewed')
   recount: ctx.totals = recount(ctx.rows)
   clearEditor: ctx.editing = null; ctx.editorKind = null; ctx.zoneDraft = null; ctx.splitDraft = null
-  persistLayout: //  SIDE EFFECT: PUT page layout (zones + order | dismissed split)
+  persistLayout: "//  SIDE EFFECT: PUT page layout (zones + order | dismissed split)"
   emitZonesChanged: //  illustration zones changed → illustrationsTool UPSTREAM_CHANGED
   emitPageCountChanged: //  page set changed → page_order, canvas_map, counts everywhere
-  emitResolved: //  send parent: RESOLVE — stageRunner[text_zones] → clean
+  emitResolved: "//  send parent: RESOLVE — stageRunner[text_zones] → clean"
 
 services:
   fetchZonePages: 'GET  /api/projects/:id/stages/text_zones/pages -> { rows, totals }'

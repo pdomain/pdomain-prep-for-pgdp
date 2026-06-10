@@ -137,8 +137,8 @@ actions:
   # If the current selection scrolled out of the visible set, pick the first
   # visible row (or null) and tell the parent.
   selectIfSelectionHidden: //  guard:selectionHidden -> assignSelected(first) + emitSelect
-  emitSelect: //  send to parent: { type: 'SELECT', id: ctx.selectedId }
-  startNewProject: //  SIDE EFFECT: open the create-project flow
+  emitSelect: "//  send to parent: { type: 'SELECT', id: ctx.selectedId }"
+  startNewProject: "//  SIDE EFFECT: open the create-project flow"
 
 services:
   fetchProjects: 'GET /api/projects -> Project[]'

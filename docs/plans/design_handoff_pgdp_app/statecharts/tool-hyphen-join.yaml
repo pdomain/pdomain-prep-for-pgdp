@@ -106,8 +106,8 @@ states:
 # --- Implementation reference ------------------------------------------------
 guards:
   anythingToDecide: event.data.totals.undecided + event.data.totals.flagged + event.data.totals.unvalidated + event.data.totals.mismatch > 0
-  isDecidable: ['undecided', 'flagged'].includes(currentCase(ctx).status)
-  isUnvalidatedJoin: ['joined', 'crosspage'].includes(currentCase(ctx).status) && !currentCase(ctx).validated
+  isDecidable: "['undecided', 'flagged'].includes(currentCase(ctx).status)"
+  isUnvalidatedJoin: "['joined', 'crosspage'].includes(currentCase(ctx).status) && !currentCase(ctx).validated"
   isMismatch: currentCase(ctx).status === 'mismatch'
 
 actions:
@@ -132,12 +132,12 @@ actions:
   appendRule: //  add word rule (always-join / never-join) — affects future scans
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  persistDecision: //  SIDE EFFECT: POST decision { caseId, verdict }
-  persistGroup: //  SIDE EFFECT: POST group validation { word }
-  persistPage: //  SIDE EFFECT: commit the page's decisions
-  persistRule: //  SIDE EFFECT: POST word rule (book-level; promote via library)
-  navigateToLibrary: //  SIDE EFFECT: open the global word library (cross-project)
-  emitResolved: //  send parent: RESOLVE — stageRunner[hyphen_join] → clean
+  persistDecision: "//  SIDE EFFECT: POST decision { caseId, verdict }"
+  persistGroup: "//  SIDE EFFECT: POST group validation { word }"
+  persistPage: "//  SIDE EFFECT: commit the page's decisions"
+  persistRule: "//  SIDE EFFECT: POST word rule (book-level; promote via library)"
+  navigateToLibrary: "//  SIDE EFFECT: open the global word library (cross-project)"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[hyphen_join] → clean"
 
 services:
   scanHyphenation: 'POST /api/projects/:id/stages/hyphen_join/scan -> { cases, totals }'

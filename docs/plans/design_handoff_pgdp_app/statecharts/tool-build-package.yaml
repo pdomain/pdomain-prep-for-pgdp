@@ -58,8 +58,8 @@ actions:
   assignPreflight: ctx.preflight = event.status
   assignError: ctx.error = event.error
   markBuildStale: ctx.deliverable = null; ctx.manifest = null
-  navigateToSubmitCheck: //  SIDE EFFECT: pipelineShell SELECT_STAGE(submit_check)
-  emitResolved: //  send parent: RESOLVE — stageRunner[build_package] → clean
+  navigateToSubmitCheck: "//  SIDE EFFECT: pipelineShell SELECT_STAGE(submit_check)"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[build_package] → clean"
 
 services:
   buildArtifacts: 'POST /api/projects/:id/stages/build_package/build -> { deliverable, manifest }'

@@ -105,18 +105,18 @@ actions:
   clearPreview: ctx.previewRule = null; ctx.hunks = []
   markSkipped: //  rule stays in 'review'; record skip so the gate shows it as pending decision
   mergeRule: //  upsert event.data.rule (now 'applied'); ctx.counts = event.data.counts
-  toggleEnabled: ctx.rules = patchRule(ctx.rules, event.ruleId, r => ({ ...r, enabled: !r.enabled }))
+  toggleEnabled: "ctx.rules = patchRule(ctx.rules, event.ruleId, r => ({ ...r, enabled: !r.enabled }))"
   appendRule: ctx.rules = [...ctx.rules, newRule(event.fields)]   # status:'pending'
   moveRule: ctx.rules = reorder(ctx.rules, event.from, event.to)
   invalidateDownstreamRules: //  rules after the moved index whose status is 'applied' → 'review'
   invalidateAllRules: //  applied → review (text changed under them)
   assignListFilter: ctx.listFilter = event.value
-  loadHunks: //  SIDE EFFECT: GET preview hunks for ruleId → ctx.hunks
-  persistRule: //  SIDE EFFECT: PATCH rule
-  persistOrder: //  SIDE EFFECT: PUT rule order
-  requestPreset: //  SIDE EFFECT: load rule preset into the project
-  requestRollback: //  SIDE EFFECT: POST restore snapshotId (whole pass reverts)
-  emitResolved: //  send parent: RESOLVE — stageRunner[regex] settles to clean
+  loadHunks: "//  SIDE EFFECT: GET preview hunks for ruleId → ctx.hunks"
+  persistRule: "//  SIDE EFFECT: PATCH rule"
+  persistOrder: "//  SIDE EFFECT: PUT rule order"
+  requestPreset: "//  SIDE EFFECT: load rule preset into the project"
+  requestRollback: "//  SIDE EFFECT: POST restore snapshotId (whole pass reverts)"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[regex] settles to clean"
 
 services:
   fetchRules: 'GET  /api/projects/:id/stages/regex/rules -> { rules, counts, snapshotId }'

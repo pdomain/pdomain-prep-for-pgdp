@@ -129,17 +129,17 @@ guards:
   isDonePhase: event.state === 'done'
 
 actions:
-  assignJobProgress: ctx.job = { ...ctx.job, pct: event.pct, phase: event.phase }
-  assignJobPhase: ctx.job = { ...ctx.job, phase: event.phase, pct: event.pct }
-  markJobDone: ctx.job = { ...ctx.job, state: 'done', pct: 100 }
-  pushCompletionToast: ctx.toasts = [{ id: uid(), project: ctx.job.project, message: 'Import complete · 387 pages' }]
+  assignJobProgress: "ctx.job = { ...ctx.job, pct: event.pct, phase: event.phase }"
+  assignJobPhase: "ctx.job = { ...ctx.job, phase: event.phase, pct: event.pct }"
+  markJobDone: "ctx.job = { ...ctx.job, state: 'done', pct: 100 }"
+  pushCompletionToast: "ctx.toasts = [{ id: uid(), project: ctx.job.project, message: 'Import complete · 387 pages' }]"
   removeToast: ctx.toasts = ctx.toasts.filter(t => t.id !== event.toastId)
   assignAnchor: ctx.anchorId = event.projectId
   assignAnchorToList: ctx.anchorId = previousSelectionOrDefault()
-  requestCancel: //  SIDE EFFECT: POST /api/jobs/:jobId/cancel (optimistic; PHASE_PUSH reconciles)
-  navigateToProject: //  SIDE EFFECT: route to /projects/:projectId/pipeline
+  requestCancel: "//  SIDE EFFECT: POST /api/jobs/:jobId/cancel (optimistic; PHASE_PUSH reconciles)"
+  navigateToProject: "//  SIDE EFFECT: route to /projects/:projectId/pipeline"
   removeJobRow: //  drop the pinned importing pseudo-row from the rail
-  emitProjectMutated: //  send parent(projectDetail): { type:'PROJECT_MUTATED' } → rail resync
+  emitProjectMutated: "//  send parent(projectDetail): { type:'PROJECT_MUTATED' } → rail resync"
 
 services: {}   # progress arrives as JOB_PROGRESS / PHASE_PUSH pushes, not an invoke
 

@@ -64,9 +64,9 @@ actions:
   patchInclude: ctx.include = { ...ctx.include, ...event.patch }
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  openPreview: //  SIDE EFFECT: open file preview overlay
-  navigateToGap: //  SIDE EFFECT: route to the stage missing output for that page
-  emitResolved: //  send parent: RESOLVE — stageRunner[proof_pack] → clean
+  openPreview: "//  SIDE EFFECT: open file preview overlay"
+  navigateToGap: "//  SIDE EFFECT: route to the stage missing output for that page"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[proof_pack] → clean"
 
 services:
   assemblePack: 'POST /api/projects/:id/stages/proof_pack/assemble -> { tree, completeness }'

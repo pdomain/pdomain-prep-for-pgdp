@@ -114,7 +114,7 @@ actions:
   moveTo: ctx.cursor = event.index
   recordAccept: ctx.decisions[currentId(ctx)] = 'accept'
   recordReject: ctx.decisions[currentId(ctx)] = 'reject'
-  recordEdit: ctx.decisions[currentId(ctx)] = { edit: ctx._itemDraft }
+  recordEdit: "ctx.decisions[currentId(ctx)] = { edit: ctx._itemDraft }"
   submitDecision: ctx.inFlight = currentId(ctx)   # + SIDE EFFECT: postDecision
   advanceAfterDecision: //  moveNext unless at end; keeps the proofreader flowing
   confirmResolved: ctx.resolved = [...ctx.resolved, event.itemId]; ctx.inFlight = null
@@ -124,8 +124,8 @@ actions:
   updateItemDraft: ctx._itemDraft = { ...ctx._itemDraft, ...event.patch }
   clearItemDraft: ctx._itemDraft = null
   # report resolved pageIds up so the stageRunner's flagged count drops:
-  emitResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[event.pageId] }
-  emitAllResolved: //  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: allPageIds }
+  emitResolved: "//  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds:[event.pageId] }"
+  emitAllResolved: "//  send parent: { type:'PAGES_RESOLVED', stageIndex, resolvedIds: allPageIds }"
 
 services:
   fetchQueue: 'GET /api/projects/:id/stages/:stageId/queue -> QueueItem[]'

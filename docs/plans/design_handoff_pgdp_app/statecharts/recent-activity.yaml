@@ -182,11 +182,11 @@ actions:
   resetFeed: ctx.entries = []; ctx.totalCount = 0; ctx.error = null
   assignIsLive: ctx.isLive = event.isLive
   flagStaleRefresh: ctx.error = event.error      # surfaced as a toast, list kept
-  raiseRefresh: //  internal -> send {type: REFRESH}
-  startPollTimer: //  SIDE EFFECT: schedule TICK every 10s
-  stopPollTimer: //  SIDE EFFECT: clear poll timer
-  navigateToActivityLog: //  SIDE EFFECT: router.push(`/projects/${ctx.projectId}/activity`)
-  openEntryDetail: //  SIDE EFFECT: open the clicked entry (stage panel / comment)
+  raiseRefresh: "//  internal -> send {type: REFRESH}"
+  startPollTimer: "//  SIDE EFFECT: schedule TICK every 10s"
+  stopPollTimer: "//  SIDE EFFECT: clear poll timer"
+  navigateToActivityLog: "//  SIDE EFFECT: router.push(`/projects/${ctx.projectId}/activity`)"
+  openEntryDetail: "//  SIDE EFFECT: open the clicked entry (stage panel / comment)"
 
 # Services / actors (async, return a promise resolved into onDone/onError):
 services:

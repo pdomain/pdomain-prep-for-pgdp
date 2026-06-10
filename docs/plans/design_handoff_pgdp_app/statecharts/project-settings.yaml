@@ -115,9 +115,9 @@ actions:
   markFieldDirty: ctx.dirtyFields[event.key] = true
   clearFieldDirty: //  delete ctx.dirtyFields[event.key]
   flagFieldError: ctx.error = event.error   # + clear dirty so UI can retry
-  autosaveField: //  SIDE EFFECT: PATCH settings field; resolves FIELD_SAVED/FAILED
+  autosaveField: "//  SIDE EFFECT: PATCH settings field; resolves FIELD_SAVED/FAILED"
   setAutomation: ctx.automation[event.key] = event.value
-  autosaveAutomation: //  SIDE EFFECT: PATCH automation; FIELD_SAVED/FAILED
+  autosaveAutomation: "//  SIDE EFFECT: PATCH automation; FIELD_SAVED/FAILED"
   setPendingDestructive: ctx._pending = event.action   # 'reset'|'purge'|'delete'
   markAck: ctx._ack = true
   clearPending: ctx._pending = null; ctx._ack = false

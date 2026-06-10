@@ -148,20 +148,20 @@ guards:
 actions:
   mergeFolio: //  upsert { scan, ocrFolio } into ctx.leaves
   assignModel: ctx.leaves = event.data.leaves; ctx.runs = event.data.runs; ctx.totals = event.data.totals
-  computeLabels: //  PURE: folioLabel per leaf from (runs, roles, order) — the heart of the stage
-  reconcile: //  PURE: flags per leaf from (computed label vs ocrFolio); recount totals
+  computeLabels: "//  PURE: folioLabel per leaf from (runs, roles, order) — the heart of the stage"
+  reconcile: "//  PURE: flags per leaf from (computed label vs ocrFolio); recount totals"
   assignLens: ctx.lens = event.value
   assignView: ctx.view = event.value
   assignSelectedLeaf: ctx.selectedLeaf = event.scan   # + raise LEAF_SELECTED to the inspector region
   clearSelectedLeaf: ctx.selectedLeaf = null
   toggleScanSelection: ctx.selScans = xor(ctx.selScans, event.scan)
-  assignDropdown: ctx.openDropdown = { scan: event.scan, kind: event.kind }
+  assignDropdown: "ctx.openDropdown = { scan: event.scan, kind: event.kind }"
   closeDropdown: ctx.openDropdown = null
-  patchLeafRole: ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, role: event.role }))
-  patchLeafRun: ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, runId: event.runId }))
+  patchLeafRole: "ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, role: event.role }))"
+  patchLeafRun: "ctx.leaves = patchLeaf(ctx.leaves, event.scan, l => ({ ...l, runId: event.runId }))"
   patchLeaf: ctx.leaves = patchLeaf(ctx.leaves, ctx.selectedLeaf, l => ({ ...l, ...event.patch }))
-  assignDropTarget: ctx._over = { scan: event.scan, after: event.after }
-  moveLeaves: ctx.leaves = moveScans(ctx.leaves, ctx.selScans.length ? ctx.selScans : [event.scan], ctx._over)
+  assignDropTarget: "ctx._over = { scan: event.scan, after: event.after }"
+  moveLeaves: "ctx.leaves = moveScans(ctx.leaves, ctx.selScans.length ? ctx.selScans : [event.scan], ctx._over)"
   clearDrag: ctx._over = null
   insertRun: ctx.runs = insertRun(ctx.runs, event.run)
   patchRun: ctx.runs = patchRun(ctx.runs, ctx.runEdit, event.patch)
@@ -170,13 +170,13 @@ actions:
   clearRunEdit: ctx.runEdit = null
   patchNaming: ctx.naming = { ...ctx.naming, ...event.patch }
   assignError: ctx.error = event.error
-  openFullResScan: //  SIDE EFFECT: open the original capture image (never renamed)
-  persistLeaf: //  SIDE EFFECT: PATCH leaf
-  persistOrder: //  SIDE EFFECT: PUT leaf order
-  persistRuns: //  SIDE EFFECT: PUT runs
-  persistNaming: //  SIDE EFFECT: PUT naming scheme
+  openFullResScan: "//  SIDE EFFECT: open the original capture image (never renamed)"
+  persistLeaf: "//  SIDE EFFECT: PATCH leaf"
+  persistOrder: "//  SIDE EFFECT: PUT leaf order"
+  persistRuns: "//  SIDE EFFECT: PUT runs"
+  persistNaming: "//  SIDE EFFECT: PUT naming scheme"
   emitOrderChanged: //  reorder → downstream stages stale (fanOutStale)
-  emitResolved: //  send parent: RESOLVE — stageRunner[page_order] → clean
+  emitResolved: "//  send parent: RESOLVE — stageRunner[page_order] → clean"
 
 services:
   confirmStage: 'POST /api/projects/:id/stages/page_order/confirm -> { ok }'

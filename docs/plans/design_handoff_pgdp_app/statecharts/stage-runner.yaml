@@ -152,7 +152,7 @@ actions:
     ctx.flaggedCount = ctx.flaggedPages.length
   markStale: ctx.staleReason = 'upstream_changed'
   markStaleSettings: ctx.staleReason = 'settings_changed'
-  assignError: ctx.error = { message: event.error?.message ?? event.data?.message, code: event.data?.code }
+  assignError: "ctx.error = { message: event.error?.message ?? event.data?.message, code: event.data?.code }"
   clearError: ctx.error = null
   reconcile: //  sync state + counts to backend truth (event carries new run state)
   # optimistic intents — backend confirms via STAGE_PUSH:

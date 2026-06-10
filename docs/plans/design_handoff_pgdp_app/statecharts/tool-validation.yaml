@@ -78,14 +78,14 @@ actions:
   assignRules: ctx.rules = event.data.rules; ctx.counts = event.data.counts
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  beginWaiver: ctx.waiverDraft = { ruleId: event.ruleId, note: '' }
-  patchWaiver: ctx.waiverDraft = { ...ctx.waiverDraft, note: event.note }
-  applyWaiver: ctx.rules = patchRule(ctx.rules, ctx.waiverDraft.ruleId, r => ({ ...r, waiver: ctx.waiverDraft.note })); ctx.waiverDraft = null
+  beginWaiver: "ctx.waiverDraft = { ruleId: event.ruleId, note: '' }"
+  patchWaiver: "ctx.waiverDraft = { ...ctx.waiverDraft, note: event.note }"
+  applyWaiver: "ctx.rules = patchRule(ctx.rules, ctx.waiverDraft.ruleId, r => ({ ...r, waiver: ctx.waiverDraft.note })); ctx.waiverDraft = null"
   clearWaiver: ctx.waiverDraft = null
   recount: //  recompute counts; if blockerCount === 0 raise ALL_CLEAR
-  navigateToFix: //  SIDE EFFECT: route to the stage/setting the rule points at
-  persistWaiver: //  SIDE EFFECT: POST waiver { ruleId, note }
-  emitResolved: //  send parent: RESOLVE — stageRunner[validation] → clean
+  navigateToFix: "//  SIDE EFFECT: route to the stage/setting the rule points at"
+  persistWaiver: "//  SIDE EFFECT: POST waiver { ruleId, note }"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[validation] → clean"
 
 services:
   runChecks: 'POST /api/projects/:id/stages/validation/run -> { rules, counts }'

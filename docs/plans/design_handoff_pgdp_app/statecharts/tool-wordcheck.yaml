@@ -108,7 +108,7 @@ guards:
   notRunning: ctx.totals.done === ctx.totals.total
 
 actions:
-  assignScanProgress: ctx.totals = { ...ctx.totals, done: event.done, suspects: event.suspects }
+  assignScanProgress: "ctx.totals = { ...ctx.totals, done: event.done, suspects: event.suspects }"
   assignSuspects: ctx.suspects = event.data.suspects; ctx.totals = event.data.totals
   applyFix: ctx.suspects = dropSuspect(ctx.suspects, event.suspectId)   # text patched with s.fix
   keepAsIs: ctx.suspects = dropSuspect(ctx.suspects, event.suspectId)
@@ -124,12 +124,12 @@ actions:
   assignListFilter: ctx.listFilter = event.value
   assignError: ctx.error = event.error
   settleIfClear: //  if totals.suspects === 0 → suspects region to settled (+ emitResolved)
-  navigateToPage: //  SIDE EFFECT: open page with the suspect highlighted
-  persistDecision: //  SIDE EFFECT: POST fix/keep { suspectId }
-  persistListEntry: //  SIDE EFFECT: POST book-list entry { token, list }
-  forwardCleared: //  SIDE EFFECT: release cleared pages to text_review
-  requestRescan: //  SIDE EFFECT: POST re-check (all | flagged) — clears decisions
-  emitResolved: //  send parent: RESOLVE — stageRunner[scannocheck] → clean
+  navigateToPage: "//  SIDE EFFECT: open page with the suspect highlighted"
+  persistDecision: "//  SIDE EFFECT: POST fix/keep { suspectId }"
+  persistListEntry: "//  SIDE EFFECT: POST book-list entry { token, list }"
+  forwardCleared: "//  SIDE EFFECT: release cleared pages to text_review"
+  requestRescan: "//  SIDE EFFECT: POST re-check (all | flagged) — clears decisions"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[scannocheck] → clean"
 
 services:
   acceptDictionaryFixes: 'POST /api/projects/:id/stages/scannocheck/accept-dict -> { fixedIds }'

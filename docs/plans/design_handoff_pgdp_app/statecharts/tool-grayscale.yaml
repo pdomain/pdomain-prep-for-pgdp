@@ -86,20 +86,20 @@ guards:
   notLast: ctx.cursor < ctx.pages.length - 1
 
 actions:
-  assignDetected: ctx.detected = { mode: event.data.mode, why: event.data.why }; ctx.backend = event.data.backend
+  assignDetected: "ctx.detected = { mode: event.data.mode, why: event.data.why }; ctx.backend = event.data.backend"
   mergePage: //  upsert event.page (id, mode) into ctx.pages
   assignFilter: ctx.filter = event.value
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  beginDraft: ctx.draft = ctx.draft ?? clone({ mode: pageMode(ctx), ...ctx.params })
+  beginDraft: "ctx.draft = ctx.draft ?? clone({ mode: pageMode(ctx), ...ctx.params })"
   patchDraft: ctx.draft = { ...ctx.draft, ...event.patch }
   clearDraft: ctx.draft = null
   commitDraft: ctx.params = { ...ctx.params, ...ctx.draft }; ctx.draft = null
   stepPrev: ctx.cursor -= 1
   stepNext: ctx.cursor += 1
-  requestRun: //  SIDE EFFECT: POST run stage with new params (scope per applyTo if exposed)
-  requestPageRun: //  SIDE EFFECT: POST re-convert single page
-  emitStaleDownstream: //  send parent(pipelineShell): UPSTREAM_CHANGED from stageIndex 1
+  requestRun: "//  SIDE EFFECT: POST run stage with new params (scope per applyTo if exposed)"
+  requestPageRun: "//  SIDE EFFECT: POST re-convert single page"
+  emitStaleDownstream: "//  send parent(pipelineShell): UPSTREAM_CHANGED from stageIndex 1"
 
 services:
   detectProfile: 'POST /api/projects/:id/stages/grayscale/detect -> { mode, why, backend }'

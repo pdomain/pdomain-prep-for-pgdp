@@ -116,8 +116,8 @@ actions:
   requeueFailed: ctx.queue = [ctx.failedIndex, ...ctx.queue]; ctx.failedIndex = null
   skipFailed: ctx.failedIndex = null         # leave it errored, continue
   assignStageProgress: //  roll per-stage progress into an overall meter
-  reportDone: //  SIDE EFFECT: toast "N stages re-run", notify pipelineShell
-  reportCancelled: //  SIDE EFFECT: toast / notify pipelineShell
+  reportDone: "//  SIDE EFFECT: toast \"N stages re-run\", notify pipelineShell"
+  reportCancelled: "//  SIDE EFFECT: toast / notify pipelineShell"
 
 services:
   cancelInFlight: 'POST /api/projects/:id/stages/:stageId/cancel -> ok'

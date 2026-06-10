@@ -48,14 +48,14 @@ states:
 guards: {}
 
 actions:
-  assignProgress: ctx.progress = { entries: event.entries, total: event.total, pct: event.pct }
+  assignProgress: "ctx.progress = { entries: event.entries, total: event.total, pct: event.pct }"
   assignArchive: ctx.archive = event.archive; ctx.tree = event.tree; ctx.progress = null
   patchSettings: ctx._settings = { ...ctx._settings, ...event.patch }
   assignError: ctx.error = event.error
   clearError: ctx.error = null
-  downloadArchive: //  SIDE EFFECT: download ctx.archive (+ .sha256 sidecar if enabled)
-  requestRebuild: //  SIDE EFFECT: POST rebuild archive with current settings
-  emitResolved: //  send parent: RESOLVE — stageRunner[zip] → clean
+  downloadArchive: "//  SIDE EFFECT: download ctx.archive (+ .sha256 sidecar if enabled)"
+  requestRebuild: "//  SIDE EFFECT: POST rebuild archive with current settings"
+  emitResolved: "//  send parent: RESOLVE — stageRunner[zip] → clean"
 
 services: {}   # compression runs server-side; ZIP_PROGRESS / ZIP_DONE are pushes
 
