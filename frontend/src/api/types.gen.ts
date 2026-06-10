@@ -191,7 +191,10 @@ export interface paths {
         put?: never;
         /**
          * Project Run Dirty
+         * @deprecated
          * @description Submit a project_run_dirty job.
+         *
+         *     DEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.
          */
         post: operations["project_run_dirty"];
         delete?: never;
@@ -214,6 +217,156 @@ export interface paths {
          * @description Submit a build_package job for the project.
          */
         post: operations["project_build_package"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pipeline Snapshot
+         * @description GET /projects/{id}/pipeline — single fetch to hydrate pipelineShell.
+         *
+         *     Returns PipelineSnapshot: project + page_stages_summary + project_stages
+         *     + automation. Enforces registry-version 409 guard.
+         *
+         *     api-v2-deltas.md §1.5.
+         */
+        get: operations["get_pipeline_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Stages
+         * @description Return all 8 project-scoped stage rows. Lazy-init on first access.
+         *
+         *     api-v2-deltas.md §1.2.
+         */
+        get: operations["list_project_stages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stage
+         * @description Return one project-stage row. 404 if not found.
+         *
+         *     api-v2-deltas.md §1.2.
+         */
+        get: operations["get_project_stage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Project Stage
+         * @description Submit a project-stage run. Always async (returns Job, HTTP 202).
+         *
+         *     Stages not yet implemented surface their StageNotImplemented as a clean
+         *     failed state with error_message, NOT a 500. The contract is:
+         *       - Implemented stage (source): Job accepted, stage row → running → clean|failed
+         *       - Placeholder stage: Job accepted, stage row → failed with error_message
+         *         "stage not implemented"
+         *
+         *     api-v2-deltas.md §1.2.
+         */
+        post: operations["run_project_stage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/artifact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stage Artifact
+         * @description Return artifact bytes for a clean project-scoped stage.
+         *
+         *     api-v2-deltas.md §1.4. Redirect (302) for proof_pack/build_package/zip
+         *     is not yet implemented (B4 not landed); returns 404 for those stages
+         *     until their artifacts exist on disk.
+         */
+        get: operations["get_project_stage_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Project Stage Events
+         * @description SSE — project-level event channel.
+         *
+         *     On connect: emits a `project-snapshot` frame with all 8 project-stage rows.
+         *     Subsequent frames are incremental events published to `project:{project_id}`:
+         *       - project-stage-status  (stage status transition)
+         *       - project-stage-progress  (long-running stage progress ticks)
+         *       - page-reorder  (page order mutation)
+         *       - validation-updated  (validation stage run completes)
+         *
+         *     Spec: docs/specs/api-v2-deltas.md §2.
+         */
+        get: operations["stream_project_stage_events"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -709,7 +862,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Stage Fields */
+        /**
+         * Get Stage Fields
+         * @deprecated
+         */
         get: operations["get_stage_fields"];
         put?: never;
         post?: never;
@@ -2030,6 +2186,24 @@ export interface components {
             /** Fields */
             fields: string[];
         };
+        /**
+         * StageRunRequest
+         * @description Request body for POST .../stages/{stage_id}/run (page and project).
+         *
+         *     api-v2-deltas.md §3.
+         */
+        StageRunRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+            /**
+             * Async
+             * @default false
+             */
+            async: boolean;
+        };
         /** StepState */
         StepState: {
             /** @default pending */
@@ -2694,6 +2868,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobSubmitResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pipeline_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_stages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_project_stage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StageRunRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_stage_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stage artifact bytes; Content-Type per stage. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found, stage not clean, or artifact missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown stage_id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    stream_project_stage_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
