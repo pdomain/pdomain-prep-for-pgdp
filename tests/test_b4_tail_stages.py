@@ -635,3 +635,362 @@ class TestArchiveStep:
         assert isinstance(result, bytes)
         parsed = json.loads(result.decode())
         assert "pipeline_complete" in parsed
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 8a. build_package — deterministic timestamp (review finding #1)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+class TestBuildPackageDeterminism:
+    """build_submission_zip must be byte-deterministic when given a fixed built_at."""
+
+    def test_same_built_at_produces_identical_archive(self, tmp_path: Path) -> None:
+        """Two runs with same input + same built_at → identical bytes + sha256."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001", "0002"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        fixed_ts = "2026-06-10T00:00:00+00:00"
+        zip1 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            book_name="Test Book",
+            built_at=fixed_ts,
+        )
+        zip2 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            book_name="Test Book",
+            built_at=fixed_ts,
+        )
+
+        assert zip1 == zip2, "Archives must be byte-identical for same input + built_at"
+        assert hashlib.sha256(zip1).hexdigest() == hashlib.sha256(zip2).hexdigest()
+
+    def test_different_built_at_produces_different_archive(self, tmp_path: Path) -> None:
+        """Different built_at → different archive bytes."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        zip1 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+        zip2 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            built_at="2026-06-11T00:00:00+00:00",
+        )
+
+        assert zip1 != zip2, "Different built_at must produce different archive"
+
+    def test_built_at_stored_in_manifest(self, tmp_path: Path) -> None:
+        """built_at in pgdp.json matches the supplied timestamp."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        fixed_ts = "2026-06-10T12:34:56+00:00"
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            built_at=fixed_ts,
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            manifest = json.loads(zf.read("pgdp.json").decode())
+        assert manifest["built_at"] == fixed_ts
+
+    def test_build_zip_chain_determinism(self, tmp_path: Path) -> None:
+        """End-to-end: build→zip twice with same timestamp → same sha256."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+        from pdomain_prep_for_pgdp.core.pipeline.steps.zip_stage import make_deterministic_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001", "0002"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        fixed_ts = "2026-06-10T00:00:00+00:00"
+
+        # Run 1
+        zip1 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            book_name="Determinism Test",
+            built_at=fixed_ts,
+        )
+        manifest1 = make_deterministic_zip(
+            zip_bytes=zip1,
+            project_id=project_id,
+            data_root=tmp_path,
+            recorded_at=fixed_ts,
+        )
+
+        # Run 2 — identical inputs + same timestamp
+        zip2 = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            book_name="Determinism Test",
+            built_at=fixed_ts,
+        )
+        manifest2 = make_deterministic_zip(
+            zip_bytes=zip2,
+            project_id=project_id,
+            data_root=tmp_path,
+            recorded_at=fixed_ts,
+        )
+
+        assert zip1 == zip2, "ZIP archive must be byte-identical"
+        assert manifest1["sha256"] == manifest2["sha256"], "sha256 must be identical"
+        assert manifest1 == manifest2, "Full manifest must be identical"
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# 8b. build_package — PGDP prefix layout (review finding #2)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _make_illustration_crops(
+    tmp_path: Path,
+    project_id: str,
+    page_id: str,
+    crops: list[tuple[str, bytes]],
+) -> None:
+    """Write synthetic illustration crop files under stages/extract_illustrations/."""
+    ill_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "extract_illustrations"
+    ill_dir.mkdir(parents=True, exist_ok=True)
+    for filename, data in crops:
+        (ill_dir / filename).write_bytes(data)
+
+
+# Minimal 1x1 JPEG bytes (smallest valid JPEG: SOI + APP0 + EOI).
+_MINIMAL_JPEG = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+
+# Minimal 1x1 PNG bytes (reused from _make_pages_data).
+_MINIMAL_PNG = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02"
+    b"\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+    b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+class TestBuildPackagePrefixLayout:
+    """build_submission_zip must use prefix-based filenames (PGDP requirement)."""
+
+    def test_prefix_names_used_for_images_and_text(self, tmp_path: Path) -> None:
+        """Files named <prefix>.png / <prefix>.txt, not <page_id>.*."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001", "0002"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        prefixes = {"0001": "f001", "0002": "p001"}
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            book_name="Prefix Test",
+            page_prefixes=prefixes,
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            names = zf.namelist()
+
+        assert "f001.png" in names, "Expected f001.png in zip"
+        assert "p001.png" in names, "Expected p001.png in zip"
+        assert "f001.txt" in names, "Expected f001.txt in zip"
+        assert "p001.txt" in names, "Expected p001.txt in zip"
+        # Must NOT use bare page_id when prefixes are supplied
+        assert "0001.png" not in names, "Bare page_id should not appear when prefixes supplied"
+        assert "0002.png" not in names
+
+    def test_page_id_fallback_when_no_prefixes(self, tmp_path: Path) -> None:
+        """Without page_prefixes, files are named by page_id (legacy/test path)."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            names = zf.namelist()
+
+        assert "0001.png" in names
+        assert "0001.txt" in names
+
+    def test_prefix_recorded_in_pgdp_json(self, tmp_path: Path) -> None:
+        """pgdp.json manifest records the prefix for each page."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            page_prefixes={"0001": "p045"},
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            manifest = json.loads(zf.read("pgdp.json").decode())
+
+        assert manifest["pages"][0]["prefix"] == "p045"
+
+    def test_illustration_crops_land_in_images_dir(self, tmp_path: Path) -> None:
+        """Illustration crops appear under images/<prefix>_NN.ext in the zip."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_id = "0001"
+        _make_pages_data(tmp_path, project_id, [page_id], text_review_clean=True)
+        # Create synthetic crop files in extract_illustrations stage dir
+        _make_illustration_crops(
+            tmp_path,
+            project_id,
+            page_id,
+            [("crop_01.jpg", _MINIMAL_JPEG), ("crop_02.jpg", _MINIMAL_JPEG)],
+        )
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=[page_id],
+            data_root=tmp_path,
+            page_prefixes={page_id: "p001"},
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            names = zf.namelist()
+
+        # Two crops → images/p001_01.jpg + images/p001_02.jpg
+        assert "images/p001_01.jpg" in names, f"Expected images/p001_01.jpg; got {names}"
+        assert "images/p001_02.jpg" in names
+
+    def test_no_images_dir_when_no_crops(self, tmp_path: Path) -> None:
+        """When no illustration crops exist, images/ directory is absent."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_ids = ["0001"]
+        _make_pages_data(tmp_path, project_id, page_ids, text_review_clean=True)
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=tmp_path,
+            page_prefixes={"0001": "p001"},
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            names = zf.namelist()
+
+        image_entries = [n for n in names if n.startswith("images/")]
+        assert image_entries == [], f"Expected no images/ entries; got {image_entries}"
+
+    def test_illustration_count_in_manifest(self, tmp_path: Path) -> None:
+        """illustration_count in pgdp.json reflects actual crops included."""
+        import io
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_id = "0001"
+        _make_pages_data(tmp_path, project_id, [page_id], text_review_clean=True)
+        _make_illustration_crops(
+            tmp_path,
+            project_id,
+            page_id,
+            [("crop_01.png", _MINIMAL_PNG)],
+        )
+
+        result = build_submission_zip(
+            project_id=project_id,
+            page_ids=[page_id],
+            data_root=tmp_path,
+            page_prefixes={page_id: "p001"},
+            built_at="2026-06-10T00:00:00+00:00",
+        )
+
+        with zipfile.ZipFile(io.BytesIO(result)) as zf:
+            manifest = json.loads(zf.read("pgdp.json").decode())
+
+        assert manifest["illustration_count"] == 1
+        assert manifest["pages"][0]["illustration_count"] == 1
+
+    def test_prefix_layout_determinism_with_illustrations(self, tmp_path: Path) -> None:
+        """Prefix layout + illustrations: two runs → byte-identical archive."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.build_package import build_submission_zip
+
+        project_id = str(uuid.uuid4())
+        page_id = "0001"
+        _make_pages_data(tmp_path, project_id, [page_id], text_review_clean=True)
+        _make_illustration_crops(
+            tmp_path,
+            project_id,
+            page_id,
+            [("crop_01.jpg", _MINIMAL_JPEG)],
+        )
+
+        fixed_ts = "2026-06-10T00:00:00+00:00"
+        prefixes = {page_id: "p001"}
+
+        zip1 = build_submission_zip(
+            project_id=project_id,
+            page_ids=[page_id],
+            data_root=tmp_path,
+            page_prefixes=prefixes,
+            built_at=fixed_ts,
+        )
+        zip2 = build_submission_zip(
+            project_id=project_id,
+            page_ids=[page_id],
+            data_root=tmp_path,
+            page_prefixes=prefixes,
+            built_at=fixed_ts,
+        )
+
+        assert zip1 == zip2
+        assert hashlib.sha256(zip1).hexdigest() == hashlib.sha256(zip2).hexdigest()

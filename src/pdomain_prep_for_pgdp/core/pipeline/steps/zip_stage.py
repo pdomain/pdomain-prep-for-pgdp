@@ -48,6 +48,7 @@ def make_deterministic_zip(
     zip_bytes: bytes,
     project_id: str,
     data_root: Path,
+    recorded_at: str | None = None,
 ) -> dict[str, Any]:
     """Compute sha256 and metadata for a submission zip.
 
@@ -55,6 +56,8 @@ def make_deterministic_zip(
         zip_bytes: The complete zip file bytes from build_package.
         project_id: Project identifier (for manifest).
         data_root: Data root (accepted for API consistency; not used for reading).
+        recorded_at: ISO-format UTC timestamp. Pass a fixed value for a
+            deterministic manifest record. When None, uses datetime.now(UTC).
 
     Returns a dict with:
         sha256: str  — hex sha256 of zip_bytes
@@ -84,7 +87,7 @@ def make_deterministic_zip(
         "sha256": sha256,
         "size_bytes": size_bytes,
         "file_count": file_count,
-        "recorded_at": datetime.now(UTC).isoformat(),
+        "recorded_at": recorded_at if recorded_at is not None else datetime.now(UTC).isoformat(),
     }
 
 
@@ -97,6 +100,7 @@ def zip_v2_cpu(
     zip_bytes: bytes,
     project_id: str,
     data_root: Path,
+    recorded_at: str | None = None,
     cfg: Any = None,
 ) -> bytes:
     """v2 zip stage callable.
@@ -104,11 +108,20 @@ def zip_v2_cpu(
     Takes zip_bytes (from build_package) + project_id + data_root.
     Returns JSON bytes of the zip manifest (sha256, size_bytes, file_count).
 
+    Args:
+        recorded_at: ISO-format UTC timestamp. Pass the stage-run event's
+            timestamp for a fully deterministic manifest record.
+
     LongJobRunner seam: B5 route layer wraps this in an async Job for large zips.
     Gate: caller must ensure build_package stage is clean before calling.
     """
     import json
 
     _ = cfg
-    manifest = make_deterministic_zip(zip_bytes=zip_bytes, project_id=project_id, data_root=data_root)
+    manifest = make_deterministic_zip(
+        zip_bytes=zip_bytes,
+        project_id=project_id,
+        data_root=data_root,
+        recorded_at=recorded_at,
+    )
     return json.dumps(manifest).encode("utf-8")

@@ -22,8 +22,25 @@ wraps build_submission_zip in a LongJobRunner.submit() call for async dispatch.
 The seam is the callable signature (project_id + page_ids + data_root + book_name
 → bytes).
 
+Determinism contract:
+  build_submission_zip accepts an explicit ``built_at`` timestamp parameter.
+  Passing the same ``built_at`` (e.g. the stage-run event's timestamp) over
+  identical input artifacts produces byte-identical ZIP archives and identical
+  sha256 hashes. This satisfies the D5 event-sourced reindex-reproducibility
+  requirement: the event log carries the timestamp, so re-running from the
+  same event reproduces the same archive.
+
+PGDP layout contract:
+  Page files are named <prefix>.png / <prefix>.txt where ``prefix`` comes
+  from the ``page_prefixes`` mapping (e.g. "f003", "p045"). When
+  ``page_prefixes`` is absent (legacy/test path), the bare page_id is used.
+  Illustration crops stored under stages/extract_illustrations/ are included
+  in an ``images/`` directory following the legacy naming convention
+  ``<prefix>_<NN:02d>.<ext>``.
+
 This module provides:
-  1. build_submission_zip(project_id, page_ids, data_root, book_name) -> bytes
+  1. build_submission_zip(project_id, page_ids, data_root, book_name,
+                          *, page_prefixes, built_at) -> bytes
      Pure function: reads filesystem artifacts, builds and returns zip bytes.
   2. build_package_v2_cpu(...) -> bytes
      Stage callable registered in V2_STAGE_IMPL.
@@ -42,6 +59,42 @@ if TYPE_CHECKING:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# Internal helpers
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _collect_illustration_crops(
+    page_base: Path,
+    prefix: str,
+) -> list[tuple[str, bytes]]:
+    """Scan stages/extract_illustrations/ for crop image files.
+
+    Returns a list of (zip_name, data) pairs for inclusion under images/.
+
+    Crop files are any non-JSON files in the extract_illustrations stage
+    directory. They are named ``<prefix>_<NN:02d>.<ext>`` in the zip
+    (matching the legacy packaging.py convention: ``images/<prefix>_<NN:02d>.<ext>``).
+
+    If the extract_illustrations stage directory does not exist (stage not yet
+    run) or contains no image files, returns an empty list.
+    """
+    ill_dir = page_base / "extract_illustrations"
+    if not ill_dir.is_dir():
+        return []
+
+    crops: list[tuple[str, bytes]] = []
+    # Collect image files sorted for deterministic ordering
+    image_files = sorted(
+        f for f in ill_dir.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg"}
+    )
+    for idx, crop_path in enumerate(image_files, start=1):
+        ext = crop_path.suffix.lstrip(".")
+        zip_name = f"images/{prefix}_{idx:02d}.{ext}"
+        crops.append((zip_name, crop_path.read_bytes()))
+    return crops
+
+
+# ────────────────────────────────────────────────────────────────────────────
 # Core zip construction (synchronous, filesystem-based)
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -51,48 +104,78 @@ def build_submission_zip(
     page_ids: list[str],
     data_root: Path,
     book_name: str = "",
+    *,
+    page_prefixes: dict[str, str] | None = None,
+    built_at: str | None = None,
 ) -> bytes:
     """Build the PGDP submission zip from on-disk artifacts.
 
-    Reads:
-      - canvas_map/output.png (proofing image) per page
-      - text_review/output.txt (reviewed text) per page
+    Reads per page:
+      - canvas_map/output.png     (proofing image)
+      - text_review/output.txt    (reviewed text)
+      - extract_illustrations/    (illustration crops, if any)
 
     Writes into ZIP:
-      - <page_id>.png  (proofing image)
-      - <page_id>.txt  (reviewed text)
+      - <prefix>.png   (proofing image, named via page_prefixes or page_id)
+      - <prefix>.txt   (reviewed text, named via page_prefixes or page_id)
+      - images/<prefix>_<NN>.ext  (illustration crops, when present)
       - pgdp.json      (manifest)
+
+    Args:
+        project_id: Project identifier.
+        page_ids: Ordered list of page IDs to include.
+        data_root: Root of the on-disk data tree.
+        book_name: Human-readable book name for the manifest.
+        page_prefixes: Mapping of page_id → PGDP prefix (e.g. "p045").
+            When provided, files are named by prefix (PGDP requirement).
+            When None, bare page_id is used (legacy/test path).
+        built_at: ISO-format UTC timestamp for the pgdp.json manifest.
+            Pass a fixed value (e.g. the stage-run event timestamp) to get
+            a deterministic archive. When None, uses datetime.now(UTC).
 
     Returns zip bytes.
 
-    PGDP submission layout: each page contributes one .png and one .txt.
-    The manifest (pgdp.json) records book_name, project_id, built_at,
-    and per-page metadata.
+    Determinism: same page artifacts + same page_prefixes + same built_at
+    → byte-identical archive + identical sha256. The caller is responsible
+    for supplying a stable ``built_at`` when determinism is required.
     """
+    if built_at is None:
+        built_at = datetime.now(UTC).isoformat()
+
     buf = io.BytesIO()
     page_count = 0
+    illustration_count = 0
     page_manifest: list[dict[str, Any]] = []
 
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for page_id in page_ids:
             page_base = data_root / "projects" / project_id / "pages" / page_id / "stages"
+            prefix = page_prefixes[page_id] if page_prefixes and page_id in page_prefixes else page_id
 
             # Proofing image
             img_path = page_base / "canvas_map" / "output.png"
             if img_path.exists():
-                zf.writestr(f"{page_id}.png", img_path.read_bytes())
+                zf.writestr(f"{prefix}.png", img_path.read_bytes())
                 page_count += 1
 
             # Reviewed text
             txt_path = page_base / "text_review" / "output.txt"
             if txt_path.exists():
-                zf.writestr(f"{page_id}.txt", txt_path.read_bytes())
+                zf.writestr(f"{prefix}.txt", txt_path.read_bytes())
+
+            # Illustration crops under images/
+            crops = _collect_illustration_crops(page_base, prefix)
+            for zip_name, data in crops:
+                zf.writestr(zip_name, data)
+                illustration_count += 1
 
             page_manifest.append(
                 {
                     "page_id": page_id,
+                    "prefix": prefix,
                     "has_image": img_path.exists(),
                     "has_text": txt_path.exists(),
+                    "illustration_count": len(crops),
                 }
             )
 
@@ -100,8 +183,9 @@ def build_submission_zip(
         manifest: dict[str, Any] = {
             "book_name": book_name,
             "project_id": project_id,
-            "built_at": datetime.now(UTC).isoformat(),
+            "built_at": built_at,
             "page_count": page_count,
+            "illustration_count": illustration_count,
             "pages": page_manifest,
         }
         zf.writestr("pgdp.json", json.dumps(manifest, indent=2))
@@ -119,12 +203,20 @@ def build_package_v2_cpu(
     page_ids: list[str],
     data_root: Path,
     book_name: str = "",
+    page_prefixes: dict[str, str] | None = None,
+    built_at: str | None = None,
     cfg: Any = None,
 ) -> bytes:
     """v2 build_package stage callable.
 
     Takes project_id + ordered page_ids + data_root + book_name.
     Returns zip bytes of the PGDP submission package.
+
+    Args:
+        page_prefixes: Mapping of page_id → PGDP prefix (e.g. "p045").
+            Pass this for correct PGDP layout. When None, page_id is used.
+        built_at: ISO-format UTC timestamp for deterministic builds.
+            Pass the stage-run event's timestamp for reproducibility.
 
     LongJobRunner seam: B5 route layer wraps this in an async Job.
     Gate: caller must ensure proof_pack stage is clean before calling.
@@ -135,4 +227,6 @@ def build_package_v2_cpu(
         page_ids=page_ids,
         data_root=data_root,
         book_name=book_name,
+        page_prefixes=page_prefixes,
+        built_at=built_at,
     )
