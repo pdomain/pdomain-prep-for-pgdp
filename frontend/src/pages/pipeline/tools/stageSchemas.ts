@@ -303,6 +303,86 @@ const POST_TRANSFORM_CROP_SCHEMA: StageSchema = {
   confirmLabel: "Confirm post-transform crop",
 };
 
+const CANVAS_MAP_SCHEMA: StageSchema = {
+  stageId: "canvas_map",
+  label: "Canvas map",
+  description:
+    "Places every page on a common canvas using the body-page aspect ratio. " +
+    "Flags oversize pages, split children without inner margins, and sidenote " +
+    "pages whose outer margins need widening to stay symmetric.",
+  settingsLabel: "canvas_map",
+  flagKinds: [
+    { key: "oversize", label: "Oversize", tone: "var(--mismatch)" },
+    { key: "marginTight", label: "Margin tight", tone: "var(--fuzzy)" },
+    { key: "sidenote", label: "Sidenote", tone: "var(--fuzzy)" },
+    { key: "splitChild", label: "Split child", tone: "var(--ocr)" },
+    {
+      key: "facingMismatch",
+      label: "Facing mismatch",
+      tone: "var(--mismatch)",
+    },
+  ],
+  controls: [
+    {
+      key: "targetCanvas",
+      label: "Target canvas",
+      kind: "select",
+      options: ["body", "a4", "letter", "custom"],
+      defaultValue: "body",
+      description: "What sets the common canvas dimensions.",
+    },
+    {
+      key: "marginTop",
+      label: "Top margin (mm)",
+      kind: "slider",
+      range: [0, 40, 1],
+      defaultValue: 16,
+      description: "Top margin applied to all pages on the canvas.",
+    },
+    {
+      key: "marginOuter",
+      label: "Outer margin (mm)",
+      kind: "slider",
+      range: [0, 40, 1],
+      defaultValue: 20,
+      description: "Outer margin (left on verso, right on recto).",
+    },
+    {
+      key: "marginInner",
+      label: "Inner margin (mm)",
+      kind: "slider",
+      range: [0, 40, 1],
+      defaultValue: 14,
+      description: "Inner margin (gutter side). Mirrors on facing pages.",
+    },
+    {
+      key: "marginBottom",
+      label: "Bottom margin (mm)",
+      kind: "slider",
+      range: [0, 40, 1],
+      defaultValue: 18,
+      description: "Bottom margin applied to all pages on the canvas.",
+    },
+    {
+      key: "mirrorFacingMargins",
+      label: "Mirror facing margins",
+      kind: "toggle",
+      defaultValue: true,
+      description:
+        "Swap outer/inner between verso and recto so spreads read symmetric.",
+    },
+    {
+      key: "fitOutliersWithin",
+      label: "Fit outliers within canvas",
+      kind: "toggle",
+      defaultValue: true,
+      description:
+        "Scale plates / foldouts to fit rather than letting them set the size.",
+    },
+  ],
+  confirmLabel: "Confirm canvas map",
+};
+
 // ---------------------------------------------------------------------------
 // Exported lookup map
 // ---------------------------------------------------------------------------
@@ -313,6 +393,7 @@ export const STAGE_SCHEMAS: Readonly<Record<string, StageSchema>> = {
   denoise: DENOISE_SCHEMA,
   dewarp: DEWARP_SCHEMA,
   post_transform_crop: POST_TRANSFORM_CROP_SCHEMA,
+  canvas_map: CANVAS_MAP_SCHEMA,
 };
 
 /** Retrieve the schema for a stage, or null if not registered. */
