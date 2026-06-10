@@ -182,16 +182,22 @@ def test_run_project_stage_202_job_shape(tmp_path):
     assert "type" in body
 
 
-def test_run_project_stage_placeholder_returns_error_status(tmp_path):
-    """POST /run on a placeholder stage sets job status=error and stage row failed.
+def test_run_project_stage_placeholder_returns_error_status(tmp_path, monkeypatch):
+    """POST /run on an unimplemented stage sets job status=error, stage row failed.
 
-    Uses 'validation' which is a known placeholder (StageNotImplemented).
-    'source' is the only implemented project stage as of B5.
+    All 24 stages are implemented as of B4, so this simulates a placeholder by
+    monkeypatching one stage's impl to raise StageNotImplemented — the route
+    must surface a clean error state, never a 500.
     """
+    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
+
+    def _placeholder(*args: object, **kwargs: object) -> bytes:
+        raise stage_registry.StageNotImplemented("validation: simulated placeholder")
+
+    monkeypatch.setitem(stage_registry.V2_STAGE_IMPL["validation"], "cpu", _placeholder)
     settings = _settings(tmp_path)
     _seed_project(settings, "proj1")
     app = build_app(settings)
-    # 'validation' is a known placeholder stage (raises StageNotImplemented).
     stage_id = "validation"
     with TestClient(app) as client:
         r = client.post(f"/api/data/projects/proj1/project-stages/{stage_id}/run")
