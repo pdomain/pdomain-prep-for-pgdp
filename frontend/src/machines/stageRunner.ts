@@ -288,9 +288,16 @@ export const stageRunnerMachine = setup({
     /**
      * YAML: `reconcile: // sync state + counts to backend truth`
      * Side effect slot — noop in tests; real impl at I1 navigates machine state.
+     *
+     * TODO (I1): implement reconcile — compare STAGE_PUSH payload against current
+     * machine state; if the server's status differs (e.g. server says "clean" but
+     * machine is still "running"), navigate the machine to the authoritative state.
+     * Push must WIN over optimistic local state. Add conflicting-push test:
+     *   "STAGE_PUSH(status=clean) while machine is running → transitions to clean"
+     * See DIVERGENCES.md §reconcile-todo.
      */
     reconcile: () => {
-      // At I1: compare STAGE_PUSH payload against current state; navigate.
+      // TODO (I1): implement reconcile + add conflicting-push test — push must win.
     },
 
     /**

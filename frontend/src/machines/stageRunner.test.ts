@@ -363,6 +363,11 @@ describe("stageRunner — stale behavior", () => {
 // ---------------------------------------------------------------------------
 // Server-authoritative reconciliation (STAGE_PUSH)
 // ---------------------------------------------------------------------------
+// TODO (I1): implement reconcile + add conflicting-push test — push must win.
+// Example: "STAGE_PUSH(status=clean) while machine is running → transitions
+// to clean" — currently reconcile is a no-op so this case is NOT asserted.
+// See DIVERGENCES.md §reconcile-todo and stageRunner.ts `reconcile` action.
+// ---------------------------------------------------------------------------
 
 describe("stageRunner — server reconciliation (STAGE_PUSH)", () => {
   it("STAGE_PUSH calls reconcile action in notrun state", () => {

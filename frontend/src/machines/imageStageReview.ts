@@ -671,6 +671,19 @@ export const imageStageReviewMachine = setup({
         },
 
         selecting: {
+          // `always` transition: after BULK_ACCEPT clears the last flagged pages,
+          // auto-settle. (settleIfClear DIVERGENCE #5 — applies to selecting too,
+          // not only to browsing; see DIVERGENCES.md #5 update.)
+          always: [
+            {
+              target: "#imageStageReview.settled",
+              guard: ({ context }) =>
+                context.totals !== null &&
+                context.totals.flagged === 0 &&
+                context.totals.running === 0 &&
+                context.rows.length > 0,
+            },
+          ],
           on: {
             SELECT_PAGE: { actions: ["toggleSelection"] },
             BULK_ACCEPT: { actions: ["acceptSelected", "persistAccepts"] },

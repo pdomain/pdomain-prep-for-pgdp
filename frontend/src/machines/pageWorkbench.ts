@@ -101,7 +101,10 @@ export interface PageWorkbenchContext {
   draft: Record<string, unknown> | null;
   pageStats: Record<string, unknown> | null;
   flagNote: string | null;
-  compare: boolean;
+  // NOTE: `compare` is intentionally absent — the viewer parallel region's
+  // sub-states (single | comparing) own that toggle. The YAML does not declare
+  // `compare` in context; it is a machine-state fact, not a context field.
+  // See DIVERGENCES.md §compare-context-omission.
   services: PageWorkbenchServices;
   error: { message: string } | null;
   /** Transient: true while params region is in redetecting. Guards APPLY. */
@@ -333,7 +336,6 @@ export const pageWorkbenchMachine = setup({
     draft: null,
     pageStats: null,
     flagNote: null,
-    compare: false,
     services: input.services,
     error: null,
     _redetecting: false,

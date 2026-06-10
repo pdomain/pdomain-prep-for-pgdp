@@ -535,3 +535,45 @@ describe("imageStageReview — apply-to scope", () => {
     actor.stop();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 9 — BULK_ACCEPT settle gap (DIVERGENCE #5 fix)
+// ---------------------------------------------------------------------------
+
+describe("imageStageReview — BULK_ACCEPT settle from selecting", () => {
+  /**
+   * BEHAVIORAL BUG (pre-fix): BULK_ACCEPT from selecting only ran acceptSelected
+   * and stayed in selecting — no settle guard existed there. The always guard was
+   * only on browsing, so if the last flagged pages were bulk-accepted while in
+   * selecting, the machine stranded in selecting instead of reaching settled.
+   *
+   * Fix: selecting now also has an always guard that mirrors browsing.
+   * DIVERGENCE #5 update: the settle guard must cover BOTH browsing and selecting.
+   */
+  it("BULK_ACCEPT clearing the last flagged pages from selecting reaches settled", async () => {
+    // Load with exactly the two flagged pages (p002, p004) in view
+    const actor = await startAndLoad();
+    // Enter selecting
+    actor.send({ type: "SELECT_PAGE", idx: "p002" });
+    expect(actor.getSnapshot().value).toMatchObject({ review: "selecting" });
+    // Also select the other flagged page
+    actor.send({ type: "SELECT_PAGE", idx: "p004" });
+    // Accept both — this marks p002 and p004 as "reviewed", leaving totals.flagged === 0
+    actor.send({ type: "BULK_ACCEPT" });
+    // Machine must auto-settle; stranding in selecting is the bug
+    await vi.waitFor(() => actor.getSnapshot().value === "settled");
+    expect(actor.getSnapshot().value).toBe("settled");
+    actor.stop();
+  });
+
+  it("BULK_ACCEPT with remaining flagged pages stays in selecting", async () => {
+    // Only accept one of the two flagged pages — should stay in selecting/browsing, not settle
+    const actor = await startAndLoad();
+    actor.send({ type: "SELECT_PAGE", idx: "p002" });
+    actor.send({ type: "BULK_ACCEPT" });
+    // p004 is still flagged — must NOT settle
+    const snap = actor.getSnapshot();
+    expect(snap.value).not.toBe("settled");
+    actor.stop();
+  });
+});
