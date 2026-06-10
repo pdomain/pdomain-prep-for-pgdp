@@ -137,6 +137,13 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "activity-panel", // Recent activity tab panel
   "attributes-panel", // Attributes tab panel
   "manage-panel", // Manage tab panel
+  "delete-confirm-dialog", // Delete confirm (or danger) dialog
+  "delete-acknowledge", // Acknowledge checkbox in danger-confirm dialog
+  "delete-confirm-btn", // Confirm button in delete dialog
+  "delete-cancel-btn", // Cancel button in delete dialog
+  "create-project-dialog", // New project creation dialog
+  "create-project-name", // Book name input in create dialog
+  "create-project-submit-btn", // Submit button in create dialog
   "post-import-page", // PostImportPage root section
   "redirected-pane", // Pa (redirected) placement pane
   "anchored-pane", // Pb (anchored) placement pane

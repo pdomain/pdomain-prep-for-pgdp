@@ -59,6 +59,7 @@ import { THEME_STORAGE_KEY } from "./stores/uiPrefs";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
+import { PostImportPage } from "./pages/projects/PostImportPage";
 import { ProjectConfigurePage } from "./pages/ProjectConfigurePage";
 import { PageWorkbenchPage } from "./pages/PageWorkbenchPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -351,6 +352,10 @@ export default function App() {
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/" element={<ProjectsPage />} />
                     <Route path="/jobs" element={<JobsPage />} />
+                    <Route
+                      path="/projects/:projectId/import"
+                      element={<PostImportPage />}
+                    />
                     <Route
                       path="/projects/:projectId"
                       element={<ProjectConfigurePage />}
