@@ -534,8 +534,9 @@
           "projects"
         ],
         "summary": "Project Run Dirty",
-        "description": "Submit a project_run_dirty job.",
+        "description": "Submit a project_run_dirty job.\n\nDEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.",
         "operationId": "project_run_dirty",
+        "deprecated": true,
         "security": [
           {
             "HTTPBearer": []
@@ -906,6 +907,52 @@
           },
           "422": {
             "description": "Unknown stage_id."
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/events": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Stream Project Stage Events",
+        "description": "SSE \u2014 project-level event channel.\n\nOn connect: emits a `project-snapshot` frame with all 8 project-stage rows.\nSubsequent frames are incremental events published to `project:{project_id}`:\n  - project-stage-status  (stage status transition)\n  - project-stage-progress  (long-running stage progress ticks)\n  - page-reorder  (page order mutation)\n  - validation-updated  (validation stage run completes)\n\nSpec: docs/specs/api-v2-deltas.md \u00a72.",
+        "operationId": "stream_project_stage_events",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -2396,6 +2443,7 @@
         ],
         "summary": "Get Stage Fields",
         "operationId": "get_stage_fields",
+        "deprecated": true,
         "parameters": [
           {
             "name": "stage_id",

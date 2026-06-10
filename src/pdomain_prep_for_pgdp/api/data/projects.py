@@ -407,6 +407,7 @@ class JobSubmitResponse(BaseModel):
     response_model=JobSubmitResponse,
     status_code=202,
     operation_id="project_run_dirty",
+    deprecated=True,  # api-v2-deltas.md §4 — replaced by pipelineShell.RUN_ALL_STALE + per-stage routes; removal: I1
 )
 async def project_run_dirty(
     project_id: str,
@@ -415,7 +416,10 @@ async def project_run_dirty(
     settings: SettingsDep,
     stage_filter: str | None = None,
 ) -> JobSubmitResponse:
-    """Submit a project_run_dirty job."""
+    """Submit a project_run_dirty job.
+
+    DEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.
+    """
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")

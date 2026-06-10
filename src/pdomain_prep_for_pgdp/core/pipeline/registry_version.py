@@ -38,10 +38,6 @@ class RegistryVersionMismatchError(Exception):
         }
 
 
-# Compat alias — B5 removes this once route handlers migrate.
-RegistryVersionMismatch = RegistryVersionMismatchError
-
-
 def check_registry_version(project: Project) -> None:
     """Raise RegistryVersionMismatchError if the project is on an old registry version.
 

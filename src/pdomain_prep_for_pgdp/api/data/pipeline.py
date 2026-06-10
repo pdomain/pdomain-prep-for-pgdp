@@ -1,4 +1,9 @@
-"""/api/data/pipeline/* — static pipeline metadata (field-to-stage map)."""
+"""/api/data/pipeline/* — static pipeline metadata (field-to-stage map).
+
+DEPRECATED routes in this module (api-v2-deltas.md §4):
+  GET /pipeline/stages/{stage_id}/fields  — replaced by GET /projects/{id}/pipeline
+    (PipelineSnapshot) or an explicit v2 stage-fields route; removal in I1.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +25,7 @@ class StageFieldsResponse(BaseModel):
     "/pipeline/stages/{stage_id}/fields",
     response_model=StageFieldsResponse,
     operation_id="get_stage_fields",
+    deprecated=True,  # api-v2-deltas.md §4 — replaced by GET /projects/{id}/pipeline; removal: I1
 )
 async def get_stage_fields(stage_id: str) -> StageFieldsResponse:
     if stage_id not in PAGE_STAGE_IDS:

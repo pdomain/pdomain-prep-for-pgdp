@@ -17,13 +17,13 @@ if TYPE_CHECKING:
 
 
 def test_registry_version_mismatch_error_shape() -> None:
-    """RegistryVersionMismatch carries the correct structured 409 body shape."""
+    """RegistryVersionMismatchError carries the correct structured 409 body shape."""
     from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
         REGISTRY_VERSION,
-        RegistryVersionMismatch,
+        RegistryVersionMismatchError,
     )
 
-    err = RegistryVersionMismatch(project_version=1)
+    err = RegistryVersionMismatchError(project_version=1)
     body = err.as_dict()
     assert body == {
         "error": "registry_version_mismatch",
@@ -72,7 +72,7 @@ def test_new_project_row_stamped_registry_version_2(tmp_path: Path) -> None:
 
 
 def test_v1_project_access_raises_registry_version_mismatch(tmp_path: Path) -> None:
-    """Reading a v1 project raises RegistryVersionMismatch (structured 409 guard)."""
+    """Reading a v1 project raises RegistryVersionMismatchError (structured 409 guard)."""
     import asyncio
     from datetime import UTC, datetime
 
@@ -84,7 +84,7 @@ def test_v1_project_access_raises_registry_version_mismatch(tmp_path: Path) -> N
         ProjectStatus,
     )
     from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
-        RegistryVersionMismatch,
+        RegistryVersionMismatchError,
         check_registry_version,
     )
 
@@ -111,7 +111,7 @@ def test_v1_project_access_raises_registry_version_mismatch(tmp_path: Path) -> N
         assert loaded is not None
 
         # The guard must raise for v1 projects
-        with pytest.raises(RegistryVersionMismatch) as exc_info:
+        with pytest.raises(RegistryVersionMismatchError) as exc_info:
             check_registry_version(loaded)
         assert exc_info.value.as_dict()["project_version"] == 1
 
