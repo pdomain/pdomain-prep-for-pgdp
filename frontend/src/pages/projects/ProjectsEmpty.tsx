@@ -61,27 +61,6 @@ export function ProjectsEmpty({ onNewProject }: { onNewProject: () => void }) {
           >
             Create new project
           </Button>
-          <Button variant="outline" data-testid="empty-paste-url-btn">
-            Paste source URL
-          </Button>
-        </div>
-
-        <div className="flex w-full items-center justify-center gap-4 border-t border-border-1 pt-5 text-xs text-ink-3">
-          <a
-            href="#import"
-            className="hover:text-ink-1"
-            data-testid="import-archive-link"
-          >
-            Import a .pgdp-prep archive
-          </a>
-          <span className="text-border-2">·</span>
-          <a
-            href="#style-guide"
-            className="hover:text-ink-1"
-            data-testid="style-guide-link"
-          >
-            Open the format style guide
-          </a>
         </div>
       </div>
     </div>

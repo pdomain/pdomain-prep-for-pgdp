@@ -166,22 +166,6 @@ describe("ProjectsPage — empty state", () => {
     expect(screen.getByTestId("empty-new-project-btn")).toBeInTheDocument();
     expect(screen.getByText(/no projects yet/i)).toBeInTheDocument();
   });
-
-  it("empty state has paste URL button", async () => {
-    wrap(<ProjectsPage services={makeServices([])} />);
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("projects-empty")).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId("empty-paste-url-btn")).toBeInTheDocument();
-  });
-
-  it("empty state has import archive link", async () => {
-    wrap(<ProjectsPage services={makeServices([])} />);
-    await vi.waitFor(() =>
-      expect(screen.getByTestId("projects-empty")).toBeInTheDocument(),
-    );
-    expect(screen.getByTestId("import-archive-link")).toBeInTheDocument();
-  });
 });
 
 // ---------------------------------------------------------------------------

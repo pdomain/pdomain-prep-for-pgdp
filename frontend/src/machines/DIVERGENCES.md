@@ -377,6 +377,25 @@ actor-model integration is needed (F3-4 and F3-6 can be addressed together).
 
 ---
 
+## F3-7 — Paste-URL / Import-archive entry points omitted from empty state (ProjectsEmpty)
+
+**Canvas:** The DCArtboard `ProjectsEmpty` shows two secondary affordances:
+a "Paste source URL" button and an "Import a .pgdp-prep archive" link, in
+addition to the primary "Create new project" action.
+
+**Current implementation:** Both affordances are omitted from `ProjectsEmpty`.
+The `projectDetail` machine retains the `PASTE_SOURCE_URL` and
+`IMPORT_ARCHIVE` events for when backend support arrives, but the entry-point
+UI is not rendered.
+
+**Rationale:** Workspace rule — UI elements must be visible + enabled +
+functional, or not rendered at all. Neither flow has backend support yet.
+Rendering them as dead stubs (`href="#"` / no-op `onClick`) was flagged as
+a workspace violation. They will be restored once the matching backend routes
+exist.
+
+---
+
 ## Notes for F3–F5
 
 1. Every `onDone` that was `event.data` in YAML → use `event.output` + params pattern.
