@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Annotated, cast
 
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.core.models import Project
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import StageSettingsStore
+    from pdomain_prep_for_pgdp.settings import Settings
 
 from fastapi import APIRouter, Header, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
@@ -1375,3 +1377,256 @@ async def stream_page_stage_events(
             yield {"event": str(ev.get("type", "stage-status")), "data": json.dumps(ev)}
 
     return EventSourceResponse(stream())
+
+
+def _stage_settings_store(settings_dep: Settings, project_id: str) -> StageSettingsStore:
+    """Return a StageSettingsStore for the given project."""
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import StageSettingsStore
+
+    db_path = settings_dep.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return StageSettingsStore(db_path)
+
+
+def _stage_registry_default(stage_id: str) -> dict[str, object]:
+    """Return the registry default settings for a v2 stage.
+
+    V2_STAGE_IMPL entries hold CPU callables only; no defaults key yet.
+    Returns an empty dict — StageSettingsStore falls back to registry_default
+    when neither override nor saved default exists.
+    """
+    return {}
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings",
+    operation_id="get_page_stage_settings",
+    response_model=None,
+)
+async def get_page_stage_settings(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Return effective settings for a page-scoped stage.
+
+    Resolution: override > saved default > registry default.
+    Spec: docs/specs/api-v2-deltas.md §1.8.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
+    return JSONResponse(content=effective)
+
+
+@router.put(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings",
+    operation_id="put_page_stage_settings",
+    response_model=None,
+)
+async def put_page_stage_settings(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+    body: dict[str, object],
+):
+    """Save a project override for this stage's settings.
+
+    The override is used for the next run (not saved as "my default").
+    Appends a SettingsChange event.
+    Spec: docs/specs/api-v2-deltas.md §1.8.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    store.save_override(
+        project_id,
+        stage_id,
+        body,
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
+    return JSONResponse(content=effective)
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/save-as-default",
+    operation_id="save_page_stage_settings_as_default",
+    response_model=None,
+)
+async def save_page_stage_settings_as_default(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+    body: dict[str, object],
+):
+    """Save the body as the project-level default for this stage's settings.
+
+    Appends a SettingsChange event.
+    Spec: docs/specs/api-v2-deltas.md §1.8.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    store.save_as_default(
+        project_id,
+        stage_id,
+        body,
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
+    return JSONResponse(content=effective)
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/revert",
+    operation_id="revert_page_stage_settings",
+    response_model=None,
+)
+async def revert_page_stage_settings(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Revert the override for this stage, falling back to default or registry.
+
+    Appends a SettingsChange event.
+    Spec: docs/specs/api-v2-deltas.md §1.8.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    store.revert(
+        project_id,
+        stage_id,
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
+    return JSONResponse(content=effective)
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/reset",
+    operation_id="reset_page_stage_settings",
+    response_model=None,
+)
+async def reset_page_stage_settings(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Reset both override and saved default, reverting to registry default.
+
+    Appends a SettingsChange event.
+    Spec: docs/specs/api-v2-deltas.md §1.8.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    store.reset(
+        project_id,
+        stage_id,
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
+    return JSONResponse(content=effective)

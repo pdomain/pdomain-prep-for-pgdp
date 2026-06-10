@@ -141,6 +141,95 @@ The request/response shape is **unchanged**; no new route is needed. The
 the same underlying logic but as a pipeline stage with a `PageReorder` event
 and a `page_order` artifact.
 
+### 1.8 Stage settings routes (B5 — Group 4)
+
+Per-stage settings management for page-scoped stages. The `StageSettingsStore`
+(B2, `core/pipeline/stage_settings.py`) provides three-tier resolution:
+override > saved default > registry default. Routes supply the registry default
+from `V2_STAGE_IMPL` + an empty dict fallback; mutations append a `SettingsChange`
+event to `PrepProjectAggregate` with `actor_id` from `user.user_id`.
+
+All routes enforce the registry-version 409 guard. `stage_id` is validated
+against `V2_PAGE_STAGE_IDS` (422 for unknown).
+
+| Method | Path | Request schema | Response schema | Emitted events |
+|--------|------|----------------|-----------------|----------------|
+| GET | `/projects/{id}/pages/{idx0}/stages/{stage_id}/settings` | — | `dict[str, Any]` | — |
+| PUT | `/projects/{id}/pages/{idx0}/stages/{stage_id}/settings` | `dict[str, Any]` | `dict[str, Any]` | `SettingsChange` |
+| POST | `/projects/{id}/pages/{idx0}/stages/{stage_id}/settings/save-as-default` | `dict[str, Any]` | `dict[str, Any]` | `SettingsChange` |
+| POST | `/projects/{id}/pages/{idx0}/stages/{stage_id}/settings/revert` | — | `dict[str, Any]` | `SettingsChange` |
+| POST | `/projects/{id}/pages/{idx0}/stages/{stage_id}/settings/reset` | — | `dict[str, Any]` | `SettingsChange` |
+
+- `GET .../settings` returns the current effective settings (override > default > registry).
+- `PUT .../settings` saves a project override (one-time per-run, not persistent as "my default").
+- `POST .../save-as-default` saves the body as the project-level default for this stage.
+- `POST .../revert` deletes the override, reverting to saved default or registry default.
+- `POST .../reset` deletes both override and saved default, reverting to registry default.
+
+All mutation responses return the new effective settings after the write.
+
+The `StageSettingsStore` is backed by a per-project SQLite DB at
+`data_root/projects/{project_id}/stage_settings.db`.
+
+### 1.9 Wordcheck and hyphen_join decision routes (B5 — Group 5)
+
+Text review routes backed by B3's step modules. All enforce the 409 guard.
+`stage_id` on wordcheck routes is always `"wordcheck"`; on hyphen-join routes
+always `"hyphen_join"`.
+
+| Method | Path | Request schema | Response schema | Emitted events |
+|--------|------|----------------|-----------------|----------------|
+| GET | `/projects/{id}/pages/{idx0}/stages/wordcheck/flags` | — | `WordcheckFlagsResponse` | — |
+| POST | `/projects/{id}/pages/{idx0}/stages/wordcheck/decisions` | `WordcheckDecisionsRequest` | `WordcheckFlagsResponse` | `ReviewDecision` per decision |
+| POST | `/projects/{id}/wordlist-promotion` | `WordlistPromotionRequest` | `{"promoted": true}` | `WordlistPromotion` |
+| GET | `/projects/{id}/pages/{idx0}/stages/hyphen-join/candidates` | — | `HyphenJoinCandidatesResponse` | — |
+| POST | `/projects/{id}/pages/{idx0}/stages/hyphen-join/decisions` | `HyphenJoinDecisionsRequest` | `HyphenJoinCandidatesResponse` | `ReviewDecision` per decision |
+
+#### Request/response schemas (route-local unless reused)
+
+```python
+class WordcheckFlagsResponse(ApiModel):
+    page_id: str
+    stage_id: str = "wordcheck"
+    flags: list[dict[str, Any]]   # [{word_id, word_text, flag_reason, status}, ...]
+    flagged_count: int
+    total_words: int
+
+class WordcheckDecisionsRequest(ApiModel):
+    decisions: list[dict[str, Any]]  # [{word_id, decision: "accepted"|"rejected"|"deferred"}, ...]
+
+class WordlistPromotionRequest(ApiModel):
+    word: str
+    source_stage: str = "wordcheck"
+    source_page_id: str
+    list_scope: Literal["project", "global"]
+
+class HyphenJoinCandidatesResponse(ApiModel):
+    page_id: str
+    stage_id: str = "hyphen_join"
+    candidates: list[dict[str, Any]]  # [{candidate_id, prefix, suffix, offset, match_text, decision?}, ...]
+
+class HyphenJoinDecisionsRequest(ApiModel):
+    decisions: list[dict[str, Any]]  # [{candidate_id, decision: "join"|"keep"}, ...]
+```
+
+`GET .../wordcheck/flags` reads the wordcheck artifact (if stage is clean) and
+projects `WordCheckDecision` events from the aggregate to compute current flag statuses.
+Returns 404 if the wordcheck stage is not clean.
+
+`POST .../wordcheck/decisions` appends `ReviewDecision` events for each decision and
+returns the updated flags projection.
+
+`POST .../wordlist-promotion` appends a `WordlistPromotion` event and updates the
+project-scoped wordlist store (at `data_root/projects/{project_id}/wordlists.json`).
+
+`GET .../hyphen-join/candidates` reads the hyphen_join input text (wordcheck artifact
+or ocr text) and detects candidates. Projects `HyphenJoinDecision` events to show
+current decision state. Returns 404 if no text artifact is available.
+
+`POST .../hyphen-join/decisions` appends `ReviewDecision` events (disambiguation by
+`stage_id="hyphen_join"`) and returns updated candidates.
+
 ### 1.7 Deprecations
 
 Routes and patterns that die with the legacy surfaces:
