@@ -19,6 +19,7 @@ import anyio.to_thread
 
 from pdomain_prep_for_pgdp.core.models import (
     PAGE_STAGE_IDS,
+    V2_PAGE_STAGE_IDS,
     Job,
     PageStageState,
     PageStageStatus,
@@ -41,10 +42,13 @@ def _normalize_fts_score(rank: float) -> float:
     return 1.0 / (1.0 + abs(rank))
 
 
-# Inline string-list literal of the 22 canonical stage IDs (built once at
-# import time from `PAGE_STAGE_IDS`) so the CHECK constraint stays
-# synchronised with the model's source of truth without runtime indirection.
-_STAGE_ID_CHECK_CLAUSE = "(" + ", ".join(f"'{s}'" for s in PAGE_STAGE_IDS) + ")"
+# Inline string-list literal of all canonical stage IDs for the page_stages
+# CHECK constraint. Includes both v1 (PAGE_STAGE_IDS) and v2 (V2_PAGE_STAGE_IDS)
+# to allow coexistence during the B5 migration window. The v1 set is retained
+# for existing rows written by pre-B5 code; the v2 set allows new v2 stage rows.
+# Deduplication ensures no duplicate entries in the constraint.
+_ALL_STAGE_IDS = tuple(dict.fromkeys(list(PAGE_STAGE_IDS) + list(V2_PAGE_STAGE_IDS)))
+_STAGE_ID_CHECK_CLAUSE = "(" + ", ".join(f"'{s}'" for s in _ALL_STAGE_IDS) + ")"
 
 # CHECK clause for page_stages.status — mirrors the PageStageStatus enum
 # values verbatim. Spec §SQLite schema lists the same set.

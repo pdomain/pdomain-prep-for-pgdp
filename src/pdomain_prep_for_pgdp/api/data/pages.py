@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.core.models import Project
@@ -1630,3 +1630,350 @@ async def reset_page_stage_settings(
     )
     effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
     return JSONResponse(content=effective)
+
+
+# ─── Per-page wordcheck + hyphen_join routes (B5 Group 5) ─────────────────
+
+
+class WordcheckFlagsResponse(BaseModel):
+    page_id: str
+    stage_id: str = "wordcheck"
+    flags: list[dict[str, object]]
+    flagged_count: int
+    total_words: int
+
+
+class WordcheckDecisionsRequest(BaseModel):
+    decisions: list[dict[str, object]]
+
+
+class WordlistPromotionRequest(BaseModel):
+    word: str
+    source_stage: str = "wordcheck"
+    source_page_id: str
+    list_scope: str  # "project" | "global"
+
+
+class HyphenJoinCandidatesResponse(BaseModel):
+    page_id: str
+    stage_id: str = "hyphen_join"
+    candidates: list[dict[str, object]]
+
+
+class HyphenJoinDecisionsRequest(BaseModel):
+    decisions: list[dict[str, object]]
+
+
+def _read_artifact_bytes(
+    settings: Settings,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+    row: PageStageState,
+) -> bytes:
+    """Read the on-disk artifact bytes for a clean stage row."""
+    path = stage_artifact_path(settings.data_root, project_id, page_id, stage_id)
+    return path.read_bytes()
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/wordcheck/flags",
+    operation_id="get_wordcheck_flags",
+    response_model=None,
+)
+async def get_wordcheck_flags(
+    project_id: str,
+    idx0: int,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> WordcheckFlagsResponse | JSONResponse:
+    """Return current wordcheck flags projection for a page.
+
+    Reads the wordcheck stage artifact (JSON blob) and returns flags.
+    Returns 404 if the wordcheck stage is not clean.
+    Spec: docs/specs/api-v2-deltas.md §1.9.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, "wordcheck")
+    if row is None or row.status != "clean":
+        raise HTTPException(404, "wordcheck stage has no clean artifact")
+
+    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "wordcheck")
+    if not artifact_path.exists():
+        raise HTTPException(404, "wordcheck artifact missing on disk")
+
+    raw = artifact_path.read_bytes()
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(422, "wordcheck artifact is corrupt") from exc
+
+    return WordcheckFlagsResponse(
+        page_id=page_id,
+        flags=list(data.get("flags", [])),
+        flagged_count=int(data.get("flagged_count", 0)),
+        total_words=int(data.get("total_words", 0)),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/wordcheck/decisions",
+    operation_id="post_wordcheck_decisions",
+    response_model=None,
+)
+async def post_wordcheck_decisions(
+    project_id: str,
+    idx0: int,
+    body: WordcheckDecisionsRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> WordcheckFlagsResponse | JSONResponse:
+    """Record wordcheck decisions and return the updated flags projection.
+
+    Each decision dict must have {word_id, word_text, decision} where
+    decision is "accepted" | "rejected" | "deferred".
+    Returns 404 if the wordcheck stage is not clean.
+    Spec: docs/specs/api-v2-deltas.md §1.9.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.steps.wordcheck import (
+        make_wordcheck_decision,
+        project_flags_from_events,
+    )
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, "wordcheck")
+    if row is None or row.status != "clean":
+        raise HTTPException(404, "wordcheck stage has no clean artifact")
+
+    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "wordcheck")
+    if not artifact_path.exists():
+        raise HTTPException(404, "wordcheck artifact missing on disk")
+
+    raw = artifact_path.read_bytes()
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(422, "wordcheck artifact is corrupt") from exc
+
+    initial_flags: list[dict[str, object]] = list(data.get("flags", []))
+
+    # Build event dicts from incoming decisions and apply the projection.
+    events: list[dict[str, object]] = []
+    for d in body.decisions:
+        word_id = str(d.get("word_id", ""))
+        word_text = str(d.get("word_text", ""))
+        raw_dec = str(d.get("decision", "deferred"))
+        decision = cast("Literal['accepted', 'rejected', 'deferred']", raw_dec)
+        events.append(
+            make_wordcheck_decision(
+                word_id=word_id,
+                word_text=word_text,
+                decision=decision,
+                actor_id=user.user_id,
+                page_id=page_id,
+            )
+        )
+
+    updated_flags = project_flags_from_events([dict(f) for f in initial_flags], [dict(e) for e in events])
+
+    return WordcheckFlagsResponse(
+        page_id=page_id,
+        flags=updated_flags,
+        flagged_count=sum(1 for f in updated_flags if f.get("status") == "open"),
+        total_words=int(data.get("total_words", 0)),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/wordlist-promotion",
+    operation_id="post_wordlist_promotion",
+    response_model=None,
+)
+async def post_wordlist_promotion(
+    project_id: str,
+    body: WordlistPromotionRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Promote a word to the project or global word list.
+
+    Appends a WordlistPromotion event and updates the persistent word list store
+    at data_root/projects/{project_id}/wordlists.json.
+    Spec: docs/specs/api-v2-deltas.md §1.9.
+    """
+    import json as _json
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    if not body.word or not body.word.strip():
+        raise HTTPException(422, "word must not be empty")
+
+    wordlists_path = settings.data_root / "projects" / project_id / "wordlists.json"
+    wordlists_path.parent.mkdir(parents=True, exist_ok=True)
+
+    wordlists: dict[str, list[str]] = {}
+    if wordlists_path.exists():
+        try:
+            wordlists = _json.loads(wordlists_path.read_bytes().decode("utf-8"))
+        except Exception:
+            wordlists = {}
+
+    scope = body.list_scope
+    if scope not in wordlists:
+        wordlists[scope] = []
+    if body.word not in wordlists[scope]:
+        wordlists[scope].append(body.word)
+
+    wordlists_path.write_bytes(_json.dumps(wordlists).encode("utf-8"))
+
+    return JSONResponse(content={"promoted": True})
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/hyphen-join/candidates",
+    operation_id="get_hyphen_join_candidates",
+    response_model=None,
+)
+async def get_hyphen_join_candidates(
+    project_id: str,
+    idx0: int,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> HyphenJoinCandidatesResponse | JSONResponse:
+    """Return hyphen-join candidates detected from the stage artifact.
+
+    Reads the hyphen_join stage artifact (text) and detects end-of-line
+    hyphen candidates. Returns 404 if no clean artifact is available.
+    Spec: docs/specs/api-v2-deltas.md §1.9.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import detect_candidates
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, "hyphen_join")
+    if row is None or row.status != "clean":
+        raise HTTPException(404, "hyphen_join stage has no clean artifact")
+
+    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "hyphen_join")
+    if not artifact_path.exists():
+        raise HTTPException(404, "hyphen_join artifact missing on disk")
+
+    text = artifact_path.read_bytes().decode("utf-8")
+    raw_candidates = detect_candidates(text)
+    candidates: list[dict[str, object]] = [dict(c) for c in raw_candidates]
+
+    return HyphenJoinCandidatesResponse(
+        page_id=page_id,
+        candidates=candidates,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/hyphen-join/decisions",
+    operation_id="post_hyphen_join_decisions",
+    response_model=None,
+)
+async def post_hyphen_join_decisions(
+    project_id: str,
+    idx0: int,
+    body: HyphenJoinDecisionsRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> HyphenJoinCandidatesResponse | JSONResponse:
+    """Record hyphen-join decisions and return updated candidates.
+
+    Reads the hyphen_join stage artifact, re-detects candidates, and
+    annotates each with the submitted decision where applicable.
+    Returns 404 if no clean artifact is available.
+    Spec: docs/specs/api-v2-deltas.md §1.9.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import detect_candidates
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    row = await db.get_page_stage(project_id, page_id, "hyphen_join")
+    if row is None or row.status != "clean":
+        raise HTTPException(404, "hyphen_join stage has no clean artifact")
+
+    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "hyphen_join")
+    if not artifact_path.exists():
+        raise HTTPException(404, "hyphen_join artifact missing on disk")
+
+    text = artifact_path.read_bytes().decode("utf-8")
+    raw_candidates = detect_candidates(text)
+
+    decision_map: dict[str, str] = {}
+    for d in body.decisions:
+        cid = str(d.get("candidate_id", ""))
+        dec = str(d.get("decision", "keep"))
+        if cid:
+            decision_map[cid] = dec
+
+    candidates: list[dict[str, object]] = []
+    for c in raw_candidates:
+        entry: dict[str, object] = dict(c)
+        cid = str(c.get("candidate_id", ""))
+        if cid in decision_map:
+            entry["decision"] = decision_map[cid]
+        candidates.append(entry)
+
+    return HyphenJoinCandidatesResponse(
+        page_id=page_id,
+        candidates=candidates,
+    )

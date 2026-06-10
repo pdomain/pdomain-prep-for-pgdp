@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
 
-from .stage_dag import STAGE_DAG, get_stage
+from .stage_dag import STAGE_DAG, get_stage, get_v2_stage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -229,21 +229,28 @@ def write_artifact_file_sync(
 def _ext_for_stage(stage_id: str) -> str:
     """Resolve the canonical file extension for `stage_id`'s output, or raise.
 
+    Tries the v1 STAGE_DAG first, then falls back to the v2 DAG so that
+    v2-only stages (wordcheck, hyphen_join, …) are also covered.
+
     Raises ``StageArtifactWriteError`` for compound-output stages and
     ``KeyError`` for unknown stage_ids.
     """
-    stage = get_stage(stage_id)
-    if stage.output_type in COMPOUND_OUTPUT_TYPES:
+    try:
+        stage_output_type = get_stage(stage_id).output_type
+    except KeyError:
+        stage_output_type = get_v2_stage(stage_id).output_type
+
+    if stage_output_type in COMPOUND_OUTPUT_TYPES:
         raise StageArtifactWriteError(
-            f"stage {stage_id!r} has compound output_type {stage.output_type!r}; "
+            f"stage {stage_id!r} has compound output_type {stage_output_type!r}; "
             + "use the dedicated multi-artifact writer (not yet implemented at M1 §C). "
             + "Single-file commits via commit_stage_artifact don't apply."
         )
     try:
-        return OUTPUT_EXT_BY_TYPE[stage.output_type]
+        return OUTPUT_EXT_BY_TYPE[stage_output_type]
     except KeyError as exc:
         raise StageArtifactWriteError(
-            f"stage {stage_id!r} has output_type {stage.output_type!r} which has no "
+            f"stage {stage_id!r} has output_type {stage_output_type!r} which has no "
             + "extension mapping in OUTPUT_EXT_BY_TYPE; add one or use a sibling writer."
         ) from exc
 
@@ -292,8 +299,11 @@ def _write_thumbnail(
     Silently skips non-image stages and swallows I/O errors so a thumbnail
     failure never blocks the primary write path.
     """
-    stage = get_stage(stage_id)
-    thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, stage.output_type)
+    try:
+        stage_output_type = get_stage(stage_id).output_type
+    except KeyError:
+        stage_output_type = get_v2_stage(stage_id).output_type
+    thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, stage_output_type)
     if thumb_bytes is None:
         return
     thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id)
