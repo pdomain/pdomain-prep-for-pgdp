@@ -387,6 +387,44 @@ const CANVAS_MAP_SCHEMA: StageSchema = {
 // Exported lookup map
 // ---------------------------------------------------------------------------
 
+/**
+ * W5.8: post_ocr_crop — crop applied to the OCR input image after canvas_map.
+ * Trims the mapped canvas to the text-zone bounding box before feeding OCR.
+ */
+const POST_OCR_CROP_SCHEMA: StageSchema = {
+  stageId: "post_ocr_crop",
+  label: "Post-OCR crop",
+  description:
+    "Crops the canvas-mapped page to the text-zone bounding box before passing " +
+    "it to the OCR engine. Flagged pages have text zones that extend to the " +
+    "canvas edge, or the crop removes content that should be kept.",
+  settingsLabel: "post_ocr_crop",
+  flagKinds: [
+    { key: "edgeClip", label: "Edge clip", tone: "var(--mismatch)" },
+    { key: "tightCrop", label: "Crop too tight", tone: "var(--fuzzy)" },
+    { key: "noZones", label: "No zones", tone: "var(--ink-3)" },
+  ],
+  controls: [
+    {
+      key: "marginPx",
+      label: "Margin (px)",
+      kind: "slider",
+      range: [0, 40, 1],
+      defaultValue: 8,
+      description: "Padding added around the text-zone bounding box.",
+    },
+    {
+      key: "includeIllustrations",
+      label: "Include illustrations",
+      kind: "toggle",
+      defaultValue: true,
+      description:
+        "When enabled, illustration zones are included in the crop bounds.",
+    },
+  ],
+  confirmLabel: "Confirm post-OCR crop",
+};
+
 export const STAGE_SCHEMAS: Readonly<Record<string, StageSchema>> = {
   threshold: THRESHOLD_SCHEMA,
   deskew: DESKEW_SCHEMA,
@@ -394,6 +432,7 @@ export const STAGE_SCHEMAS: Readonly<Record<string, StageSchema>> = {
   dewarp: DEWARP_SCHEMA,
   post_transform_crop: POST_TRANSFORM_CROP_SCHEMA,
   canvas_map: CANVAS_MAP_SCHEMA,
+  post_ocr_crop: POST_OCR_CROP_SCHEMA,
 };
 
 /** Retrieve the schema for a stage, or null if not registered. */
