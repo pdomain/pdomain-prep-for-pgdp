@@ -21,6 +21,11 @@ import { useNavigate } from "react-router-dom";
 import { useActor } from "@xstate/react";
 import { api } from "@/api/client";
 import type { components } from "@/api/types.gen";
+import {
+  buildRealRailListServices,
+  buildRealProjectDetailServices,
+  buildRealManageActionsServices,
+} from "@/services/projects";
 import { FormErrorBanner } from "@/components/FormErrorBanner";
 import { Badge, type BadgeStatus } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -221,56 +226,15 @@ export function ProjectsPage({
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
 
-  // Build services from QueryClient if not injected (production path).
+  // Build services from real v2 API if not injected (production path).
   const resolvedServices = useMemo<ProjectsPageServices>(() => {
     if (services) return services;
-    const fetchProjects = (): Promise<ProjectRecord[]> =>
-      queryClient.fetchQuery({
-        queryKey: ["projects"],
-        queryFn: () => api.get<ProjectRecord[]>("/api/data/projects"),
-      });
-    const rail: RailListServices = { fetchProjects };
-    const detail: ProjectDetailServices = { fetchProjects };
-
-    // Real manage action service: maps action to the backend endpoints.
-    const manage: ManageActionsServices = {
-      async runManageAction(
-        projectId: string,
-        action: ManageAction,
-        step?: 1 | 2,
-      ): Promise<ManageActionResult> {
-        switch (action) {
-          case "clean":
-            return api.post<ManageActionResult>(
-              `/api/data/projects/${projectId}/clean`,
-            );
-          case "archive":
-            return api.post<ManageActionResult>(
-              `/api/data/projects/${projectId}/archive`,
-            );
-          case "restore":
-            return api.post<ManageActionResult>(
-              `/api/data/projects/${projectId}/unarchive`,
-            );
-          case "saveCopy":
-            return api.post<ManageActionResult>(
-              `/api/data/projects/${projectId}/export`,
-            );
-          case "delete":
-            if (step === 2) {
-              return api.delete<ManageActionResult>(
-                `/api/data/projects/${projectId}?permanent=true`,
-              );
-            }
-            // step 1 — archive first
-            return api.post<ManageActionResult>(
-              `/api/data/projects/${projectId}/archive`,
-            );
-        }
-      },
+    void queryClient; // available for cache invalidation at I2
+    return {
+      rail: buildRealRailListServices(),
+      detail: buildRealProjectDetailServices(),
+      manage: buildRealManageActionsServices(),
     };
-
-    return { rail, detail, manage };
   }, [services, queryClient]);
 
   const [detailSnap, detailSend] = useActor(projectDetailMachine, {

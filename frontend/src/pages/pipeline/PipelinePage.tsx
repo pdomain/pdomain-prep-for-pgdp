@@ -35,6 +35,11 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActor } from "@xstate/react";
 import {
+  buildRealPipelineShellServices,
+  buildRealStageRunnerServices,
+  buildRealProjectSettingsServices,
+} from "@/services/pipeline";
+import {
   pipelineShellMachine,
   STAGE_DEFS,
   RUNNER_STAGE_DEFS,
@@ -948,29 +953,11 @@ export function PipelinePage({
   const resolvedServices = useMemo<PipelinePageServices>(() => {
     if (injectedServices) return injectedServices;
 
-    // Production services — TBD at I1 (route to real API)
-    const shell: PipelineShellServices = {
-      fetchPipeline: () =>
-        Promise.reject(new Error("Pipeline API not yet wired (I1)")),
-      runnerServices: {
-        runStage: () => Promise.reject(new Error("Run API not yet wired (I1)")),
-        requestCancel: () =>
-          Promise.reject(new Error("Cancel API not yet wired (I1)")),
-        requestPause: () =>
-          Promise.reject(new Error("Pause API not yet wired (I1)")),
-      },
-    };
-    const settings: ProjectSettingsServices = {
-      fetchSettings: () =>
-        Promise.reject(new Error("Settings API not yet wired (I1)")),
-      saveField: () =>
-        Promise.reject(new Error("Settings API not yet wired (I1)")),
-      saveAutomation: () =>
-        Promise.reject(new Error("Settings API not yet wired (I1)")),
-      runDestructive: () =>
-        Promise.reject(new Error("Settings API not yet wired (I1)")),
-    };
-    void queryClient; // available for I1 wiring
+    // Production services — real v2 API (I1)
+    const runnerSvcs = buildRealStageRunnerServices();
+    const shell = buildRealPipelineShellServices(runnerSvcs);
+    const settings = buildRealProjectSettingsServices();
+    void queryClient; // available for cache invalidation at I2
     return { shell, settings };
   }, [injectedServices, queryClient]);
 
