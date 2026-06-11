@@ -12,6 +12,7 @@ each test run; we don't reset between tests in a single session.
 from __future__ import annotations
 
 import asyncio
+import os
 import socket
 import threading
 import time
@@ -31,7 +32,24 @@ if TYPE_CHECKING:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Add e2e-specific warning filters on top of the pyproject.toml baseline.
+    """Harden the e2e environment: strip stale ``DISPLAY``; add warning filters.
+
+    **DISPLAY hygiene** — a stale ``DISPLAY`` (e.g. a devcontainer
+    X-forwarding socket left over from a previous editor session) wedges
+    headless chromium's frame production: ``requestAnimationFrame`` never
+    fires even though the page reports ``visibilityState === "visible"``,
+    so every Playwright actionability check (click, drag, the "stable"
+    wait) burns its full timeout.  The tier then melts down into dozens of
+    unrelated-looking click-timeout failures plus an apparent hang
+    (pdomain-ocr-simple-gui 2026-06-10 incident; see
+    ``test_environment_sanity.py``).  Headless chromium needs no X server
+    at all, so drop ``DISPLAY`` entirely unless the developer explicitly
+    asked for a headed browser.  This runs in each xdist worker too
+    (workers re-import conftest and re-run configure), so the browser
+    subprocess can never inherit the variable.
+
+    **Warning filters** — e2e-specific ignores on top of the
+    pyproject.toml baseline.
 
     Two categories of third-party noise are suppressed here so the global
     ``filterwarnings = ["error"]`` policy can stay strict for unit tests:
@@ -48,6 +66,8 @@ def pytest_configure(config: pytest.Config) -> None:
       cleanly; this warning is a daemon-thread teardown ordering artefact, not
       a functional bug.
     """
+    if not config.getoption("--headed", default=False):
+        _ = os.environ.pop("DISPLAY", None)
     config.addinivalue_line(
         "filterwarnings",
         "ignore::DeprecationWarning:websockets.*",
