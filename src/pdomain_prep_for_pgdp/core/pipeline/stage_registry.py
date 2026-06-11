@@ -844,25 +844,24 @@ def _ocr_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
     """Run OCR on the proofing image and emit words.json + raw.txt.
 
     Accepts the ndarray from `ocr_crop` (output_type='image_bytes' decoded
-    by the runner). Writes the image to a temp file, calls `ocr_page` with
-    default config, serialises OcrPageResult.words to ``words.json`` (JSON
-    array of OcrWord dicts) and OcrPageResult.text to ``raw.txt`` (UTF-8).
+    by the runner or passed directly from the stage cache). Calls
+    ``ocr_page_from_image`` with the ndarray — no temp file I/O (Phase 1).
+
+    Serialises OcrPageResult.words to ``words.json`` (JSON array of OcrWord
+    dicts) and OcrPageResult.text to ``raw.txt`` (UTF-8).
 
     The multi-artifact writer (Slice 14) routes the returned
     ``dict[str, bytes]`` via ``commit_stage_artifacts_multi``.
 
     OCR engine: defaults to doctr (system default). Tests override by
     passing an image through the runner with PGDP_OCR_ENGINE=tesseract
-    (handled inside ``ocr_page`` via ``SystemDefaults``).
+    (handled inside ``ocr_page_from_image`` via ``SystemDefaults``).
     """
     import json
     import os
-    import tempfile
-
-    import cv2
 
     from pdomain_prep_for_pgdp.core.models import SystemDefaults
-    from pdomain_prep_for_pgdp.core.ocr import ocr_page
+    from pdomain_prep_for_pgdp.core.ocr import ocr_page_from_image
 
     if cfg is None:
         cfg = default_resolved_page_config()
@@ -875,27 +874,13 @@ def _ocr_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
 
     system = SystemDefaults(ocr_engine=cfg.ocr_engine)
 
-    # Write ndarray to a temp PNG that ocr_page can read via cv2/doctr.
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-        tmp_path_str = f.name
-    try:
-        if not cv2.imwrite(tmp_path_str, image):
-            raise RuntimeError("cv2.imwrite failed in _ocr_cpu")
-        from pathlib import Path
-
-        result = ocr_page(Path(tmp_path_str), cfg=cfg, system=system)
-        if result.words_error:
-            log.warning(
-                "OCR words extraction failed (words.json will be empty): %s",
-                result.words_error,
-            )
-    finally:
-        try:
-            import os as _os
-
-            _os.unlink(tmp_path_str)
-        except OSError:
-            pass
+    # Phase 1: call the ndarray API directly — no cv2.imwrite / tempfile.
+    result = ocr_page_from_image(image, cfg=cfg, system=system)
+    if result.words_error:
+        log.warning(
+            "OCR words extraction failed (words.json will be empty): %s",
+            result.words_error,
+        )
 
     words_data = [w.model_dump() for w in result.words]
     words_json = json.dumps(words_data).encode()

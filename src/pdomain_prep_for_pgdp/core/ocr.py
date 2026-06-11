@@ -223,6 +223,9 @@ def ocr_page(
       3. snapshot pre-reorg words if `validate_reorg`.
       4. `page.reorganize_page(layout=...)`.
       5. emit warning when reorg dropped words.
+
+    For the ndarray path (Phase 1 GPU memory plan) use :func:`ocr_page_from_image`
+    instead — it accepts an ndarray directly and avoids all temp file I/O.
     """
     if engine is not None and engine != cfg.ocr_engine:
         cfg = cfg.model_copy(update={"ocr_engine": engine})
@@ -298,7 +301,199 @@ def ocr_page(
     )
 
 
+def ocr_page_from_image(
+    image: Any,  # np.ndarray (HxWxC or HxW, uint8); typed as Any to avoid mandatory import
+    *,
+    cfg: ResolvedPageConfig,
+    system: SystemDefaults,
+    predictor: Any | None = None,
+    layout_detector: Any | None = None,
+    do_reorg: bool = True,
+    validate_reorg: bool = True,
+    engine: OcrEngine | None = None,
+    source_identifier: str = "ocr_stage",
+) -> OcrPageResult:
+    """OCR a page from an in-memory ndarray — no temp file I/O (Phase 1).
+
+    Equivalent to :func:`ocr_page` but accepts a ``numpy.ndarray`` (BGR or
+    grayscale, uint8) instead of a file path.  Uses
+    ``Document.from_images_ocr_via_doctr(images=[image], ...)`` (batch API,
+    single-element list) to avoid the ``cv2.imwrite`` / ``os.unlink`` round-
+    trip that the file-path variant requires.
+
+    Layout detection also passes the ndarray to ``layout_detector.detect``
+    (accepted since pdomain-book-tools ≥ 0.18.x where ``ImageSource`` includes
+    ``np.ndarray``).  All post-processing (reorganize_page, validate_word_
+    preservation) is identical to the file-path variant so callers can swap
+    freely without losing correctness guarantees.
+
+    Parameters
+    ----------
+    image:
+        A ``numpy.ndarray`` (HxW or HxWxC, dtype uint8). Typically the ndarray
+        that arrived from the upstream stage cache — no encode/decode needed.
+    source_identifier:
+        Label written into OCR provenance metadata (analogous to ``image_path.name``
+        in :func:`ocr_page`).  Defaults to ``"ocr_stage"``.
+    """
+    if engine is not None and engine != cfg.ocr_engine:
+        cfg = cfg.model_copy(update={"ocr_engine": engine})
+
+    if cfg.ocr_engine == "tesseract":
+        return _ocr_page_tesseract_from_image(image, cfg=cfg, system=system)
+
+    if predictor is None:
+        predictor = get_predictor()
+    if layout_detector is None:
+        layout_detector = get_layout_detector(
+            system.layout_detector,
+            layout_checkpoint=system.layout_checkpoint,
+            confidence=system.layout_detector_confidence,
+        )
+
+    from pdomain_book_tools.ocr.document import Document  # pyright: ignore[reportMissingImports]
+
+    # Use the batch ndarray API (single-element list).  This is the same code
+    # path that pdomain_ops.gpu.doctr_batch.run_doctr_batch uses, which is the
+    # canonical GPU-friendly interface.
+    doc = Document.from_images_ocr_via_doctr(
+        images=[image],
+        source_identifiers=[source_identifier],
+        predictor=predictor,
+    )
+    if not doc.pages:
+        raise RuntimeError("DocTR produced no pages for ndarray input in ocr_page_from_image")
+    page = doc.pages[0]
+
+    page_layout = None
+    layout_regions = 0
+    if layout_detector is not None:
+        # layout_detector.detect() accepts np.ndarray directly (ImageSource).
+        page_layout = layout_detector.detect(image)
+        layout_regions = len(getattr(page_layout, "regions", []) or [])
+
+    pre_reorg = list(page.words) if validate_reorg else []
+    pre_count = len(pre_reorg)
+
+    if do_reorg and callable(getattr(page, "reorganize_page", None)):
+        if page_layout is not None:
+            page.reorganize_page(layout=page_layout)
+        else:
+            page.reorganize_page()
+
+    post_words = list(page.words)
+    post_count = len(post_words)
+    dropped = 0
+    if validate_reorg and do_reorg:
+        try:
+            from pdomain_book_tools.ocr.reorganize_page_utils import (  # pyright: ignore[reportMissingImports]
+                validate_word_preservation,
+            )
+
+            drops = validate_word_preservation(pre_reorg, post_words)
+            dropped = len(drops or [])
+            if dropped:
+                log.warning(
+                    "reorganize_page dropped %d/%d words (ndarray input, source=%s)",
+                    dropped,
+                    pre_count,
+                    source_identifier,
+                )
+        except Exception:
+            log.exception("validate_word_preservation failed; dropped_word_count set to None (unknown)")
+            dropped = None  # sentinel: unknown, not "zero drops"
+
+    return OcrPageResult(
+        text=page.text or "",
+        words=[_to_ocr_word(w) for w in post_words],
+        page=page,
+        layout_regions=layout_regions,
+        pre_reorg_word_count=pre_count,
+        post_reorg_word_count=post_count,
+        dropped_word_count=dropped,
+    )
+
+
 # ─── Tesseract path ─────────────────────────────────────────────────────────
+
+
+def _ocr_page_tesseract_from_image(
+    image: Any,  # np.ndarray
+    *,
+    cfg: ResolvedPageConfig,
+    system: SystemDefaults,
+) -> OcrPageResult:
+    """Tesseract OCR from an in-memory ndarray — no temp file I/O.
+
+    Converts the ndarray to a PIL Image and calls pytesseract directly.
+    Equivalent to :func:`_ocr_page_tesseract` but without writing a temp file.
+    """
+    try:
+        import pytesseract  # pyright: ignore[reportMissingImports]
+        from PIL import Image as PILImage  # pyright: ignore[reportMissingImports]
+    except ImportError as e:
+        raise RuntimeError("Tesseract path requires pytesseract + Pillow") from e
+
+    import numpy as np_  # local import; the module-level np alias may not be available
+
+    arr = image  # np.ndarray
+    # Convert BGR (cv2 convention) to RGB for PIL, or pass grayscale as-is.
+    if isinstance(arr, np_.ndarray) and len(arr.shape) == 3 and arr.shape[2] == 3:
+        import cv2 as _cv2
+
+        rgb = _cv2.cvtColor(arr, _cv2.COLOR_BGR2RGB)
+        img = PILImage.fromarray(rgb)
+    elif isinstance(arr, np_.ndarray):
+        img = PILImage.fromarray(arr)
+    else:
+        raise TypeError(f"_ocr_page_tesseract_from_image: expected np.ndarray, got {type(arr).__name__}")
+
+    text = pytesseract.image_to_string(img, config=f"--dpi {cfg.ocr_dpi}")
+    words: list[OcrWord] = []
+    try:
+        data = pytesseract.image_to_data(
+            img, output_type=pytesseract.Output.DICT, config=f"--dpi {cfg.ocr_dpi}"
+        )
+        for i, txt in enumerate(data.get("text", [])):  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType]
+            if not txt or not txt.strip():
+                continue
+            words.append(
+                OcrWord(
+                    id=uuid.uuid4().hex,
+                    text=txt,  # pyright: ignore[reportArgumentType]
+                    confidence=float(data["conf"][i]) / 100.0  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                    if data["conf"][i] not in (-1, "-1", "")  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                    else 0.0,
+                    bounding_box=BoundingBox(
+                        left=int(data["left"][i]),  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                        top=int(data["top"][i]),  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                        width=int(data["width"][i]),  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                        height=int(data["height"][i]),  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType, reportCallIssue]
+                    ),
+                )
+            )
+    except Exception as exc:
+        log.exception("Tesseract image_to_data failed; returning text-only result")
+        return OcrPageResult(
+            text=text,  # pyright: ignore[reportArgumentType]
+            words=[],
+            page=None,
+            layout_regions=0,
+            pre_reorg_word_count=0,
+            post_reorg_word_count=0,
+            dropped_word_count=0,
+            words_error=f"{type(exc).__name__}: {exc}",
+        )
+
+    return OcrPageResult(
+        text=text,  # pyright: ignore[reportArgumentType]
+        words=words,
+        page=None,
+        layout_regions=0,
+        pre_reorg_word_count=len(words),
+        post_reorg_word_count=len(words),
+        dropped_word_count=0,
+    )
 
 
 def _ocr_page_tesseract(

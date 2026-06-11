@@ -199,13 +199,13 @@ def test_ocr_cpu_stage_logs_words_error(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """When ocr_page returns a result with words_error set, _ocr_cpu must emit
-    a WARNING so the user knows why words.json will be empty."""
+    """When ocr_page_from_image returns a result with words_error set, _ocr_cpu
+    must emit a WARNING so the user knows why words.json will be empty."""
     from pdomain_prep_for_pgdp.core import ocr as ocr_module
 
     error_msg = "TestError: something failed"
 
-    def fake_ocr_page(image_path, *, cfg, system, **kwargs):
+    def fake_ocr_page_from_image(image, *, cfg, system, **kwargs):
         return ocr_module.OcrPageResult(
             text="",
             words=[],
@@ -213,19 +213,14 @@ def test_ocr_cpu_stage_logs_words_error(
             words_error=error_msg,
         )
 
-    # _ocr_cpu uses a local `from ...core.ocr import ocr_page`, so patch
-    # the function on the source module so the local re-import picks it up.
-    monkeypatch.setattr(ocr_module, "ocr_page", fake_ocr_page)
+    # _ocr_cpu now uses ocr_page_from_image (ndarray API — no temp file).
+    # Patch the function on the source module so the local re-import picks it up.
+    monkeypatch.setattr(ocr_module, "ocr_page_from_image", fake_ocr_page_from_image)
 
     import numpy as np
 
     blank_image = np.zeros((10, 10), dtype=np.uint8)
     cfg = _cfg(engine="tesseract")
-
-    import cv2  # type: ignore[import-not-found]
-
-    # Patch cv2.imwrite so no real file I/O is needed for the temp PNG.
-    monkeypatch.setattr(cv2, "imwrite", lambda path, img: True)
 
     with caplog.at_level(logging.WARNING, logger="pdomain_prep_for_pgdp.core.pipeline.stage_registry"):
         from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _ocr_cpu
