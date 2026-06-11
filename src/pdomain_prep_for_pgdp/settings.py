@@ -113,7 +113,26 @@ class Settings(BaseSettings):
     When the ndarray cache (deferred-write executor) exceeds this limit, oldest
     entries are encoded and evicted to keep peak RAM bounded.  Default 512 MiB
     (~4-8 full-resolution pages as uint8 ndarrays).
-    Override: ``PGDP_STAGE_CACHE_MB``."""
+    Override: ``PGDP_STAGE_CACHE_MB``.
+    """
+
+    # ── Phase 3: batch OCR ───────────────────────────────────────────────────
+    ocr_batch_size: int | None = None
+    """Maximum pages per DocTR batch OCR call (Phase 3).
+
+    None = auto-size via ``pick_doctr_batch_sizes`` (recommended).
+    1 = sequential fallback: one page per predictor call, identical to the
+        pre-Phase-3 sequential path — preserves exact old behaviour.
+    Override: ``PGDP_OCR_BATCH_SIZE``.
+    """
+
+    ocr_pipeline_slots: int = 3
+    """Number of pipeline slots for the page-pipelining fan-out (Phase 3).
+
+    Controls how many pages can be in-flight concurrently (decode/prep, OCR
+    batch accumulation, write-executor drain).  Default 3.
+    Override: ``PGDP_OCR_PIPELINE_SLOTS``.
+    """
 
     # ── Resource limits ──────────────────────────────────────────────────────
     max_cdn_upload_bytes: int = 300 * 1024 * 1024
