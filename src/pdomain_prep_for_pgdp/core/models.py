@@ -110,6 +110,21 @@ class PageType(str, Enum):
     plate_b = "plate_b"
     plate_p = "plate_p"
     plate_r = "plate_r"
+    skip = "skip"
+    """Leaf excluded from the package entirely (cover/endpaper/divider).
+
+    A skip page is not written to the submission zip — no .png, no .txt.
+    It is also excluded from all pairing checks. ``compute_prefix`` returns
+    ``None`` for skip pages (same as pages outside the proof range).
+    """
+    cover = "cover"
+    """Cover image included in the package under the ``c``-prefix series.
+
+    A cover page is treated like a normal page but named with the ``c``
+    type-code (e.g. ``c001``) so it sorts before the front-matter ``f``
+    pages. It does NOT consume a frontmatter or bodymatter folio number.
+    ``compute_prefix`` returns a ``c``-prefixed string for cover pages.
+    """
 
 
 class AlignmentOverride(str, Enum):

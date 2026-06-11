@@ -26,10 +26,16 @@ async def assign_prefixes(*, project: Project, page_service: PageService) -> int
     pages_in = list_page_records(page_service, project.id)
     pages_by_idx = {p.idx0: p for p in pages_in}
 
+    from .models import PageType
+
     updates = []
     for page in pages_in:
         new_prefix = compute_prefix(page.idx0, project.config, pages_by_idx) or ""
-        new_ignore = page.idx0 < project.config.proof_start_idx0 or page.idx0 > project.config.proof_end_idx0
+        # ignore = outside proof range OR skip page (excluded from the package)
+        out_of_range = (
+            page.idx0 < project.config.proof_start_idx0 or page.idx0 > project.config.proof_end_idx0
+        )
+        new_ignore = out_of_range or page.page_type == PageType.skip
         if page.prefix == new_prefix and page.ignore == new_ignore:
             continue
         updates.append(page.model_copy(update={"prefix": new_prefix, "ignore": new_ignore}))
