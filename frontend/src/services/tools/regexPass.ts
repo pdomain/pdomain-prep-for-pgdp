@@ -12,6 +12,8 @@ import type {
   RegexRule,
   RegexCounts,
 } from "@/machines/tools/regexPass";
+// W5.2 — include real stageSettings methods (save-as-default / revert / reset)
+import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 /**
  * Fetch regex rules and counts.
@@ -50,5 +52,5 @@ function applyRule(
 
 /** Build real RegexPassServices for injection into the machine. */
 export function buildRealRegexPassServices(): RegexPassServices {
-  return { fetchRules, applyRule };
+  return { ...buildRealStageSettingsServices(), fetchRules, applyRule };
 }

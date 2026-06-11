@@ -25,6 +25,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so WordcheckToolServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -89,7 +91,8 @@ export interface ListTotals {
 // Services interface
 // ---------------------------------------------------------------------------
 
-export interface WordcheckToolServices {
+/** W5.2 — WordcheckToolServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface WordcheckToolServices extends StageSettingsServices {
   /**
    * POST /api/projects/:id/stages/scannocheck/accept-dict -> { fixedIds }
    */

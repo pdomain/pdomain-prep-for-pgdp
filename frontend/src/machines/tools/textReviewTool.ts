@@ -24,6 +24,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so TextReviewToolServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -79,7 +81,8 @@ export interface TextReviewSettings {
 // Services interface
 // ---------------------------------------------------------------------------
 
-export interface TextReviewToolServices {
+/** W5.2 — TextReviewToolServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface TextReviewToolServices extends StageSettingsServices {
   /**
    * POST /api/projects/:id/stages/text_review/approve-low-risk -> { approvedIds }
    */

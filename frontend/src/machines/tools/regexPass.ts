@@ -22,6 +22,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so RegexPassServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -63,7 +65,8 @@ export type ListFilter = "all" | "applied" | "review" | "disabled";
 // Services interface
 // ---------------------------------------------------------------------------
 
-export interface RegexPassServices {
+/** W5.2 — RegexPassServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface RegexPassServices extends StageSettingsServices {
   /**
    * GET /api/projects/:id/stages/regex/rules -> { rules, counts, snapshotId }
    */

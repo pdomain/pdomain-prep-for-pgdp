@@ -17,6 +17,7 @@ import type {
   ZonePageRow,
   ZoneTotals,
 } from "@/machines/tools/textZonesTool";
+import { stubStageSettingsServices } from "@/machines/tools/stageSettings";
 
 // ---------------------------------------------------------------------------
 // Minimal runnerRef stub (unused at F5 — wired at I1)
@@ -73,6 +74,7 @@ const MOCK_TOTALS: ZoneTotals = {
 };
 
 const TEST_SERVICES: TextZonesToolServices = {
+  ...stubStageSettingsServices(),
   fetchZonePages: async (_projectId) => ({
     rows: MOCK_ZONE_ROWS,
     totals: MOCK_TOTALS,

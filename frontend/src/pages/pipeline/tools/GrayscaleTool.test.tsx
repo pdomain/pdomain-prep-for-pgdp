@@ -18,6 +18,7 @@ import { MemoryRouter } from "react-router-dom";
 import { GrayscaleTool } from "./GrayscaleTool";
 import type { ToolSlotProps } from "../toolSlot";
 import type { GrayscaleToolServices } from "@/machines/tools/grayscaleTool";
+import { stubStageSettingsServices } from "@/machines/tools/stageSettings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -189,6 +190,7 @@ describe("GrayscaleTool — converting state", () => {
 describe("GrayscaleTool — error state", () => {
   it("renders grayscale-tool-error when detectProfile rejects", async () => {
     const errorServices: GrayscaleToolServices = {
+      ...stubStageSettingsServices(),
       detectProfile: () => Promise.reject(new Error("network error")),
     };
     renderGrayscale({ _testServices: errorServices });
@@ -199,6 +201,7 @@ describe("GrayscaleTool — error state", () => {
 
   it("error banner shows retry button", async () => {
     const errorServices: GrayscaleToolServices = {
+      ...stubStageSettingsServices(),
       detectProfile: () => Promise.reject(new Error("detect failed")),
     };
     renderGrayscale({ _testServices: errorServices });

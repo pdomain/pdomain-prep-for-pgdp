@@ -19,6 +19,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { RegexTool } from "./RegexTool";
 import type { RegexPassServices, RegexRule } from "@/machines/tools/regexPass";
+import { stubStageSettingsServices } from "@/machines/tools/stageSettings";
 
 // ---------------------------------------------------------------------------
 // Minimal runnerRef stub (unused at F5 — wired at I1)
@@ -67,6 +68,7 @@ const MOCK_RULES: RegexRule[] = [
 ];
 
 const TEST_SERVICES: RegexPassServices = {
+  ...stubStageSettingsServices(),
   fetchRules: async (_projectId) => ({
     rules: MOCK_RULES,
     counts: {

@@ -19,6 +19,7 @@ import {
   type GrayscaleToolServices,
   type GrayscalePage,
 } from "./grayscaleTool";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,6 +29,7 @@ function makeServices(
   overrides: Partial<GrayscaleToolServices> = {},
 ): GrayscaleToolServices {
   return {
+    ...stubStageSettingsServices(),
     detectProfile: vi.fn().mockResolvedValue({
       mode: "perceptual",
       why: "newsprint · low contrast",

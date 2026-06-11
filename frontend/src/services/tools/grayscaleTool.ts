@@ -16,6 +16,8 @@ import type {
   GrayscaleMode,
   GrayscaleBackend,
 } from "@/machines/tools/grayscaleTool";
+// W5.2 — include real stageSettings methods (save-as-default / revert / reset)
+import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 /**
  * Detect grayscale profile.
@@ -44,5 +46,5 @@ function detectProfile(
 
 /** Build real GrayscaleToolServices for injection into the machine. */
 export function buildRealGrayscaleToolServices(): GrayscaleToolServices {
-  return { detectProfile };
+  return { ...buildRealStageSettingsServices(), detectProfile };
 }

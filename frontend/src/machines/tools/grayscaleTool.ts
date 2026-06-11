@@ -20,6 +20,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so GrayscaleToolServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -59,7 +61,8 @@ export interface GrayscaleDraft {
 // Service interface
 // ---------------------------------------------------------------------------
 
-export interface GrayscaleToolServices {
+/** W5.2 — GrayscaleToolServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface GrayscaleToolServices extends StageSettingsServices {
   /**
    * POST /api/projects/:id/stages/grayscale/detect
    * -> { mode, why, backend }

@@ -27,6 +27,7 @@ import {
   type Zone,
 } from "./textZonesTool";
 import { computeDownstream } from "../../mocks/fixtures";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Fixture factories
@@ -98,6 +99,7 @@ function makeServices(
   overrides?: Partial<TextZonesToolServices>,
 ): TextZonesToolServices {
   return {
+    ...stubStageSettingsServices(),
     fetchZonePages: vi.fn().mockResolvedValue({
       rows: [makeRow("0"), makeRow("1"), makeSplitRow("2")],
       totals: {

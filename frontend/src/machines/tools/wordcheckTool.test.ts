@@ -21,6 +21,7 @@ import {
   type ListTotals,
   type WordcheckToolServices,
 } from "./wordcheckTool";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -59,6 +60,7 @@ function makeServices(
   overrides: Partial<WordcheckToolServices> = {},
 ): WordcheckToolServices {
   return {
+    ...stubStageSettingsServices(),
     acceptDictionaryFixes: vi.fn().mockResolvedValue({ fixedIds: [] }),
     acceptHighConfidence: vi.fn().mockResolvedValue({ acceptedIds: [] }),
     promoteToLibrary: vi.fn().mockResolvedValue({

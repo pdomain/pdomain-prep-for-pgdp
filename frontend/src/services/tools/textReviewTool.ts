@@ -8,6 +8,8 @@
  */
 
 import type { TextReviewToolServices } from "@/machines/tools/textReviewTool";
+// W5.2 — include real stageSettings methods (save-as-default / revert / reset)
+import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 /**
  * Approve all low-risk items.
@@ -35,5 +37,5 @@ function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
 
 /** Build real TextReviewToolServices for injection into the machine. */
 export function buildRealTextReviewToolServices(): TextReviewToolServices {
-  return { approveLowRisk, confirmStage };
+  return { ...buildRealStageSettingsServices(), approveLowRisk, confirmStage };
 }

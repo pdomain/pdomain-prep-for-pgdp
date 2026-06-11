@@ -16,6 +16,8 @@
  */
 
 import type { OcrToolServices, OcrToken } from "@/machines/tools/ocrTool";
+// W5.2 — include real stageSettings methods (save-as-default / revert / reset)
+import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 /**
  * Fetch low-score OCR tokens for a page.
@@ -44,5 +46,5 @@ function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
 
 /** Build real OcrToolServices for injection into the machine. */
 export function buildRealOcrToolServices(): OcrToolServices {
-  return { fetchPageTokens, confirmStage };
+  return { ...buildRealStageSettingsServices(), fetchPageTokens, confirmStage };
 }

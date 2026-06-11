@@ -39,6 +39,8 @@ import type {
   SplitResult,
   Zone,
 } from "@/machines/tools/textZonesTool";
+// W5.2 — include real stageSettings methods (save-as-default / revert / reset)
+import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 // ---------------------------------------------------------------------------
 // fetchZonePages — stub at I1
@@ -175,6 +177,7 @@ function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
 /** Build real TextZonesToolServices for injection into the machine. */
 export function buildRealTextZonesToolServices(): TextZonesToolServices {
   return {
+    ...buildRealStageSettingsServices(),
     fetchZonePages,
     applySplit,
     redetectLayout,

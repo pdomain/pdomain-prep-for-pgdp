@@ -20,6 +20,7 @@ import {
   type OcrToolServices,
   type OcrOverride,
 } from "./ocrTool";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -46,6 +47,7 @@ function makeServices(
   overrides: Partial<OcrToolServices> = {},
 ): OcrToolServices {
   return {
+    ...stubStageSettingsServices(),
     fetchPageTokens: vi.fn().mockResolvedValue({ tokens: [] }),
     confirmStage: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,

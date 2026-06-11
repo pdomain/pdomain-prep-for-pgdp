@@ -29,6 +29,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so OcrToolServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -85,7 +87,8 @@ export type OcrBackend = "gpu" | "cpu";
 // Services interface
 // ---------------------------------------------------------------------------
 
-export interface OcrToolServices {
+/** W5.2 — OcrToolServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface OcrToolServices extends StageSettingsServices {
   /**
    * GET /api/projects/:id/stages/ocr/pages -> low-score tokens for one page
    */

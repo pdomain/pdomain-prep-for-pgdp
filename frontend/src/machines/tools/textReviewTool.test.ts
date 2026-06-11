@@ -23,6 +23,7 @@ import {
   type ReviewTotals,
   type TextReviewToolServices,
 } from "./textReviewTool";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -84,6 +85,7 @@ function makeServices(
   overrides: Partial<TextReviewToolServices> = {},
 ): TextReviewToolServices {
   return {
+    ...stubStageSettingsServices(),
     approveLowRisk: vi.fn().mockResolvedValue({ approvedIds: [] }),
     confirmStage: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,

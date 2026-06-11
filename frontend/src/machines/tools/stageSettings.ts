@@ -318,6 +318,27 @@ export function countDraftChanges(
 // ---------------------------------------------------------------------------
 
 /**
+ * W5.2 — Minimal no-op stub satisfying StageSettingsServices.
+ *
+ * For tests that only care about tool-specific behaviour and don't exercise
+ * save-as-default / revert / reset. Spread into test service objects:
+ *
+ * ```ts
+ * const services: GrayscaleToolServices = {
+ *   ...stubStageSettingsServices(),
+ *   detectProfile: vi.fn(...),
+ * };
+ * ```
+ */
+export function stubStageSettingsServices(): StageSettingsServices {
+  return {
+    saveAsDefault: () => Promise.resolve({}),
+    revertSettings: () => Promise.resolve({}),
+    resetSettings: () => Promise.resolve({}),
+  };
+}
+
+/**
  * A minimal mock for stage settings that F5 machines can inject.
  *
  * Maintains per-(projectId × stageId) override and default layers.

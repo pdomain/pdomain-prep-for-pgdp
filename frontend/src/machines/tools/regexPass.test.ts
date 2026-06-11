@@ -22,6 +22,7 @@ import {
   type RegexCounts,
   type RegexPassServices,
 } from "./regexPass";
+import { stubStageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -61,6 +62,7 @@ function makeServices(
   overrides: Partial<RegexPassServices> = {},
 ): RegexPassServices {
   return {
+    ...stubStageSettingsServices(),
     fetchRules: vi.fn().mockResolvedValue({
       rules: [
         makeRule("r1", "applied"),
@@ -122,7 +124,7 @@ describe("loading state", () => {
       counts: makeCounts({ rules: 0, applied: 0, review: 0, pending: 0 }),
       snapshotId: null,
     });
-    const actor = startMachine({ fetchRules, applyRule: vi.fn() });
+    const actor = startMachine(makeServices({ fetchRules }));
     await waitFor(actor, (s) => s.matches("clean") || s.matches("reviewing"));
     expect(fetchRules).toHaveBeenCalledWith("p1");
   });
@@ -139,7 +141,7 @@ describe("loading state", () => {
 
   it("transitions to error on fetchRules failure", async () => {
     const fetchRules = vi.fn().mockRejectedValue(new Error("network error"));
-    const actor = startMachine({ fetchRules, applyRule: vi.fn() });
+    const actor = startMachine(makeServices({ fetchRules }));
     const snap = await waitFor(actor, (s) => s.matches("error"));
     expect(snap.context.error?.message).toBe("network error");
   });
@@ -384,10 +386,9 @@ describe("clean state", () => {
       counts: makeCounts({ applied: 1, review: 0, pending: 0 }),
       snapshotId: null,
     });
-    const actor = startMachine(
-      { fetchRules, applyRule: vi.fn() },
-      { rerunOnTextChange: true },
-    );
+    const actor = startMachine(makeServices({ fetchRules }), {
+      rerunOnTextChange: true,
+    });
     await waitFor(actor, (s) => s.matches("clean"));
     actor.send({ type: "TEXT_CHANGED" });
     expect(actor.getSnapshot().matches("reviewing")).toBe(true);
@@ -416,7 +417,7 @@ describe("clean state", () => {
         counts: makeCounts({ applied: 0, review: 0, pending: 1 }),
         snapshotId: null,
       });
-    const actor = startMachine({ fetchRules, applyRule: vi.fn() });
+    const actor = startMachine(makeServices({ fetchRules }));
     await waitFor(actor, (s) => s.matches("clean"));
     actor.send({ type: "ROLLBACK" });
     await waitFor(actor, (s) => s.matches("reviewing") || s.matches("clean"));
@@ -438,7 +439,7 @@ describe("error state", () => {
         counts: makeCounts({ applied: 1, review: 0, pending: 0 }),
         snapshotId: null,
       });
-    const actor = startMachine({ fetchRules, applyRule: vi.fn() });
+    const actor = startMachine(makeServices({ fetchRules }));
     await waitFor(actor, (s) => s.matches("error"));
     actor.send({ type: "RETRY" });
     await waitFor(actor, (s) => s.matches("clean") || s.matches("reviewing"));

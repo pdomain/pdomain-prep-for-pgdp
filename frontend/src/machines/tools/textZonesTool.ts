@@ -32,6 +32,8 @@
  */
 
 import { setup, assign, fromPromise } from "xstate";
+// W5.2 — import StageSettingsServices so TextZonesToolServices can extend it
+import type { StageSettingsServices } from "./stageSettings";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -111,7 +113,8 @@ export interface SplitResult {
 // Services interface
 // ---------------------------------------------------------------------------
 
-export interface TextZonesToolServices {
+/** W5.2 — TextZonesToolServices extends StageSettingsServices (save-as-default/revert/reset). */
+export interface TextZonesToolServices extends StageSettingsServices {
   /**
    * GET /api/projects/:id/stages/text_zones/pages -> { rows, totals }
    */
