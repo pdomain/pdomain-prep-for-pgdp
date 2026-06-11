@@ -38,8 +38,10 @@
 import { useState, useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
+import type { SnapshotFrom } from "xstate";
 import {
   imageStageReviewMachine,
+  type ImageStageReviewEvent,
   type ImageStageReviewServices,
   type PageRow,
 } from "@/machines/imageStageReview";
@@ -828,6 +830,26 @@ function BulkBar({
 // ---------------------------------------------------------------------------
 
 /**
+ * Props for ImageStageReviewTool — ToolSlotProps plus an optional actor
+ * override for callers that need to own the machine instance (e.g. CanvasMapTool
+ * wiring REDERIVE from an extras panel outside the shared surface).
+ *
+ * When `actorOverride` is absent the component creates its own actor.
+ */
+export interface ImageStageReviewToolProps extends ToolSlotProps {
+  /**
+   * Optional pre-created actor. When provided:
+   *   - `snapshot` / `send` are used directly instead of creating a new actor.
+   *   - The component does NOT start/stop the actor — the caller owns its lifetime.
+   * When absent, the component calls `useActor(imageStageReviewMachine, ...)`.
+   */
+  actorOverride?: {
+    snapshot: SnapshotFrom<typeof imageStageReviewMachine>;
+    send: (event: ImageStageReviewEvent) => void;
+  };
+}
+
+/**
  * ImageStageReviewTool — the shared review surface for imageStageReview stages.
  *
  * @see docs/plans/design_handoff_pgdp_app/final/threshold/threshold.jsx
@@ -836,7 +858,8 @@ function BulkBar({
 export function ImageStageReviewTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps) {
+  actorOverride,
+}: ImageStageReviewToolProps) {
   const { projectId = "mock-project" } = useParams();
 
   const schema = getStageSchema(stageId);
@@ -849,7 +872,7 @@ export function ImageStageReviewTool({
     [projectId, stageId],
   );
 
-  const [snapshot, send] = useActor(imageStageReviewMachine, {
+  const ownActor = useActor(imageStageReviewMachine, {
     input: {
       projectId,
       stageId,
@@ -857,6 +880,11 @@ export function ImageStageReviewTool({
       services,
     },
   });
+
+  // Use the provided actor override if given; fall back to own actor.
+  const [snapshot, send] = actorOverride
+    ? ([actorOverride.snapshot, actorOverride.send] as const)
+    : ownActor;
 
   const ctx = snapshot.context;
 

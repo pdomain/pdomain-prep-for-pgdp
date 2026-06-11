@@ -4,11 +4,17 @@
  * Wraps the shared ImageStageReviewTool with canvas_map-specific extras:
  *   - AspectScatter: page-dimension scatter (body cluster + chosen ratio box)
  *   - Spreads summary: verso/recto pairs with margin-mirror status
- *   - "Re-derive canvas" action
+ *   - "Re-derive canvas" action (wired — sends REDERIVE to the stage machine)
  *
  * The shared ImageStageReviewTool handles the page grid, filter chips, density
  * toggle, inline editor, and confirm gate. The extras below the review surface
  * show the canvas placement analysis unique to this stage.
+ *
+ * ## REDERIVE wiring
+ * `CanvasMapTool` owns the `imageStageReviewMachine` actor instance and passes
+ * it down to `ImageStageReviewTool` via `actorOverride`. This allows the extras
+ * panel (which lives outside `ImageStageReviewTool`) to call `send({ type:
+ * "REDERIVE" })` on the same machine instance that drives the review surface.
  *
  * ## Design fidelity
  * The extras match the DCArtboard overviews from canvas-map.jsx:
@@ -25,8 +31,61 @@
  * @see docs/plans/design_handoff_pgdp_app/final/canvas_map/canvas-map.jsx
  */
 
+import { useMemo } from "react";
+import { useActor } from "@xstate/react";
+import { useParams } from "react-router-dom";
+import { imageStageReviewMachine } from "@/machines/imageStageReview";
 import { ImageStageReviewTool } from "./ImageStageReviewTool";
 import type { ToolSlotProps } from "../toolSlot";
+
+// ---------------------------------------------------------------------------
+// Mock service adapter (canvas_map — replaced at I1)
+// ---------------------------------------------------------------------------
+
+function makeCanvasMapServices(projectId: string, stageId: string) {
+  const mockPages = Array.from({ length: 4 }, (_, i) => ({
+    idx: `page-${i + 1}`,
+    prefix: `p${String(i + 1).padStart(3, "0")}`,
+    state: "clean" as const,
+    flags: [],
+    pageNumber: i + 1,
+  }));
+
+  return {
+    fetchStagePages: () =>
+      Promise.resolve({
+        rows: mockPages,
+        totals: {
+          total: 4,
+          done: 4,
+          flagged: 0,
+          clean: 4,
+          reviewed: 0,
+          errors: 0,
+          running: 0,
+        },
+      }),
+    reRunPages: (
+      _pid: string,
+      _sid: string,
+      draft: Record<string, unknown>,
+      pageIds: string[],
+    ) =>
+      Promise.resolve(
+        pageIds.map((idx) => ({
+          idx,
+          prefix: idx,
+          state: "clean" as const,
+          flags: [],
+          pageNumber: 1,
+          ...draft,
+        })),
+      ),
+    confirmStage: (_pid: string, _sid: string) => Promise.resolve({ ok: true }),
+    _projectId: projectId,
+    _stageId: stageId,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // AspectScatter — page-dimension scatter placeholder
@@ -155,7 +214,7 @@ function AspectScatterPlaceholder() {
 // Canvas map extras panel
 // ---------------------------------------------------------------------------
 
-function CanvasMapExtras() {
+function CanvasMapExtras({ onRederive }: { onRederive: () => void }) {
   return (
     <div
       data-testid="canvas-map-extras"
@@ -182,6 +241,7 @@ function CanvasMapExtras() {
         Common aspect ratio
         <button
           data-testid="canvas-map-rederive-btn"
+          onClick={onRederive}
           style={{
             padding: "4px 10px",
             borderRadius: 6,
@@ -311,13 +371,30 @@ function CanvasMapExtras() {
 /**
  * CanvasMapTool — canvas_map stage review surface.
  *
- * Delegates the page grid / flag review to the shared ImageStageReviewTool,
- * then appends the canvas_map-specific extras (aspect scatter + re-derive).
+ * Owns the `imageStageReviewMachine` actor and passes it to
+ * `ImageStageReviewTool` via `actorOverride` so the extras panel can send
+ * REDERIVE to the same actor instance.
  *
  * Artboard DCArtboard states are the same as ImageStageReviewTool (loading /
  * running / review / settled / confirming) plus the extras overlay.
  */
-export function CanvasMapTool(props: ToolSlotProps) {
+export function CanvasMapTool({ stageId, runnerRef }: ToolSlotProps) {
+  const { projectId = "mock-project" } = useParams();
+
+  const services = useMemo(
+    () => makeCanvasMapServices(projectId, stageId),
+    [projectId, stageId],
+  );
+
+  const [snapshot, send] = useActor(imageStageReviewMachine, {
+    input: {
+      projectId,
+      stageId,
+      stageIndex: 0,
+      services,
+    },
+  });
+
   return (
     <div
       data-testid="canvas-map-tool"
@@ -328,12 +405,16 @@ export function CanvasMapTool(props: ToolSlotProps) {
         minHeight: 0,
       }}
     >
-      {/* Shared imageStageReview surface */}
-      <ImageStageReviewTool {...props} />
+      {/* Shared imageStageReview surface — actor owned here so extras can reach send */}
+      <ImageStageReviewTool
+        stageId={stageId}
+        runnerRef={runnerRef}
+        actorOverride={{ snapshot, send }}
+      />
 
       {/* Canvas-map extras (aspect scatter + re-derive) */}
       <div style={{ padding: "0 16px 16px" }}>
-        <CanvasMapExtras />
+        <CanvasMapExtras onRederive={() => send({ type: "REDERIVE" })} />
       </div>
     </div>
   );

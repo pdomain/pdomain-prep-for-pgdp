@@ -210,6 +210,34 @@ describe("pageOrderTool — ledger drag-reorder", () => {
     expect(services.persistOrder).toHaveBeenCalledOnce();
     actor.stop();
   });
+
+  it("DROP action list includes emitOrderChanged stub (YAML coverage)", () => {
+    // The YAML spec lists emitOrderChanged in the DROP actions. This test
+    // confirms the machine does not throw or reject when DROP fires (the
+    // emitOrderChanged no-op must be registered in the actions setup block).
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    const leaves = [makeLeaf({ scan: 1 }), makeLeaf({ scan: 2 })];
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves,
+      runs: [makeRun()],
+      totals: { total: 2, scanned: 2, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+    actor.send({ type: "DRAG_START", scan: 1 });
+    actor.send({ type: "DRAG_OVER", scan: 2, after: true });
+    // If emitOrderChanged is absent from the setup actions block, XState v5
+    // warns / errors. This assertion verifies the machine remains in a valid
+    // browsing state, meaning the action ran without crashing.
+    expect(() => actor.send({ type: "DROP", scan: 1 })).not.toThrow();
+    expect(
+      actor.getSnapshot().matches({ workspace: { ledger: "browsing" } }),
+    ).toBe(true);
+    actor.stop();
+  });
 });
 
 // ---------------------------------------------------------------------------

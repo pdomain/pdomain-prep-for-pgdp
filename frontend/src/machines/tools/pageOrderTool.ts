@@ -38,12 +38,16 @@
  * and flag per leaf from (computed label vs ocrFolio). They run after every
  * model edit per the YAML contract.
  *
- * ### F5.4-4 — `_over` drag target omitted from context (DIVERGENCES.md #8)
- * The YAML stores `ctx._over = { scan, after }` in context. Since `_over` is
- * never read by a guard or service (only by `moveLeaves` which reads it inline
- * from the last `DRAG_OVER` event), it is not stored in machine context. The
- * `moveLeaves` action carries the drop target from the preceding `DRAG_OVER`
- * via a local variable captured in a closure over the event.
+ * ### F5.4-4 — `_dropTarget` stored in context (contrary to DIVERGENCES.md #8 view-field rule)
+ * The YAML stores `ctx._over = { scan, after }` in context. `_dropTarget` IS
+ * stored in machine context (see `PageOrderToolContext._dropTarget`). This is
+ * intentional: the `reorderable` guard fires on DRAG_START before any DRAG_OVER
+ * arrives, and the `moveLeaves` action must read the last drop position from
+ * context at DROP time. Storing it in local React state would not be visible to
+ * the XState `assign` action. The DIVERGENCES.md #8 convention (omit view-only
+ * fields) does not apply here — `_dropTarget` is read by the `moveScans` action
+ * at DROP time and is therefore load-bearing context.
+ * See DIVERGENCES.md §F5.4-4 for the full record.
  *
  * ### F5.4-5 — Side-effect service calls are async fire-and-forget
  * `persistLeaf`, `persistOrder`, `persistRuns`, `persistNaming` are called as
@@ -776,6 +780,16 @@ export const pageOrderToolMachine = setup({
       },
     ),
 
+    /**
+     * YAML: `emitOrderChanged` — notify pipelineShell that page order changed
+     * so it can fan-out UPSTREAM_CHANGED to all downstream stage runners.
+     * No-op at F5; at I1 pipelineShell orchestrates the fan-out.
+     * See DIVERGENCES.md §F5.4-emitOrderChanged.
+     */
+    emitOrderChanged: () => {
+      /* At I1: send ORDER_CHANGED to the parent pipelineShell actor */
+    },
+
     /** YAML: `emitResolved` — notify parent stageRunner (no-op at F5) */
     emitResolved: () => {
       /* At I1: send RESOLVE to the parent stageRunner actor */
@@ -876,7 +890,11 @@ export const pageOrderToolMachine = setup({
                 DRAG_OVER: { actions: ["assignDropTarget"] },
                 DROP: {
                   target: "browsing",
-                  actions: ["moveLeaves", "moveLeavesSideEffect"],
+                  actions: [
+                    "moveLeaves",
+                    "moveLeavesSideEffect",
+                    "emitOrderChanged",
+                  ],
                 },
                 DRAG_CANCEL: {
                   target: "browsing",

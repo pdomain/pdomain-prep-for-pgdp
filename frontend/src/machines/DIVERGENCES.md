@@ -1105,3 +1105,55 @@ can reference it without importing the fixtures directly into the machine.
 **Impact:** At I1, remove the `_mockLeaves`/`_mockRuns` convention. Wire the
 real `pageOrder` API response (delivered via SSE or REST) to the machine's
 `FOLIOS_DONE` event instead.
+
+---
+
+### F5.4-emitOrderChanged — `emitOrderChanged` is a no-op stub at F5 (pageOrderTool)
+
+**YAML:** The `DROP` action list includes `emitOrderChanged` — a side-effect
+call that notifies `pipelineShell` that the page order has changed, causing it
+to fan-out `UPSTREAM_CHANGED` to all downstream stage runners.
+
+**XState v5 (F5):** At F5 there is no parent actor to notify. `emitOrderChanged`
+is implemented as an explicit no-op action stub (matching the pattern of
+`emitResolved`). It is listed in the `DROP` `actions` array so the YAML
+coverage is complete and the I1 integrator has a named action to fill in.
+
+**Resolution:** No-op stub:
+
+```ts
+emitOrderChanged: () => {
+  /* At I1: send ORDER_CHANGED to the parent pipelineShell actor */
+},
+```
+
+Added to the DROP event's `actions: ["moveLeaves", "moveLeavesSideEffect", "emitOrderChanged"]`.
+
+**At I1:** Wire to `pipelineShell` fan-out. The fan-out itself lives in
+`pipelineShell.ts` `fanOutStaleSideEffect` (see DIVERGENCES.md F4-4).
+
+---
+
+### F5.4-dropTarget — `_dropTarget` stored in context, not omitted (pageOrderTool)
+
+**DIVERGENCES.md #8** establishes a convention: view-only fields (`_wipe`,
+`_split`, `compare`) should be omitted from machine context and owned in local
+React state.
+
+**`_dropTarget` exception:** `_dropTarget: { scan: number; after: boolean } | null`
+IS stored in machine context, contrary to what an earlier draft of the machine
+docstring claimed. This is intentional. The `moveLeaves` assign action reads
+`context._dropTarget` at `DROP` time to determine where to splice the dragged
+leaves into the order. An `assign` action cannot access local React state —
+`_dropTarget` must be in machine context to be visible to the action.
+
+**Why the docstring was wrong:** A draft of the machine docstring (F5.4-4
+inline comment) stated `_over` was "never read by a guard or service" and
+therefore omitted. This was incorrect — `moveLeaves` reads it. The docstring
+has been corrected.
+
+**Rule:** The `_` prefix in the YAML does NOT automatically mean view-only.
+Cross-check whether the field is read by any guard or action — if yes, keep
+it in context (see also DIVERGENCES.md F5-3-4 `_weights` rule).
+
+---
