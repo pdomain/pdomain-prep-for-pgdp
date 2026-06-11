@@ -1610,3 +1610,84 @@ persistence side-effect is a no-op. At I1, swap the no-op implementations for
 real API calls. Do not hide the controls.
 
 **Reference:** `frontend/src/services/tools/pageOrderTool.ts` — service factory.
+
+---
+
+## W5 wiring
+
+Records of wiring and fixes applied in the W5 task (2026-06-11).
+Append new items here; do not modify existing sections above.
+
+### W5.3 — emitOrderChanged → pipelineShell fan-out
+
+`emitOrderChanged` was a no-op in the machine. It is now wired to call
+`context.services.onOrderChanged?.()`, and `ToolSlotProps` gains an optional
+`shellSend` prop so `PageOrderTool` can forward a `STAGE_COMPLETED` event to
+`pipelineShell` after every DROP reorder. `PipelinePage` passes `shellSend={send}`
+to the active tool slot.
+
+**Files changed:** `pageOrderTool.ts`, `PageOrderTool.tsx`, `toolSlot.tsx`,
+`PipelinePage.tsx`, `services/tools/pageOrderTool.ts`.
+
+### W5.4 — WordcheckTool mock-leak removal
+
+`WordcheckTool` mounted a `setTimeout(..., 200)` that fired `SCAN_DONE` with
+hardcoded `MOCK_SUSPECTS` in production. The timer was removed. Tests now
+use a `_testScanDone` prop (fires the event synchronously on mount) so no fake
+timers are needed and no mock data reaches the production code path.
+
+**Files changed:** `WordcheckTool.tsx`, `WordcheckTool.test.tsx`.
+
+### W5.5 — fetchFolios replaces FOLIO_PUSH/FOLIOS_DONE streaming
+
+The `readingFolios` state accumulated `FOLIO_PUSH` events until a `FOLIOS_DONE`
+arrived via SSE. That streaming pipeline was never wired to a backend emitter,
+so the machine started and stalled.
+
+**CT decision 2026-06-11:** drop the streaming design. Replace `readingFolios`
+with a `loading` state that invokes `fetchFolios` (a `fromPromise` actor).
+`fetchFolios` calls `GET /api/data/projects/{id}/pages?limit=500` and returns a
+fully-hydrated `{ leaves, runs, totals }` payload in one HTTP round-trip.
+
+`FOLIOS_DONE` is kept as a bypass event in `loading` so test helpers using the
+old YAML-driven pattern still work without changes. A new `loadError` state
+surfaces the fetch error with a retry button.
+
+**Files changed:** `pageOrderTool.ts`, `pageOrderTool.test.ts`,
+`services/tools/pageOrderTool.ts`, `PageOrderTool.tsx`.
+
+### W5.6 — canonical types and stageDeps out of @/mocks/
+
+`PageStageStatus`, `ProjectStageStatus`, `PageStageState`, `PipelineSnapshot`,
+`ProjectAutomation`, `ImportJob` and related types were defined in
+`@/mocks/types`. `STAGE_DEPS` and `computeDownstream` were defined in
+`@/mocks/fixtures`. Five machines, `sseActor.ts`, and `PostImportPage` imported
+from those mock-namespace paths.
+
+**Fix:** move canonical definitions to `@/types/pipeline.ts` (types) and
+`@/lib/stageDeps.ts` (STAGE_DEPS + computeDownstream). `@/mocks/types` and
+`@/mocks/fixtures` re-export from the new homes so existing test imports keep
+working. Consumers (`sseActor.ts`, `pipelineShell.ts`, `PostImportPage.tsx`)
+updated to import from the canonical paths.
+
+**Files changed:** `types/pipeline.ts` (new), `lib/stageDeps.ts` (new),
+`mocks/types.ts`, `mocks/fixtures.ts`, `machines/lib/sseActor.ts`,
+`machines/pipelineShell.ts`, `pages/projects/PostImportPage.tsx`.
+
+### W5.7 — MANIFEST_PUSH refetch gap after confirm
+
+After `CONFIRM_ADVANCE → confirming → settled`, the naming manifest was not
+re-fetched. The component's `useEffect` that fetches the manifest and sends
+`MANIFEST_PUSH` only fired when `isWorkspace` changed; `settled` was not
+covered. Separately, the machine had no `MANIFEST_PUSH` handler in `settled`,
+so any send arriving after confirm was silently dropped.
+
+**Fix (machine):** add `MANIFEST_PUSH: { actions: ["assignPrefixes"] }` to the
+`settled` state.
+
+**Fix (component):** derive `shouldFetchManifest = isWorkspace || isSettled` and
+use it as the `useEffect` guard and dependency. The effect now fires on both
+workspace entry and settled entry.
+
+**Files changed:** `pageOrderTool.ts`, `pageOrderTool.test.ts`,
+`PageOrderTool.tsx`.
