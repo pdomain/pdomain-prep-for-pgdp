@@ -827,11 +827,82 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
     )
 
 
+async def _handle_run_project_ocr_batch(runner: InProcessJobRunner, job: Job) -> None:
+    """Phase 3: batch-OCR all eligible pages in a project in one predictor call.
+
+    Payload keys:
+      - ``device``:         ``"cpu"`` (default) or ``"cuda"``.
+      - ``batch_size``:     int or None (auto via pick_doctr_batch_sizes). 1 = sequential.
+      - ``pipeline_slots``: int (default 3).
+
+    The handler:
+    1. Collects pages with clean post_ocr_crop / ocr_crop artifacts.
+    2. Calls ``run_project_ocr_fanout`` which groups pages into batches,
+       runs one predictor call per batch, fans results back per page.
+    3. Each page gets its own artifact + page_stages row + SSE notification.
+    4. Progress is updated per-batch.
+    """
+    from pathlib import Path
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+    from pdomain_prep_for_pgdp.core.pipeline.project_ocr_fanout import run_project_ocr_fanout
+
+    payload = job.payload
+    project_id = job.project_id
+    device = str(payload.get("device", "cpu"))
+    batch_size_raw = payload.get("batch_size")
+    batch_size = int(batch_size_raw) if batch_size_raw is not None else None
+    pipeline_slots_raw = payload.get("pipeline_slots", 3)
+    pipeline_slots = int(pipeline_slots_raw) if pipeline_slots_raw is not None else 3
+
+    project = await runner.db.get_project(project_id)
+    if project is None:
+        raise FileNotFoundError(f"project {project_id!r} not found")
+
+    data_root: Path = runner._data_root or Path(".")
+
+    _ps = build_page_service(data_root, project_id)
+    page_records = list_page_records(_ps, project_id)
+    page_ids = [f"{p.idx0:04d}" for p in page_records if not p.ignore]
+
+    completed_batches: list[int] = []
+
+    def _progress_cb(completed: int, total: int) -> None:
+        completed_batches.append(completed)
+
+    stats = await run_project_ocr_fanout(
+        project_id=project_id,
+        page_ids=page_ids,
+        data_root=data_root,
+        database=runner.db,
+        stage_events=runner._stage_events,
+        write_executor=None,
+        device=device,
+        batch_size=batch_size,
+        pipeline_slots=pipeline_slots,
+        progress_cb=_progress_cb,
+    )
+
+    total_pages = stats["total"]
+    success = stats["success"]
+    failed = stats["failed"]
+    skipped = stats["skipped"]
+
+    _ = await runner.update_progress(
+        job,
+        current=success,
+        total=total_pages,
+        message=f"batch OCR: ok={success} failed={failed} skipped={skipped}",
+    )
+
+
 _HANDLERS = {
     JobType.unzip: _handle_unzip,
     JobType.thumbnails: _handle_thumbnails,
     JobType.run_page_stage: _handle_run_page_stage,
     JobType.run_project_stage: _handle_run_project_stage,
+    JobType.run_project_ocr_batch: _handle_run_project_ocr_batch,
 }
 
 
