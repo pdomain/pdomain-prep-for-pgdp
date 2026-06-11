@@ -773,3 +773,239 @@ def test_job_runner_has_handler_for_ocr_batch() -> None:
     from pdomain_prep_for_pgdp.core.models import JobType
 
     assert JobType.run_project_ocr_batch in _jr._HANDLERS
+
+
+# ─── Wiring: route enqueues run_project_ocr_batch ───────────────────────────
+#
+# These tests drive the full route layer via TestClient and assert that
+# POST .../page-stages/ocr/run-batch enqueues a run_project_ocr_batch job
+# (not N sequential run_page_stage jobs), preserving the 409 gates and
+# per-page SSE/event behaviour already tested above.
+
+
+def _build_wiring_fixtures(tmp_path: Path) -> tuple[Any, Any]:
+    """Build Settings + seeded project for route wiring tests."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.core.models import (
+        PageProcessingStatus,
+        PageRecord,
+        PipelineState,
+        Project,
+        ProjectConfig,
+        ProjectStatus,
+    )
+    from pdomain_prep_for_pgdp.settings import Settings
+    from tests.fixtures.seed_pages import seed_pages_in_store
+
+    settings = Settings(
+        host="127.0.0.1",
+        port=8765,
+        data_root=tmp_path / "data",
+        config_dir=tmp_path / "config",
+        storage_backend="filesystem",
+        database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+        auth_mode="none",
+        gpu_backend="cpu",
+        dispatch_interval_seconds=0,
+    )
+
+    project_id = "wproj1"
+
+    async def _seed() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id=project_id,
+                owner_id="default",
+                name=project_id,
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=1,
+                proof_page_count=1,
+                config=ProjectConfig(book_name=project_id, source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix=f"projects/{project_id}/",
+                registry_version=2,
+            )
+        )
+        await db.close()
+
+    asyncio.run(_seed())
+
+    seed_pages_in_store(
+        settings,
+        project_id,
+        [
+            PageRecord(
+                project_id=project_id,
+                idx0=0,
+                prefix="p001",
+                source_stem="src1",
+                processing_status=PageProcessingStatus.pending,
+            )
+        ],
+    )
+
+    return settings, project_id
+
+
+def _seed_clean_post_ocr_crop(settings: Any, project_id: str, page_ids: list[str]) -> None:
+    """Mark the given pages as having a clean post_ocr_crop stage row."""
+    import asyncio
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
+
+    async def _go() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        for pid in page_ids:
+            state = PageStageState(
+                project_id=project_id,
+                page_id=pid,
+                stage_id="post_ocr_crop",
+                status=PageStageStatus.clean,
+            )
+            await db.put_page_stage(state)
+        await db.close()
+
+    asyncio.run(_go())
+
+
+def test_run_project_ocr_batch_route_enqueues_correct_job_type(tmp_path: Path) -> None:
+    """POST /page-stages/ocr/run-batch enqueues a run_project_ocr_batch job (not run_page_stage).
+
+    This is the core wiring assertion: when the frontend triggers OCR at project
+    scope, ONE batch job is enqueued, not N per-page jobs.
+    """
+    import asyncio
+
+    from fastapi.testclient import TestClient
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.core.models import JobType
+
+    settings, project_id = _build_wiring_fixtures(tmp_path)
+    _seed_clean_post_ocr_crop(settings, project_id, ["0000"])
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.post(f"/api/data/projects/{project_id}/page-stages/ocr/run-batch")
+
+    assert r.status_code == 202, f"Expected 202, got {r.status_code}: {r.text}"
+    body = r.json()
+    assert body["type"] == JobType.run_project_ocr_batch.value, (
+        f"Expected job type {JobType.run_project_ocr_batch.value!r}, got {body['type']!r}"
+    )
+    assert body["status"] == "queued"
+    assert body["project_id"] == project_id
+
+    # Verify the job is in the DB with the correct type.
+    async def _check() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        jobs = await db.list_recent_jobs("default", 10)
+        ocr_batch_jobs = [j for j in jobs if j.type == JobType.run_project_ocr_batch]
+        assert len(ocr_batch_jobs) == 1, f"Expected 1 batch job, found {len(ocr_batch_jobs)}"
+        assert ocr_batch_jobs[0].id == body["id"]
+        await db.close()
+
+    asyncio.run(_check())
+
+
+def test_run_project_ocr_batch_route_409_no_eligible_pages(tmp_path: Path) -> None:
+    """POST /page-stages/ocr/run-batch returns 409 when no pages have clean post_ocr_crop."""
+    from fastapi.testclient import TestClient
+
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+
+    settings, project_id = _build_wiring_fixtures(tmp_path)
+    # Deliberately do NOT seed any clean post_ocr_crop rows.
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.post(f"/api/data/projects/{project_id}/page-stages/ocr/run-batch")
+
+    assert r.status_code == 409, f"Expected 409, got {r.status_code}: {r.text}"
+    body = r.json()
+    assert body["error"] == "ocr_batch_no_eligible_pages"
+    assert body["stage_id"] == "ocr"
+
+
+def test_run_project_ocr_batch_route_404_unknown_project(tmp_path: Path) -> None:
+    """POST /page-stages/ocr/run-batch returns 404 for an unknown project."""
+    from fastapi.testclient import TestClient
+
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+    from pdomain_prep_for_pgdp.settings import Settings
+
+    settings = Settings(
+        host="127.0.0.1",
+        port=8765,
+        data_root=tmp_path / "data",
+        config_dir=tmp_path / "config",
+        storage_backend="filesystem",
+        database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+        auth_mode="none",
+        gpu_backend="cpu",
+        dispatch_interval_seconds=0,
+    )
+
+    import asyncio
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+
+    async def _init() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        await db.close()
+
+    asyncio.run(_init())
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.post("/api/data/projects/nonexistent-project/page-stages/ocr/run-batch")
+
+    assert r.status_code == 404
+
+
+def test_run_project_ocr_batch_route_payload_includes_batch_knobs(tmp_path: Path) -> None:
+    """The enqueued job payload includes batch_size and pipeline_slots from settings."""
+    import asyncio
+
+    from fastapi.testclient import TestClient
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+
+    settings, project_id = _build_wiring_fixtures(tmp_path)
+    _seed_clean_post_ocr_crop(settings, project_id, ["0000"])
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.post(f"/api/data/projects/{project_id}/page-stages/ocr/run-batch")
+
+    assert r.status_code == 202
+    body = r.json()
+    job_id = body["id"]
+
+    async def _check_payload() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        job = await db.get_job(job_id)
+        assert job is not None
+        payload = job.payload
+        # batch_size may be None (auto) or an int; key must be present.
+        assert "batch_size" in payload
+        assert "pipeline_slots" in payload
+        assert isinstance(payload["pipeline_slots"], int)
+        await db.close()
+
+    asyncio.run(_check_payload())

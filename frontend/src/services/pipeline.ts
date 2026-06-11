@@ -77,21 +77,25 @@ async function fetchPipeline(projectId: string): Promise<PipelineSnapshot> {
  *   (for page-scoped stages, idx0 derived from stageId context — see note)
  * OR: POST /api/data/projects/{id}/project-stages/{stageId}/run
  *   (for project-scoped stages)
+ * OR: POST /api/data/projects/{id}/page-stages/ocr/run-batch
+ *   (for the OCR stage — runs all eligible pages in one GPU forward-pass)
  *
  * The stageRunner machine calls this with projectId and stageId.
  * We derive page-scoped vs project-scoped from the stageId.
  *
- * For page-scoped stages: uses pageIdx=0 (first page) as the canonical page
- * for the stage run. This is incorrect for multi-page runs — the real I1
- * fix should pass the active pageId from the machine context. At I1,
- * running a stage on "the project" means running it on all pages via the
- * job runner; we use the sync path on page 0 for compatibility.
+ * For the OCR stage: routes to the batch endpoint (Phase 3) which enqueues
+ * a single run_project_ocr_batch job for the whole project, replacing N
+ * sequential per-page OCR calls with one GPU predictor forward-pass.
+ * Always async; SSE reconcile drives the machine to the final state.
+ *
+ * For other page-scoped stages: uses pageIdx=0 (first page) as the canonical
+ * page for the stage run. Full multi-page orchestration is the I2 work.
  *
  * DIVERGENCE NOTE (I1): StageRunner is conceptually project-level for the
  * pipeline shell (run all pages of a stage). The current backend has per-page
  * run routes. At I1 we use the project-stage run route for project-scoped
- * stages, and page 0 as a placeholder for page-scoped stages. Full multi-page
- * orchestration is the I2 work.
+ * stages, the batch route for OCR, and page 0 as a placeholder for other
+ * page-scoped stages.
  */
 async function runStage(
   projectId: string,
@@ -117,7 +121,23 @@ async function runStage(
     }
   }
 
-  // Page-scoped stage: POST .../pages/0000/stages/{stageId}/run (sync)
+  // OCR stage (page-scoped but project-wide batch): POST .../page-stages/ocr/run-batch
+  // Phase 3: one run_project_ocr_batch job replaces N sequential per-page runs.
+  // Always async; SSE reconcile drives the machine to the final state.
+  if (stageId === "ocr") {
+    try {
+      await api.post(
+        `/api/data/projects/${encodeURIComponent(projectId)}/page-stages/ocr/run-batch`,
+        request ? { force: request.force } : null,
+      );
+      return { status: "running" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { status: "error", message: msg };
+    }
+  }
+
+  // Other page-scoped stages: POST .../pages/0000/stages/{stageId}/run (sync)
   // Uses idx0=0 as placeholder — full per-page orchestration is I2.
   try {
     const result = await api.post<

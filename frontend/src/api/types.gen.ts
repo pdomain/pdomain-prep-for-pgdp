@@ -258,6 +258,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/page-stages/ocr/run-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Project Ocr Batch
+         * @description Submit a project-wide OCR batch run (GPU Phase 3 integration point).
+         *
+         *     Enqueues ONE ``run_project_ocr_batch`` job that fans the OCR stage across
+         *     all eligible pages in a single predictor forward-pass, instead of N
+         *     sequential ``run_page_stage`` jobs.
+         *
+         *     Gate: ``post_ocr_crop`` page-stage must have at least one clean row
+         *     (i.e. some pages have been cropped and are ready for OCR). An empty
+         *     project is rejected with 409 ``ocr_batch_no_eligible_pages``.
+         *
+         *     Registry-version guard: same 409 as other project-stage routes.
+         *
+         *     Phase 3 plan: docs/plans/2026-06-11-gpu-memory-pipeline.md §Phase3.
+         */
+        post: operations["run_project_ocr_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/project-stages/{stage_id}/artifact": {
         parameters: {
             query?: never;
@@ -3179,6 +3211,55 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_project_ocr_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StageRunRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Batch OCR job enqueued; body is the Job. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch or gate not satisfied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

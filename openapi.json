@@ -699,6 +699,75 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/page-stages/ocr/run-batch": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Run Project Ocr Batch",
+        "description": "Submit a project-wide OCR batch run (GPU Phase 3 integration point).\n\nEnqueues ONE ``run_project_ocr_batch`` job that fans the OCR stage across\nall eligible pages in a single predictor forward-pass, instead of N\nsequential ``run_page_stage`` jobs.\n\nGate: ``post_ocr_crop`` page-stage must have at least one clean row\n(i.e. some pages have been cropped and are ready for OCR). An empty\nproject is rejected with 409 ``ocr_batch_no_eligible_pages``.\n\nRegistry-version guard: same 409 as other project-stage routes.\n\nPhase 3 plan: docs/plans/2026-06-11-gpu-memory-pipeline.md \u00a7Phase3.",
+        "operationId": "run_project_ocr_batch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StageRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Batch OCR job enqueued; body is the Job.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch or gate not satisfied."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/{stage_id}/artifact": {
       "get": {
         "tags": [

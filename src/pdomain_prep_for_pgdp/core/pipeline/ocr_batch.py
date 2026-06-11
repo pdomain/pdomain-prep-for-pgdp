@@ -119,7 +119,7 @@ def _postprocess_page(
     pre_reorg = list(page.words) if validate_reorg else []
     pre_count = len(pre_reorg)
 
-    if do_reorg and callable(getattr(page, "reorganize_page", None)):
+    if do_reorg and callable(page.reorganize_page):  # type: ignore[union-attr]
         if page_layout is not None:
             page.reorganize_page(layout=page_layout)
         else:

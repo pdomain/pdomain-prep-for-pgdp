@@ -430,6 +430,99 @@ async def run_project_stage(
     return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
 
 
+# ─── Project-scoped OCR batch run (Phase 3) ──────────────────────────────────
+
+
+@router.post(
+    "/projects/{project_id}/page-stages/ocr/run-batch",
+    operation_id="run_project_ocr_batch",
+    status_code=202,
+    responses={
+        202: {"description": "Batch OCR job enqueued; body is the Job."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch or gate not satisfied."},
+    },
+)
+async def run_project_ocr_batch(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+    body: StageRunRequest | None = None,
+) -> JSONResponse:
+    """Submit a project-wide OCR batch run (GPU Phase 3 integration point).
+
+    Enqueues ONE ``run_project_ocr_batch`` job that fans the OCR stage across
+    all eligible pages in a single predictor forward-pass, instead of N
+    sequential ``run_page_stage`` jobs.
+
+    Gate: ``post_ocr_crop`` page-stage must have at least one clean row
+    (i.e. some pages have been cropped and are ready for OCR). An empty
+    project is rejected with 409 ``ocr_batch_no_eligible_pages``.
+
+    Registry-version guard: same 409 as other project-stage routes.
+
+    Phase 3 plan: docs/plans/2026-06-11-gpu-memory-pipeline.md §Phase3.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # Gate: at least one page must have a clean post_ocr_crop stage before
+    # we bother loading the predictor.  This mirrors the early-exit in
+    # run_project_ocr_fanout but surfaces the error at enqueue time so the
+    # frontend gets a synchronous 409 rather than a job that immediately dies.
+    all_page_stages = await db.list_page_stages_by_status(project_id, PageStageStatus.clean)
+    eligible_clean_ids = {r.page_id for r in all_page_stages if r.stage_id == "post_ocr_crop"}
+    if not eligible_clean_ids:
+        return JSONResponse(
+            content={
+                "error": "ocr_batch_no_eligible_pages",
+                "stage_id": "ocr",
+                "reason": "no pages have a clean post_ocr_crop artifact",
+            },
+            status_code=409,
+        )
+
+    job_id = uuid.uuid4().hex
+    device = "cpu"
+    payload: dict[str, object] = {
+        "device": device,
+        "batch_size": settings.ocr_batch_size,
+        "pipeline_slots": settings.ocr_pipeline_slots,
+    }
+    if body is not None and body.force:
+        payload["force"] = True
+
+    job = Job(
+        id=job_id,
+        project_id=project_id,
+        owner_id=user.user_id,
+        type=JobType.run_project_ocr_batch,
+        status=JobStatus.queued,
+        payload=payload,
+    )
+    await db.put_job(job)
+
+    project_key = f"project:{project_id}"
+    await stage_events.publish(
+        project_key,
+        {
+            "type": "project-stage-status",
+            "stage_id": "ocr",
+            "status": "queued",
+            "job_id": job_id,
+            "error_message": None,
+        },
+    )
+
+    return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
+
+
 # ─── Project-stage artifact fetch ────────────────────────────────────────────
 
 # Content-type map per project-stage artifact type (api-v2-deltas.md §1.4).
