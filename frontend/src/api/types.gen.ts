@@ -160,69 +160,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/data/projects/{project_id}/review-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Project Review Status
-         * @description Return unreviewed page count + awaiting_review job for a project.
-         */
-        get: operations["get_project_review_status"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/data/projects/{project_id}/run-dirty": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Project Run Dirty
-         * @deprecated
-         * @description Submit a project_run_dirty job.
-         *
-         *     DEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.
-         */
-        post: operations["project_run_dirty"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/data/projects/{project_id}/build-package": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Project Build Package
-         * @description Submit a build_package job for the project.
-         */
-        post: operations["project_build_package"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/data/projects/{project_id}/pipeline": {
         parameters: {
             query?: never;
@@ -305,11 +242,12 @@ export interface paths {
          * Run Project Stage
          * @description Submit a project-stage run. Always async (returns Job, HTTP 202).
          *
-         *     Stages not yet implemented surface their StageNotImplemented as a clean
-         *     failed state with error_message, NOT a 500. The contract is:
-         *       - Implemented stage (source): Job accepted, stage row → running → clean|failed
-         *       - Placeholder stage: Job accepted, stage row → failed with error_message
-         *         "stage not implemented"
+         *     W0.1: enqueues JobType.run_project_stage (not run_page_stage with scope='project').
+         *     W0.4: gate enforcement — if any project-scoped dep is not clean, returns 409
+         *           with {error: 'stage_gate_blocked', stage_id, reason}.
+         *
+         *     The handler (_handle_run_project_stage in job_runner.py) calls V2_STAGE_IMPL
+         *     in a thread pool and dual-writes the artifact + ProjectStageStore row.
          *
          *     api-v2-deltas.md §1.2.
          */
@@ -1812,20 +1750,10 @@ export interface components {
          */
         JobStatus: "queued" | "scheduled" | "running" | "awaiting_review" | "complete" | "error" | "cancelled";
         /**
-         * JobSubmitResponse
-         * @description Minimal response for project-level job submission routes.
-         */
-        JobSubmitResponse: {
-            /** Job Id */
-            job_id: string;
-            /** Status */
-            status: string;
-        };
-        /**
          * JobType
          * @enum {string}
          */
-        JobType: "unzip" | "thumbnails" | "build_package" | "run_page_stage" | "project_run_dirty" | "project_run_stage_all_pages";
+        JobType: "unzip" | "thumbnails" | "run_page_stage" | "run_project_stage";
         /**
          * LayerColors
          * @description Hex color assignments for OCR layer overlays.
@@ -2406,13 +2334,6 @@ export interface components {
             payload_override?: {
                 [key: string]: unknown;
             } | null;
-        };
-        /** ReviewStatusResponse */
-        ReviewStatusResponse: {
-            /** Unreviewed Count */
-            unreviewed_count: number;
-            /** Awaiting Review Job Id */
-            awaiting_review_job_id: string | null;
         };
         /** SearchHitResponse */
         SearchHitResponse: {
@@ -3092,101 +3013,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_project_review_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReviewStatusResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    project_run_dirty: {
-        parameters: {
-            query?: {
-                stage_filter?: string | null;
-            };
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSubmitResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    project_build_package: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobSubmitResponse"];
                 };
             };
             /** @description Validation Error */

@@ -480,167 +480,6 @@
         }
       }
     },
-    "/api/data/projects/{project_id}/review-status": {
-      "get": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Get Project Review Status",
-        "description": "Return unreviewed page count + awaiting_review job for a project.",
-        "operationId": "get_project_review_status",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReviewStatusResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/data/projects/{project_id}/run-dirty": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Project Run Dirty",
-        "description": "Submit a project_run_dirty job.\n\nDEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.",
-        "operationId": "project_run_dirty",
-        "deprecated": true,
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "stage_filter",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Stage Filter"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobSubmitResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/data/projects/{project_id}/build-package": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Project Build Package",
-        "description": "Submit a build_package job for the project.",
-        "operationId": "project_build_package",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobSubmitResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/data/projects/{project_id}/pipeline": {
       "get": {
         "tags": [
@@ -794,7 +633,7 @@
           "project-stages"
         ],
         "summary": "Run Project Stage",
-        "description": "Submit a project-stage run. Always async (returns Job, HTTP 202).\n\nStages not yet implemented surface their StageNotImplemented as a clean\nfailed state with error_message, NOT a 500. The contract is:\n  - Implemented stage (source): Job accepted, stage row \u2192 running \u2192 clean|failed\n  - Placeholder stage: Job accepted, stage row \u2192 failed with error_message\n    \"stage not implemented\"\n\napi-v2-deltas.md \u00a71.2.",
+        "description": "Submit a project-stage run. Always async (returns Job, HTTP 202).\n\nW0.1: enqueues JobType.run_project_stage (not run_page_stage with scope='project').\nW0.4: gate enforcement \u2014 if any project-scoped dep is not clean, returns 409\n      with {error: 'stage_gate_blocked', stage_id, reason}.\n\nThe handler (_handle_run_project_stage in job_runner.py) calls V2_STAGE_IMPL\nin a thread pool and dual-writes the artifact + ProjectStageStore row.\n\napi-v2-deltas.md \u00a71.2.",
         "operationId": "run_project_stage",
         "security": [
           {
@@ -4834,34 +4673,13 @@
         ],
         "title": "JobStatus"
       },
-      "JobSubmitResponse": {
-        "properties": {
-          "job_id": {
-            "type": "string",
-            "title": "Job Id"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status"
-          }
-        },
-        "type": "object",
-        "required": [
-          "job_id",
-          "status"
-        ],
-        "title": "JobSubmitResponse",
-        "description": "Minimal response for project-level job submission routes."
-      },
       "JobType": {
         "type": "string",
         "enum": [
           "unzip",
           "thumbnails",
-          "build_package",
           "run_page_stage",
-          "project_run_dirty",
-          "project_run_stage_all_pages"
+          "run_project_stage"
         ],
         "title": "JobType"
       },
@@ -6590,31 +6408,6 @@
         "type": "object",
         "title": "RetryJobRequest",
         "description": "Optional body for `POST /api/gpu/jobs/{id}/retry`.\n\n`payload_override`, when non-null, is shallow-merged over the original\njob's payload \u2014 keys present in the override replace the corresponding\nkeys; keys not present are preserved from the original. The original\njob is never mutated, so the audit trail stays intact."
-      },
-      "ReviewStatusResponse": {
-        "properties": {
-          "unreviewed_count": {
-            "type": "integer",
-            "title": "Unreviewed Count"
-          },
-          "awaiting_review_job_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Awaiting Review Job Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "unreviewed_count",
-          "awaiting_review_job_id"
-        ],
-        "title": "ReviewStatusResponse"
       },
       "SearchHitResponse": {
         "properties": {
