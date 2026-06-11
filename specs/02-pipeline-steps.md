@@ -7,6 +7,14 @@
 > intent, input/output type, and dependency. For runner contracts,
 > persistence model, dirty propagation, splits, and the
 > `awaiting_review` job state, read the canonical spec.
+>
+> **Note (2026-06-11 — statechart convergence):** The stage IDs listed in this
+> spec are the v1 model. As of the statechart convergence (shipped 2026-06-11),
+> the canonical stage set is the 24-stage v2 registry in
+> `docs/specs/stage-registry-v2.md`. The per-stage descriptions here remain
+> accurate for stages that exist in both v1 and v2; new v2 stages (denoise,
+> dewarp, post_transform_crop, wordcheck, hyphen_join, validation, proof_pack,
+> zip, submit_check, archive, page_order) are not described in this file.
 
 The pipeline is a **DAG of named per-page stages**. Each stage has:
 

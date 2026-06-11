@@ -10,6 +10,14 @@
 > `batch_text_postprocess`, `build_package`) as the *user-visible*
 > pipeline shape. Those job types remain available as fan-out
 > orchestrators during M5, then are removed in M6.
+>
+> **Note (2026-06-11 — statechart convergence):** The stage IDs and stage set
+> described in this spec are the v1 model (M1–M6). As of the statechart
+> convergence (shipped 2026-06-11), the canonical pipeline shape is the 24-stage
+> v2 registry. For the current authoritative stage table, see
+> `docs/specs/stage-registry-v2.md`. This spec remains accurate for the DAG
+> concepts, dirty-propagation rules, dual-write contract, and splits model — those
+> did not change. Only the stage IDs and stage set expanded.
 
 This spec is the **single source of truth** for the pipeline task-model.
 The rest of the spec set (`specs/00`–`specs/09`, `docs/architecture/02-backend.md`,
