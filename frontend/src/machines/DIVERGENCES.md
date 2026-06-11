@@ -1289,3 +1289,48 @@ backend route prefix `/api/projects/:id/stages/scannocheck/`.
 **I1 note:** At I1, confirm whether `wordcheck` and `scannocheck` share a single
 route namespace or have separate prefixes, and update the service adapters
 accordingly.
+
+### F5.5-D9 — TOOL_REGISTRY: `scannocheck` key removed (phantom stage_id)
+
+The backend `V2_STAGE_DAG` exposes only `wordcheck` as a real stage_id.
+`scannocheck` does NOT appear in the DAG and therefore is never passed as
+`stageId` to the tool slot. The `scannocheck: WordcheckTool` registry entry
+was a phantom — adding it caused no runtime error but created a misleading
+impression that `scannocheck` is a distinct pipeline stage.
+
+**Resolution (F5.5 fix round):** The `scannocheck` key is removed from
+`TOOL_REGISTRY`. `WordcheckTool` is registered only under `wordcheck`. The
+D8 note above remains accurate about the shared backend route namespace:
+the backend stage is canonically `scannocheck` in the route path, but the
+stage_id the shell passes to the tool slot is `wordcheck`.
+
+### F5.5-D10 — hyphenJoin: `VALIDATE_WORD_GROUP` has no canvas affordance (omitted at F5)
+
+**Machine event:** `VALIDATE_WORD_GROUP { word: string }` — validates all
+auto-joined instances of one word in bulk.
+
+**Canvas check (hyphen.jsx):** The `HyphenPageWorkbench`, `HyphenQueueTab`,
+`HyphenJoinedTab` components do not render a word-group-level "Validate all"
+button. The closest canvas control is `VALIDATE_JOIN` per individual case
+(the "Validate" button on each joined/crosspage row — wired in
+`CaseActionButtons`).
+
+**Resolution (F5.5 fix round):** `VALIDATE_WORD_GROUP` is not surfaced at F5.
+The machine event is wired; the UI affordance is deferred to I1 where the
+word-grouping panel (likely a word-frequency histogram overlay) will make the
+interaction meaningful.
+
+### F5.5-D11 — hyphenJoin: `ADD_WORD_RULE` has no canvas affordance in main views (omitted at F5)
+
+**Machine event:** `ADD_WORD_RULE { rule: string; join: boolean }` — appends a
+word to the join-rule library.
+
+**Canvas check (hyphen.jsx):** The queue/joined/mismatch tab views and the
+page workbench do not show an "Add word rule" inline button. Rule management
+is concentrated in the global library dialog (triggered by `OPEN_GLOBAL_LIBRARY`
+— see `HyphenSubhead` "Edit global library" button, wired in F5.5 fix round).
+The `ADD_WORD_RULE` event is intended for use inside that dialog.
+
+**Resolution (F5.5 fix round):** `ADD_WORD_RULE` is not surfaced at F5 in
+the main tool panel. The machine event is wired; the UI affordance lives inside
+the global library dialog, which is the I1 workstream.

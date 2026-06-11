@@ -79,8 +79,10 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   canvas_map: CanvasMapTool,
   illustrations: IllustrationsTool,
   // F5.5 — Text group (task/f55-text-tools)
+  // Note: `scannocheck` is NOT registered here. The backend DAG has only
+  // `wordcheck` as a real stage_id. The prior `scannocheck` key was a phantom
+  // — see DIVERGENCES.md F5.5-D8 for the route-namespace note.
   wordcheck: WordcheckTool,
-  scannocheck: WordcheckTool,
   hyphen_join: HyphenJoinTool,
   text_review: TextReviewTool,
   regex: RegexTool,
