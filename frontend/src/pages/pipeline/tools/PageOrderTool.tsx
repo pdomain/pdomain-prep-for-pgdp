@@ -22,7 +22,6 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   pageOrderToolMachine,
-  type PageOrderToolServices,
   type Leaf,
   type Run,
   type LeafRole,
@@ -30,52 +29,7 @@ import {
 } from "@/machines/tools/pageOrderTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-function makePageOrderServices(_projectId: string): PageOrderToolServices {
-  const mockLeaves: Leaf[] = Array.from({ length: 8 }, (_, i) => ({
-    scan: i + 1,
-    role: i === 3 ? "plate" : i === 5 ? "blank" : "text",
-    runId: i === 3 || i === 5 ? null : i < 4 ? "front" : "body",
-    ocrFolio: i === 3 || i === 5 ? null : String(i + 1),
-    folioLabel: null,
-    flags: i === 1 ? ["outOfSequence"] : i === 6 ? ["gap"] : [],
-    ...(i === 3 ? { plateTag: "Plate I" } : {}),
-  }));
-
-  const mockRuns: Run[] = [
-    {
-      id: "front",
-      label: "Front matter",
-      style: "roman",
-      start: { mode: "set", value: 1 },
-      step: 1,
-      span: [1, 3],
-    },
-    {
-      id: "body",
-      label: "Body",
-      style: "arabic",
-      start: { mode: "set", value: 1 },
-      step: 1,
-      span: [4, 8],
-    },
-  ];
-
-  return {
-    persistLeaf: () => Promise.resolve(),
-    persistOrder: () => Promise.resolve(),
-    persistRuns: () => Promise.resolve(),
-    persistNaming: () => Promise.resolve(),
-    confirmStage: () => Promise.resolve({ ok: true }),
-    // expose fixtures for the mock FOLIOS_DONE initializer
-    _mockLeaves: mockLeaves,
-    _mockRuns: mockRuns,
-  } as unknown as PageOrderToolServices;
-}
+import { buildRealPageOrderToolServices } from "@/services/tools/pageOrderTool";
 
 // ---------------------------------------------------------------------------
 // Leaf flag chip
@@ -454,9 +408,9 @@ export function PageOrderTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
 }: ToolSlotProps) {
-  const { projectId = "mock-project" } = useParams();
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
 
-  const services = useMemo(() => makePageOrderServices(projectId), [projectId]);
+  const services = useMemo(() => buildRealPageOrderToolServices(), []);
 
   const [snapshot, send] = useActor(pageOrderToolMachine, {
     input: {
@@ -474,37 +428,6 @@ export function PageOrderTool({
   const isInspectorOpen = snapshot.matches({
     workspace: { inspector: "open" },
   });
-
-  // Auto-send FOLIOS_DONE from mock on mount (simulates the folio-reading phase)
-  const hasLeaves = ctx.leaves.length > 0;
-
-  // In mock mode: if we're still in readingFolios and have no leaves,
-  // trigger the initial FOLIOS_DONE with mock data
-  if (isReadingFolios && !hasLeaves) {
-    const svcWithFixtures = services as unknown as {
-      _mockLeaves?: typeof ctx.leaves;
-      _mockRuns?: typeof ctx.runs;
-    };
-    const mockLeaves = svcWithFixtures._mockLeaves;
-    const mockRuns = svcWithFixtures._mockRuns;
-    if (mockLeaves && mockRuns) {
-      // We use a setTimeout to avoid calling send during render
-      setTimeout(() => {
-        send({
-          type: "FOLIOS_DONE",
-          leaves: mockLeaves,
-          runs: mockRuns,
-          totals: {
-            total: mockLeaves.length,
-            scanned: mockLeaves.filter((l) => l.ocrFolio !== null).length,
-            outOfSeq: 1,
-            gaps: 1,
-            duplicates: 0,
-          },
-        });
-      }, 0);
-    }
-  }
 
   // Build run lookup
   const runById = useMemo(

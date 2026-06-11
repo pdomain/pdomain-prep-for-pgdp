@@ -1093,18 +1093,10 @@ the guard evaluates.
 
 ### F5.4-8 — Mock FOLIOS_DONE trigger (pageOrderTool surface)
 
-**YAML / real API:** `pageOrderToolMachine` starts in `readingFolios` and waits
-for a `FOLIOS_DONE` event carrying the initial `leaves` and `runs` from the API.
-
-**F5 mock:** No real SSE stream exists. The `PageOrderTool` surface component
-detects when the machine is in `readingFolios` state with no leaves and triggers
-`FOLIOS_DONE` via a `setTimeout(0)` on mount. Fixture data (`_mockLeaves`,
-`_mockRuns`) is attached to the injected `services` object so the mock adapter
-can reference it without importing the fixtures directly into the machine.
-
-**Impact:** At I1, remove the `_mockLeaves`/`_mockRuns` convention. Wire the
-real `pageOrder` API response (delivered via SSE or REST) to the machine's
-`FOLIOS_DONE` event instead.
+**RESOLVED at I1.** The `_mockLeaves`/`_mockRuns` convention and the
+`setTimeout(0)` mock seam have been removed. `PageOrderTool` now uses
+`buildRealPageOrderToolServices()`. The machine stays in `readingFolios` until
+the SSE actor delivers `FOLIOS_DONE` from the real backend.
 
 ---
 

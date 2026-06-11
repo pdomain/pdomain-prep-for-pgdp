@@ -12,45 +12,15 @@
  */
 
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
-import {
-  zipToolMachine,
-  type ZipToolServices,
-  type ZipArchive,
-} from "@/machines/tools/zipTool";
+import { zipToolMachine, type ZipArchive } from "@/machines/tools/zipTool";
 import type { TreeRow } from "@/machines/tools/proofPackTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-
-// ---------------------------------------------------------------------------
-// Mock services + auto-sim
-// ---------------------------------------------------------------------------
-
-const MOCK_ARCHIVE: ZipArchive = {
-  name: "belloc-survivals.zip",
-  entries: 1229,
-  bytes: 1_380_000_000,
-  ratio: 0.94,
-  sha256: "a3f1…9c2",
-};
-
-const MOCK_ZIP_TREE: TreeRow[] = [
-  { name: "images/", dir: true, d: 0 },
-  { name: "p0001.png", d: 1, meta: "1.1 MB" },
-  { name: "text/", dir: true, d: 0 },
-  { name: "p0001.txt", d: 1, meta: "2.4 KB" },
-  { name: "manifest.json", d: 0, meta: "4.2 KB" },
-];
-
-function makeMockZipServices(_projectId: string): ZipToolServices {
-  return {
-    requestRebuild: () => Promise.resolve(undefined),
-    downloadArchive: () => Promise.resolve("mock://zip-download"),
-  };
-}
+import { buildRealZipToolServices } from "@/services/tools/zipTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -245,7 +215,7 @@ export function ZipTool({
   runnerRef: _runnerRef,
 }: ToolSlotProps): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockZipServices(projectId);
+  const services = useMemo(() => buildRealZipToolServices(), []);
 
   const [snapshot, send] = useActor(zipToolMachine, {
     input: { projectId, stageIndex: 20, services },
@@ -253,40 +223,8 @@ export function ZipTool({
 
   const [tab, setTab] = useState("overview");
 
-  // Simulate a compression run so the UI shows progress
-  const isCompressing = snapshot.matches("compressing");
-  useEffect(() => {
-    if (!isCompressing) return;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(
-      setTimeout(
-        () =>
-          send({ type: "ZIP_PROGRESS", entries: 400, total: 1229, pct: 33 }),
-        300,
-      ),
-    );
-    timers.push(
-      setTimeout(
-        () =>
-          send({ type: "ZIP_PROGRESS", entries: 820, total: 1229, pct: 67 }),
-        600,
-      ),
-    );
-    timers.push(
-      setTimeout(
-        () =>
-          send({
-            type: "ZIP_DONE",
-            archive: MOCK_ARCHIVE,
-            tree: MOCK_ZIP_TREE,
-          }),
-        900,
-      ),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [isCompressing, send]);
-
   const ctx = snapshot.context;
+  const isCompressing = snapshot.matches("compressing");
   const isBuilt = snapshot.matches("built");
   const isFailed = snapshot.matches("failed");
 

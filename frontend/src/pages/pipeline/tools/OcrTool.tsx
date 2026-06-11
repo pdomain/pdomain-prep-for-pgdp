@@ -16,94 +16,16 @@
 
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   ocrToolMachine,
   type OcrPageRow,
   type OcrTotals,
   type OcrToken,
-  type OcrToolServices,
 } from "@/machines/tools/ocrTool";
-
-// ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-function createMockOcrServices(projectId: string): OcrToolServices {
-  return {
-    async fetchPageTokens(_pid, _pageId) {
-      // Return a few low-confidence tokens for demonstration
-      void projectId;
-      const tokens: OcrToken[] = [
-        { id: "t1", word: "tbe", suggest: "the", conf: 0.71 },
-        { id: "t2", word: "ligbt", suggest: "light", conf: 0.64 },
-        { id: "t3", word: "ond", suggest: "and", conf: 0.68 },
-      ];
-      return { tokens };
-    },
-    async confirmStage(_pid) {
-      void projectId;
-      return { ok: true };
-    },
-  };
-}
-
-/** Mock PAGE_PUSH sequence to simulate a recognition run at F5. */
-function simulateMockRun(
-  send: (event: { type: "PAGE_PUSH"; row: OcrPageRow }) => void,
-): void {
-  const pages: OcrPageRow[] = [
-    {
-      idx: "0001",
-      prefix: "p0001",
-      state: "clean",
-      meanConf: 0.97,
-      lowConf: 1,
-      words: 310,
-      illust: false,
-      pageNumber: 1,
-    },
-    {
-      idx: "0002",
-      prefix: "p0002",
-      state: "flagged",
-      flags: ["garbledRun", "dictMiss"],
-      meanConf: 0.74,
-      lowConf: 18,
-      words: 285,
-      illust: false,
-      pageNumber: 2,
-    },
-    {
-      idx: "0003",
-      prefix: "p0003",
-      state: "clean",
-      meanConf: 0.95,
-      lowConf: 3,
-      words: 330,
-      illust: false,
-      pageNumber: 3,
-    },
-    {
-      idx: "0004",
-      prefix: "p0004",
-      state: "clean",
-      meanConf: 0.0,
-      lowConf: 0,
-      words: 0,
-      illust: true,
-      pageNumber: 4,
-    },
-  ];
-
-  // Stagger pushes to simulate progress
-  pages.forEach((row, i) => {
-    setTimeout(() => {
-      send({ type: "PAGE_PUSH", row });
-    }, i * 80);
-  });
-}
+import { buildRealOcrToolServices } from "@/services/tools/ocrTool";
 
 // ---------------------------------------------------------------------------
 // Confidence helpers
@@ -1160,11 +1082,12 @@ function OcrTabBar({
 // Main OcrTool component
 // ---------------------------------------------------------------------------
 
-export function OcrTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
-  void runnerRef; // wired at I1
-
-  const projectId = "mock-project";
-  const services = useMemo(() => createMockOcrServices(projectId), [projectId]);
+export function OcrTool({
+  stageId,
+  runnerRef: _runnerRef,
+}: ToolSlotProps): ReactNode {
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  const services = useMemo(() => buildRealOcrToolServices(), []);
 
   const [snapshot, send] = useActor(ocrToolMachine, {
     input: { projectId, stageIndex: 10, services },
@@ -1177,14 +1100,6 @@ export function OcrTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
 
   // Tab state — local per F5-3-2 convention (view-only, not guarded by machine)
   const [activeTab, setActiveTab] = useState<OcrTab>("pages");
-
-  // Simulate mock recognition run on mount
-  useEffect(() => {
-    simulateMockRun((event) => {
-      send(event);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const isRecognising = snapshot.matches("recognising");
   const isReviewing = snapshot.matches("reviewing");

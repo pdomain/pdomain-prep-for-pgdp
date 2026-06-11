@@ -26,7 +26,7 @@
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -37,21 +37,7 @@ import {
 } from "@/machines/tools/grayscaleTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-function makeGrayscaleServices(_projectId: string): GrayscaleToolServices {
-  return {
-    detectProfile: () =>
-      Promise.resolve({
-        mode: "perceptual",
-        why: "newsprint · low contrast · low DPI",
-        backend: "cpu",
-      }),
-  };
-}
+import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -659,12 +645,11 @@ export function GrayscaleTool({
   runnerRef: _runnerRef,
   _testServices,
 }: ToolSlotProps & { _testServices?: GrayscaleToolServices }) {
-  const { projectId = "mock-project" } = useParams();
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
 
   const services = useMemo(
-    () => _testServices ?? makeGrayscaleServices(projectId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectId],
+    () => _testServices ?? buildRealGrayscaleToolServices(),
+    [_testServices],
   );
 
   const [snapshot, send] = useActor(grayscaleToolMachine, {
@@ -686,35 +671,6 @@ export function GrayscaleTool({
   })();
 
   const currentPage = ctx.pages[ctx.cursor] ?? null;
-
-  // Mock: simulate PAGE_PUSH events when in converting state.
-  // At I1 these come from the SSE stream; in the mock we push a small fixed
-  // set of synthetic pages immediately.  The guard `isLastPage` uses the
-  // `_total` sentinel field to know when we're done.
-  const hasFiredMockPages = useRef(false);
-  useEffect(() => {
-    if (topState !== "converting" || hasFiredMockPages.current) return;
-    hasFiredMockPages.current = true;
-    const MOCK_PAGE_COUNT = 4;
-    const modes: ("perceptual" | "standard")[] = [
-      "perceptual",
-      "perceptual",
-      "standard",
-      "perceptual",
-    ];
-    for (let i = 0; i < MOCK_PAGE_COUNT; i++) {
-      const isLast = i === MOCK_PAGE_COUNT - 1;
-      const page = Object.assign(
-        {
-          id: `mock-page-${i + 1}`,
-          mode: modes[i] ?? "perceptual",
-          tone: 0.5 + i * 0.05,
-        },
-        isLast ? { _total: MOCK_PAGE_COUNT } : {},
-      );
-      setTimeout(() => send({ type: "PAGE_PUSH", page }), i * 5);
-    }
-  }, [topState, send]);
 
   // Filtered pages for the grid (not displayed in the canvas but tracked for
   // the filter bar — actual page browsing uses cursor navigation)
