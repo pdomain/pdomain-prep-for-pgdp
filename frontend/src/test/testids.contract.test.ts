@@ -112,8 +112,6 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "search-modal", // SearchModal content wrapper (default)
   "page-header", // PageHeader component default testid
   "page-drawer", // PageDrawer component default testid
-  // ── Stage pipeline rail ─────────────────────────────────────────────────
-  "stage-chain-rail", // StageChainRail root — visible on all project pages
   // ── Projects surface (ProjectsPage — F3) ────────────────────────────────
   "projects-page", // ProjectsPage root section
   "projects-rail", // Left rail (project list)
@@ -153,8 +151,6 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "import-progress", // Import progress bar container
   "import-job-row", // Active import job row in drawer
   "import-cancelled-row", // Cancelled import row
-  // ── Stage controls (StageControlsPanel) ─────────────────────────────────
-  "stage-controls-panel", // Right-side controls panel
   // ── Artifact viewer (ArtifactViewer) ────────────────────────────────────
   "artifact-viewer", // Artifact viewer container
   "artifact-primary-pane", // Primary image/text pane
@@ -177,28 +173,14 @@ describe("pgdp-own semantic testids present in production source", () => {
   }
 });
 
-// ── 4. StageChainRail uses dynamic per-stage testids ─────────────────────
+// ── 4. Dynamic per-component testid patterns ──────────────────────────────
 //
 // These dynamic patterns are verified by checking the template strings exist
 // (not the literal values, since they are computed at render time).
+// Note: StageChainRail and StageControlsPanel were removed in I1 (they
+// belonged to the deleted PageWorkbenchPage).
 
 describe("dynamic per-stage testid patterns in production source", () => {
-  it("stage-chip-${...} pattern used in StageChainRail", () => {
-    const stageChainSrc = readFileSync(
-      join(SRC_DIR, "components/StageChainRail.tsx"),
-      "utf8",
-    );
-    expect(stageChainSrc).toContain("stage-chip-");
-  });
-
-  it("stage-run-btn-${...} pattern used in StageChainRail", () => {
-    const stageChainSrc2 = readFileSync(
-      join(SRC_DIR, "components/StageChainRail.tsx"),
-      "utf8",
-    );
-    expect(stageChainSrc2).toContain("stage-run-btn-");
-  });
-
   it("result-link-${...} pattern used in SearchPanel", () => {
     const searchPanelSrc = readFileSync(
       join(SRC_DIR, "components/SearchPanel.tsx"),

@@ -5,7 +5,8 @@
     "src/api/types.gen.ts",
     "src/mocks/**",
     "src/design/index.ts",
-    "src/machines/**"
+    "src/machines/**",
+    "src/components/ui/Tooltip.tsx"
   ],
   "ignoreDependencies": ["lucide-react"],
   "ignoreExportsUsedInFile": true,
