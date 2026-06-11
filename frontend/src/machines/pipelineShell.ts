@@ -35,7 +35,11 @@
 import { setup, assign, fromPromise, type ActorRefFrom } from "xstate";
 import { stageRunnerMachine } from "./stageRunner";
 import type { StageRunnerServices } from "./stageRunner";
-import type { StagePushEvent, ProgressPushEvent } from "./lib/sseActor";
+import type {
+  StagePushEvent,
+  ProgressPushEvent,
+  StatusPushEvent,
+} from "./lib/sseActor";
 import { computeDownstream } from "@/mocks/fixtures";
 import type { PipelineSnapshot, ProjectAutomation } from "@/mocks/types";
 
@@ -337,6 +341,7 @@ export type PipelineShellEvent =
   // SSE push routing
   | StagePushEvent
   | ProgressPushEvent
+  | StatusPushEvent
   // Navigation
   | { type: "OPEN_PROJECT_NAV" }
   // Run all stale
@@ -598,6 +603,20 @@ export const pipelineShellMachine = setup({
     },
 
     /**
+     * W3.4 — accept STATUS_PUSH variants forwarded by PipelinePage.
+     *
+     * stageRunners cover per-page stages only; project-scoped stage-status
+     * (validation, build_package, …) has no matching runner entry.
+     * Full reconciliation (snapshot seeding, page-reorder, validation-updated)
+     * is deferred to I2 in DIVERGENCES.md §F4-8.
+     *
+     * For now: accept the event type so TypeScript is satisfied; no routing.
+     */
+    routeStatusPush: () => {
+      // placeholder — I2 will add snapshot seeding and stage-status routing.
+    },
+
+    /**
      * YAML: `launchRunAllStale`
      * F4-2 divergence: delegates to the component layer via callback.
      */
@@ -750,6 +769,7 @@ export const pipelineShellMachine = setup({
         // Buffer early SSE pushes during boot — route if runners already exist
         STAGE_PUSH: { actions: ["routeStagePush"] },
         PROGRESS_PUSH: { actions: ["routeStagePush"] },
+        STATUS_PUSH: { actions: ["routeStatusPush"] },
       },
     },
 
@@ -865,6 +885,9 @@ export const pipelineShellMachine = setup({
         },
         PROGRESS_PUSH: {
           actions: ["routeStagePush"],
+        },
+        STATUS_PUSH: {
+          actions: ["routeStatusPush"],
         },
 
         /** Stage settings changed from tool's Stage settings tab. */
