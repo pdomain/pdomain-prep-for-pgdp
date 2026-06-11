@@ -201,21 +201,38 @@ class StageRunFailed(RuntimeError):  # noqa: N818  # intentional: describes the 
 
 # ─── Config-field mapping ────────────────────────────────────────────────────
 
-# Maps stage_id → set of PageConfigOverrides field names the stage reads.
+# Maps stage_id → set of ResolvedPageConfig field names the stage reads.
 # Used for two purposes:
 #   1. cascade_dirty_for_config_change: dirty only stages whose fields changed.
 #   2. _compute_config_hash: include only relevant fields in the hash so
 #      reindex --heal can detect config-driven staleness.
 # Stages absent from this map read no per-page config fields.
+#
+# W1 note: stage-settings fields (denoise_min_component_area, etc.) are listed
+# here alongside per-page PageConfigOverrides fields.  A settings change
+# causes _compute_config_hash to differ → triggers dirty cascade → re-run
+# uses the new effective value.
 STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
     "initial_crop": frozenset({"initial_crop"}),
     "manual_deskew_pre": frozenset({"deskew_before_crop", "flip_horizontal", "flip_vertical"}),
     "threshold": frozenset({"threshold_level"}),
     "find_content_edges": frozenset({"fuzzy_pct", "pixel_count_columns", "pixel_count_rows"}),
+    # crop (v2: absorbs initial_crop + find_content_edges + crop_to_content)
+    "crop": frozenset({"white_space_additional", "initial_crop"}),
     "crop_to_content": frozenset({"white_space_additional"}),
+    # deskew (v2: absorbs manual_deskew_pre post-crop + auto_deskew)
+    "deskew": frozenset({"skip_auto_deskew", "deskew_after_crop"}),
     "auto_deskew": frozenset({"skip_auto_deskew", "deskew_after_crop"}),
+    # denoise (W1.2): stage-settings fields in ResolvedPageConfig
+    "denoise": frozenset({"denoise_min_component_area", "denoise_median_kernel_size", "skip_denoise"}),
+    # canvas_map (v2: absorbs morph_fill + rescale + canvas_map)
+    "canvas_map": frozenset({"do_morph", "single_dimension_rescale", "page_h_w_ratio", "alignment"}),
     "morph_fill": frozenset({"do_morph"}),
     "rescale": frozenset({"single_dimension_rescale"}),
+    # post_transform_crop (W1.6): new stage-settings field
+    "post_transform_crop": frozenset({"post_transform_crop_insets"}),
+    # post_ocr_crop (v2 name) + legacy ocr_crop (v1 name): both map ocr_crop
+    "post_ocr_crop": frozenset({"ocr_crop", "rotated_standard"}),
     "ocr_crop": frozenset({"rotated_standard"}),
     "ocr": frozenset({"use_ocr_bbox_edge"}),
 }
@@ -1050,6 +1067,34 @@ async def run_stage(
         cfg = await _resolve_config(
             database=database, project_id=project_id, page_id=page_id, page_service=_ps
         )
+
+    # W1.1: merge effective stage settings into cfg.
+    #
+    # Precedence (already correct because of the order below):
+    #   per-page PageConfigOverrides (baked into cfg by _resolve_config above)
+    #   > StageSettingsStore effective (override > saved default > registry default)
+    #
+    # apply_stage_settings_to_config only writes the stage-settings-specific
+    # fields on ResolvedPageConfig; it does NOT overwrite per-page overrides.
+    #
+    # Only stages with entries in STAGE_SETTINGS_DEFAULTS have tunable settings;
+    # for all other stages this is a fast no-op (no DB open, no I/O).
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        StageSettingsStore,
+        apply_stage_settings_to_config,
+    )
+
+    _stage_registry_defaults = STAGE_SETTINGS_DEFAULTS.get(stage_id)
+    if _stage_registry_defaults is not None:
+        _settings_db_path = data_root / "projects" / project_id / "stage_settings.db"
+        _settings_db_path.parent.mkdir(parents=True, exist_ok=True)
+        _settings_store = StageSettingsStore(_settings_db_path)
+        _effective = _settings_store.get_effective(
+            project_id, stage_id, registry_default=_stage_registry_defaults
+        )
+        cfg = apply_stage_settings_to_config(cfg, stage_id, _effective)
+
     _cfg_hash = _compute_config_hash(cfg, stage_id)
 
     # Sentinel for the impl's in-memory output; set inside the else branch
