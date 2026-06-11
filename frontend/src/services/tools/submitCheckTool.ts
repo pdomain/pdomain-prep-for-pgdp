@@ -107,18 +107,11 @@ async function dryRun(projectId: string): Promise<SubmitCheck[]> {
  */
 async function markAsSubmitted(projectId: string): Promise<{ at: string }> {
   const at = new Date().toISOString();
-  // Fire-and-forget: record the gate confirmation event in the project aggregate.
-  // The backend route to persist GateConfirmation events is part of the B5
-  // route layer. Until B5 is merged, this records locally only.
-  try {
-    await api.post(
-      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/submit_check/confirm`,
-      { gate: "submit_confirm" },
-    );
-  } catch {
-    // Non-blocking: the attestation timestamp is stored in the machine context
-    // regardless of backend persistence. The backend will catch up on reindex.
-  }
+  // W2.3: POST to the real confirm route — errors surface to the machine.
+  await api.post(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/submit_check/confirm`,
+    { gate: "submit_confirm" },
+  );
   return { at };
 }
 

@@ -684,7 +684,8 @@ class TestW23SubmitCheckConfirm:
                 published.append({"key": key, "event": event})
 
         broker = _Broker()
-        app = build_app(settings, stage_events=broker)
+        app = build_app(settings)
+        app.state.stage_events = broker
         with TestClient(app) as client:
             client.post(
                 "/api/data/projects/proj1/project-stages/submit_check/confirm",

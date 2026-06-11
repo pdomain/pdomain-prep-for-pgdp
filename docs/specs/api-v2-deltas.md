@@ -45,6 +45,7 @@ under `/projects/{id}/project-stages/`.
 | POST | `/projects/{id}/project-stages/{stage_id}/run` | `StageRunRequest` | `Job` | `StageRunStarted` (eventsourcing) + `project-stage-status` SSE | Always async (project-scoped stages may be long-running). Returns 202 + `Job`. 409 on dep not-met OR registry version mismatch. |
 | GET | `/projects/{id}/project-stages/{stage_id}/artifact` | — | varies (see §1.4) | — | Returns artifact bytes or redirect to storage key. 404 if stage not clean. |
 | GET | `/projects/{id}/pipeline` | — | `PipelineSnapshot` (new) | — | Single fetch to hydrate `pipelineShell`: `{ project, page_stages_summary, project_stages, automation }`. Replaces the fragmented load. See §1.5. |
+| POST | `/projects/{id}/project-stages/submit_check/confirm` | `{ gate: "submit_confirm" }` | `{ stage_id, status, confirmed_at }` | `GateConfirmation` (eventsourcing) + `project-stage-status` SSE | Records the user's gate confirmation that the project is ready to submit. Marks submit_check stage clean. W2.3. |
 
 All project-stage routes return 409 on registry version mismatch (§1.3).
 All project-stage run routes return 409 on upstream dependency not clean (§1.3b).

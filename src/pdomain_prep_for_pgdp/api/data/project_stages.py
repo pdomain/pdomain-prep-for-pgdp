@@ -504,6 +504,117 @@ async def get_project_stage_artifact(
     return Response(content=artifact_path.read_bytes(), media_type=content_type)
 
 
+# ─── W2.3 — submit_check/confirm ─────────────────────────────────────────────
+
+
+class _SubmitConfirmRequest(BaseModel):
+    gate: str = "submit_confirm"
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/submit_check/confirm",
+    operation_id="confirm_submit_check",
+    status_code=200,
+    responses={
+        200: {"description": "Confirmation recorded."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_submit_check(
+    project_id: str,
+    body: _SubmitConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Record a submit-check gate confirmation.
+
+    Marks the submit_check project-stage row as clean (attesting the user
+    has reviewed the validation results and confirmed the project is ready
+    for submission). Records a GateConfirmation event in PrepProjectAggregate
+    and emits a project-stage-status SSE on the project channel.
+
+    Spec: W2.3 (seam-remediation plan).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # Mark the submit_check stage as clean in the ProjectStageStore.
+    import time as _time
+
+    store = _get_store(settings.data_root, project_id)
+    now_iso = datetime.now(UTC).isoformat()
+    store.write(
+        ProjectStageState(
+            project_id=project_id,
+            stage_id="submit_check",
+            status=ProjectStageStatus.clean,
+            artifact_key=f"projects/{project_id}/stages/submit_check/output.json",
+            last_run_at=_time.time(),
+            error_message=None,
+        )
+    )
+
+    # W2.3: record GateConfirmation in PrepProjectAggregate (warn-and-continue).
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db = settings.data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _app = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        try:
+            _proj_uuid = uuid.UUID(project_id)
+        except ValueError:
+            _proj_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        _agg_id = _PrepAgg.create_id(_proj_uuid)
+        try:
+            _agg: _PrepAgg = _app.repository.get(_agg_id)  # type: ignore[assignment]
+        except Exception:
+            _agg = _PrepAgg(project_id=_proj_uuid)
+        _agg.record_gate_confirmation(
+            gate="submit_confirm",
+            target_id=project_id,
+            actor_id=user.user_id,
+        )
+        _app.save(_agg)
+    except Exception as _e_gate:
+        log.warning("W2.3 GateConfirmation event failed (non-fatal): %s", _e_gate)
+
+    # Emit project-stage-status SSE so the frontend updates immediately.
+    project_key = f"project:{project_id}"
+    try:
+        await stage_events.publish(
+            project_key,
+            {
+                "type": "project-stage-status",
+                "stage_id": "submit_check",
+                "status": "clean",
+                "job_id": None,
+                "error_message": None,
+            },
+        )
+    except Exception as _e_sse:
+        log.warning("W2.3 project-stage-status SSE failed (non-fatal): %s", _e_sse)
+
+    return JSONResponse(content={"stage_id": "submit_check", "status": "clean", "confirmed_at": now_iso})
+
+
 # ─── Project-level SSE channel ────────────────────────────────────────────────
 
 
