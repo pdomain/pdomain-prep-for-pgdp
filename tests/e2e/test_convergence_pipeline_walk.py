@@ -218,11 +218,18 @@ def test_pipeline_stage_navigation(live_server: LiveServer, page: Page) -> None:
 def test_archive_tool_shows_terminal_state(live_server: LiveServer, page: Page) -> None:
     """ArchiveTool shows the terminal 'archived' gate when the stage is complete.
 
-    Drives the archive stage via API (not OCR pipeline; no DocTR needed).
-    Then opens the archive tool in the browser and asserts the terminal state.
+    Drives the archive stage via the real project-stage tail API chain:
+    1. confirm submit_check (POST .../submit_check/confirm) — the user-facing
+       two-step gate that marks submit_check clean WITHOUT requiring the full
+       page_order→validation→proof_pack→build_package→zip chain to run first.
+       This is the real user flow (manual attestation, W2.3).
+    2. Run archive (POST .../archive/run) — now allowed since submit_check is clean.
 
-    The archive stage is a project-scoped stage that doesn't require any page
-    OCR — its gate confirmation satisfies when the stage runs cleanly.
+    This test was updated from the original "run source then run archive directly"
+    flow because W0.4 gate enforcement correctly blocks archive until submit_check
+    is clean (the gate predates this test). The confirm route is the real tail-end
+    user action before archive; seeding via confirm is more representative than
+    direct DB writes.
     """
     errors: list[str] = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
@@ -230,13 +237,21 @@ def test_archive_tool_shows_terminal_state(live_server: LiveServer, page: Page) 
     project_id = _create_project_api(live_server.base_url, "Archive Terminal State")
     _seed_pages(live_server.settings.data_root, project_id, n=1)
 
-    # Run the 'source' project stage first (prerequisite checks removed for
-    # placeholder stages — source is implemented, others are stubs). Then run
-    # 'archive' which is also implemented as a terminal stage.
-    _run_project_stage_api(live_server.base_url, project_id, "source")
+    # Step 1 of the tail chain: confirm submit_check (W2.3 gate).
+    # This is the "Mark as submitted" user action that marks submit_check clean.
+    # The confirm route requires no upstream stages to be clean first — it is the
+    # explicit user attestation ("I reviewed the report and confirm submission").
+    confirm_resp = httpx.post(
+        f"{live_server.base_url}/api/data/projects/{project_id}/project-stages/submit_check/confirm",
+        json={"gate": "submit_confirm"},
+        timeout=10,
+    )
+    assert confirm_resp.status_code == 200, (
+        f"confirm_submit_check failed: {confirm_resp.status_code} {confirm_resp.text}"
+    )
+    assert confirm_resp.json().get("status") == "clean"
 
-    # Archive stage can run immediately (it's project-scoped and doesn't
-    # depend on page-level OCR completing first in this simplified test)
+    # Step 2: run archive — gate is now satisfied (submit_check is clean).
     _run_project_stage_api(live_server.base_url, project_id, "archive")
 
     # Poll until archive reaches a terminal status (clean or failed)

@@ -10,7 +10,7 @@
 // Task #155 (s0-c): adopted pdomain-ui AppHeader + JobsPill in header slot.
 //              AppHeader replaces custom TopNav + OpenTasksBell.
 //              UserMenu kept in headerActions slot for auth-mode handling.
-//              activeJobs fed from /api/jobs polling (running jobs only).
+//              activeJobs fed from /api/data/jobs polling (running+queued, filtered client-side).
 //
 // Slot mapping vs former local layout (components/shell/AppShell.tsx):
 //   header        ← AppHeader (replaces custom TopNav)
@@ -242,15 +242,21 @@ interface RawJob {
 // M8: useActiveJobs returns the ActiveJob-compatible shape (AppHeader still
 // accepts ActiveJob[] for one back-compat release). The Job type (0.4.0) is
 // the forward target; migrate when AppHeader moves to Job[].
+//
+// Route: /api/data/jobs (read-only job index, no status filter on backend).
+// Client-side filter keeps only running/queued jobs (active work).
+// Previous path /api/jobs was wrong (no such route) and was masked by the
+// old SPA catch-all serving 200 HTML; after the catch-all fix it 404s.
+const ACTIVE_STATUSES = new Set(["running", "queued"]);
 function useActiveJobs() {
   const result = useQuery({
     queryKey: ["active-jobs"],
-    queryFn: () => api.get<RawJob[]>("/api/jobs?status=running&status=queued"),
+    queryFn: () => api.get<RawJob[]>("/api/data/jobs"),
     refetchInterval: 5_000,
     // Treat errors as an empty list — do not surface loading state in the header.
     throwOnError: false,
   });
-  const jobs = result.data ?? [];
+  const jobs = (result.data ?? []).filter((j) => ACTIVE_STATUSES.has(j.status));
   return jobs.map((j) => ({
     id: j.id,
     title: j.type,
