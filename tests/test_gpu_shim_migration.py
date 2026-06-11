@@ -9,7 +9,6 @@ Spec: docs/specs/library-placement.md §4.2
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
 _SRC = Path(__file__).parent.parent / "src" / "pdomain_prep_for_pgdp"
@@ -83,22 +82,15 @@ def test_pdomain_ops_gpu_primitives_importable() -> None:
 
 def test_dispatcher_batched_importable() -> None:
     """BatchDispatcher imports cleanly with new pdomain_ops.gpu import path."""
-    # Force reload to exercise the updated import path
-    mod_name = "pdomain_prep_for_pgdp.dispatcher.batched"
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
-    import importlib
+    # Import directly — deleting from sys.modules would create a second class
+    # object that breaks isinstance() checks in parallel test workers.
+    from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
-    mod = importlib.import_module(mod_name)
-    assert hasattr(mod, "BatchDispatcher")
+    assert BatchDispatcher is not None
 
 
 def test_dispatcher_immediate_importable() -> None:
     """ImmediateDispatcher imports cleanly with new pdomain_ops.gpu import path."""
-    mod_name = "pdomain_prep_for_pgdp.dispatcher.immediate"
-    if mod_name in sys.modules:
-        del sys.modules[mod_name]
-    import importlib
+    from pdomain_prep_for_pgdp.dispatcher.immediate import ImmediateDispatcher
 
-    mod = importlib.import_module(mod_name)
-    assert hasattr(mod, "ImmediateDispatcher")
+    assert ImmediateDispatcher is not None

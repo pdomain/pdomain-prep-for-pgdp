@@ -6,7 +6,8 @@
     "src/mocks/**",
     "src/design/index.ts",
     "src/machines/**",
-    "src/components/ui/Tooltip.tsx"
+    "src/components/ui/Tooltip.tsx",
+    "src/icons/local-shims.tsx"
   ],
   "ignoreDependencies": ["lucide-react"],
   "ignoreExportsUsedInFile": true,

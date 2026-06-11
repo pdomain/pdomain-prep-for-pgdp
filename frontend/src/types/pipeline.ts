@@ -135,7 +135,7 @@ export interface StageRunRequest {
 // Page order
 // ---------------------------------------------------------------------------
 
-/** Stored artifact + event payload for the page_order stage. */
+/** @internal Stored artifact + event payload for the page_order stage. */
 export interface PageOrderUpdate {
   new_order: string[]; // ordered page idx0 strings
   previous_order: string[];
@@ -161,6 +161,7 @@ export interface ValidationWarning {
   code: string;
 }
 
+/** @internal */
 export interface ValidationReport {
   project_id: string;
   run_at: string; // ISO datetime
@@ -175,6 +176,7 @@ export interface ValidationReport {
 // Submit-check report
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export interface SubmitCheckReport {
   project_id: string;
   run_at: string; // ISO datetime
@@ -296,7 +298,7 @@ export interface ProjectRecord {
   registry_version: number;
 }
 
-/** Badge tone derived from project status (server-authoritative). */
+/** @internal Badge tone derived from project status (server-authoritative). */
 export type StatusTone = "neutral" | "running" | "review" | "clean" | "failed";
 
 // ---------------------------------------------------------------------------
