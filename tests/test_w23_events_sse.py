@@ -491,7 +491,8 @@ class TestW22W31PageReorder:
                 published_events.append({"key": key, "event": event})
 
         broker = _CaptureBroker()
-        app = build_app(settings, stage_events=broker)
+        app = build_app(settings)
+        app.state.stage_events = broker
         with TestClient(app) as client:
             r = client.patch(
                 "/api/data/projects/proj1/pages/reorder",

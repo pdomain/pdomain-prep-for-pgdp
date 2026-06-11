@@ -294,6 +294,8 @@ async def reorder_pages(
     user: UserDep,
     db: DatabaseDep,
     page_service: PageServiceDep,
+    stage_events: StageEventsDep,
+    settings: SettingsDep,
 ) -> ReorderPagesResponse:
     """Reorder pages in a project.
 
@@ -328,6 +330,9 @@ async def reorder_pages(
             raise HTTPException(404, f"page not found: {page_id}")
         pages_by_id[page_id] = page
 
+    # Capture the previous order (by current idx0) for the event log.
+    previous_order = sorted(pages_by_id.keys(), key=lambda pid: pages_by_id[pid].idx0)
+
     # Update idx0 and prefix for each page based on new order
     updated_pages: list[PageRecord] = []
     pages_by_idx: dict[int, PageRecord] = {}
@@ -346,6 +351,51 @@ async def reorder_pages(
 
     # Write all updated pages to the event store in a batch
     put_page_records(page_service, updated_pages)
+
+    # W2.2: record PageReorder event in PrepProjectAggregate (warn-and-continue).
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db = settings.data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _app = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        try:
+            _proj_uuid = uuid.UUID(project_id)
+        except ValueError:
+            _proj_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        _agg_id = _PrepAgg.create_id(_proj_uuid)
+        try:
+            _agg: _PrepAgg = _app.repository.get(_agg_id)  # type: ignore[assignment]
+        except Exception:
+            _agg = _PrepAgg(project_id=_proj_uuid)
+        _agg.record_page_reorder(
+            new_order=list(body.page_ids),
+            previous_order=previous_order,
+            actor_id=user.user_id,
+        )
+        _app.save(_agg)
+    except Exception as _e_reorder:
+        log.warning("W2.2 PageReorder event failed (non-fatal): %s", _e_reorder)
+
+    # W3.1: emit page-reorder SSE on the project channel.
+    _project_key = f"project:{project_id}"
+    try:
+        await stage_events.publish(
+            _project_key,
+            {"type": "page-reorder", "new_order": list(body.page_ids)},
+        )
+    except Exception as _e_sse:
+        log.warning("W3.1 page-reorder SSE failed (non-fatal): %s", _e_sse)
 
     return ReorderPagesResponse(pages=updated_pages)
 
