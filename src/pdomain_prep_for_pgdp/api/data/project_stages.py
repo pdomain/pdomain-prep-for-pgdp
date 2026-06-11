@@ -1553,6 +1553,122 @@ async def text_review_approve_low_risk(
     return JSONResponse(content={"stage_id": "text_review", "approved_ids": []})
 
 
+# ─── W4 Group 4: Validation waiver + Archive item toggle ─────────────────────
+
+
+class _ValidationWaiverRequest(BaseModel):
+    rule_id: str
+    note: str = ""
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/validation/waive",
+    operation_id="waive_validation_rule",
+    status_code=200,
+    responses={
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def waive_validation_rule(
+    project_id: str,
+    body: _ValidationWaiverRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Persist a validation rule waiver for a project.
+
+    Appends the waiver to validation/waivers.json under the project stage
+    directory. At I2 the validation runner will read this file and omit
+    waived rules from the report.
+    W4 Group 4.
+    """
+    import json as _json
+    from datetime import UTC, datetime
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    waiver_dir = settings.data_root / "projects" / project_id / "stages" / "validation"
+    waiver_dir.mkdir(parents=True, exist_ok=True)
+    waiver_path = waiver_dir / "waivers.json"
+
+    existing: list[dict[str, object]] = []
+    if waiver_path.exists():
+        try:
+            existing = _json.loads(waiver_path.read_text())
+        except Exception:
+            existing = []
+
+    existing.append(
+        {
+            "rule_id": body.rule_id,
+            "note": body.note,
+            "waived_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    waiver_path.write_text(_json.dumps(existing, indent=2))
+
+    return JSONResponse(content={"ok": True, "rule_id": body.rule_id})
+
+
+class _ArchiveItemToggleRequest(BaseModel):
+    keep: bool
+
+
+@router.patch(
+    "/projects/{project_id}/project-stages/archive/items/{item_name}",
+    operation_id="toggle_archive_item",
+    status_code=200,
+    responses={
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def toggle_archive_item(
+    project_id: str,
+    item_name: str,
+    body: _ArchiveItemToggleRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Toggle the keep/drop flag for an archive item.
+
+    Writes to archive/item_toggles.json. The archive stage runner reads
+    this at execution time to filter items. W4 Group 4.
+    """
+    import json as _json
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    archive_dir = settings.data_root / "projects" / project_id / "stages" / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    toggles_path = archive_dir / "item_toggles.json"
+
+    toggles: dict[str, bool] = {}
+    if toggles_path.exists():
+        try:
+            toggles = _json.loads(toggles_path.read_text())
+        except Exception:
+            toggles = {}
+
+    toggles[item_name] = body.keep
+    toggles_path.write_text(_json.dumps(toggles, indent=2))
+
+    return JSONResponse(content={"ok": True, "name": item_name, "keep": body.keep})
+
+
 # ─── Project-level SSE channel ────────────────────────────────────────────────
 
 

@@ -100,6 +100,41 @@ All project-stage routes return 409 on registry version mismatch (§1.3).
 All project-stage run routes return 409 on upstream dependency not clean (§1.3b).
 All project-stage routes filter by `user.user_id` via the project ownership check.
 
+### 1.6 W4 Group 4 — Persistence routes
+
+| Method | Path | Request | Response | Notes |
+|--------|------|---------|----------|-------|
+| GET | `/projects/{id}/activity` | `?limit=20` | `ActivityEntry[]` | Pipeline event log. Empty when no events yet. |
+| GET | `/projects/{id}/attributes` | — | `AttributeRecord` | Reads `attributes.json`; derives from config on first call. |
+| PATCH | `/projects/{id}/attributes/{section}` | `dict[str, str]` | `AttributeRecord` | section ∈ bib / pgdp / fmt / comments. Syncs `Author` to `ProjectConfig`. |
+| POST | `/projects/{id}/clean` | — | `{ reclaimedBytes: number }` | Delete intermediate stage artifacts from pages/*/stages/. |
+| POST | `/projects/{id}/export` | — | `{ project_id, copy_id, created_at }` | Create export copy. At I1: stub record (full copy at I2). |
+| POST | `/projects/{id}/pipeline/reset` | — | `{ project_id, action, performed_at }` | Reset all project stage rows to `not_run`. |
+| POST | `/projects/{id}/pipeline/purge` | — | `{ project_id, action, performed_at }` | Destructive: clean + reset in one operation. |
+| POST | `/projects/{id}/project-stages/validation/waive` | `{ rule_id, note }` | `{ ok, rule_id }` | Append waiver to `validation/waivers.json`. |
+| PATCH | `/projects/{id}/project-stages/archive/items/{name}` | `{ keep: bool }` | `{ ok, name, keep }` | Toggle archive item keep/drop flag. |
+
+`ActivityEntry` shape: `{ id, event_type, stage_id?, description?, created_at }`.
+`AttributeRecord` shape: `{ bib: dict, pgdp: dict, fmt: dict, comments: string }`.
+
+All Group 4 routes enforce 404 (project not found) owner check.
+
+### 1.7 W4 Group 5 — Structured artifact responses
+
+Structured artifact delivery uses the existing
+`GET /projects/{id}/project-stages/{stage_id}/artifact` route (§1.4).
+W4 Group 5 ensures the backend writes structured JSON artifacts so the
+frontend can parse real data instead of scaffold:
+
+| stage_id | Artifact shape |
+|----------|----------------|
+| `proof_pack` | `{ tree: TreeRow[], completeness: { complete, total } }` |
+| `archive` | `{ project_id, items, archived_at }` (archive manifest) |
+| `build_package` | ZIP bytes (`application/zip`) |
+
+Frontend `proofPackTool.ts` now polls `GET .../proof_pack/artifact` after
+firing the run route (W4 Group 5). Timeout after 90 s returns empty scaffold.
+
 ### 1.3 Registry-version 409 shape
 
 From `stage-registry-v2.md §1`. Body for every project-scoped stage route when

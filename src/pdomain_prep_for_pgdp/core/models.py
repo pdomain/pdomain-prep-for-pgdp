@@ -67,6 +67,8 @@ class SystemDefaults(ApiModel):
 class ProjectConfig(ApiModel):
     book_name: str
     source_uri: str
+    author: str = ""
+    """Book author — shown in attributes panel bib section."""
 
     proof_start_idx0: int = 0
     proof_end_idx0: int = 0

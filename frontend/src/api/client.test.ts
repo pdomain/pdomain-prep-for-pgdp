@@ -53,6 +53,7 @@ describe("api.post against /api/data/projects (msw)", () => {
             config: {
               book_name: "Belloc — The Four Men",
               source_uri: "uploads/prj_abc123/source.zip",
+              author: "",
               proof_start_idx0: 0,
               proof_end_idx0: 0,
               cover_idx0: null,
@@ -127,6 +128,7 @@ describe("api.post against /api/data/projects (msw)", () => {
               config: {
                 book_name: "x",
                 source_uri: "",
+                author: "",
                 proof_start_idx0: 0,
                 proof_end_idx0: 0,
                 cover_idx0: null,

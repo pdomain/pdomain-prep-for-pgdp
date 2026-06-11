@@ -160,6 +160,174 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Activity
+         * @description Return recent pipeline activity for a project.
+         *
+         *     Reads recorded events from the eventsourcing aggregate.
+         *     Returns an empty list when no events exist yet (new project).
+         *     W4 Group 4.
+         */
+        get: operations["get_project_activity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/attributes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Attributes
+         * @description Return project bibliographic and PGDP attributes.
+         *
+         *     Reads from attributes.json if it exists (written by PATCH);
+         *     otherwise derives bib data from the project config.
+         *     W4 Group 4.
+         */
+        get: operations["get_project_attributes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/attributes/{section}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Project Attributes
+         * @description Persist one section of project bibliographic attributes.
+         *
+         *     Writes merged attributes.json under the project directory.
+         *     Syncs author back to ProjectConfig when bib.Author is updated.
+         *     W4 Group 4.
+         */
+        patch: operations["patch_project_attributes"];
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/clean": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clean Project
+         * @description Reclaim disk space by removing intermediate stage artifacts.
+         *
+         *     Cleans per-page stage artifact directories (keeps source images).
+         *     Pipeline stages will need to be re-run after clean.
+         *     W4 Group 4.
+         */
+        post: operations["clean_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Project Copy
+         * @description Create a copy of the project configuration for backup or transfer.
+         *
+         *     At I1: creates a stub export record. Full artifact copy (source + stages)
+         *     deferred to I2 when storage adapter supports multi-key copy.
+         *     W4 Group 4.
+         */
+        post: operations["export_project_copy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pipeline/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Project Pipeline
+         * @description Reset all project-stage states to not_run.
+         *
+         *     Marks all project stages as not_run so the pipeline can be re-run from
+         *     scratch. Does NOT delete artifacts (use /purge for that).
+         *     W4 Group 4.
+         */
+        post: operations["reset_project_pipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pipeline/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Project Pipeline
+         * @description Destructive: reset pipeline state AND delete all stage artifacts.
+         *
+         *     Combines /clean and /pipeline/reset in one operation. Use with caution —
+         *     all intermediate pipeline outputs will need to be regenerated.
+         *     W4 Group 4.
+         */
+        post: operations["purge_project_pipeline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pipeline": {
         parameters: {
             query?: never;
@@ -339,6 +507,375 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/text_zones/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Text Zones
+         * @description Confirm text_zones stage review-complete.
+         *
+         *     Semantics: all zone detections reviewed (splits applied or dismissed).
+         *     Marks the text_zones project-level review row clean, records a
+         *     ReviewDecision event, emits project-stage-status SSE.
+         *
+         *     W4 Group 1 — bespoke confirm (seam-remediation plan).
+         */
+        post: operations["confirm_text_zones"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/ocr/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Ocr
+         * @description Confirm OCR stage review-complete.
+         *
+         *     Semantics: all low-confidence OCR tokens inspected and resolved.
+         *     W4 Group 1.
+         */
+        post: operations["confirm_ocr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/text_review/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Text Review
+         * @description Confirm text_review stage review-complete.
+         *
+         *     Semantics: all pages attested (reviewer signed off on each page's text).
+         *     W4 Group 1.
+         */
+        post: operations["confirm_text_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/wordcheck/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Wordcheck
+         * @description Confirm wordcheck stage review-complete.
+         *
+         *     Semantics: all flagged words resolved (accepted, rejected, or deferred).
+         *     W4 Group 1.
+         */
+        post: operations["confirm_wordcheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/page_order/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Page Order
+         * @description Confirm page_order stage review-complete.
+         *
+         *     Semantics: naming manifest frozen (page order, folio runs, and roles locked).
+         *     The naming manifest artifact must have been produced by the page_order stage
+         *     run before confirming.
+         *     W4 Group 1.
+         */
+        post: operations["confirm_page_order"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/source/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Source
+         * @description Confirm source stage review-complete.
+         *
+         *     Semantics: source ingest reviewed (thumbnails and page attributes confirmed).
+         *     W4 Group 1.
+         */
+        post: operations["confirm_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Page Order Runs
+         * @description Persist the N-run folio schema for the page_order stage.
+         *
+         *     Writes the runs list as JSON to
+         *     ``<data_root>/projects/<id>/stages/page_order/runs.json``.
+         *     Records a SettingsChange event in PrepProjectAggregate.
+         *     Emits a project-stage-status SSE (settings-changed sub-type).
+         *
+         *     W4 Group 2 — N-run schema persist (seam-remediation plan).
+         */
+        put: operations["put_page_order_runs"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/page_order/naming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Page Order Naming
+         * @description Persist the naming scheme for the page_order stage.
+         *
+         *     Writes the naming dict as JSON to
+         *     ``<data_root>/projects/<id>/stages/page_order/naming.json``.
+         *     Records a SettingsChange event in PrepProjectAggregate.
+         *     Emits a project-stage-status SSE (settings-changed sub-type).
+         *
+         *     W4 Group 2 — naming scheme persist (seam-remediation plan).
+         */
+        put: operations["put_page_order_naming"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stage Pages
+         * @description Return all pages with their status for a given project stage.
+         *
+         *     Replaces the pipeline-snapshot workaround in imageStageReview.ts.
+         *     Returns { rows: PageRow[], totals: Totals } shaped for the imageStageReview
+         *     machine (and related tools that list pages by stage status).
+         *
+         *     W4 Group 3 — stage-pages aggregate (seam-remediation plan).
+         */
+        get: operations["get_project_stage_pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun Project Stage Pages
+         * @description Queue a batched rerun of a page-scoped stage for selected pages.
+         *
+         *     For each page_id in the request, marks the page_stage row as dirty
+         *     (queuing it for processing) and enqueues a run_page_stage Job.
+         *
+         *     Returns { rows: PageRow[] } with the updated state for each requested page.
+         *
+         *     Replaces the per-page loop in imageStageReview.ts reRunPages.
+         *     W4 Group 3 — batched rerun (seam-remediation plan).
+         */
+        post: operations["rerun_project_stage_pages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/wordcheck/accept-dict": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wordcheck Accept Dict
+         * @description Accept all dictionary-matched word fixes for this project.
+         *
+         *     At I1: no real dictionary-fix data model exists yet — returns empty
+         *     fixed_ids list.  Records a SettingsChange event (decisions logged).
+         *     W4 Group 3 — wordcheck accept-dict (seam-remediation plan).
+         */
+        post: operations["wordcheck_accept_dict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/wordcheck/accept-high": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Wordcheck Accept High
+         * @description Accept all high-confidence word candidates in the list builder.
+         *
+         *     At I1: no real candidate data model — returns empty accepted_ids list.
+         *     W4 Group 3 — wordcheck accept-high (seam-remediation plan).
+         */
+        post: operations["wordcheck_accept_high"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/text_review/approve-low-risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Text Review Approve Low Risk
+         * @description Approve all low-risk pages in the text_review stage.
+         *
+         *     At I1: no real risk-scoring model — returns empty approved_ids list.
+         *     W4 Group 3 — text_review approve-low-risk (seam-remediation plan).
+         */
+        post: operations["text_review_approve_low_risk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/validation/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive Validation Rule
+         * @description Persist a validation rule waiver for a project.
+         *
+         *     Appends the waiver to validation/waivers.json under the project stage
+         *     directory. At I2 the validation runner will read this file and omit
+         *     waived rules from the report.
+         *     W4 Group 4.
+         */
+        post: operations["waive_validation_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/archive/items/{item_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Toggle Archive Item
+         * @description Toggle the keep/drop flag for an archive item.
+         *
+         *     Writes to archive/item_toggles.json. The archive stage runner reads
+         *     this at execution time to filter items. W4 Group 4.
+         */
+        patch: operations["toggle_archive_item"];
         trace?: never;
     };
     "/api/data/projects/{project_id}/events": {
@@ -2233,6 +2770,11 @@ export interface components {
             /** Source Uri */
             source_uri: string;
             /**
+             * Author
+             * @default
+             */
+            author: string;
+            /**
              * Proof Start Idx0
              * @default 0
              */
@@ -2763,6 +3305,143 @@ export interface components {
             /** List Scope */
             list_scope: string;
         };
+        /** _ActivityEntry */
+        _ActivityEntry: {
+            /** Id */
+            id: string;
+            /** Event Type */
+            event_type: string;
+            /** Stage Id */
+            stage_id?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * _ApproveLowRiskRequest
+         * @description Optional request body for text_review approve-low-risk.
+         */
+        _ApproveLowRiskRequest: {
+            /** Min Confidence */
+            min_confidence?: number | null;
+        };
+        /** _ArchiveItemToggleRequest */
+        _ArchiveItemToggleRequest: {
+            /** Keep */
+            keep: boolean;
+        };
+        /** _AttributeRecord */
+        _AttributeRecord: {
+            /**
+             * Bib
+             * @default {}
+             */
+            bib: {
+                [key: string]: string;
+            };
+            /**
+             * Pgdp
+             * @default {}
+             */
+            pgdp: {
+                [key: string]: string;
+            };
+            /**
+             * Fmt
+             * @default {}
+             */
+            fmt: {
+                [key: string]: string;
+            };
+            /**
+             * Comments
+             * @default
+             */
+            comments: string;
+        };
+        /**
+         * _BatchRerunRequest
+         * @description POST /project-stages/{stage_id}/rerun request body.
+         */
+        _BatchRerunRequest: {
+            /** Page Ids */
+            page_ids: string[];
+        };
+        /** _CleanResponse */
+        _CleanResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Reclaimed Bytes */
+            reclaimed_bytes: number;
+        };
+        /** _ExportResponse */
+        _ExportResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Copy Id */
+            copy_id: string;
+            /** Created At */
+            created_at: string;
+        };
+        /**
+         * _PageOrderNamingRequest
+         * @description PUT /project-stages/page_order/naming request body.
+         *
+         *     ``naming`` is an opaque dict that encodes the naming scheme the frontend
+         *     has configured (parts, digits, etc.).  The backend stores it verbatim as
+         *     JSON at:
+         *       <data_root>/projects/<id>/stages/page_order/naming.json
+         *
+         *     Example:
+         *       {
+         *         "parts": {"seq": true, "type": true, "folio": true},
+         *         "digits": 3
+         *       }
+         */
+        _PageOrderNamingRequest: {
+            /** Naming */
+            naming: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * _PageOrderRunsRequest
+         * @description PUT /project-stages/page_order/runs request body.
+         *
+         *     ``runs`` is an ordered list of run descriptors.  Each run defines a
+         *     contiguous block of pages with a shared style:
+         *       start_idx  — 0-based index into the proof range where this run begins.
+         *       style      — folio number style: "roman", "arabic", or "letters".
+         *       number_start — first folio number in the run (1-indexed, typically 1).
+         *       type_code  — section type letter: "f" (frontmatter) or "p" (bodymatter).
+         *
+         *     Persisted as JSON at:
+         *       <data_root>/projects/<id>/stages/page_order/runs.json
+         */
+        _PageOrderRunsRequest: {
+            /** Runs */
+            runs: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** _PipelineActionResponse */
+        _PipelineActionResponse: {
+            /** Project Id */
+            project_id: string;
+            /** Action */
+            action: string;
+            /** Performed At */
+            performed_at: string;
+        };
+        /**
+         * _StageConfirmRequest
+         * @description Request body for bespoke stage confirm routes (optional note).
+         */
+        _StageConfirmRequest: {
+            /** Note */
+            note?: string | null;
+        };
         /** _SubmitConfirmRequest */
         _SubmitConfirmRequest: {
             /**
@@ -2770,6 +3449,24 @@ export interface components {
              * @default submit_confirm
              */
             gate: string;
+        };
+        /** _ValidationWaiverRequest */
+        _ValidationWaiverRequest: {
+            /** Rule Id */
+            rule_id: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * _WordcheckAcceptRequest
+         * @description Optional request body for wordcheck accept routes.
+         */
+        _WordcheckAcceptRequest: {
+            /** Threshold */
+            threshold?: number | null;
         };
     };
     responses: never;
@@ -3093,6 +3790,232 @@ export interface operations {
             };
         };
     };
+    get_project_activity: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_ActivityEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_attributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_AttributeRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_project_attributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                section: "bib" | "pgdp" | "fmt" | "comments";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_AttributeRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clean_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_CleanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_project_copy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_ExportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_project_pipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_PipelineActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    purge_project_pipeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_PipelineActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_pipeline_snapshot: {
         parameters: {
             query?: never;
@@ -3325,6 +4248,740 @@ export interface operations {
         };
         responses: {
             /** @description Confirmation recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_text_zones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description text_zones stage confirmed (all zone detections reviewed). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_ocr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description ocr stage confirmed (all OCR output reviewed). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_text_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description text_review stage confirmed (all pages attested). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_wordcheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description wordcheck stage confirmed (all suspects resolved). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_page_order: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description page_order stage confirmed (naming manifest frozen). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_StageConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description source stage confirmed (ingest reviewed). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_page_order_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_PageOrderRunsRequest"];
+            };
+        };
+        responses: {
+            /** @description N-run schema persisted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_page_order_naming: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_PageOrderNamingRequest"];
+            };
+        };
+        responses: {
+            /** @description Naming scheme persisted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_project_stage_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-stage page rows aggregate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rerun_project_stage_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_BatchRerunRequest"];
+            };
+        };
+        responses: {
+            /** @description Batched rerun queued; updated page rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wordcheck_accept_dict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_WordcheckAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Dictionary fixes accepted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wordcheck_accept_high: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_WordcheckAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description High-confidence candidates accepted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    text_review_approve_low_risk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_ApproveLowRiskRequest"];
+            };
+        };
+        responses: {
+            /** @description Low-risk pages approved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    waive_validation_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_ValidationWaiverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_archive_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                item_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_ArchiveItemToggleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;

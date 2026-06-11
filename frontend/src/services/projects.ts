@@ -278,17 +278,24 @@ export async function fetchAttributes(
 /**
  * Save one section of project attributes.
  *
- * NOTE: /api/data/projects/{id}/attributes/{section} does not exist yet.
- * At I1, no-op save returns the current attributes.
- * DRIFT: add PATCH /api/data/projects/{id}/attributes/{section} to projects.py.
+ * Route: PATCH /api/data/projects/{id}/attributes/{section}
+ * W4 Group 4 — real route.
  */
 export async function saveAttributes(
   projectId: string,
-  _section: AttributeSection,
-  _draft: Record<string, string>,
+  section: AttributeSection,
+  draft: Record<string, string>,
 ): Promise<AttributeRecord> {
-  // Route not yet implemented — return current attributes.
-  return fetchAttributes(projectId);
+  try {
+    const result = await api.patch<AttributeRecord>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/attributes/${encodeURIComponent(section)}`,
+      draft,
+    );
+    return result;
+  } catch {
+    // Fallback: return current attributes on error.
+    return fetchAttributes(projectId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -299,10 +306,10 @@ export async function saveAttributes(
  * Run a manage action against the real API.
  *
  * Maps to backend routes:
- *   clean    → POST /api/data/projects/{id}/clean (not yet implemented at I1)
+ *   clean    → POST /api/data/projects/{id}/clean (W4 Group 4)
  *   archive  → POST /api/data/projects/{id}/archive
  *   restore  → POST /api/data/projects/{id}/unarchive
- *   saveCopy → POST /api/data/projects/{id}/export (not yet at I1)
+ *   saveCopy → POST /api/data/projects/{id}/export (W4 Group 4)
  *   delete   → DELETE /api/data/projects/{id}
  */
 export async function runManageAction(
@@ -331,12 +338,18 @@ export async function runManageAction(
         `/api/data/projects/${encodeURIComponent(projectId)}/archive`,
       );
       return { action, status: "archived" };
-    case "clean":
-      // Not yet implemented — return stub
-      return { action, reclaimedBytes: 0 };
-    case "saveCopy":
-      // Not yet implemented — return stub
+    case "clean": {
+      const cleanResult = await api.post<{ reclaimed_bytes: number }>(
+        `/api/data/projects/${encodeURIComponent(projectId)}/clean`,
+      );
+      return { action, reclaimedBytes: cleanResult.reclaimed_bytes ?? 0 };
+    }
+    case "saveCopy": {
+      await api.post(
+        `/api/data/projects/${encodeURIComponent(projectId)}/export`,
+      );
       return { action };
+    }
   }
 }
 

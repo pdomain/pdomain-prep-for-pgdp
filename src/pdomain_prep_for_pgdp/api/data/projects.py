@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import shutil
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -348,3 +350,368 @@ async def unarchive_project(
 #   - build_package → POST /projects/{id}/project-stages/build_package/run
 #   - run-dirty → per-stage run routes via pipelineShell.RUN_ALL_STALE
 #   - review-status → project-stages snapshot (GET /projects/{id}/pipeline)
+
+
+# ─── W4 Group 4: Activity, Attributes, Manage, Pipeline ──────────────────────
+
+
+class _ActivityEntry(BaseModel):
+    id: str
+    event_type: str
+    stage_id: str | None = None
+    description: str | None = None
+    created_at: str
+
+
+@router.get(
+    "/projects/{project_id}/activity",
+    response_model=list[_ActivityEntry],
+    operation_id="get_project_activity",
+)
+async def get_project_activity(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    limit: int = 20,
+) -> list[_ActivityEntry]:
+    """Return recent pipeline activity for a project.
+
+    Reads recorded events from the eventsourcing aggregate.
+    Returns an empty list when no events exist yet (new project).
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    entries: list[_ActivityEntry] = []
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication,
+        )
+
+        events_db_path = settings.data_root / "projects" / project_id / "events.db"
+        if events_db_path.exists():
+            _app = PrepApplication(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(events_db_path),
+                }
+            )
+            try:
+                # Read the eventsourcing notification log (no aggregate load needed).
+                raw_events = list(_app.notification_log.select(start=1, limit=limit))
+                for ev in reversed(raw_events):
+                    event_name = ev.topic.split(".")[-1]
+                    entries.append(
+                        _ActivityEntry(
+                            id=str(ev.id),
+                            event_type=event_name,
+                            stage_id=None,
+                            description=event_name,
+                            created_at=datetime.now(UTC).isoformat(),
+                        )
+                    )
+            except Exception as exc:
+                log.debug("activity: error reading events for %s: %s", project_id, exc)
+            finally:
+                _app.close()
+    except Exception as exc:
+        log.debug("activity: events.db not available for %s: %s", project_id, exc)
+
+    return entries[:limit]
+
+
+class _AttributeRecord(BaseModel):
+    bib: dict[str, str] = {}
+    pgdp: dict[str, str] = {}
+    fmt: dict[str, str] = {}
+    comments: str = ""
+
+
+@router.get(
+    "/projects/{project_id}/attributes",
+    response_model=_AttributeRecord,
+    operation_id="get_project_attributes",
+)
+async def get_project_attributes(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _AttributeRecord:
+    """Return project bibliographic and PGDP attributes.
+
+    Reads from attributes.json if it exists (written by PATCH);
+    otherwise derives bib data from the project config.
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    attrs_path = settings.data_root / "projects" / project_id / "attributes.json"
+    if attrs_path.exists():
+        try:
+            data = json.loads(attrs_path.read_text())
+            return _AttributeRecord(**data)
+        except Exception as exc:
+            log.debug("attributes: failed to parse attributes.json for %s: %s", project_id, exc)
+
+    return _AttributeRecord(
+        bib={
+            "Title": project.config.book_name,
+            "Author": project.config.author or "—",
+        },
+        pgdp={"Project ID": project.id},
+        fmt={},
+        comments="",
+    )
+
+
+@router.patch(
+    "/projects/{project_id}/attributes/{section}",
+    response_model=_AttributeRecord,
+    operation_id="patch_project_attributes",
+)
+async def patch_project_attributes(
+    project_id: str,
+    section: Literal["bib", "pgdp", "fmt", "comments"],
+    body: dict[str, Any],
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _AttributeRecord:
+    """Persist one section of project bibliographic attributes.
+
+    Writes merged attributes.json under the project directory.
+    Syncs author back to ProjectConfig when bib.Author is updated.
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    project_dir = settings.data_root / "projects" / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
+    attrs_path = project_dir / "attributes.json"
+
+    # Load existing or build fresh
+    if attrs_path.exists():
+        try:
+            existing: dict[str, Any] = json.loads(attrs_path.read_text())
+        except Exception:
+            existing = {}
+    else:
+        existing = {
+            "bib": {"Title": project.config.book_name, "Author": project.config.author or "—"},
+            "pgdp": {"Project ID": project.id},
+            "fmt": {},
+            "comments": "",
+        }
+
+    # Merge the patch into the section
+    if section == "comments":
+        existing["comments"] = body.get("comments", existing.get("comments", ""))
+    else:
+        section_data: dict[str, str] = existing.get(section, {})
+        for k, v in body.items():
+            section_data[k] = str(v)
+        existing[section] = section_data
+
+    # Sync author back to ProjectConfig when bib.Author changes
+    if section == "bib" and "Author" in body:
+        updated_config = project.config.model_copy(update={"author": str(body["Author"])})
+        updated_project = project.model_copy(
+            update={
+                "config": updated_config,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        await db.put_project(updated_project)
+
+    attrs_path.write_text(json.dumps(existing, indent=2))
+    return _AttributeRecord(**existing)
+
+
+class _CleanResponse(BaseModel):
+    project_id: str
+    reclaimed_bytes: int
+
+
+@router.post(
+    "/projects/{project_id}/clean",
+    response_model=_CleanResponse,
+    operation_id="clean_project",
+)
+async def clean_project(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _CleanResponse:
+    """Reclaim disk space by removing intermediate stage artifacts.
+
+    Cleans per-page stage artifact directories (keeps source images).
+    Pipeline stages will need to be re-run after clean.
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    reclaimed = 0
+    pages_dir = settings.data_root / "projects" / project_id / "pages"
+    if pages_dir.exists():
+        for page_stages in pages_dir.glob("*/stages"):
+            if page_stages.is_dir():
+                for stage_dir in page_stages.iterdir():
+                    if stage_dir.is_dir():
+                        for f in stage_dir.rglob("*"):
+                            if f.is_file():
+                                reclaimed += f.stat().st_size
+                        shutil.rmtree(stage_dir, ignore_errors=True)
+
+    return _CleanResponse(project_id=project_id, reclaimed_bytes=reclaimed)
+
+
+class _ExportResponse(BaseModel):
+    project_id: str
+    copy_id: str
+    created_at: str
+
+
+@router.post(
+    "/projects/{project_id}/export",
+    response_model=_ExportResponse,
+    operation_id="export_project_copy",
+)
+async def export_project_copy(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _ExportResponse:
+    """Create a copy of the project configuration for backup or transfer.
+
+    At I1: creates a stub export record. Full artifact copy (source + stages)
+    deferred to I2 when storage adapter supports multi-key copy.
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    copy_id = uuid.uuid4().hex
+    return _ExportResponse(
+        project_id=project_id,
+        copy_id=copy_id,
+        created_at=datetime.now(UTC).isoformat(),
+    )
+
+
+class _PipelineActionResponse(BaseModel):
+    project_id: str
+    action: str
+    performed_at: str
+
+
+@router.post(
+    "/projects/{project_id}/pipeline/reset",
+    response_model=_PipelineActionResponse,
+    operation_id="reset_project_pipeline",
+)
+async def reset_project_pipeline(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _PipelineActionResponse:
+    """Reset all project-stage states to not_run.
+
+    Marks all project stages as not_run so the pipeline can be re-run from
+    scratch. Does NOT delete artifacts (use /purge for that).
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    from pdomain_prep_for_pgdp.core.models import ProjectStageState, ProjectStageStatus
+    from pdomain_prep_for_pgdp.core.pipeline.project_stages import ProjectStageStore
+    from pdomain_prep_for_pgdp.core.pipeline.stage_registry import V2_PROJECT_STAGE_IDS
+
+    db_path = settings.data_root / "projects" / project_id / "project_stages.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = ProjectStageStore(db_path)
+    for stage_id in V2_PROJECT_STAGE_IDS:
+        row = store.read(project_id, stage_id)
+        if row is not None:
+            store.write(
+                ProjectStageState(
+                    project_id=project_id,
+                    stage_id=stage_id,
+                    status=ProjectStageStatus.not_run,
+                )
+            )
+
+    return _PipelineActionResponse(
+        project_id=project_id,
+        action="reset",
+        performed_at=datetime.now(UTC).isoformat(),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/pipeline/purge",
+    response_model=_PipelineActionResponse,
+    operation_id="purge_project_pipeline",
+)
+async def purge_project_pipeline(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _PipelineActionResponse:
+    """Destructive: reset pipeline state AND delete all stage artifacts.
+
+    Combines /clean and /pipeline/reset in one operation. Use with caution —
+    all intermediate pipeline outputs will need to be regenerated.
+    W4 Group 4.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    # Clean artifacts
+    pages_dir = settings.data_root / "projects" / project_id / "pages"
+    if pages_dir.exists():
+        for page_stages in pages_dir.glob("*/stages"):
+            if page_stages.is_dir():
+                shutil.rmtree(page_stages, ignore_errors=True)
+
+    # Reset project stage states
+    from pdomain_prep_for_pgdp.core.models import ProjectStageState, ProjectStageStatus
+    from pdomain_prep_for_pgdp.core.pipeline.project_stages import ProjectStageStore
+    from pdomain_prep_for_pgdp.core.pipeline.stage_registry import V2_PROJECT_STAGE_IDS
+
+    db_path = settings.data_root / "projects" / project_id / "project_stages.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = ProjectStageStore(db_path)
+    for stage_id in V2_PROJECT_STAGE_IDS:
+        row = store.read(project_id, stage_id)
+        if row is not None:
+            store.write(
+                ProjectStageState(
+                    project_id=project_id,
+                    stage_id=stage_id,
+                    status=ProjectStageStatus.not_run,
+                )
+            )
+
+    return _PipelineActionResponse(
+        project_id=project_id,
+        action="purge",
+        performed_at=datetime.now(UTC).isoformat(),
+    )

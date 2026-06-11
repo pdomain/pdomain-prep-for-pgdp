@@ -480,6 +480,383 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/activity": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Activity",
+        "description": "Return recent pipeline activity for a project.\n\nReads recorded events from the eventsourcing aggregate.\nReturns an empty list when no events exist yet (new project).\nW4 Group 4.",
+        "operationId": "get_project_activity",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/_ActivityEntry"
+                  },
+                  "title": "Response Get Project Activity"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/attributes": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Attributes",
+        "description": "Return project bibliographic and PGDP attributes.\n\nReads from attributes.json if it exists (written by PATCH);\notherwise derives bib data from the project config.\nW4 Group 4.",
+        "operationId": "get_project_attributes",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_AttributeRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/attributes/{section}": {
+      "patch": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Patch Project Attributes",
+        "description": "Persist one section of project bibliographic attributes.\n\nWrites merged attributes.json under the project directory.\nSyncs author back to ProjectConfig when bib.Author is updated.\nW4 Group 4.",
+        "operationId": "patch_project_attributes",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "section",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "bib",
+                "pgdp",
+                "fmt",
+                "comments"
+              ],
+              "type": "string",
+              "title": "Section"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_AttributeRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/clean": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Clean Project",
+        "description": "Reclaim disk space by removing intermediate stage artifacts.\n\nCleans per-page stage artifact directories (keeps source images).\nPipeline stages will need to be re-run after clean.\nW4 Group 4.",
+        "operationId": "clean_project",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_CleanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/export": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Export Project Copy",
+        "description": "Create a copy of the project configuration for backup or transfer.\n\nAt I1: creates a stub export record. Full artifact copy (source + stages)\ndeferred to I2 when storage adapter supports multi-key copy.\nW4 Group 4.",
+        "operationId": "export_project_copy",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ExportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pipeline/reset": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Reset Project Pipeline",
+        "description": "Reset all project-stage states to not_run.\n\nMarks all project stages as not_run so the pipeline can be re-run from\nscratch. Does NOT delete artifacts (use /purge for that).\nW4 Group 4.",
+        "operationId": "reset_project_pipeline",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_PipelineActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pipeline/purge": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Purge Project Pipeline",
+        "description": "Destructive: reset pipeline state AND delete all stage artifacts.\n\nCombines /clean and /pipeline/reset in one operation. Use with caution \u2014\nall intermediate pipeline outputs will need to be regenerated.\nW4 Group 4.",
+        "operationId": "purge_project_pipeline",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_PipelineActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pipeline": {
       "get": {
         "tags": [
@@ -856,6 +1233,953 @@
         "responses": {
           "200": {
             "description": "Confirmation recorded.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/text_zones/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Text Zones",
+        "description": "Confirm text_zones stage review-complete.\n\nSemantics: all zone detections reviewed (splits applied or dismissed).\nMarks the text_zones project-level review row clean, records a\nReviewDecision event, emits project-stage-status SSE.\n\nW4 Group 1 \u2014 bespoke confirm (seam-remediation plan).",
+        "operationId": "confirm_text_zones",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "text_zones stage confirmed (all zone detections reviewed).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/ocr/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Ocr",
+        "description": "Confirm OCR stage review-complete.\n\nSemantics: all low-confidence OCR tokens inspected and resolved.\nW4 Group 1.",
+        "operationId": "confirm_ocr",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "ocr stage confirmed (all OCR output reviewed).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/text_review/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Text Review",
+        "description": "Confirm text_review stage review-complete.\n\nSemantics: all pages attested (reviewer signed off on each page's text).\nW4 Group 1.",
+        "operationId": "confirm_text_review",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "text_review stage confirmed (all pages attested).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/wordcheck/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Wordcheck",
+        "description": "Confirm wordcheck stage review-complete.\n\nSemantics: all flagged words resolved (accepted, rejected, or deferred).\nW4 Group 1.",
+        "operationId": "confirm_wordcheck",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "wordcheck stage confirmed (all suspects resolved).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/page_order/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Page Order",
+        "description": "Confirm page_order stage review-complete.\n\nSemantics: naming manifest frozen (page order, folio runs, and roles locked).\nThe naming manifest artifact must have been produced by the page_order stage\nrun before confirming.\nW4 Group 1.",
+        "operationId": "confirm_page_order",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "page_order stage confirmed (naming manifest frozen).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/source/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Source",
+        "description": "Confirm source stage review-complete.\n\nSemantics: source ingest reviewed (thumbnails and page attributes confirmed).\nW4 Group 1.",
+        "operationId": "confirm_source",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_StageConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "source stage confirmed (ingest reviewed).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
+      "put": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Put Page Order Runs",
+        "description": "Persist the N-run folio schema for the page_order stage.\n\nWrites the runs list as JSON to\n``<data_root>/projects/<id>/stages/page_order/runs.json``.\nRecords a SettingsChange event in PrepProjectAggregate.\nEmits a project-stage-status SSE (settings-changed sub-type).\n\nW4 Group 2 \u2014 N-run schema persist (seam-remediation plan).",
+        "operationId": "put_page_order_runs",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_PageOrderRunsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "N-run schema persisted.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/page_order/naming": {
+      "put": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Put Page Order Naming",
+        "description": "Persist the naming scheme for the page_order stage.\n\nWrites the naming dict as JSON to\n``<data_root>/projects/<id>/stages/page_order/naming.json``.\nRecords a SettingsChange event in PrepProjectAggregate.\nEmits a project-stage-status SSE (settings-changed sub-type).\n\nW4 Group 2 \u2014 naming scheme persist (seam-remediation plan).",
+        "operationId": "put_page_order_naming",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_PageOrderNamingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Naming scheme persisted.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/pages": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Project Stage Pages",
+        "description": "Return all pages with their status for a given project stage.\n\nReplaces the pipeline-snapshot workaround in imageStageReview.ts.\nReturns { rows: PageRow[], totals: Totals } shaped for the imageStageReview\nmachine (and related tools that list pages by stage status).\n\nW4 Group 3 \u2014 stage-pages aggregate (seam-remediation plan).",
+        "operationId": "get_project_stage_pages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-stage page rows aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/rerun": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Rerun Project Stage Pages",
+        "description": "Queue a batched rerun of a page-scoped stage for selected pages.\n\nFor each page_id in the request, marks the page_stage row as dirty\n(queuing it for processing) and enqueues a run_page_stage Job.\n\nReturns { rows: PageRow[] } with the updated state for each requested page.\n\nReplaces the per-page loop in imageStageReview.ts reRunPages.\nW4 Group 3 \u2014 batched rerun (seam-remediation plan).",
+        "operationId": "rerun_project_stage_pages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_BatchRerunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batched rerun queued; updated page rows.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/wordcheck/accept-dict": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Wordcheck Accept Dict",
+        "description": "Accept all dictionary-matched word fixes for this project.\n\nAt I1: no real dictionary-fix data model exists yet \u2014 returns empty\nfixed_ids list.  Records a SettingsChange event (decisions logged).\nW4 Group 3 \u2014 wordcheck accept-dict (seam-remediation plan).",
+        "operationId": "wordcheck_accept_dict",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_WordcheckAcceptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dictionary fixes accepted.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/wordcheck/accept-high": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Wordcheck Accept High",
+        "description": "Accept all high-confidence word candidates in the list builder.\n\nAt I1: no real candidate data model \u2014 returns empty accepted_ids list.\nW4 Group 3 \u2014 wordcheck accept-high (seam-remediation plan).",
+        "operationId": "wordcheck_accept_high",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_WordcheckAcceptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "High-confidence candidates accepted.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/text_review/approve-low-risk": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Text Review Approve Low Risk",
+        "description": "Approve all low-risk pages in the text_review stage.\n\nAt I1: no real risk-scoring model \u2014 returns empty approved_ids list.\nW4 Group 3 \u2014 text_review approve-low-risk (seam-remediation plan).",
+        "operationId": "text_review_approve_low_risk",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_ApproveLowRiskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Low-risk pages approved.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/validation/waive": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Waive Validation Rule",
+        "description": "Persist a validation rule waiver for a project.\n\nAppends the waiver to validation/waivers.json under the project stage\ndirectory. At I2 the validation runner will read this file and omit\nwaived rules from the report.\nW4 Group 4.",
+        "operationId": "waive_validation_rule",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_ValidationWaiverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/archive/items/{item_name}": {
+      "patch": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Toggle Archive Item",
+        "description": "Toggle the keep/drop flag for an archive item.\n\nWrites to archive/item_toggles.json. The archive stage runner reads\nthis at execution time to filter items. W4 Group 4.",
+        "operationId": "toggle_archive_item",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_ArchiveItemToggleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
@@ -6228,6 +7552,11 @@
             "type": "string",
             "title": "Source Uri"
           },
+          "author": {
+            "type": "string",
+            "title": "Author",
+            "default": ""
+          },
           "proof_start_idx0": {
             "type": "integer",
             "title": "Proof Start Idx0",
@@ -6389,6 +7718,7 @@
         "required": [
           "book_name",
           "source_uri",
+          "author",
           "proof_start_idx0",
           "proof_end_idx0",
           "cover_idx0",
@@ -7362,6 +8692,249 @@
         ],
         "title": "WordlistPromotionRequest"
       },
+      "_ActivityEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "stage_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "created_at"
+        ],
+        "title": "_ActivityEntry"
+      },
+      "_ApproveLowRiskRequest": {
+        "properties": {
+          "min_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Confidence"
+          }
+        },
+        "type": "object",
+        "title": "_ApproveLowRiskRequest",
+        "description": "Optional request body for text_review approve-low-risk."
+      },
+      "_ArchiveItemToggleRequest": {
+        "properties": {
+          "keep": {
+            "type": "boolean",
+            "title": "Keep"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keep"
+        ],
+        "title": "_ArchiveItemToggleRequest"
+      },
+      "_AttributeRecord": {
+        "properties": {
+          "bib": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Bib",
+            "default": {}
+          },
+          "pgdp": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Pgdp",
+            "default": {}
+          },
+          "fmt": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Fmt",
+            "default": {}
+          },
+          "comments": {
+            "type": "string",
+            "title": "Comments",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "_AttributeRecord"
+      },
+      "_BatchRerunRequest": {
+        "properties": {
+          "page_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Page Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page_ids"
+        ],
+        "title": "_BatchRerunRequest",
+        "description": "POST /project-stages/{stage_id}/rerun request body."
+      },
+      "_CleanResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "reclaimed_bytes": {
+            "type": "integer",
+            "title": "Reclaimed Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "reclaimed_bytes"
+        ],
+        "title": "_CleanResponse"
+      },
+      "_ExportResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "copy_id": {
+            "type": "string",
+            "title": "Copy Id"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "copy_id",
+          "created_at"
+        ],
+        "title": "_ExportResponse"
+      },
+      "_PageOrderNamingRequest": {
+        "properties": {
+          "naming": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Naming"
+          }
+        },
+        "type": "object",
+        "required": [
+          "naming"
+        ],
+        "title": "_PageOrderNamingRequest",
+        "description": "PUT /project-stages/page_order/naming request body.\n\n``naming`` is an opaque dict that encodes the naming scheme the frontend\nhas configured (parts, digits, etc.).  The backend stores it verbatim as\nJSON at:\n  <data_root>/projects/<id>/stages/page_order/naming.json\n\nExample:\n  {\n    \"parts\": {\"seq\": true, \"type\": true, \"folio\": true},\n    \"digits\": 3\n  }"
+      },
+      "_PageOrderRunsRequest": {
+        "properties": {
+          "runs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "title": "_PageOrderRunsRequest",
+        "description": "PUT /project-stages/page_order/runs request body.\n\n``runs`` is an ordered list of run descriptors.  Each run defines a\ncontiguous block of pages with a shared style:\n  start_idx  \u2014 0-based index into the proof range where this run begins.\n  style      \u2014 folio number style: \"roman\", \"arabic\", or \"letters\".\n  number_start \u2014 first folio number in the run (1-indexed, typically 1).\n  type_code  \u2014 section type letter: \"f\" (frontmatter) or \"p\" (bodymatter).\n\nPersisted as JSON at:\n  <data_root>/projects/<id>/stages/page_order/runs.json"
+      },
+      "_PipelineActionResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "performed_at": {
+            "type": "string",
+            "title": "Performed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "action",
+          "performed_at"
+        ],
+        "title": "_PipelineActionResponse"
+      },
+      "_StageConfirmRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "_StageConfirmRequest",
+        "description": "Request body for bespoke stage confirm routes (optional note)."
+      },
       "_SubmitConfirmRequest": {
         "properties": {
           "gate": {
@@ -7372,6 +8945,42 @@
         },
         "type": "object",
         "title": "_SubmitConfirmRequest"
+      },
+      "_ValidationWaiverRequest": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id"
+        ],
+        "title": "_ValidationWaiverRequest"
+      },
+      "_WordcheckAcceptRequest": {
+        "properties": {
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "type": "object",
+        "title": "_WordcheckAcceptRequest",
+        "description": "Optional request body for wordcheck accept routes."
       }
     },
     "securitySchemes": {
