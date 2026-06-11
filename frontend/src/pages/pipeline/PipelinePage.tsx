@@ -30,7 +30,7 @@
  * @see src/machines/DIVERGENCES.md §F4-1 §F4-2 §F4-3
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActor } from "@xstate/react";
@@ -39,6 +39,7 @@ import {
   buildRealStageRunnerServices,
   buildRealProjectSettingsServices,
 } from "@/services/pipeline";
+import { subscribeProject } from "@/services/sse";
 import {
   pipelineShellMachine,
   STAGE_DEFS,
@@ -47,6 +48,7 @@ import {
   type PipelineShellServices,
   type AutomationToggles,
 } from "@/machines/pipelineShell";
+import { mapProjectEvent } from "@/machines/lib/sseActor";
 import {
   projectSettingsMachine,
   type ProjectSettingsServices,
@@ -982,6 +984,39 @@ export function PipelinePage({
 
   const ctx = snap.context;
   const inSettings = snap.matches({ pipeline: { mode: "settings" } });
+
+  // ── Project SSE channel (I1 wiring) ──────────────────────────────────────
+  //
+  // Subscribe to project-level SSE events and forward them to pipelineShell.
+  // The machine handles STAGE_PUSH / PROGRESS_PUSH / STATUS_PUSH events from
+  // this channel — specifically routing stage progress and status updates to
+  // the matching stageRunner actor via routeStagePush.
+  //
+  // Divergence pattern: SSE subscription is in the component layer (same as
+  // F4-1 projectSettings, F3-4/F3-6 projectDetail). The machine does not
+  // spawn the sseActor itself — it receives events via send() here.
+  //
+  // The subscription is created once per (projectId, send) pair and cleaned
+  // up when the component unmounts or projectId changes.
+  useEffect(
+    function subscribeProjectSse() {
+      if (!projectId) return;
+      const unsubscribe = subscribeProject(projectId, (event) => {
+        const machineEvent = mapProjectEvent(event);
+        // Forward only event types the machine's event union accepts.
+        // STATUS_PUSH (snapshot/stage-status/page-reorder/validation-updated)
+        // are not yet wired into PipelineShellEvent at I1.
+        if (
+          machineEvent.type === "STAGE_PUSH" ||
+          machineEvent.type === "PROGRESS_PUSH"
+        ) {
+          send(machineEvent);
+        }
+      });
+      return unsubscribe;
+    },
+    [projectId, send],
+  );
 
   // ── Loading / error ──────────────────────────────────────────────────────
 

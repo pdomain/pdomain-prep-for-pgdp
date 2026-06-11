@@ -143,7 +143,7 @@ export type SubscriptionFn<TEvent> = (
 // Mapping helpers: server event → machine event
 // ---------------------------------------------------------------------------
 
-function mapProjectEvent(event: ProjectChannelEvent): SseMachineEvent {
+export function mapProjectEvent(event: ProjectChannelEvent): SseMachineEvent {
   switch (event.type) {
     case "project-snapshot":
       return {

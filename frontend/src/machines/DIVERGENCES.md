@@ -534,6 +534,41 @@ a run-all-stale sweep.
 
 ---
 
+## F4-8 — Project SSE subscription in component layer (PipelinePage) {#I1-resolved}
+
+**YAML:** SSE actor is spawned inside the machine and delivers `STAGE_PUSH` /
+`PROGRESS_PUSH` events to the parent via `sendBack`.
+
+**XState v5 (I1):** The project SSE subscription lives in `PipelinePage`'s
+`useEffect`, not inside `pipelineShellMachine`. This matches the F4-1
+pattern (projectSettings), F3-4/F3-6 (projectDetail):
+
+```ts
+useEffect(() => {
+  const unsubscribe = subscribeProject(projectId, (event) => {
+    const machineEvent = mapProjectEvent(event);
+    if (
+      machineEvent.type === "STAGE_PUSH" ||
+      machineEvent.type === "PROGRESS_PUSH"
+    ) {
+      send(machineEvent);
+    }
+  });
+  return unsubscribe;
+}, [projectId, send]);
+```
+
+`STATUS_PUSH` variants (snapshot, stage-status, page-reorder, validation-updated)
+are not forwarded at I1 because `PipelineShellEvent` does not yet include them.
+At I2, add `StatusPushEvent` to `PipelineShellEvent` and wire the snapshot
+variant to seed initial runner states from the on-connect snapshot.
+
+**Impact:** The machine receives real SSE events from the backend. No changes
+to the machine event routing logic — `routeStagePush` handles the forwarding
+to the matching stageRunner actor.
+
+---
+
 ---
 
 ## Task F5.1 (source tool) divergences
