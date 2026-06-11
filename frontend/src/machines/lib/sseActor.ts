@@ -34,7 +34,7 @@ import type {
   PageStageState,
   ProjectStageStatus,
   PageStageStatus,
-} from "@/mocks/types";
+} from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
 // Machine-event types (what the actor emits to the parent machine)

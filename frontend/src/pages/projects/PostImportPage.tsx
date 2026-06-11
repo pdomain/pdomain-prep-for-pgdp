@@ -22,7 +22,7 @@ import { useActor } from "@xstate/react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/shell/PageHeader";
-import type { ImportJob } from "@/mocks/types";
+import type { ImportJob } from "@/types/pipeline";
 import {
   postImportMachine,
   type PostImportInput,

@@ -40,8 +40,8 @@ import type {
   ProgressPushEvent,
   StatusPushEvent,
 } from "./lib/sseActor";
-import { computeDownstream } from "@/mocks/fixtures";
-import type { PipelineSnapshot, ProjectAutomation } from "@/mocks/types";
+import { computeDownstream } from "@/lib/stageDeps";
+import type { PipelineSnapshot, ProjectAutomation } from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
 // Stage definitions (mirroring pipeline-template.jsx STAGE_DEFS)
