@@ -4,10 +4,9 @@
  * to a real Error.
  *
  * §13a step 2 (sonner): the inline `<span role="alert">` body retired in
- * favor of a global toast surface. The component still exists so the three
- * call sites in TextReviewPage + the ProjectListPage create-modal error
- * branch can stay declarative — they pass an error and the banner deals
- * with the toast plumbing.
+ * favor of a global toast surface. The component exists so call sites (e.g.
+ * the ProjectListPage create-modal error branch) can stay declarative —
+ * they pass an error and the banner deals with the toast plumbing.
  *
  * Contract:
  *   - Renders nothing (returns null) — confirms the toast is the only UX surface.

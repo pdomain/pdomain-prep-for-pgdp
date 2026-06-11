@@ -6,10 +6,9 @@ import "@testing-library/jest-dom/vitest";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "./server";
 
-// jsdom does not implement ResizeObserver. Two components use it
-// today (`WordBboxOverlay`, `PageWorkbenchPage`); mounting either in a
-// test would otherwise throw `ReferenceError: ResizeObserver is not
-// defined`. The minimal stub here records `observe` calls without
+// jsdom does not implement ResizeObserver. Components using it (e.g.
+// `WordBboxOverlay`) would otherwise throw `ReferenceError: ResizeObserver
+// is not defined`. The minimal stub here records `observe` calls without
 // firing callbacks — tests that need a size measurement should mock
 // `Element.prototype.getBoundingClientRect` and either drive the
 // initial sync `update()` (which the components run before installing

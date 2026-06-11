@@ -61,11 +61,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { PostImportPage } from "./pages/projects/PostImportPage";
 import { ProjectConfigurePage } from "./pages/ProjectConfigurePage";
-import { PageWorkbenchPage } from "./pages/PageWorkbenchPage";
 import { SettingsPage } from "./pages/SettingsPage";
-import { ProjectReviewQueuePage } from "./pages/ProjectReviewQueuePage";
-import { TextReviewPage } from "./pages/TextReviewPage";
-import { CropsGridPage } from "./pages/CropsGridPage";
 import { PipelinePage } from "./pages/pipeline/PipelinePage";
 
 // ── Phase 2.7b: UIPrefsConfig — real pdomain-ocr-ops wiring (resolves GAP-2/GAP-3) ─
@@ -360,22 +356,6 @@ export default function App() {
                     <Route
                       path="/projects/:projectId"
                       element={<ProjectConfigurePage />}
-                    />
-                    <Route
-                      path="/projects/:projectId/pages/:idx0"
-                      element={<PageWorkbenchPage />}
-                    />
-                    <Route
-                      path="/projects/:projectId/pages/:idx0/review"
-                      element={<TextReviewPage />}
-                    />
-                    <Route
-                      path="/projects/:projectId/crops"
-                      element={<CropsGridPage />}
-                    />
-                    <Route
-                      path="/projects/:projectId/review"
-                      element={<ProjectReviewQueuePage />}
                     />
                     <Route
                       path="/projects/:projectId/pipeline"

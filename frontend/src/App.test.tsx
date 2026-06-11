@@ -70,7 +70,7 @@ vi.mock("@pdomain/pdomain-ui/shell", () => ({
 }));
 
 // Mock @pdomain/pdomain-ui/canvas to prevent the konva/lib/index-node.js
-// -> require("canvas") chain. PageWorkbenchPage transitively imports this
+// -> require("canvas") chain. WordBboxOverlay transitively imports this
 // module; hoisting the mock here prevents the native addon from loading.
 vi.mock("@pdomain/pdomain-ui/canvas", () => ({
   PageImageCanvas: ({

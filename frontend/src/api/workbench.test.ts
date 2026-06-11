@@ -1,23 +1,18 @@
 /**
- * Wire-level tests for the workbench drag-create surfaces.
+ * Wire-level tests for page PATCH bodies.
  *
- * The `PageWorkbenchPage` component itself isn't mounted here — that
- * needs Konva + Router + QueryClient and belongs to a later tick. What
- * we lock here is the contract the component *uses*:
+ * Locks the contract used by page-split and illustration-region operations:
  *
  *   1. `PATCH /api/data/projects/{id}/pages/{idx0}` with a `splits`
- *      array body — the path drag-create takes after the user releases
- *      the mouse on a split rectangle (`handleAddSplit` ->
- *      `commitOverrides.mutate({ splits: [...]})`). The `pages.test.ts`
- *      already covers the page-type PATCH; this asserts the
- *      array-shaped split body that drag-create actually sends.
+ *      array body — used when the user creates a split rectangle.
+ *      The `pages.test.ts` already covers the page-type PATCH; this
+ *      asserts the array-shaped split body specifically.
  *
- *   2. Same PATCH with an `illustration_regions` array body — drag-
- *      create's other branch (`handleAddRegion`).
+ *   2. Same PATCH with an `illustration_regions` array body — for
+ *      illustration region creation.
  *
- * Note: `POST /api/gpu/process-page` tests removed in M6 — the Preview
- * button now calls the per-stage endpoint (canvas_map) via the existing
- * runStage mutation.
+ * Note: PageWorkbenchPage was deleted at I1 (statechart convergence).
+ * These API contracts are consumed by the new TextZonesTool instead.
  */
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";

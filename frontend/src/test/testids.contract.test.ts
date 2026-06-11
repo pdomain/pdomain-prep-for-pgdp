@@ -159,17 +159,12 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "artifact-viewer", // Artifact viewer container
   "artifact-primary-pane", // Primary image/text pane
   "artifact-compare-pane", // Compare pane (split mode)
-  // ── Page workbench (PageWorkbenchPage) ──────────────────────────────────
-  "canvas-draw-overlay", // Konva canvas draw overlay
+  // ── Word bbox overlay (WordBboxOverlay) ─────────────────────────────────
   "word-bbox-overlay-capture", // WordBboxOverlay capture root
-  // ── Download ────────────────────────────────────────────────────────────
-  "download-package-link", // Final download link
-  // ── Page row / drawer (workbench list) ──────────────────────────────────
-  "page-drawer-open-workbench", // Button to open workbench from drawer
-  "page-drawer-close", // Close drawer button
-  // ── Search ──────────────────────────────────────────────────────────────
-  "empty-state", // Empty-state placeholder (project list and search)
 ] as const;
+// Removed at I1 (PageWorkbenchPage, TextReviewPage, CropsGridPage,
+// ProjectReviewQueuePage deleted): canvas-draw-overlay, download-package-link,
+// page-drawer-open-workbench, page-drawer-close, empty-state.
 
 describe("pgdp-own semantic testids present in production source", () => {
   for (const tid of PGDP_REQUIRED_TESTIDS) {
