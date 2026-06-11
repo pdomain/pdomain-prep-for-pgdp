@@ -495,11 +495,17 @@ export function PageOrderTool({
   const hasFlaggedLeaves =
     (ctx.totals?.outOfSeq ?? 0) > 0 || (ctx.totals?.duplicates ?? 0) > 0;
 
-  // Naming manifest fetch: when entering workspace (page_order stage clean),
-  // fetch the manifest artifact and send MANIFEST_PUSH to populate leaf prefixes.
-  // Re-fetches whenever the machine returns to workspace (e.g. after re-run).
+  // Naming manifest fetch: when entering workspace or settled (page_order
+  // stage clean), fetch the manifest artifact and send MANIFEST_PUSH to
+  // populate leaf prefixes.
+  //
+  // W5.7: fires on both workspace entry AND settled entry so that the final
+  // prefixes produced by confirmStage are displayed without requiring the
+  // user to trigger UPSTREAM_CHANGED. The settled state now accepts
+  // MANIFEST_PUSH (see machine), so the send is not dropped.
+  const shouldFetchManifest = isWorkspace || isSettled;
   useEffect(() => {
-    if (!isWorkspace) return;
+    if (!shouldFetchManifest) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -523,7 +529,7 @@ export function PageOrderTool({
     return () => {
       cancelled = true;
     };
-  }, [isWorkspace, projectId, send]);
+  }, [shouldFetchManifest, projectId, send]);
 
   return (
     <div

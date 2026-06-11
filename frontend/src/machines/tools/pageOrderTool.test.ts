@@ -12,6 +12,7 @@
  * Suite 6 "runs: add / edit / remove" — ADD_RUN → CONFIRM_ADD; EDIT_RUN → DONE
  * Suite 7 "naming" — SET_NAME_PART patches naming context
  * Suite 8 "confirm advance" — sequenceClean guard + confirming → settled
+ *   + W5.7: MANIFEST_PUSH accepted in settled (post-confirm manifest refetch)
  * Suite 9 "UPSTREAM_CHANGED resets to loading" from settled (W5.5)
  */
 
@@ -567,6 +568,34 @@ describe("pageOrderTool — confirm advance", () => {
     actor.send({ type: "CONFIRM_ADVANCE" });
     const snap = await waitForState(actor, (s) => s.matches("workspace"));
     expect(snap.context.error?.message).toBeTruthy();
+    actor.stop();
+  });
+
+  it("W5.7: MANIFEST_PUSH accepted in settled state (refetch after confirm)", async () => {
+    // W5.7: after confirming, the component refetches the manifest and sends
+    // MANIFEST_PUSH. The machine must accept it in settled (not drop it).
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [makeLeaf({ scan: 1, ocrFolio: null })],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+    actor.send({ type: "CONFIRM_ADVANCE" });
+    await waitForState(actor, (s) => s.matches("settled"));
+
+    // Send the post-confirm manifest with a real prefix
+    actor.send({ type: "MANIFEST_PUSH", prefixes: { 1: "f001" } });
+
+    const snap = actor.getSnapshot();
+    expect(snap.matches("settled")).toBe(true);
+    // assignPrefixes must have updated leaf.prefix in settled state (W5.7)
+    const leaf = snap.context.leaves.find((l) => l.scan === 1);
+    expect(leaf?.prefix).toBe("f001");
     actor.stop();
   });
 });

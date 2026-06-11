@@ -1136,6 +1136,11 @@ export const pageOrderToolMachine = setup({
       on: {
         // W5.5: reset to loading (was readingFolios) to re-invoke fetchFolios
         UPSTREAM_CHANGED: { target: "loading" },
+        // W5.7: accept MANIFEST_PUSH in settled so the component can refetch
+        // the naming manifest after confirm and display the final prefixes.
+        // Without this, the assignPrefixes action fires in workspace but is
+        // dropped (no handler) once the machine transitions to settled.
+        MANIFEST_PUSH: { actions: ["assignPrefixes"] },
       },
     },
   },
