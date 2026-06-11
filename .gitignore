@@ -53,6 +53,7 @@ Thumbs.db
 # Local data / projects
 pgdp-projects/
 state.db*
+test.db
 *.sqlite*
 
 # Env files
