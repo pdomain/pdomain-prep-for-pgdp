@@ -3800,6 +3800,98 @@
         }
       }
     },
+    "/api/suite/device": {
+      "get": {
+        "summary": "Get Device",
+        "description": "Return the current compute-target state.",
+        "operationId": "suite_get_device",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Put Device",
+        "description": "Persist the compute-device preference and return the updated state.",
+        "operationId": "suite_put_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/suite/update": {
+      "get": {
+        "summary": "Get Update",
+        "operationId": "suite_get_update",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Post Update",
+        "operationId": "suite_post_update",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Post Update Api Suite Update Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/cdn/{key}": {
       "put": {
         "summary": "Cdn Put",
@@ -3951,6 +4043,33 @@
             "title": "Font Scale",
             "default": 1.0
           },
+          "compute_device_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compute Device Default"
+          },
+          "update_policy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "notify",
+                  "auto",
+                  "manual"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update Policy"
+          },
           "layer_colors": {
             "$ref": "#/components/schemas/LayerColors"
           }
@@ -4089,6 +4208,86 @@
           "text"
         ],
         "title": "DeleteWordsResponse"
+      },
+      "DeviceInfo": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "available": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Available",
+            "default": []
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "effective_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Source"
+          },
+          "offload_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offload Target"
+          },
+          "cuda_docs_url": {
+            "type": "string",
+            "title": "Cuda Docs Url",
+            "default": "/docs/runbooks/cuda-setup.md"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "DeviceInfo",
+        "description": "Response model for GET/PUT /api/suite/device."
+      },
+      "DevicePutBody": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "device"
+        ],
+        "title": "DevicePutBody",
+        "description": "Request body for PUT /api/suite/device."
       },
       "DownloadUrlResponse": {
         "properties": {
@@ -6962,6 +7161,46 @@
           "updated_at"
         ],
         "title": "UpdateConfigResponse"
+      },
+      "UpdateInfo": {
+        "properties": {
+          "current": {
+            "type": "string",
+            "title": "Current"
+          },
+          "latest": {
+            "type": "string",
+            "title": "Latest"
+          },
+          "update_available": {
+            "type": "boolean",
+            "title": "Update Available"
+          },
+          "changelog_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changelog Url"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel",
+            "default": "stable"
+          }
+        },
+        "type": "object",
+        "required": [
+          "current",
+          "latest",
+          "update_available"
+        ],
+        "title": "UpdateInfo",
+        "description": "Shape returned by GET /api/suite/update."
       },
       "UpdatePageRequest": {
         "properties": {

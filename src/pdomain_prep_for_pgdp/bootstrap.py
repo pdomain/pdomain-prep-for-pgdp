@@ -296,9 +296,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     # Phase 2.7b: mount pdomain-ops suite routes so the frontend AppShell
     # SuiteSiblingsProvider can call real endpoints instead of GAP-4 shims.
-    # Routes: GET /api/suite/installed, POST /api/suite/launch,
-    #         GET /api/suite/prefs, PUT /api/suite/prefs/common,
-    #         PUT /api/suite/prefs/apps/{app_id}, GET /api/icons/{size}.
+    # Mounts installed/launch, prefs/common/apps, icons, device, and update
+    # routes under /api/suite/ and /api/icons/.
     #
     # Post-mount patches:
     # 1. pdomain-prep-for-pgdp requires explicit operation_id on every schema-visible
@@ -322,6 +321,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         ("PUT", "/api/suite/prefs/common"): "suite_put_prefs_common",
         ("PUT", "/api/suite/prefs/apps/{app_id}"): "suite_put_prefs_app",
         ("GET", "/api/icons/{size}"): "suite_get_icon",
+        # Added in pdomain-ops 0.11.0 — compute-target + update-check routes.
+        ("GET", "/api/suite/device"): "suite_get_device",
+        ("PUT", "/api/suite/device"): "suite_put_device",
+        ("GET", "/api/suite/update"): "suite_get_update",
+        ("POST", "/api/suite/update"): "suite_post_update",
     }
     for route in app.routes:
         if not isinstance(route, APIRoute):
