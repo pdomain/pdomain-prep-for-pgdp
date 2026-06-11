@@ -13,8 +13,8 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "pdomain-book-tools>=0.17.0",
-    "pdomain-ops>=0.7.1",
+    "pdomain-book-tools>=0.18.3",
+    "pdomain-ops>=0.11.0",
     "eventsourcing>=9.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
