@@ -83,6 +83,9 @@ class IllustrationRegionOutput(TypedDict):
 
 class _AlignmentNamespace(Protocol):
     DEFAULT: object
+    TOP: object
+    CENTER: object
+    BOTTOM: object
 
 
 type JsonStageOutput = BBox | PageAttrsOutput | list[IllustrationRegionOutput]
@@ -321,33 +324,47 @@ def _find_content_edges_cpu(image: ImageArray, cfg: StageConfig = None) -> BBox:
 
 
 def _crop_to_content_cpu(image: ImageArray, bbox: BBox, cfg: StageConfig = None) -> ImageArray:
-    """Crop the binary image to the content bounding box.
+    """Crop the binary image to the content bounding box (W1.8).
 
-    `image` is the inverted binary ndarray (from `invert`);
-    `bbox` is (minX, maxX, minY, maxY) from `find_content_edges`.
+    ``image`` is the inverted binary ndarray (from ``invert``);
+    ``bbox`` is (minX, maxX, minY, maxY) from ``find_content_edges``.
 
-    Wraps `crop_to_rectangle`. The optional whitespace-pad step fires only
-    when `cfg.white_space_additional` is set — at default config (no override)
-    it is skipped. ResolvedPageConfig plumbing into the runner lands later;
-    this iteration always takes the no-pad branch.
+    Wraps ``crop_to_rectangle``.  When ``cfg.white_space_additional`` is set,
+    an additional fractional whitespace pad is added around the bbox before
+    cropping.  The pad tuple is ``(top, bottom, left, right)`` fractions of the
+    image height/width respectively.  For example (0.05, 0.05, 0.05, 0.05)
+    adds 5% padding on each side.
     """
-    _ = cfg
     crop_to_rectangle = cast(
         "Callable[[ImageArray, int, int, int, int], ImageArray]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "crop_to_rectangle"),
     )
     minX, maxX, minY, maxY = bbox
+
+    # W1.8: apply fractional whitespace padding when configured.
+    pad = cfg.white_space_additional if cfg is not None else None
+    if pad is not None:
+        h, w = cast("tuple[int, int]", image.shape[:2])
+        pad_top, pad_bottom, pad_left, pad_right = pad
+        minY = max(0, minY - int(h * pad_top))
+        maxY = min(h, maxY + int(h * pad_bottom))
+        minX = max(0, minX - int(w * pad_left))
+        maxX = min(w, maxX + int(w * pad_right))
+
     return crop_to_rectangle(image, minX, maxX, minY, maxY)
 
 
 def _auto_deskew_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Auto-deskew the binary content image.
 
-    Common case: no manual override, non-special alignment, standard orientation.
-    ResolvedPageConfig skip conditions land when config plumbing is wired;
-    for now, always attempt auto-deskew via `auto_deskew(pct=0.30)`.
+    Respects ``cfg.skip_auto_deskew`` (W1.3).  When True the image is returned
+    unchanged.  Registry default is ``skip_auto_deskew=True`` (i.e. deskew is
+    OFF by default; users opt in via settings or per-page override).
     """
-    _ = cfg
+    # W1.3: honour skip flag (default True = skip).
+    if cfg is None or cfg.skip_auto_deskew:
+        return image
+
     auto_deskew = cast(
         "Callable[..., ImageArray | tuple[ImageArray, object, object]]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "auto_deskew"),
@@ -362,12 +379,14 @@ def _auto_deskew_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 def _morph_fill_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply morphological fill to close small gaps in text strokes.
 
-    Optional via ``cfg.do_morph``; default is False, but wiring the impl
-    now means the stage can run harmlessly — pdomain_book_tools' `morph_fill` is
-    idempotent on already-clean binary images. ResolvedPageConfig plumbing
-    will expose the do_morph toggle; until then the impl always runs.
+    Controlled by ``cfg.do_morph`` (W1.4).  When False (the default) the
+    image is returned unchanged — this is the safe opt-in pattern: users
+    enable morph_fill when they see disconnected glyphs in the deskewed image.
     """
-    _ = cfg
+    # W1.4: honour do_morph flag (default False = skip).
+    if cfg is None or not cfg.do_morph:
+        return image
+
     morph_fill = cast(
         "Callable[[ImageArray], ImageArray]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "morph_fill"),
@@ -398,17 +417,23 @@ def _rescale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 def _canvas_map_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Map the rescaled image onto a canonical canvas.
 
-    Wraps `map_content_onto_scaled_canvas` with the default alignment
-    (Alignment.DEFAULT) and a canonical h/w ratio.
-    ResolvedPageConfig plumbing (alignment override, page_h_w_ratio from
-    per-page config) lands when the runner passes cfg into impls; for now,
-    DEFAULT alignment and ratio=1.294 (US Letter ~8.5:11) are the documented
-    defaults and the ones the M2/Slice-11 smoke-test exercises.
+    Wraps ``map_content_onto_scaled_canvas`` with alignment and h/w ratio
+    read from ``cfg`` (W1.5).
+
+    - ``cfg.alignment`` — ``AlignmentOverride`` enum; maps to Alignment.DEFAULT,
+      Alignment.CENTER, Alignment.TOP, or Alignment.BOTTOM.
+    - ``cfg.page_h_w_ratio`` — canvas aspect ratio.  Defaults to 1.294 (US Letter
+      ~8.5:11).  Stage settings can supply a different ratio (e.g. A4 = 1.414).
 
     Returns an ndarray; the runner encodes it to PNG (output_type='image_bytes').
     """
-    _ = cfg
-    alignment_default = cast(
+    from pdomain_prep_for_pgdp.core.models import AlignmentOverride
+
+    # Resolve cfg values (W1.5)
+    ratio = cfg.page_h_w_ratio if cfg is not None else 1.294
+    alignment_override = cfg.alignment if cfg is not None else AlignmentOverride.default
+
+    alignment_ns = cast(
         "_AlignmentNamespace",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "Alignment"),
     )
@@ -416,10 +441,20 @@ def _canvas_map_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
         "Callable[..., ImageArray]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "map_content_onto_scaled_canvas"),
     )
+
+    # Map AlignmentOverride enum values to the book-tools Alignment constants.
+    _align_map: dict[str, object] = {
+        AlignmentOverride.default.value: alignment_ns.DEFAULT,
+        AlignmentOverride.top.value: alignment_ns.TOP,
+        AlignmentOverride.center.value: alignment_ns.CENTER,
+        AlignmentOverride.bottom.value: alignment_ns.BOTTOM,
+    }
+    force_align = _align_map.get(alignment_override.value, alignment_ns.DEFAULT)
+
     return map_content_onto_scaled_canvas(
         image,
-        force_align=alignment_default.DEFAULT,
-        height_width_ratio=1.294,
+        force_align=force_align,
+        height_width_ratio=ratio,
     )
 
 
@@ -524,19 +559,28 @@ def _blank_proof_synth_cpu(page_attrs: PageAttrsOutput, cfg: StageConfig = None)
 
 
 def _ocr_crop_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
-    """Apply the OCR-crop margin and page-split logic to the proofing image.
+    """Apply the OCR-crop margin to the proofing image (W1.7).
 
-    At default config (`cfg.ocr_crop == (0,0,0,0)`, no splits) this is a
-    pass-through — the proofing ndarray is forwarded unchanged. The runner
-    PNG-encodes the result (output_type='image_bytes').
+    Reads ``cfg.ocr_crop``: a 4-tuple ``(top, bottom, left, right)`` in pixels.
+    All-zero is a pass-through (default).
 
-    The full `crop_for_ocr` function (which handles `cfg.ocr_crop` trims
-    and `page.splits` into multiple crops) is the M3 target; this iteration
-    only wires the no-config default so the chain is runnable end-to-end
-    from `ingest_source` through `ocr_crop`.
+    The page-split branch (multiple crops → sibling pages) is handled at the
+    project level and is NOT part of this stage impl.  That path remains on the
+    W4 routes backlog.
+
+    Trims are clamped so they cannot exceed the image bounds.
     """
-    _ = cfg
-    return image
+    ocr_crop = cfg.ocr_crop if cfg is not None else (0, 0, 0, 0)
+    top, bottom, left, right = ocr_crop
+    if top == 0 and bottom == 0 and left == 0 and right == 0:
+        return image
+
+    h, w = cast("tuple[int, int]", image.shape[:2])
+    y1 = max(0, top)
+    y2 = max(y1 + 1, h - bottom)
+    x1 = max(0, left)
+    x2 = max(x1 + 1, w - right)
+    return cast("ImageArray", image[y1:y2, x1:x2])
 
 
 # ─── Real implementations: thumbnail + auto_detect_illustrations + text_postprocess (Slice 13) ──
@@ -701,6 +745,11 @@ def _denoise_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     if cfg is not None and cfg.skip_denoise:
         return image
 
+    # Resolve tunable params from cfg (W1.2) — fall back to registry defaults
+    # when cfg is None (direct test calls without a full ResolvedPageConfig).
+    min_area = cfg.denoise_min_component_area if cfg is not None else 6
+    med_kernel = cfg.denoise_median_kernel_size if cfg is not None else 0
+
     # Bridge: text=255→text=0 for denoise_binary
     inverted = cast("ImageArray", cv2.bitwise_not(image))
 
@@ -708,7 +757,7 @@ def _denoise_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
         "Callable[..., ImageArray]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "denoise_binary"),
     )
-    cleaned_inv = denoise_binary(inverted, min_component_area=6, median_kernel_size=0)
+    cleaned_inv = denoise_binary(inverted, min_component_area=min_area, median_kernel_size=med_kernel)
 
     # Bridge back: text=0→text=255
     return cast("ImageArray", cv2.bitwise_not(cleaned_inv))
@@ -778,12 +827,24 @@ def _dewarp_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 def _post_transform_crop_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Apply optional post-transform crop insets to the dewarped binary image.
 
-    At default config (all insets = 0) this is a pass-through — the dewarped
-    binary ndarray is forwarded unchanged. ResolvedPageConfig plumbing
-    (actual post_transform_crop values) lands in B5.
+    Reads ``cfg.post_transform_crop_insets`` (W1.6): a 4-tuple
+    ``(top, bottom, left, right)`` in pixels.  All-zero is a pass-through.
+
+    Insets are clamped so they cannot exceed the image bounds.  The result is
+    always at least a 1-row, 1-column slice.
     """
-    _ = cfg
-    return image
+    # Default: no-op when cfg is absent or all insets are zero.
+    insets = cfg.post_transform_crop_insets if cfg is not None else (0, 0, 0, 0)
+    top, bottom, left, right = insets
+    if top == 0 and bottom == 0 and left == 0 and right == 0:
+        return image
+
+    h, w = cast("tuple[int, int]", image.shape[:2])
+    y1 = max(0, top)
+    y2 = max(y1 + 1, h - bottom)
+    x1 = max(0, left)
+    x2 = max(x1 + 1, w - right)
+    return cast("ImageArray", image[y1:y2, x1:x2])
 
 
 # ─── Real implementations: ocr + text_review (Slice 14) ─────────────────────
@@ -837,6 +898,10 @@ def default_resolved_page_config() -> ResolvedPageConfig:
         single_dimension_rescale=False,
         flip_horizontal=False,
         flip_vertical=False,
+        # W1 stage-settings fields
+        denoise_min_component_area=6,
+        denoise_median_kernel_size=0,
+        post_transform_crop_insets=(0, 0, 0, 0),
     )
 
 
