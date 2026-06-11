@@ -424,12 +424,18 @@ def _mount_static_frontend(app: FastAPI, settings: Settings) -> None:
     # serves index.html, so client-side routes like /projects/X and /jobs
     # work on a fresh page load. The static mount (registered after) still
     # serves /assets/<hash>.<ext>, /favicon.ico, etc.
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, JSONResponse
 
     index_file = os.path.join(path, "index.html")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
+        # API namespace is never served by the SPA fallback: an unknown
+        # /api/* path is a client error (404 JSON), not a page load.
+        # Serving index.html here would mask missing/renamed routes as
+        # 200 text/html (SPA serving contract: /api/* is not shadowed).
+        if full_path == "api" or full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         safe = _safe_static_file(path, full_path) if full_path else None
         if safe is not None:
             return FileResponse(safe)
