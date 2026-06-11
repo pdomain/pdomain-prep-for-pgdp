@@ -1,12 +1,13 @@
 /**
  * textReviewTool.ts — Real TextReviewToolServices backed by the v2 API.
  *
- * DRIFT: Neither approve-low-risk nor confirm routes exist at I1.
- * Stubbed; add to project_stages.py at I2.
+ * W4 Group 1: confirmStage wired.
+ * W4 Group 3: approveLowRisk (approve-low-risk route) still stub.
  *
  * @see frontend/src/machines/tools/textReviewTool.ts — TextReviewToolServices
  */
 
+import { api } from "@/api/client";
 import type { TextReviewToolServices } from "@/machines/tools/textReviewTool";
 // W5.2 — include real stageSettings methods (save-as-default / revert / reset)
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
@@ -14,7 +15,8 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 /**
  * Approve all low-risk items.
  *
- * DRIFT: route not implemented at I1 — returns empty approvedIds.
+ * DRIFT: POST .../project-stages/text_review/approve-low-risk not yet
+ * implemented (W4 Group 3). Returns empty approvedIds.
  */
 function approveLowRisk(
   _projectId: string,
@@ -23,12 +25,21 @@ function approveLowRisk(
 }
 
 /**
- * Confirm the text review stage.
+ * Confirm the text review stage review-complete.
  *
- * DRIFT: route not implemented at I1 — returns { ok: true }.
+ * Route: POST /api/data/projects/{id}/project-stages/text_review/confirm
+ * W4 Group 1 — wired real route.
  */
-function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
-  return Promise.resolve({ ok: true });
+async function confirmStage(projectId: string): Promise<{ ok: boolean }> {
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_review/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

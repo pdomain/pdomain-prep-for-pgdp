@@ -134,13 +134,22 @@ function persistNaming(
 }
 
 /**
- * Confirm the page order stage.
+ * Confirm the page order stage (freezes naming manifest).
  *
- * DIVERGENCE: route not yet implemented — returns { ok: true }.
- * Recorded in DIVERGENCES.md §F5.4-services.
+ * Route: POST /api/data/projects/{id}/project-stages/page_order/confirm
+ * W4 Group 1 — wired real route. Marks the page_order project stage clean,
+ * recording that the naming manifest is frozen.
  */
-function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
-  return Promise.resolve({ ok: true });
+async function confirmStage(projectId: string): Promise<{ ok: boolean }> {
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

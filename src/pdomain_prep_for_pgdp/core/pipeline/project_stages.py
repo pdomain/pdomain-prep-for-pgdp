@@ -190,6 +190,93 @@ class ProjectStageStore:
             )
 
 
+# ─── StageReviewStore ─────────────────────────────────────────────────────────
+
+_STAGE_REVIEW_SCHEMA = """
+CREATE TABLE IF NOT EXISTS stage_reviews (
+    project_id   TEXT NOT NULL,
+    stage_id     TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL,
+    actor_id     TEXT NOT NULL DEFAULT 'default',
+    note         TEXT,
+    PRIMARY KEY (project_id, stage_id)
+);
+"""
+
+
+class StageReviewStore:
+    """SQLite-backed store for project-level stage review confirmations.
+
+    Records that a user has confirmed review of a given stage (all pages
+    reviewed for that stage). Covers both project-scoped and page-scoped stages.
+    Unlike ProjectStageStore, there is no CHECK constraint on stage_id — any
+    v2 stage ID is accepted.
+    """
+
+    def __init__(self, db_path: Path) -> None:
+        self._db_path = db_path
+        self._ensure_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._db_path), timeout=10.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    def _ensure_schema(self) -> None:
+        with self._connect() as conn:
+            conn.executescript(_STAGE_REVIEW_SCHEMA)
+
+    def confirm(
+        self,
+        project_id: str,
+        stage_id: str,
+        confirmed_at: str,
+        actor_id: str = "default",
+        note: str | None = None,
+    ) -> None:
+        """Record or update a stage review confirmation."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO stage_reviews
+                    (project_id, stage_id, confirmed_at, actor_id, note)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (project_id, stage_id, confirmed_at, actor_id, note),
+            )
+
+    def is_confirmed(self, project_id: str, stage_id: str) -> bool:
+        """Return True if the stage has been confirmed for this project."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT 1 FROM stage_reviews WHERE project_id = ? AND stage_id = ?",
+                (project_id, stage_id),
+            )
+            return cur.fetchone() is not None
+
+    def get_confirmation(self, project_id: str, stage_id: str) -> dict[str, str | None] | None:
+        """Return the confirmation record, or None if not confirmed."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                SELECT project_id, stage_id, confirmed_at, actor_id, note
+                FROM stage_reviews
+                WHERE project_id = ? AND stage_id = ?
+                """,
+                (project_id, stage_id),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "project_id": row[0],
+            "stage_id": row[1],
+            "confirmed_at": row[2],
+            "actor_id": row[3],
+            "note": row[4],
+        }
+
+
 def init_project_stages(project_id: str) -> list[ProjectStageState]:
     """Return the initial list of 8 ProjectStageState rows (all not-run).
 

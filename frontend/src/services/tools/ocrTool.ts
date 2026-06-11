@@ -4,17 +4,15 @@
  * Backend routes:
  *   GET  /api/data/projects/{id}/pages/{idx0}/stages/wordcheck/flags
  *     (nearest route — at I1 we derive low-score tokens from wordcheck flags)
+ *   POST /api/data/projects/{id}/project-stages/ocr/confirm  (W4 Group 1)
  *
- * NOT yet implemented (I1 stubs):
- *   GET  /api/projects/:id/stages/ocr/pages  → fetchPageTokens
- *   POST /api/projects/:id/stages/ocr/confirm → confirmStage
- *
- * DRIFT: Add GET /api/data/projects/{id}/stages/ocr/pages + POST confirm
- * to project_stages.py at I2.
+ * Remaining stubs (W4 Group 3):
+ *   GET  /api/data/projects/{id}/project-stages/ocr/pages  → fetchPageTokens
  *
  * @see frontend/src/machines/tools/ocrTool.ts — OcrToolServices
  */
 
+import { api } from "@/api/client";
 import type { OcrToolServices, OcrToken } from "@/machines/tools/ocrTool";
 // W5.2 — include real stageSettings methods (save-as-default / revert / reset)
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
@@ -22,7 +20,8 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 /**
  * Fetch low-score OCR tokens for a page.
  *
- * DRIFT: route not implemented at I1 — returns empty token list.
+ * DRIFT: GET /api/data/projects/{id}/project-stages/ocr/pages not yet
+ * implemented (W4 Group 3). Returns empty token list.
  */
 function fetchPageTokens(
   _projectId: string,
@@ -32,12 +31,21 @@ function fetchPageTokens(
 }
 
 /**
- * Confirm OCR stage review.
+ * Confirm OCR stage review-complete.
  *
- * DRIFT: route not implemented at I1 — returns { ok: true }.
+ * Route: POST /api/data/projects/{id}/project-stages/ocr/confirm
+ * W4 Group 1 — wired real route.
  */
-function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
-  return Promise.resolve({ ok: true });
+async function confirmStage(projectId: string): Promise<{ ok: boolean }> {
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/ocr/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

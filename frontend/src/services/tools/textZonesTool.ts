@@ -162,12 +162,25 @@ function persistLayout(
 }
 
 // ---------------------------------------------------------------------------
-// confirmStage — stub at I1
+// confirmStage — W4 Group 1: real route
 // ---------------------------------------------------------------------------
 
-function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
-  // Route not yet implemented at I1.
-  return Promise.resolve({ ok: true });
+/**
+ * Confirm text_zones stage review-complete.
+ *
+ * Route: POST /api/data/projects/{id}/project-stages/text_zones/confirm
+ * W4 Group 1 — wired real route.
+ */
+async function confirmStage(projectId: string): Promise<{ ok: boolean }> {
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_zones/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -140,18 +140,48 @@ async function reRunPages(
   return results;
 }
 
+// The image-stage-review bespoke confirm routes (W4 Group 1) are project-level
+// stage confirms. Not all imageStageReview stage_ids have bespoke confirm routes —
+// only the stages explicitly named in W4: text_zones, ocr. The other image-prep
+// stages (grayscale, crop, threshold, deskew, denoise, dewarp, post_transform_crop,
+// post_ocr_crop, canvas_map) fall back to a no-op since they don't have a
+// review-complete concept (they're auto-processed, not reviewer-attested).
+//
+// The imageStageReview machine uses confirmStage(projectId, stageId) generically.
+
+/** Stage IDs that have bespoke W4 confirm routes. */
+const _CONFIRMABLE_STAGE_IDS = new Set([
+  "text_zones",
+  "ocr",
+  "text_review",
+  "wordcheck",
+]);
+
 /**
- * Confirm stage review.
+ * Confirm stage review-complete.
  *
- * DRIFT: POST /api/data/projects/{id}/stages/{stageId}/confirm does not exist
- * at I1. No-op stub — returns { ok: true }.
+ * W4 Group 1: calls POST /api/data/projects/{id}/project-stages/{stageId}/confirm
+ * for stages that have bespoke confirm routes. Falls back to { ok: true } for
+ * image-prep stages (grayscale, crop, threshold, deskew, etc.) which don't have
+ * a reviewer-attestation confirm concept.
  */
-function confirmStage(
-  _projectId: string,
-  _stageId: string,
+async function confirmStage(
+  projectId: string,
+  stageId: string,
 ): Promise<{ ok: boolean }> {
-  // Route not yet implemented at I1.
-  return Promise.resolve({ ok: true });
+  if (!_CONFIRMABLE_STAGE_IDS.has(stageId)) {
+    // No bespoke confirm route for this stage — succeed silently.
+    return { ok: true };
+  }
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

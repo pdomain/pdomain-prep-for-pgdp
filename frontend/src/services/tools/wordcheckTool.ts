@@ -71,12 +71,21 @@ async function promoteToLibrary(projectId: string): Promise<ListTotals> {
 }
 
 /**
- * Confirm the scannocheck stage.
+ * Confirm the wordcheck stage review-complete.
  *
- * DRIFT: route not implemented at I1 — returns { ok: true }.
+ * Route: POST /api/data/projects/{id}/project-stages/wordcheck/confirm
+ * W4 Group 1 — wired real route.
  */
-function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
-  return Promise.resolve({ ok: true });
+async function confirmStage(projectId: string): Promise<{ ok: boolean }> {
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/wordcheck/confirm`,
+      {},
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,20 @@ under `/projects/{id}/project-stages/`.
 | GET | `/projects/{id}/project-stages/{stage_id}/artifact` | — | varies (see §1.4) | — | Returns artifact bytes or redirect to storage key. 404 if stage not clean. |
 | GET | `/projects/{id}/pipeline` | — | `PipelineSnapshot` (new) | — | Single fetch to hydrate `pipelineShell`: `{ project, page_stages_summary, project_stages, automation }`. Replaces the fragmented load. See §1.5. |
 | POST | `/projects/{id}/project-stages/submit_check/confirm` | `{ gate: "submit_confirm" }` | `{ stage_id, status, confirmed_at }` | `GateConfirmation` (eventsourcing) + `project-stage-status` SSE | Records the user's gate confirmation that the project is ready to submit. Marks submit_check stage clean. W2.3. |
+| POST | `/projects/{id}/project-stages/text_zones/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms text_zones review-complete (zone detections reviewed, splits applied or dismissed). W4 Group 1. Page-scoped stage — stores to StageReviewStore, not ProjectStageStore. |
+| POST | `/projects/{id}/project-stages/ocr/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms OCR review-complete (low-confidence tokens inspected). W4 Group 1. |
+| POST | `/projects/{id}/project-stages/text_review/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms text_review review-complete (all pages attested). W4 Group 1. |
+| POST | `/projects/{id}/project-stages/wordcheck/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms wordcheck review-complete (all suspects resolved). W4 Group 1. |
+| POST | `/projects/{id}/project-stages/page_order/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms page_order review-complete (naming manifest frozen, page roles locked). W4 Group 1. Project-scoped stage. |
+| POST | `/projects/{id}/project-stages/source/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms source review-complete (thumbnails and attributes confirmed). W4 Group 1. Project-scoped stage. |
+
+`StageConfirmRequest`: `{ note?: string }` (optional reviewer note).
+
+**StageReviewStore** (`core/pipeline/project_stages.py`): per-project SQLite table
+`stage_reviews(project_id, stage_id, confirmed_at, actor_id, note)` with no CHECK
+constraint on `stage_id` — accepts any v2 stage ID. Used for page-scoped stage confirms
+(text_zones, ocr, text_review, wordcheck). Project-scoped stage confirms (page_order,
+source) update ProjectStageStore (execution row) AND StageReviewStore.
 
 All project-stage routes return 409 on registry version mismatch (§1.3).
 All project-stage run routes return 409 on upstream dependency not clean (§1.3b).

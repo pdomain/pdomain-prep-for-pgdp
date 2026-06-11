@@ -10,6 +10,31 @@ Routes:
   GET  /projects/{id}/project-stages/{stage_id}/artifact    bytes or redirect
   GET  /projects/{id}/events                                 SSE project channel
 
+W4 Group 1 — bespoke confirm routes (one per stage, review-complete semantics):
+  POST /projects/{id}/project-stages/text_zones/confirm
+  POST /projects/{id}/project-stages/ocr/confirm
+  POST /projects/{id}/project-stages/text_review/confirm
+  POST /projects/{id}/project-stages/wordcheck/confirm
+  POST /projects/{id}/project-stages/page_order/confirm
+  POST /projects/{id}/project-stages/source/confirm
+  POST /projects/{id}/project-stages/submit_check/confirm   (W2.3 — existed)
+
+W4 Group 2 — naming model routes:
+  PUT  /projects/{id}/project-stages/page_order/runs        N-run schema persist
+  PUT  /projects/{id}/project-stages/page_order/naming      naming scheme persist
+
+W4 Group 3 — stage aggregate routes:
+  GET  /projects/{id}/project-stages/{stage_id}/pages       per-stage page rows
+  POST /projects/{id}/project-stages/{stage_id}/rerun       batched page rerun
+
+W4 Group 4 — persistence routes:
+  POST /projects/{id}/project-stages/validation/waive       validation waiver
+  GET  /projects/{id}/activity                              event-log feed
+  GET  /projects/{id}/attributes                            project attributes
+  PATCH /projects/{id}/attributes                           update project attributes
+
+W4 Group 5 — structured artifacts (served via existing artifact route).
+
 All project-stage routes enforce the registry-version 409 guard.
 """
 
@@ -47,6 +72,7 @@ from pdomain_prep_for_pgdp.core.models import (
 )
 from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
     ProjectStageStore,
+    StageReviewStore,
 )
 from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     RegistryVersionMismatchError,
@@ -706,6 +732,301 @@ async def confirm_submit_check(
         log.warning("W2.3 project-stage-status SSE failed (non-fatal): %s", _e_sse)
 
     return JSONResponse(content={"stage_id": "submit_check", "status": "clean", "confirmed_at": now_iso})
+
+
+# ─── W4 Group 1 — Shared confirm helper + bespoke per-stage confirm routes ───
+
+
+async def _confirm_stage_impl(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Shared implementation for all bespoke confirm routes.
+
+    Review-complete semantics per stage:
+    - text_zones: all zone detection reviewed (splits applied or dismissed)
+    - ocr: all OCR output reviewed (low-confidence tokens inspected)
+    - text_review: all pages attested (reviewer signed off on each page)
+    - wordcheck: all flagged words resolved (accepted, rejected, or deferred)
+    - page_order: naming manifest frozen (page order and roles locked)
+    - source: source ingest reviewed (thumbnails and attributes confirmed)
+
+    Each confirm:
+    1. Marks the stage row clean in ProjectStageStore (with artifact_key).
+    2. Records a ReviewDecision event in PrepProjectAggregate (decision="reviewed").
+    3. Emits project-stage-status SSE on the project channel.
+    """
+    import time as _time
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    now_ts = _time.time()
+    now_iso = datetime.now(UTC).isoformat()
+
+    # Determine artifact_key based on stage convention.
+    artifact_file = _PROJECT_STAGE_ARTIFACT_FILES.get(stage_id, "output.json")
+    artifact_key = f"projects/{project_id}/stages/{stage_id}/{artifact_file}"
+
+    if stage_id in V2_PROJECT_STAGE_IDS:
+        # Project-scoped stage: update the ProjectStageStore (execution row).
+        store = _get_store(settings.data_root, project_id)
+        store.write(
+            ProjectStageState(
+                project_id=project_id,
+                stage_id=stage_id,
+                status=ProjectStageStatus.clean,
+                artifact_key=artifact_key,
+                last_run_at=now_ts,
+                error_message=None,
+            )
+        )
+    else:
+        # Page-scoped stage: record in StageReviewStore (separate review tracking).
+        # These stages have per-page execution rows in page_stages; the confirm
+        # records a project-wide review decision that "all pages are attested".
+        review_db_path = settings.data_root / "projects" / project_id / "project_stages.db"
+        review_db_path.parent.mkdir(parents=True, exist_ok=True)
+        review_store = StageReviewStore(review_db_path)
+        review_store.confirm(
+            project_id=project_id,
+            stage_id=stage_id,
+            confirmed_at=now_iso,
+            actor_id=user.user_id,
+        )
+
+    # Record ReviewDecision event in PrepProjectAggregate (warn-and-continue).
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db = settings.data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _app = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        try:
+            _proj_uuid = uuid.UUID(project_id)
+        except ValueError:
+            _proj_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        _agg_id = _PrepAgg.create_id(_proj_uuid)
+        try:
+            _agg: _PrepAgg = _app.repository.get(_agg_id)  # type: ignore[assignment]
+        except Exception:
+            _agg = _PrepAgg(project_id=_proj_uuid)
+        # Stage-level review decision: "reviewed" = all pages attested for this stage.
+        # page_id is None for project-scoped confirm (source, page_order).
+        # For page-scoped stage confirms we record with page_id=None (project-wide decision).
+        _agg.record_review_decision(
+            stage_id=stage_id,
+            page_id="__all__",  # sentinel: project-wide review decision
+            decision="reviewed",
+            note=f"{stage_id} stage confirmed by reviewer",
+            actor_id=user.user_id,
+        )
+        _app.save(_agg)
+    except Exception as _e:
+        log.warning("W4 ReviewDecision event failed for %s (non-fatal): %s", stage_id, _e)
+
+    # Emit project-stage-status SSE (warn-and-continue).
+    project_key = f"project:{project_id}"
+    try:
+        await stage_events.publish(
+            project_key,
+            {
+                "type": "project-stage-status",
+                "stage_id": stage_id,
+                "status": "clean",
+                "job_id": None,
+                "error_message": None,
+            },
+        )
+    except Exception as _e_sse:
+        log.warning("W4 project-stage-status SSE failed for %s (non-fatal): %s", stage_id, _e_sse)
+
+    return JSONResponse(content={"stage_id": stage_id, "status": "clean", "confirmed_at": now_iso})
+
+
+class _StageConfirmRequest(BaseModel):
+    """Request body for bespoke stage confirm routes (optional note)."""
+
+    note: str | None = None
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/text_zones/confirm",
+    operation_id="confirm_text_zones",
+    status_code=200,
+    responses={
+        200: {"description": "text_zones stage confirmed (all zone detections reviewed)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_text_zones(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm text_zones stage review-complete.
+
+    Semantics: all zone detections reviewed (splits applied or dismissed).
+    Marks the text_zones project-level review row clean, records a
+    ReviewDecision event, emits project-stage-status SSE.
+
+    W4 Group 1 — bespoke confirm (seam-remediation plan).
+    """
+    return await _confirm_stage_impl(project_id, "text_zones", user, db, settings, stage_events)
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/ocr/confirm",
+    operation_id="confirm_ocr",
+    status_code=200,
+    responses={
+        200: {"description": "ocr stage confirmed (all OCR output reviewed)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_ocr(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm OCR stage review-complete.
+
+    Semantics: all low-confidence OCR tokens inspected and resolved.
+    W4 Group 1.
+    """
+    return await _confirm_stage_impl(project_id, "ocr", user, db, settings, stage_events)
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/text_review/confirm",
+    operation_id="confirm_text_review",
+    status_code=200,
+    responses={
+        200: {"description": "text_review stage confirmed (all pages attested)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_text_review(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm text_review stage review-complete.
+
+    Semantics: all pages attested (reviewer signed off on each page's text).
+    W4 Group 1.
+    """
+    return await _confirm_stage_impl(project_id, "text_review", user, db, settings, stage_events)
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/wordcheck/confirm",
+    operation_id="confirm_wordcheck",
+    status_code=200,
+    responses={
+        200: {"description": "wordcheck stage confirmed (all suspects resolved)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_wordcheck(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm wordcheck stage review-complete.
+
+    Semantics: all flagged words resolved (accepted, rejected, or deferred).
+    W4 Group 1.
+    """
+    return await _confirm_stage_impl(project_id, "wordcheck", user, db, settings, stage_events)
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/page_order/confirm",
+    operation_id="confirm_page_order",
+    status_code=200,
+    responses={
+        200: {"description": "page_order stage confirmed (naming manifest frozen)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_page_order(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm page_order stage review-complete.
+
+    Semantics: naming manifest frozen (page order, folio runs, and roles locked).
+    The naming manifest artifact must have been produced by the page_order stage
+    run before confirming.
+    W4 Group 1.
+    """
+    return await _confirm_stage_impl(project_id, "page_order", user, db, settings, stage_events)
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/source/confirm",
+    operation_id="confirm_source",
+    status_code=200,
+    responses={
+        200: {"description": "source stage confirmed (ingest reviewed)."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def confirm_source(
+    project_id: str,
+    body: _StageConfirmRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Confirm source stage review-complete.
+
+    Semantics: source ingest reviewed (thumbnails and page attributes confirmed).
+    W4 Group 1.
+    """
+    return await _confirm_stage_impl(project_id, "source", user, db, settings, stage_events)
 
 
 # ─── Project-level SSE channel ────────────────────────────────────────────────
