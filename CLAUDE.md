@@ -12,7 +12,7 @@ as historical context.
 ## Quick orientation
 
 - **Backend:** FastAPI + uvicorn, Python 3.13. `src/pdomain_prep_for_pgdp/`.
-- **Frontend:** React 19 + Vite + TS + TanStack Query + Konva + Tailwind. `frontend/`.
+- **Frontend:** React 19 + Vite + TS + **XState v5** + TanStack Query + Konva + Tailwind. `frontend/`.
 - **Pipeline core:** `src/pdomain_prep_for_pgdp/core/` — mode-agnostic, used by every adapter.
 - **Adapters:** `src/pdomain_prep_for_pgdp/adapters/` — `IStorage` (filesystem/S3),
   `IDatabase` (SQLite/Postgres), `IAuth` (none/apikey/jwt), `GPUBackend`
@@ -21,8 +21,13 @@ as historical context.
   predictor (process-singleton) → load layout detector → run page →
   `page.reorganize_page(layout=...)` → optional `validate_word_preservation`.
   Canonical reference: `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307-540`.
-- **Pipeline steps:** spec 02. Step IDs: 0/1/2 ingest, 4 process page,
-  4.5 illustrations, 6 OCR crop, 7 OCR, 8 text post-process, 10 package.
+- **Pipeline stages:** 24 v2 stages in `core/pipeline/stage_registry.py` (16
+  page-scoped, 8 project-scoped). Canonical stage table and registry contract:
+  `docs/specs/stage-registry-v2.md`. The older step IDs (0/1/2/4/4.5/6/7/8/10)
+  used in `specs/02-pipeline-steps.md` are v1 references and are superseded.
+  Each stage has its own XState v5 machine in `frontend/src/machines/`; the
+  registry of stage_id → React surface component is in
+  `frontend/src/pages/pipeline/toolSlot.tsx` (`TOOL_REGISTRY`).
 
 ## Commands
 
@@ -99,7 +104,11 @@ Targeted runs: `uv run pytest -k <pattern>`.
   Not config on `ocr_crop`.
 - **Local-first:** active work = SQLite + filesystem + CPU. Cloud/remote
   items parked in `docs/plans/roadmap.md §Deferred`.
-- `pdomain-book-tools` pinned to `v0.9.0`. Upgrade: `make upgrade-pdomain-book-tools`.
+- `pdomain-book-tools` pinned `>=0.17.0` (textline dewarp shipped in 0.17.x).
+  Run `make local-dev` to install it editable while iterating alongside sibling
+  changes. The `>=0.18` gate (denoise promotion) is an open question —
+  see `docs/architecture/statechart-convergence-notes.md §Open questions`.
+  To bump: `make update-pdomain-deps`.
 - `gpu_backend="cpu"` is the test default. `LocalBackend` subclasses
   `CpuBackend`; Modal/SharedContainer require real config.
 - `make build` runs `frontend-build` first so the wheel ships with the SPA bundle.
