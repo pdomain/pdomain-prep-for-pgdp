@@ -6,8 +6,11 @@
  *  - Overview  — suspect totals + list totals derived from machine context
  *  - Settings  — requirePreviewToCommit placeholder (F5; wired at I1)
  *
- * F5 mock-only: SCAN_DONE is simulated on mount; services are no-ops.
- * I1: real SSE actor feeds SCAN_PROGRESS/SCAN_DONE; backend wired.
+ * I1: real SSE actor feeds SCAN_PROGRESS/SCAN_DONE events from the backend.
+ * Machine waits in `scanning` state until the first SCAN_DONE arrives.
+ *
+ * W5.4: removed MOCK_SUSPECTS and the 200ms setTimeout that was leaking into
+ * production — real flow now receives scan results via SSE.
  *
  * @see src/machines/tools/wordcheckTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-wordcheck.yaml
@@ -21,47 +24,9 @@ import type { ToolSlotProps } from "../toolSlot";
 import {
   wordcheckToolMachine,
   type Suspect,
+  type SuspectTotals,
 } from "@/machines/tools/wordcheckTool";
 import { buildRealWordcheckToolServices } from "@/services/tools/wordcheckTool";
-
-const MOCK_SUSPECTS: Suspect[] = [
-  {
-    id: "sw1",
-    word: "tbe",
-    fix: "the",
-    ctxL: "…saw ",
-    ctxR: " light…",
-    type: "dictFail",
-    page: "p0002",
-    line: 14,
-    rule: "dict",
-    score: 0.62,
-  },
-  {
-    id: "sw2",
-    word: "ligbt",
-    fix: "light",
-    ctxL: "…tbe ",
-    ctxR: " and…",
-    type: "dictFail",
-    page: "p0002",
-    line: 14,
-    rule: "dict",
-    score: 0.68,
-  },
-  {
-    id: "sw3",
-    word: "ond",
-    fix: "and",
-    ctxL: "…light ",
-    ctxR: " the…",
-    type: "dictFail",
-    page: "p0003",
-    line: 7,
-    rule: "dict",
-    score: 0.71,
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -523,10 +488,25 @@ function WordcheckTabBar({
 // Main WordcheckTool
 // ---------------------------------------------------------------------------
 
+/**
+ * Artboard test-injection type for W5.4.
+ *
+ * In production, SCAN_DONE arrives via SSE (I1).
+ * In tests, `_testScanDone` allows immediate injection without timers or mocks.
+ * Never set this in non-test code.
+ */
+export interface WordcheckTestScanDone {
+  suspects: Suspect[];
+  totals: SuspectTotals;
+}
+
 export function WordcheckTool({
   stageId,
   runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testScanDone,
+}: ToolSlotProps & {
+  _testScanDone?: WordcheckTestScanDone;
+}): ReactNode {
   void runnerRef; // wired at I1
 
   const { projectId = "demo" } = useParams<{ projectId: string }>();
@@ -541,24 +521,13 @@ export function WordcheckTool({
   const [activeTab, setActiveTab] = useState<WordcheckTab>("suspects");
   const [suspectFilter, setSuspectFilter] = useState<string>("all");
 
-  // Simulate mock scan on mount
+  // W5.4: removed 200ms setTimeout + MOCK_SUSPECTS (was leaking mock data into
+  // production flow). In production, SCAN_DONE arrives via SSE at I1.
+  // `_testScanDone` fires immediately on mount for artboard tests only.
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      send({
-        type: "SCAN_DONE",
-        suspects: MOCK_SUSPECTS,
-        totals: {
-          total: 4,
-          done: 4,
-          suspects: MOCK_SUSPECTS.length,
-          stealth: 0,
-          flagged: 0,
-          reviewed: 0,
-          clean: 1,
-        },
-      });
-    }, 200);
-    return () => clearTimeout(timeout);
+    if (!_testScanDone) return;
+    send({ type: "SCAN_DONE", ..._testScanDone });
+    // Intentionally runs once on mount — _testScanDone is stable in tests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -660,7 +629,10 @@ export function WordcheckTool({
             }}
           >
             {isScanning ? (
-              <span style={{ fontSize: 13, color: "var(--ink-2)" }}>
+              <span
+                data-testid="wordcheck-scanning"
+                style={{ fontSize: 13, color: "var(--ink-2)" }}
+              >
                 Scanning wordcheck…
               </span>
             ) : (
