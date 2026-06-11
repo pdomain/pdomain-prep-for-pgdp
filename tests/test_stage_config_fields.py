@@ -37,13 +37,19 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import STAGE_CONFIG_FIELDS
 
 
 def test_stage_config_fields_are_valid_overrides_field_names() -> None:
-    """All declared fields exist on PageConfigOverrides (no typos / renames)."""
-    valid = set(PageConfigOverrides.model_fields.keys())
+    """All declared fields exist on ResolvedPageConfig (no typos / renames).
+
+    W1 note: STAGE_CONFIG_FIELDS now includes both per-page PageConfigOverrides
+    fields AND stage-settings-specific fields on ResolvedPageConfig
+    (e.g. denoise_min_component_area, post_transform_crop_insets).  The check
+    is therefore against ResolvedPageConfig.model_fields (the superset).
+    """
+    valid = set(ResolvedPageConfig.model_fields.keys())
     for stage_id, fields in STAGE_CONFIG_FIELDS.items():
         for field in fields:
             assert field in valid, (
                 f"STAGE_CONFIG_FIELDS[{stage_id!r}] declares {field!r} "
-                f"but PageConfigOverrides has no such field. "
+                f"but ResolvedPageConfig has no such field. "
                 f"Valid fields: {sorted(valid)}"
             )
 
@@ -76,6 +82,10 @@ def _make_cfg() -> ResolvedPageConfig:
         single_dimension_rescale=False,
         flip_horizontal=False,
         flip_vertical=False,
+        # W1 stage-settings fields (have defaults but must be supplied explicitly)
+        denoise_min_component_area=6,
+        denoise_median_kernel_size=0,
+        post_transform_crop_insets=(0, 0, 0, 0),
     )
 
 
