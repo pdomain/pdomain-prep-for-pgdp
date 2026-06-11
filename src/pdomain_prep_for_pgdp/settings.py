@@ -107,6 +107,14 @@ class Settings(BaseSettings):
 
     None = ``4 x resolved pool_size``. Override: ``PGDP_STAGE_WRITE_QUEUE_CAP``."""
 
+    stage_cache_mb: int = 512
+    """In-memory artifact cache budget in MiB.
+
+    When the ndarray cache (deferred-write executor) exceeds this limit, oldest
+    entries are encoded and evicted to keep peak RAM bounded.  Default 512 MiB
+    (~4-8 full-resolution pages as uint8 ndarrays).
+    Override: ``PGDP_STAGE_CACHE_MB``."""
+
     # ── Resource limits ──────────────────────────────────────────────────────
     max_cdn_upload_bytes: int = 300 * 1024 * 1024
     """Max bytes for a single PUT /cdn/{key} upload body (default 300 MB)."""

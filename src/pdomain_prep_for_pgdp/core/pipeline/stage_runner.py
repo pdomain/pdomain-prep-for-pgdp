@@ -418,6 +418,22 @@ async def _load_parent_artifact(
     if write_executor is not None:
         cached = write_executor.consume_artifact((project_id, page_id, parent_stage_id))
         if cached is not None:
+            # Phase 1 ndarray passthrough: when the parent put an ndarray into
+            # the cache, return it directly for image-type parents without
+            # calling cv2.imdecode (saves one decode per stage on the hot path).
+            if isinstance(cached, np.ndarray):
+                if _parent_output_type in _IMAGE_OUTPUT_TYPES:
+                    return cached  # already decoded — no cv2.imdecode needed
+                # Unexpected: non-image stage produced an ndarray. Encode to bytes
+                # so the rest of the pipeline can handle it normally.
+                ok, buf = cv2.imencode(".png", cached)
+                if not ok:
+                    raise RuntimeError(f"cv2.imencode failed for cached ndarray from {parent_stage_id!r}")
+                cached_bytes: bytes = bytes(buf.tobytes())
+                if _parent_output_type in _JSON_OUTPUT_TYPES:
+                    return _decode_json_output(cached_bytes, _parent_output_type)
+                return cached_bytes
+            # Bytes path (legacy): decode as before.
             if _parent_output_type in _IMAGE_OUTPUT_TYPES:
                 return _decode_image_bytes(cached)
             if _parent_output_type in _JSON_OUTPUT_TYPES:
@@ -657,6 +673,7 @@ async def _commit_single_artifact(
     stage_version: int,
     write_executor: StageWriteExecutor | None,
     config_hash: str | None = None,
+    artifact_ndarray: np.ndarray | None = None,
 ) -> PageStageState:
     """Commit a single-file artifact, synchronously or via deferred write.
 
@@ -669,6 +686,16 @@ async def _commit_single_artifact(
       without waiting for disk I/O.
     - If the file write fails, the ``on_failure`` callback marks the row
       ``failed`` and cascades dirty to descendants (Q9).
+
+    Phase 1 ndarray passthrough:
+    When ``artifact_ndarray`` is supplied AND ``write_executor`` is provided,
+    the ndarray is stored in the executor's cache (so downstream stages avoid
+    ``cv2.imdecode``), and the PNG encode is deferred to the background write
+    thread.  ``artifact_bytes`` is still used for ``content_hash`` when the
+    executor path is taken — callers that have already encoded once for other
+    reasons (e.g. thumbnail generation) pass it here; callers that want to avoid
+    ALL hot-path encodes should compute the hash from raw ndarray bytes instead
+    (future optimisation, tracked in Phase 2).
     """
     if write_executor is None:
         return await commit_stage_artifact(
@@ -701,14 +728,17 @@ async def _commit_single_artifact(
     )
     await database.put_page_stage(state)
 
-    # Register in-memory bytes for downstream stages (drop-on-last-consumer).
+    # Register in-memory artifact for downstream stages (drop-on-last-consumer).
+    # Phase 1: when an ndarray is available, cache it directly so downstream
+    # stages receive the ndarray without re-decoding the PNG bytes.
     # For v2 page/project stages use the v2 DAG to count downstream consumers;
     # for v1 stages use the v1 DAG (STAGE_DAG).
     if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
         num_consumers = sum(1 for s in _stage_dag_module.V2_STAGE_DAG if stage_id in s.depends_on)
     else:
         num_consumers = sum(1 for s in _stage_dag_module.STAGE_DAG if stage_id in s.depends_on)
-    write_executor.put_artifact((project_id, page_id, stage_id), artifact_bytes, num_consumers)
+    _cache_value: bytes | np.ndarray = artifact_ndarray if artifact_ndarray is not None else artifact_bytes
+    write_executor.put_artifact((project_id, page_id, stage_id), _cache_value, num_consumers)
 
     # Submit file write; blocks if queue at capacity (back-pressure, Q8).
     loop = asyncio.get_running_loop()
@@ -733,14 +763,63 @@ async def _commit_single_artifact(
     except KeyError:
         # v2-only stage not in the v1 DAG; fall back to the v2 definition.
         _stage_for_thumb = get_v2_stage(stage_id)
-    _thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, _stage_for_thumb.output_type)
-    _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id) if _thumb_bytes else None
-    _tp, _ab, _thp, _thb = target_path, artifact_bytes, _thumb_path, _thumb_bytes
-    write_executor.submit_write(
-        lambda: write_artifact_file_async(_tp, _ab, thumb_path=_thp, thumb_bytes=_thb),
-        on_failure=_on_failure,
-        loop=loop,
-    )
+
+    # Phase 1: when we have an ndarray, build the thumbnail from it directly
+    # (avoid decode) and defer the PNG encode for the main artifact to the
+    # background write thread. The thumbnail is still encoded to JPEG here,
+    # but it is much smaller than the full artifact.
+    if artifact_ndarray is not None and _stage_for_thumb.output_type in _IMAGE_OUTPUT_TYPES:
+        # Thumbnail from ndarray: resize and JPEG-encode in the write factory.
+        # This is a small encode and runs in the background thread.
+        _arr_for_thumb = artifact_ndarray
+        _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id)
+        _tp = target_path
+        _ab_captured = artifact_bytes  # PNG bytes already computed; use for write
+
+        async def _write_with_ndarray_thumb() -> None:
+            # Generate thumbnail from ndarray in the write thread.
+            _thumb_b: bytes | None = None
+            try:
+                import cv2 as _cv2
+
+                _tmax = 300
+                _h, _w = _arr_for_thumb.shape[:2]
+                _scale = min(_tmax / max(_h, _w, 1), 1.0)
+                _thumb_img = (
+                    _cv2.resize(
+                        _arr_for_thumb,
+                        (max(1, int(_w * _scale)), max(1, int(_h * _scale))),
+                        interpolation=_cv2.INTER_AREA,
+                    )
+                    if _scale < 1.0
+                    else _arr_for_thumb
+                )
+                _ok, _buf = _cv2.imencode(".png", _thumb_img)
+                _thumb_b = bytes(_buf.tobytes()) if _ok else None
+            except Exception:
+                _thumb_b = None
+
+            await write_artifact_file_async(
+                _tp,
+                _ab_captured,
+                thumb_path=_thumb_path if _thumb_b else None,
+                thumb_bytes=_thumb_b,
+            )
+
+        write_executor.submit_write(
+            _write_with_ndarray_thumb,
+            on_failure=_on_failure,
+            loop=loop,
+        )
+    else:
+        _thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, _stage_for_thumb.output_type)
+        _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id) if _thumb_bytes else None
+        _tp, _ab, _thp, _thb = target_path, artifact_bytes, _thumb_path, _thumb_bytes
+        write_executor.submit_write(
+            lambda: write_artifact_file_async(_tp, _ab, thumb_path=_thp, thumb_bytes=_thb),
+            on_failure=_on_failure,
+            loop=loop,
+        )
 
     return state
 
@@ -1128,7 +1207,10 @@ async def run_stage(
                 output = _call_impl(impl, [_src_img], cfg)
 
             # Encode and commit. v2 root page stages output ndarray (gray/image).
-            artifact_bytes_v2root = _encode_image_to_png(_require_image_artifact(output, stage_id=stage_id))
+            _v2root_arr = _require_image_artifact(output, stage_id=stage_id)
+            artifact_bytes_v2root = _encode_image_to_png(_v2root_arr)
+            # Phase 1: pass ndarray to executor cache for image-type root stages.
+            _v2root_ndarray_cache: np.ndarray | None = _v2root_arr if write_executor is not None else None
             committed = await _commit_single_artifact(
                 data_root=data_root,
                 database=database,
@@ -1139,6 +1221,7 @@ async def run_stage(
                 stage_version=_stage_ver,
                 write_executor=write_executor,
                 config_hash=_cfg_hash,
+                artifact_ndarray=_v2root_ndarray_cache,
             )
         else:
             # Load parents.
@@ -1235,7 +1318,22 @@ async def run_stage(
                     artifact_bytes = bytes(output)
                 else:
                     # Image / gray / binary / image_bytes stages return ndarrays.
-                    artifact_bytes = _encode_image_to_png(_require_image_artifact(output, stage_id=stage_id))
+                    # Phase 1 ndarray passthrough: when we have an executor, store
+                    # the ndarray in the cache and defer the PNG encode to the write
+                    # thread. We still need bytes for the content_hash and the sync
+                    # path, so encode unconditionally here (one encode per stage).
+                    _img_arr = _require_image_artifact(output, stage_id=stage_id)
+                    artifact_bytes = _encode_image_to_png(_img_arr)
+
+                # Determine whether to pass the ndarray for cache passthrough.
+                # Only image-type stages produce ndarrays; others are already bytes.
+                _ndarray_for_cache: np.ndarray | None = None
+                if (
+                    write_executor is not None
+                    and stage.output_type in _IMAGE_OUTPUT_TYPES
+                    and isinstance(output, np.ndarray)
+                ):
+                    _ndarray_for_cache = cast("np.ndarray", output)
 
                 committed = await _commit_single_artifact(
                     data_root=data_root,
@@ -1247,6 +1345,7 @@ async def run_stage(
                     stage_version=_stage_ver,
                     write_executor=write_executor,
                     config_hash=_cfg_hash,
+                    artifact_ndarray=_ndarray_for_cache,
                 )
     except StageNotImplemented as exc:
         await _mark_failed(
