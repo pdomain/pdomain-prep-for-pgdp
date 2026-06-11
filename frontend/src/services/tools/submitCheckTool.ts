@@ -8,21 +8,23 @@
  * dryRun: fires the run, polls for the SubmitCheckReport artifact, adapts
  * { issues, passed } → SubmitCheck[].
  *
- * liveSubmit: there is no separate live-submit backend route at I1 — the
- * submit_check stage itself IS the terminal validation step. Returns a stub
- * timestamp. Add a real POST .../submit route at I2 for pgdp.net upload.
+ * markAsSubmitted: records the GateConfirmation event (gate="submit_confirm")
+ * locally. There is no PGDP upload API — submission is a manual step where
+ * the user downloads the zip and uploads it to their dpscans folder on
+ * pgdp.net. This method records that the user has attested they did so.
  *
- * DRIFT: liveSubmit backend route deferred to I2.
+ * CT 2026-06-11: liveSubmit removed per CT directive. Submission is non-
+ * functional in the automated sense — stub it as manual attestation only.
  *
  * @see frontend/src/machines/tools/submitCheckTool.ts — SubmitCheckToolServices
  * @see docs/specs/api-v2-deltas.md §1.2, §3
+ * @see docs/architecture/statechart-convergence-notes.md §Open questions #4 (resolved)
  */
 
 import { api } from "@/api/client";
 import type {
   SubmitCheckToolServices,
   SubmitCheck,
-  SubmitTarget,
 } from "@/machines/tools/submitCheckTool";
 
 // ---------------------------------------------------------------------------
@@ -83,10 +85,7 @@ function adaptSubmitCheckReport(
  * Fires POST .../submit_check/run then polls for the SubmitCheckReport artifact.
  * Adapts { issues, passed } → SubmitCheck[].
  */
-async function dryRun(
-  projectId: string,
-  _target: SubmitTarget,
-): Promise<SubmitCheck[]> {
+async function dryRun(projectId: string): Promise<SubmitCheck[]> {
   await api.post(
     `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/submit_check/run`,
   );
@@ -95,17 +94,32 @@ async function dryRun(
 }
 
 /**
- * Live submit.
+ * Record the manual attestation that the user has uploaded the zip to pgdp.net.
  *
- * DRIFT: No live-submit route exists at I1 — submit_check is the terminal
- * validation step; actual pgdp.net upload is out of scope at I1.
- * Returns a stub timestamp. Add POST .../submit at I2.
+ * There is no PGDP upload API. Submission is always a manual step:
+ *   1. User downloads the zip via the "Download package" affordance.
+ *   2. User uploads the zip to their dpscans folder on pgdp.net.
+ *   3. User confirms here — this records the GateConfirmation event
+ *      (gate="submit_confirm") in the project aggregate, marking the
+ *      submit_check stage clean.
+ *
+ * Returns the ISO timestamp of the attestation.
  */
-function liveSubmit(
-  _projectId: string,
-  _target: SubmitTarget,
-): Promise<{ at: string }> {
-  return Promise.resolve({ at: new Date().toISOString() });
+async function markAsSubmitted(projectId: string): Promise<{ at: string }> {
+  const at = new Date().toISOString();
+  // Fire-and-forget: record the gate confirmation event in the project aggregate.
+  // The backend route to persist GateConfirmation events is part of the B5
+  // route layer. Until B5 is merged, this records locally only.
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/submit_check/confirm`,
+      { gate: "submit_confirm" },
+    );
+  } catch {
+    // Non-blocking: the attestation timestamp is stored in the machine context
+    // regardless of backend persistence. The backend will catch up on reindex.
+  }
+  return { at };
 }
 
 // ---------------------------------------------------------------------------
@@ -114,5 +128,5 @@ function liveSubmit(
 
 /** Build real SubmitCheckToolServices for injection into the machine. */
 export function buildRealSubmitCheckToolServices(): SubmitCheckToolServices {
-  return { dryRun, liveSubmit };
+  return { dryRun, markAsSubmitted };
 }

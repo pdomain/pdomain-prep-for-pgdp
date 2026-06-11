@@ -70,16 +70,16 @@ This inverts the dependency so machines are never coupled to the network layer.
 
 28 XState v5 machines shipped across 6 launcher groups:
 
-| Group | Machines |
-|-------|---------|
-| Source | `sourceTool` |
-| Image prep | `grayscaleTool`, `pagesGrid` (crop), `imageStageReview` (shared: threshold / deskew / denoise / dewarp / post_transform_crop / post_ocr_crop / canvas_map) |
-| OCR | `textZonesTool`, `ocrTool` |
-| Compose | `pageOrderTool`, `illustrationsTool` |
-| Text | `wordcheckTool`, `hyphenJoin`, `textReviewTool`, `regexPass` |
-| Pack | `validationTool`, `proofPackTool`, `buildPackageTool`, `zipTool`, `submitCheckTool`, `archiveTool` |
-| Shell | `pipelineShellMachine`, `runAllStaleMachine`, `projectSettingsMachine` |
-| Projects | `projectDetailMachine`, `railListMachine`, `recentActivityMachine`, `attributesPanelMachine`, `manageActionsMachine`, `postImportMachine`, `projectLifecycleMachine` |
+| Group      | Machines                                                                                                                                                             |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source     | `sourceTool`                                                                                                                                                         |
+| Image prep | `grayscaleTool`, `pagesGrid` (crop), `imageStageReview` (shared: threshold / deskew / denoise / dewarp / post_transform_crop / post_ocr_crop / canvas_map)           |
+| OCR        | `textZonesTool`, `ocrTool`                                                                                                                                           |
+| Compose    | `pageOrderTool`, `illustrationsTool`                                                                                                                                 |
+| Text       | `wordcheckTool`, `hyphenJoin`, `textReviewTool`, `regexPass`                                                                                                         |
+| Pack       | `validationTool`, `proofPackTool`, `buildPackageTool`, `zipTool`, `submitCheckTool`, `archiveTool`                                                                   |
+| Shell      | `pipelineShellMachine`, `runAllStaleMachine`, `projectSettingsMachine`                                                                                               |
+| Projects   | `projectDetailMachine`, `railListMachine`, `recentActivityMachine`, `attributesPanelMachine`, `manageActionsMachine`, `postImportMachine`, `projectLifecycleMachine` |
 
 #### TOOL_REGISTRY
 
@@ -117,17 +117,17 @@ Summary by section:
 
 ### Core (stageRunner / imageStageReview / pageWorkbench) — #1–#10, reconcile-todo, compare-context-omission
 
-| Key | Topic | Short summary |
-|-----|-------|---------------|
-| #1 / #10 | Streaming services → promise + SSE | `fromPromise` + PROGRESS_PUSH split; pipelineShell translates SSE shape to PROGRESS event (not a 1:1 forward) |
-| #2 | `always` guard reads `_pendingAutoRerun` | `event.autoRerun` stored in context during triggering action; `always` reads context |
-| #3 | `event.data` → `event.output` | XState v5 canonical naming; all onDone params use `params` pattern |
-| #4 | PAGE_PUSH guard reads post-merge rows | Guard calls `upsertRow()` inline; YAML's pre-merge assumption misses multi-page |
-| #5 | `settleIfClear` → `always` on browsing AND selecting | Internal `raise` anti-pattern replaced; guard in both sub-states to cover BULK_ACCEPT path |
-| #6 | APPLY guard blocks parallel redetecting region | `_redetecting` context flag; top-level APPLY guarded |
-| #7 | SET_FILTER / SET_DENSITY → machine-level `on` | Promoted for usability (available in all states) |
-| #8 | `_wipe` / `_split` / `compare` omitted | View-only fields → local React state |
-| #9 | `recountTotals` folded inline | Inlined into every `assign` that mutates rows |
+| Key      | Topic                                                | Short summary                                                                                                 |
+| -------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| #1 / #10 | Streaming services → promise + SSE                   | `fromPromise` + PROGRESS_PUSH split; pipelineShell translates SSE shape to PROGRESS event (not a 1:1 forward) |
+| #2       | `always` guard reads `_pendingAutoRerun`             | `event.autoRerun` stored in context during triggering action; `always` reads context                          |
+| #3       | `event.data` → `event.output`                        | XState v5 canonical naming; all onDone params use `params` pattern                                            |
+| #4       | PAGE_PUSH guard reads post-merge rows                | Guard calls `upsertRow()` inline; YAML's pre-merge assumption misses multi-page                               |
+| #5       | `settleIfClear` → `always` on browsing AND selecting | Internal `raise` anti-pattern replaced; guard in both sub-states to cover BULK_ACCEPT path                    |
+| #6       | APPLY guard blocks parallel redetecting region       | `_redetecting` context flag; top-level APPLY guarded                                                          |
+| #7       | SET_FILTER / SET_DENSITY → machine-level `on`        | Promoted for usability (available in all states)                                                              |
+| #8       | `_wipe` / `_split` / `compare` omitted               | View-only fields → local React state                                                                          |
+| #9       | `recountTotals` folded inline                        | Inlined into every `assign` that mutates rows                                                                 |
 
 ### F3 (Projects surfaces) — F3-1 through F3-7
 
@@ -187,7 +187,7 @@ names; `scannocheck` key removed from TOOL_REGISTRY (phantom stage_id); D10 /
 `VALIDATE_WORD_GROUP` omitted (no canvas affordance); D11 / `ADD_WORD_RULE` not
 in main views (belongs in global library dialog, I1).
 
-### F5.6 (Pack) — F5.6-1 through F5.6-12
+### F5.6 (Pack) — F5.6-1 through F5.6-12 + CT 2026-06-11
 
 `blockerCount` helper (advisory/block/custom); `always` guard replaces raised
 `ALL_CLEAR`; `zipTool` event-driven (no fromPromise, receives server-pushed events
@@ -197,6 +197,8 @@ SUBMIT → guarded branch (GateConfirmation); `submitted` has `type: "final"`;
 fires two actions; `buildPackageTool` preflight gate via PREFLIGHT_PUSH; services
 injected via `input` (no closure); `archiveTool` starts in `reviewing` with input
 items; `zipTool` surface auto-simulates via `useEffect` (I1: replace with real SSE).
+CT 2026-06-11: `submitCheckTool` `liveSubmit` actor and `submitting` state removed;
+replaced by manual attestation flow — see "CT 2026-06-11" entry in DIVERGENCES.md.
 
 ---
 
@@ -282,17 +284,27 @@ if CT decides it is load-bearing.
    (either externalise the reference or bundle it correctly). When should the
    shim be removed?
 
-3. **PGDP portal naming verification for `build_package` output.** The v2
-   `build_package` stage produces a submission zip. The filename convention
-   used in the output (currently `{project_id}_pgdp.zip` pattern) has not
-   been verified against the actual PGDP project manager upload requirements.
-   Before the pack group is live, confirm the exact filename and structure
-   expected by the PGDP portal and update `steps/build_package.py`
-   accordingly.
+3. **PGDP portal naming verification for `build_package` output.** ~~RESOLVED 2026-06-11.~~
+   Per the DP wiki (<https://www.pgdp.net/wiki/DP_Official_Documentation:CP_and_PM/Content_Providing_FAQ>),
+   individual proofing files must follow these rules: basename ≤ 8 chars,
+   characters `[A-Za-z0-9_-]` only, extension lowercase `.png`/`.txt`/`.jpg` only,
+   no `ad` substring in basename, matched `png`↔`txt` pairs per page, lexicographic
+   sort order = reading order. The `compute_prefix` output (form `f{N:03d}`,
+   `p{N:03d}`, suffix `b`/`p`/`r` — max 5 chars, alphabet f/p/digits/b/p/r) is
+   proven to satisfy all rules. Enforcement is two-tier:
+   - `validation` stage (blocker code `pgdp_naming`): actionable error before build.
+   - `build_package` pre-zip hard assert (`PgdpNamingError`): defence-in-depth.
+     Implementation: `core/pipeline/pgdp_naming.py` (`validate_pgdp_filename`,
+     `validate_package_naming`). Tests: `tests/test_pgdp_naming.py`.
 
-4. **Live submit flow.** `submitCheckTool` produces a dry-run validation
-   report. The live submit flow (actually POST-ing the zip to the PGDP API or
-   uploading via browser) is not modeled anywhere in the current backend or
-   frontend. Is there a PGDP API, or is submit always a manual
-   "download and upload via browser" step? The machine's `submitted` terminal
-   state needs to know what "submitted" means in practice.
+4. **Live submit flow.** ~~RESOLVED 2026-06-11.~~
+   PGDP has no public upload API. Submission is always a manual step:
+   the user downloads the zip via "Download package", uploads it to their
+   `dpscans` folder on pgdp.net, then confirms here. The confirmation records
+   a `GateConfirmation` event (gate="submit_confirm") in the project aggregate,
+   marking the `submit_check` stage clean. The machine's `submitted` terminal
+   state records the attestation timestamp in `context.submittedAt`.
+   The async `liveSubmit` actor and `submitting` invoke state are removed;
+   `CONFIRM` transitions directly to `submitted` via a synchronous
+   `assignSubmittedNow` action. If DP exposes an upload API in future, see
+   DIVERGENCES.md "CT 2026-06-11" entry for how to add it back.

@@ -1,13 +1,17 @@
 /**
- * SubmitCheckTool.test.tsx — Artboard fixture tests for the Submit Check stage tool surface.
+ * SubmitCheckTool.test.tsx — Artboard fixture tests for the Submit Check surface.
  *
  * Covers:
  * - Initial dry-running state: dry-running indicator
- * - Ready state: dry-run-passed gate, checks-stat, submit-btn, rerun-dry-btn
- * - confirmingSubmit state: submit-confirm-dialog, submit-confirm-btn, submit-cancel-btn
+ * - Ready state: dry-run-passed gate, checks-stat, submit-btn, rerun-dry-btn,
+ *   download-package-link
+ * - confirmingSubmit state: submit-confirm-dialog, submit-confirm-btn,
+ *   submit-cancel-btn (manual attestation copy)
  * - CANCEL from confirmingSubmit → back to ready
- * - submitted (final) state: submitted-final panel
- * - Settings tab: submit-check-settings, target, confirmOnSubmit display
+ * - submitted (final) state: submitted-final panel with attestation copy
+ * - Settings tab: submit-check-settings, confirmOnSubmit display
+ *
+ * CT 2026-06-11: liveSubmit removed; manual attestation flow.
  *
  * @see src/machines/tools/submitCheckTool.ts
  * @see src/pages/pipeline/tools/SubmitCheckTool.tsx
@@ -42,8 +46,8 @@ const MOCK_CHECKS: SubmitCheck[] = [
 ];
 
 const TEST_SERVICES: SubmitCheckToolServices = {
-  dryRun: async (_projectId, _target) => MOCK_CHECKS,
-  liveSubmit: async (_projectId, _target) => ({ at: "2026-06-11T00:00:00Z" }),
+  dryRun: async (_projectId) => MOCK_CHECKS,
+  markAsSubmitted: async (_projectId) => ({ at: "2026-06-11T00:00:00Z" }),
 };
 
 // ---------------------------------------------------------------------------
@@ -112,6 +116,23 @@ describe("SubmitCheckTool — ready state (dry run passed)", () => {
     expect(screen.getByTestId("submit-btn")).not.toBeDisabled();
   });
 
+  it("submit-btn has manual attestation copy", async () => {
+    renderSubmitCheck();
+    await waitFor(() => {
+      expect(screen.getByTestId("submit-btn")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("submit-btn")).toHaveTextContent(
+      "Mark as submitted",
+    );
+  });
+
+  it("download-package-link is present in ready state", async () => {
+    renderSubmitCheck();
+    await waitFor(() => {
+      expect(screen.getByTestId("download-package-link")).toBeInTheDocument();
+    });
+  });
+
   it("rerun-dry-btn is present in ready state", async () => {
     renderSubmitCheck();
     await waitFor(() => {
@@ -124,7 +145,7 @@ describe("SubmitCheckTool — ready state (dry run passed)", () => {
 // ConfirmationSubmit state (GateConfirmation — submit requires confirmation)
 // ---------------------------------------------------------------------------
 
-describe("SubmitCheckTool — confirmingSubmit state", () => {
+describe("SubmitCheckTool — confirmingSubmit state (manual attestation)", () => {
   it("clicking submit-btn opens submit-confirm-dialog (confirmOnSubmit=true)", async () => {
     renderSubmitCheck();
     await waitFor(() => {
@@ -132,6 +153,18 @@ describe("SubmitCheckTool — confirmingSubmit state", () => {
     });
     fireEvent.click(screen.getByTestId("submit-btn"));
     expect(screen.getByTestId("submit-confirm-dialog")).toBeInTheDocument();
+  });
+
+  it("confirm dialog copy mentions dpscans folder", async () => {
+    renderSubmitCheck();
+    await waitFor(() =>
+      expect(screen.getByTestId("submit-btn")).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByTestId("submit-btn"));
+    // Dialog must mention dpscans (manual upload step)
+    expect(screen.getByTestId("submit-confirm-dialog")).toHaveTextContent(
+      "dpscans",
+    );
   });
 
   it("submit-confirm-btn is present in dialog", async () => {
@@ -167,16 +200,15 @@ describe("SubmitCheckTool — confirmingSubmit state", () => {
     expect(screen.getByTestId("dry-run-passed")).toBeInTheDocument();
   });
 
-  it("CONFIRM → submitted final state", async () => {
+  it("CONFIRM → submitted final state (synchronous, no live upload)", async () => {
     renderSubmitCheck();
     await waitFor(() =>
       expect(screen.getByTestId("submit-btn")).not.toBeDisabled(),
     );
     fireEvent.click(screen.getByTestId("submit-btn"));
     fireEvent.click(screen.getByTestId("submit-confirm-btn"));
-    await waitFor(() => {
-      expect(screen.getByTestId("submitted-final")).toBeInTheDocument();
-    });
+    // Submitted immediately — no async service call
+    expect(screen.getByTestId("submitted-final")).toBeInTheDocument();
   });
 });
 
@@ -184,7 +216,19 @@ describe("SubmitCheckTool — confirmingSubmit state", () => {
 // Submitted (final) state
 // ---------------------------------------------------------------------------
 
-describe("SubmitCheckTool — submitted final state", () => {
+describe("SubmitCheckTool — submitted final state (manual attestation)", () => {
+  it("submitted-final panel has manual attestation copy", async () => {
+    renderSubmitCheck();
+    await waitFor(() =>
+      expect(screen.getByTestId("submit-btn")).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByTestId("submit-btn"));
+    fireEvent.click(screen.getByTestId("submit-confirm-btn"));
+    expect(screen.getByTestId("submitted-final")).toHaveTextContent(
+      "Marked as submitted",
+    );
+  });
+
   it("does not render submit-check-tool tabs in submitted state", async () => {
     renderSubmitCheck();
     await waitFor(() =>
@@ -192,9 +236,7 @@ describe("SubmitCheckTool — submitted final state", () => {
     );
     fireEvent.click(screen.getByTestId("submit-btn"));
     fireEvent.click(screen.getByTestId("submit-confirm-btn"));
-    await waitFor(() => {
-      expect(screen.getByTestId("submitted-final")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("submitted-final")).toBeInTheDocument();
     // Tab bar is gone
     expect(screen.queryByTestId("submit-check-tool")).not.toBeInTheDocument();
   });
@@ -215,16 +257,6 @@ describe("SubmitCheckTool — settings tab", () => {
     expect(screen.getByTestId("submit-check-settings")).toBeInTheDocument();
   });
 
-  it("shows target: production in settings", async () => {
-    const user = userEvent.setup();
-    renderSubmitCheck();
-    await waitFor(() =>
-      expect(screen.getByTestId("dry-run-passed")).toBeInTheDocument(),
-    );
-    await user.click(screen.getByRole("tab", { name: "Step Settings" }));
-    expect(screen.getByText("production")).toBeInTheDocument();
-  });
-
   it("shows confirmOnSubmit: on in settings (default=true)", async () => {
     const user = userEvent.setup();
     renderSubmitCheck();
@@ -234,5 +266,17 @@ describe("SubmitCheckTool — settings tab", () => {
     await user.click(screen.getByRole("tab", { name: "Step Settings" }));
     // "on" appears in the confirmOnSubmit row
     expect(screen.getByText("on")).toBeInTheDocument();
+  });
+
+  it("settings tab mentions manual upload destination", async () => {
+    const user = userEvent.setup();
+    renderSubmitCheck();
+    await waitFor(() =>
+      expect(screen.getByTestId("dry-run-passed")).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Step Settings" }));
+    expect(screen.getByTestId("submit-check-settings")).toHaveTextContent(
+      "dpscans",
+    );
   });
 });

@@ -4,9 +4,13 @@
  * Ported from
  * `docs/plans/design_handoff_pgdp_app/statecharts/tool-submit-check.yaml`
  *
- * Dry-runs the PGDP submission end-to-end WITHOUT uploading, then gates
- * the live submit on it. The two-step SUBMIT confirm is the GateConfirmation
- * event: SUBMIT → confirmingSubmit (guard: confirmOnSubmit) → CONFIRM → submitting.
+ * Dry-runs the PGDP submission end-to-end WITHOUT uploading, then gates a
+ * MANUAL attestation on it. There is no live-upload API; submission is a
+ * manual step: the user downloads the zip, uploads it to their dpscans
+ * folder on pgdp.net, then confirms here ("Mark as submitted").
+ *
+ * The two-step SUBMIT confirm is the GateConfirmation event:
+ *   SUBMIT → confirmingSubmit (guard: confirmOnSubmit) → CONFIRM → submitted
  *
  * Gate chain position: zip → submit_check → (SUBMIT gate) → submitted (final)
  *
@@ -14,7 +18,7 @@
  *   - DIVERGENCE #3: `onDone` uses `event.output` (not `event.data`).
  *   - F5.6-8: SUBMIT from `ready` branches on `confirmOnSubmit` guard:
  *     true → `confirmingSubmit` (GateConfirmation pattern from spec);
- *     false → directly to `submitting`. The YAML models this as an array
+ *     false → directly to `submitted`. The YAML models this as an array
  *     of guarded transitions — XState v5 evaluates them top-to-bottom, so
  *     the first matching guard wins.
  *   - F5.6-9: `submitted` is `type: "final"` — XState v5 final states stop
@@ -22,6 +26,10 @@
  *     This is the terminal pipeline goal at the tool layer.
  *   - F5.6-10: `assignChecks` also updates `dryRunOk` inline (DIVERGENCES #9
  *     pattern — no separate recount action).
+ *   - CT 2026-06-11: `liveSubmit` service replaced by manual attestation.
+ *     There is no PGDP upload API; submission is always a manual step.
+ *     The `submitting` invoke state is removed; CONFIRM transitions directly
+ *     to `submitted` with an inline timestamp. Recorded in DIVERGENCES.md.
  *
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-submit-check.yaml
  * @see src/machines/DIVERGENCES.md
@@ -38,11 +46,7 @@ export interface SubmitCheck {
   label: string;
 }
 
-export type SubmitTarget = "production" | "sandbox";
-
 export interface SubmitCheckSettings {
-  target: SubmitTarget;
-  alwaysDryRunFirst: boolean;
   confirmOnSubmit: boolean;
 }
 
@@ -55,13 +59,15 @@ export interface SubmitCheckToolServices {
    * POST /api/projects/:id/stages/submit_check/dry-run
    * -> Check[]
    */
-  dryRun(projectId: string, target: SubmitTarget): Promise<SubmitCheck[]>;
+  dryRun(projectId: string): Promise<SubmitCheck[]>;
 
   /**
-   * POST /api/projects/:id/stages/submit_check/submit
-   * { target } -> { at: string }
+   * Record the manual attestation that the user uploaded the zip to pgdp.net.
+   * This is a local side-effect only (no network upload); it stores the
+   * GateConfirmation event (gate="submit_confirm").
+   * Returns the ISO timestamp of the attestation.
    */
-  liveSubmit(projectId: string, target: SubmitTarget): Promise<{ at: string }>;
+  markAsSubmitted(projectId: string): Promise<{ at: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +86,6 @@ export interface SubmitCheckToolContext {
   stageIndex: number;
   services: SubmitCheckToolServices;
   checks: SubmitCheck[];
-  target: SubmitTarget;
   dryRunOk: boolean;
   confirmOnSubmit: boolean;
   submittedAt: string | null;
@@ -116,18 +121,8 @@ export const submitCheckToolMachine = setup({
       {
         projectId: string;
         services: SubmitCheckToolServices;
-        target: SubmitTarget;
       }
-    >(({ input }) => input.services.dryRun(input.projectId, input.target)),
-
-    liveSubmit: fromPromise<
-      { at: string },
-      {
-        projectId: string;
-        services: SubmitCheckToolServices;
-        target: SubmitTarget;
-      }
-    >(({ input }) => input.services.liveSubmit(input.projectId, input.target)),
+    >(({ input }) => input.services.dryRun(input.projectId)),
   },
   guards: {
     /**
@@ -154,12 +149,14 @@ export const submitCheckToolMachine = setup({
         dryRunOk: params.output.every((c) => c.ok),
       }),
     ),
-    assignSubmitted: assign(
-      (
-        _args,
-        params: { output: { at: string } },
-      ): Partial<SubmitCheckToolContext> => ({
-        submittedAt: params.output.at,
+    /**
+     * Record the manual attestation timestamp when the user confirms they
+     * have uploaded the zip to their dpscans folder on pgdp.net.
+     * CT 2026-06-11: replaces async liveSubmit invoke with inline assignment.
+     */
+    assignSubmittedNow: assign(
+      (): Partial<SubmitCheckToolContext> => ({
+        submittedAt: new Date().toISOString(),
       }),
     ),
     assignError: assign(
@@ -183,7 +180,6 @@ export const submitCheckToolMachine = setup({
     stageIndex: input.stageIndex,
     services: input.services,
     checks: [],
-    target: input.settings?.target ?? "production",
     dryRunOk: false,
     confirmOnSubmit: input.settings?.confirmOnSubmit ?? true,
     submittedAt: null,
@@ -197,7 +193,6 @@ export const submitCheckToolMachine = setup({
         input: ({ context }: { context: SubmitCheckToolContext }) => ({
           projectId: context.projectId,
           services: context.services,
-          target: context.target,
         }),
         onDone: [
           {
@@ -259,7 +254,9 @@ export const submitCheckToolMachine = setup({
             guard: "confirmOnSubmit",
           },
           {
-            target: "submitting",
+            // confirmOnSubmit=false → attest immediately (no dialog)
+            target: "submitted",
+            actions: "assignSubmittedNow",
           },
         ],
         RERUN_DRY: { target: "dryRunning" },
@@ -269,41 +266,11 @@ export const submitCheckToolMachine = setup({
 
     confirmingSubmit: {
       on: {
-        CONFIRM: { target: "submitting" },
-        CANCEL: { target: "ready" },
-      },
-    },
-
-    submitting: {
-      invoke: {
-        src: "liveSubmit",
-        input: ({ context }: { context: SubmitCheckToolContext }) => ({
-          projectId: context.projectId,
-          services: context.services,
-          target: context.target,
-        }),
-        onDone: {
+        CONFIRM: {
           target: "submitted",
-          actions: [
-            {
-              type: "assignSubmitted",
-              params: ({ event }: { event: { output: { at: string } } }) => ({
-                output: event.output,
-              }),
-            },
-          ],
+          actions: "assignSubmittedNow",
         },
-        onError: {
-          target: "ready",
-          actions: [
-            {
-              type: "assignError",
-              params: ({ event }: { event: { error: unknown } }) => ({
-                error: event.error,
-              }),
-            },
-          ],
-        },
+        CANCEL: { target: "ready" },
       },
     },
 

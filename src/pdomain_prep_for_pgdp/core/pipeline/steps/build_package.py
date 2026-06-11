@@ -38,6 +38,24 @@ PGDP layout contract:
   in an ``images/`` directory following the legacy naming convention
   ``<prefix>_<NN:02d>.<ext>``.
 
+PGDP naming rules (DP wiki — Content Providing FAQ):
+  Per-file rules (enforced by pgdp_naming.validate_pgdp_filename):
+    - Basename ≤ 8 characters
+    - Characters [A-Za-z0-9_-] only (no spaces, dots, slashes, etc.)
+    - Extension lowercase .png / .txt / .jpg only
+    - No "ad" substring in the basename
+  Package-level rules (enforced by pgdp_naming.validate_package_naming):
+    - Every .png page must have a matching .txt page (and vice versa)
+    - Basenames in lexicographic sort order must match reading order
+  The ``compute_prefix`` alphabet (f/p + digits 0-9 + suffix b/p/r,
+  max 5 chars) is proven to satisfy all four per-file rules.
+  Two-tier enforcement:
+    1. validation stage (blocker code "pgdp_naming"): actionable user feedback
+       before build is attempted.
+    2. build_submission_zip pre-zip hard assert (PgdpNamingError): defence-in-
+       depth — raises even if the validation stage was bypassed.
+  Reference: https://www.pgdp.net/wiki/DP_Official_Documentation:CP_and_PM/Content_Providing_FAQ
+
 This module provides:
   1. build_submission_zip(project_id, page_ids, data_root, book_name,
                           *, page_prefixes, built_at) -> bytes

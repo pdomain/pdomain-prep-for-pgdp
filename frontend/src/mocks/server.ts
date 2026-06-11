@@ -503,21 +503,17 @@ export interface MockServer {
    * POST /api/projects/:id/stages/submit_check/dry-run
    * -> SubmitCheckItem[]  (no upload)
    */
-  dryRunSubmitCheck(
-    projectId: string,
-    target: "production" | "sandbox",
-  ): Promise<SubmitCheckItem[]>;
+  dryRunSubmitCheck(projectId: string): Promise<SubmitCheckItem[]>;
 
   /**
-   * POST /api/projects/:id/stages/submit_check/submit
-   * { target } -> { at: string }
-   * Live upload to pgdp.net (or sandbox).
-   * Gate: dry run must have passed.
+   * POST /api/projects/:id/stages/submit_check/confirm
+   * { gate: "submit_confirm" } -> { at: string }
+   * Records manual attestation that the user uploaded the zip to their
+   * dpscans folder on pgdp.net. There is no PGDP upload API; submission
+   * is always a manual step.
+   * CT 2026-06-11: replaces liveSubmit per manual attestation directive.
    */
-  liveSubmit(
-    projectId: string,
-    target: "production" | "sandbox",
-  ): Promise<{ at: string }>;
+  markAsSubmitted(projectId: string): Promise<{ at: string }>;
 
   /**
    * POST /api/projects/:id/stages/archive/run
@@ -1614,7 +1610,7 @@ export function createMockServer(): MockServer {
       return { deliverable: { files, count: 11 }, manifest };
     },
 
-    async dryRunSubmitCheck(_projectId, _target) {
+    async dryRunSubmitCheck(_projectId) {
       const checks: SubmitCheckItem[] = [
         { ok: true, label: "Project ID registered at pgdp.net" },
         {
@@ -1623,18 +1619,14 @@ export function createMockServer(): MockServer {
         },
         { ok: true, label: "ZIP integrity — no corrupt entries" },
         { ok: true, label: "Manifest SHA-256 verified" },
-        { ok: false, label: "Credentials pre-flight — API token valid" },
         { ok: true, label: "Package size within 500 MB limit (42 MB)" },
       ];
       return checks;
     },
 
-    async liveSubmit(_projectId, target) {
-      // Simulate a live submission by returning a timestamp.
-      // A real server would POST to pgdp.net and record the submission.
-      if (target === "sandbox") {
-        return { at: new Date().toISOString() };
-      }
+    async markAsSubmitted(_projectId) {
+      // Records manual attestation that the user uploaded the zip to their
+      // dpscans folder on pgdp.net. No actual upload occurs here.
       return { at: new Date().toISOString() };
     },
 

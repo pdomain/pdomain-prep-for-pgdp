@@ -187,7 +187,8 @@ function makeSubmitCheckServices(
       { ok: true, label: "Package size within limits" },
       { ok: true, label: "Manifest valid" },
     ]),
-    liveSubmit: vi.fn().mockResolvedValue({ at: "2026-06-10T12:00:00Z" }),
+    // CT 2026-06-11: liveSubmit replaced by markAsSubmitted (manual attestation)
+    markAsSubmitted: vi.fn().mockResolvedValue({ at: "2026-06-10T12:00:00Z" }),
     ...overrides,
   };
 }
@@ -785,7 +786,7 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
     actor.stop();
   });
 
-  it("SUBMIT without confirmOnSubmit goes directly to submitting", async () => {
+  it("SUBMIT without confirmOnSubmit goes directly to submitted (manual attestation)", async () => {
     const actor = createActor(submitCheckToolMachine, {
       input: {
         projectId: "proj-test",
@@ -798,8 +799,10 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
     await waitForState(actor, (s) => s.matches("ready"));
 
     actor.send({ type: "SUBMIT" });
-    // Should go to submitting (not confirmingSubmit)
-    await waitForState(actor, (s) => s.matches("submitted"));
+    // Goes directly to submitted — no async submitting state (manual attestation)
+    expect(actor.getSnapshot().matches("submitted")).toBe(true);
+    // submittedAt is set synchronously
+    expect(actor.getSnapshot().context.submittedAt).not.toBeNull();
     actor.stop();
   });
 
@@ -825,7 +828,7 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
     actor.stop();
   });
 
-  it("CONFIRM from confirmingSubmit proceeds to submitted (final)", async () => {
+  it("CONFIRM from confirmingSubmit proceeds to submitted (manual attestation)", async () => {
     const actor = createActor(submitCheckToolMachine, {
       input: {
         projectId: "proj-test",
@@ -841,11 +844,12 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
     expect(actor.getSnapshot().matches("confirmingSubmit")).toBe(true);
 
     actor.send({ type: "CONFIRM" });
-    await waitForState(actor, (s) => s.matches("submitted"));
-
+    // Submitted synchronously — assignSubmittedNow fires inline
     const snap = actor.getSnapshot();
-    expect(snap.context.submittedAt).toBe("2026-06-10T12:00:00Z");
     expect(snap.matches("submitted")).toBe(true);
+    // submittedAt is a current ISO timestamp (not the mock service return)
+    expect(snap.context.submittedAt).not.toBeNull();
+    expect(typeof snap.context.submittedAt).toBe("string");
     actor.stop();
   });
 
@@ -865,24 +869,27 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
     actor.stop();
   });
 
-  it("liveSubmit error returns to ready with error context", async () => {
+  it("dryRun error reaches failed state and RETRY resets to dryRunning", async () => {
+    // CT 2026-06-11: liveSubmit error test removed (no live submit).
+    // Replaced with dryRun error path (the only async failure in the machine).
     const services = makeSubmitCheckServices({
-      liveSubmit: vi.fn().mockRejectedValue(new Error("upload failed")),
+      dryRun: vi.fn().mockRejectedValue(new Error("dry run network error")),
     });
     const actor = createActor(submitCheckToolMachine, {
       input: {
         projectId: "proj-test",
         stageIndex: 21,
         services,
-        settings: { confirmOnSubmit: false },
       } satisfies SubmitCheckToolInput,
     });
     actor.start();
-    await waitForState(actor, (s) => s.matches("ready"));
+    await waitForState(actor, (s) => s.matches("failed"));
+    expect(actor.getSnapshot().context.error?.message).toBe(
+      "dry run network error",
+    );
 
-    actor.send({ type: "SUBMIT" });
-    await waitForState(actor, (s) => s.matches("ready"));
-    expect(actor.getSnapshot().context.error?.message).toBe("upload failed");
+    actor.send({ type: "RETRY" });
+    expect(actor.getSnapshot().matches("dryRunning")).toBe(true);
     actor.stop();
   });
 });

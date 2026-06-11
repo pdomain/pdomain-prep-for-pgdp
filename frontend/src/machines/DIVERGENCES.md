@@ -1528,3 +1528,41 @@ effect is cleaned up on unmount via `clearTimeout`.
 
 **I1 migration:** Remove the `useEffect` block and wire the real SSE actor. The
 machine's event handling is already correct.
+
+---
+
+### CT 2026-06-11 — `submitCheckTool` live upload removed; manual attestation only
+
+**Original YAML:** The `submitCheckTool` YAML models a `submitting` state that
+invokes a `liveSubmit` actor to POST the package to pgdp.net. The machine
+completes when the upload acknowledges.
+
+**Resolution (CT directive 2026-06-11):** PGDP has no public upload API.
+Submission is always a manual step:
+
+1. User downloads the zip via the "Download package" affordance.
+2. User uploads the zip to their `dpscans` folder on pgdp.net.
+3. User attests here ("Mark as submitted") — recording a `GateConfirmation`
+   event (gate="submit_confirm") in the project aggregate.
+
+**Changes:**
+
+- `liveSubmit` actor and `submitting` invoke state removed.
+- `SubmitCheckToolServices.liveSubmit(projectId, target)` replaced by
+  `markAsSubmitted(projectId)`. No `target` parameter — there is no sandbox
+  vs. production distinction for a manual upload.
+- `SUBMIT` without `confirmOnSubmit` → transitions directly to `submitted` via
+  `assignSubmittedNow` (synchronous assign, not async actor).
+- `CONFIRM` from `confirmingSubmit` → same path.
+- `submitted` context carries `submittedAt: string` (ISO timestamp of attestation).
+- `IPackGroupServices.dryRunSubmitCheck` lost the `target` parameter.
+- `IPackGroupServices.liveSubmit` replaced by `markAsSubmitted(projectId)`.
+
+**F5.6-5 update:** The F5.6-5 entry above mentions the "default (no guard)
+target: `submitting`" branch. That branch is now "default (no guard) target:
+`submitted` with `assignSubmittedNow` action". F5.6-5 text predates this CT
+directive; this entry supersedes the default-branch description.
+
+**If DP exposes an upload API in future:** Add a `liveSubmit` actor back into
+`submitting` state; gate it behind a new setting `useApiSubmit` (default off).
+The manual attestation flow remains valid as a fallback.

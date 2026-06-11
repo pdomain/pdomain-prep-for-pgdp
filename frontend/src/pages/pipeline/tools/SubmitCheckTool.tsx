@@ -2,14 +2,23 @@
  * SubmitCheckTool — React surface for the Submit Check stage tool.
  *
  * Drives `submitCheckToolMachine`. Two tabs:
- * - **Overview** — Dry-run gate + checks list + SUBMIT two-step confirm
- * - **Settings** — Target (Production/Sandbox), safety toggles, credentials
+ * - **Overview** — Dry-run gate + checks list + manual SUBMIT two-step confirm
+ * - **Settings** — Safety toggles
  *
  * The two-step SUBMIT confirm (GateConfirmation) is the key UX invariant:
- *   SUBMIT button → if confirmOnSubmit → confirmation dialog → CONFIRM → upload
+ *   SUBMIT button → if confirmOnSubmit → confirmation dialog → CONFIRM → submitted
+ *
+ * There is no live API upload. The flow is:
+ *   1. Dry run passes → "Download package" link appears.
+ *   2. User downloads the zip and uploads it manually to dpscans folder.
+ *   3. User clicks "Mark as submitted" → confirm dialog confirms manual step.
+ *   4. CONFIRM → submitted (final, attestation recorded).
+ *
+ * CT 2026-06-11: liveSubmit replaced by manual attestation flow per CT directive.
  *
  * @see src/machines/tools/submitCheckTool.ts
  * @see docs/plans/design_handoff_pgdp_app/final/submit_check/submit-check.jsx
+ * @see docs/architecture/statechart-convergence-notes.md §Open questions #4
  */
 
 import type { ReactNode } from "react";
@@ -68,6 +77,11 @@ function CheckRow({ check }: { check: SubmitCheck }) {
   );
 }
 
+/**
+ * Manual-attestation confirm dialog.
+ *
+ * Copy explains the manual upload step required before confirming.
+ */
 function ConfirmDialog({
   onConfirm,
   onCancel,
@@ -90,13 +104,13 @@ function ConfirmDialog({
       }}
     >
       <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}>
-        Confirm live submission to PGDP
+        Confirm manual submission to PGDP
       </div>
       <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
-        This will upload the package to pgdp.net. This action is{" "}
-        <strong>irreversible</strong> — once submitted, the project enters the
-        PGDP proofing queue. Make sure the dry run passed and all settings are
-        correct before confirming.
+        Before confirming, upload the zip to your{" "}
+        <strong>dpscans folder on pgdp.net</strong>. Once you have done that,
+        click <em>Confirm</em> to record that you have submitted the package.
+        This is a manual step — there is no automated upload.
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <Button
@@ -117,7 +131,7 @@ function ConfirmDialog({
             borderColor: "var(--mismatch)",
           }}
         >
-          Submit to PGDP
+          Confirm — I uploaded the zip
         </Button>
       </div>
     </div>
@@ -141,7 +155,7 @@ export function SubmitCheckTool({
       projectId,
       stageIndex: 21,
       services,
-      settings: { confirmOnSubmit: true, target: "production" },
+      settings: { confirmOnSubmit: true },
     },
   });
 
@@ -152,7 +166,6 @@ export function SubmitCheckTool({
   const isBlocked = snapshot.matches("blocked");
   const isReady = snapshot.matches("ready");
   const isConfirming = snapshot.matches("confirmingSubmit");
-  const isSubmitting = snapshot.matches("submitting");
   const isSubmitted = snapshot.matches("submitted");
   const isFailed = snapshot.matches("failed");
 
@@ -202,14 +215,15 @@ export function SubmitCheckTool({
             <div
               style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-1)" }}
             >
-              Submitted to PGDP
+              Marked as submitted
             </div>
             <div style={{ marginTop: 2, fontSize: 12, color: "var(--ink-3)" }}>
-              Project accepted at{" "}
+              Attested at{" "}
               {ctx.submittedAt
                 ? new Date(ctx.submittedAt).toLocaleString()
                 : "unknown time"}
-              . Pipeline complete.
+              . Upload your zip to pgdp.net if you have not already. Pipeline
+              complete.
             </div>
           </div>
         </div>
@@ -276,7 +290,7 @@ export function SubmitCheckTool({
                     }}
                   >
                     {allOk
-                      ? "Dry run passed · safe to submit"
+                      ? "Dry run passed · ready to submit"
                       : `Dry run found ${ctx.checks.filter((c) => !c.ok).length} blocker(s)`}
                   </div>
                   <div
@@ -287,8 +301,8 @@ export function SubmitCheckTool({
                     }}
                   >
                     {allOk
-                      ? "No live upload yet — this simulates the PGDP submission end-to-end."
-                      : "Resolve the failing checks before a live submission; nothing was uploaded."}
+                      ? "Download the zip and upload it to your dpscans folder on pgdp.net."
+                      : "Resolve the failing checks before submitting; nothing was uploaded."}
                   </div>
                 </div>
               </div>
@@ -323,7 +337,7 @@ export function SubmitCheckTool({
               </div>
             )}
 
-            {/* Stats */}
+            {/* Download + submit actions */}
             <div style={{ display: "flex", gap: 12 }}>
               <div
                 style={{
@@ -353,7 +367,7 @@ export function SubmitCheckTool({
                     marginTop: 4,
                   }}
                 >
-                  target
+                  destination
                 </div>
                 <div
                   style={{
@@ -363,7 +377,7 @@ export function SubmitCheckTool({
                     marginTop: 2,
                   }}
                 >
-                  {ctx.target}
+                  manual upload
                 </div>
               </div>
               <div
@@ -483,10 +497,28 @@ export function SubmitCheckTool({
                       marginTop: 2,
                     }}
                   >
-                    Simulates the upload + server-side acceptance checks
+                    Simulates acceptance checks without uploading
                   </div>
                 </div>
-                {!isConfirming && !isSubmitting && (
+                {/* Download package affordance — visible when dry run passed */}
+                {isReady && (
+                  <a
+                    data-testid="download-package-link"
+                    href={`/api/data/projects/${projectId}/project-stages/zip/artifact`}
+                    download
+                    style={{
+                      fontSize: 12,
+                      color: "var(--ocr)",
+                      textDecoration: "none",
+                      border: "1px solid var(--border-1)",
+                      borderRadius: 6,
+                      padding: "4px 10px",
+                    }}
+                  >
+                    Download package
+                  </a>
+                )}
+                {!isConfirming && (
                   <Button
                     data-testid="submit-btn"
                     variant="primary"
@@ -494,7 +526,7 @@ export function SubmitCheckTool({
                     disabled={!isReady || isBlocked || isDryRunning}
                     onClick={() => send({ type: "SUBMIT" })}
                   >
-                    {isSubmitting ? "Submitting…" : "Submit to PGDP…"}
+                    Mark as submitted…
                   </Button>
                 )}
                 {(isReady || isBlocked) && (
@@ -536,7 +568,7 @@ export function SubmitCheckTool({
               <div
                 style={{ marginTop: 3, fontSize: 12, color: "var(--ink-3)" }}
               >
-                Submission target and safety.
+                Safety and confirmation settings.
               </div>
             </div>
             <div
@@ -557,38 +589,6 @@ export function SubmitCheckTool({
                 }}
               >
                 <div>
-                  <div style={{ fontSize: 12.5, fontWeight: 500 }}>Target</div>
-                  <div
-                    style={{
-                      fontSize: 11.5,
-                      color: "var(--ink-3)",
-                      marginTop: 2,
-                    }}
-                  >
-                    PGDP environment
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontFamily: "var(--mono-font, monospace)",
-                    fontSize: 12,
-                    color: "var(--ink-2)",
-                  }}
-                >
-                  {ctx.target}
-                </span>
-              </div>
-              <div
-                style={{
-                  padding: "13px 16px",
-                  borderTop: "1px solid var(--border-1)",
-                  display: "grid",
-                  gridTemplateColumns: "260px 1fr",
-                  gap: 12,
-                  alignItems: "center",
-                }}
-              >
-                <div>
                   <div style={{ fontSize: 12.5, fontWeight: 500 }}>
                     Confirm on submit
                   </div>
@@ -599,7 +599,7 @@ export function SubmitCheckTool({
                       marginTop: 2,
                     }}
                   >
-                    Extra confirmation before live upload
+                    Show confirmation dialog before marking as submitted
                   </div>
                 </div>
                 <span
@@ -626,7 +626,7 @@ export function SubmitCheckTool({
               >
                 <div>
                   <div style={{ fontSize: 12.5, fontWeight: 500 }}>
-                    Credentials
+                    Upload destination
                   </div>
                   <div
                     style={{
@@ -635,7 +635,7 @@ export function SubmitCheckTool({
                       marginTop: 2,
                     }}
                   >
-                    pgdp.net API token
+                    Where to upload the zip
                   </div>
                 </div>
                 <span
@@ -645,7 +645,7 @@ export function SubmitCheckTool({
                     color: "var(--ink-3)",
                   }}
                 >
-                  •••• configured
+                  dpscans folder on pgdp.net (manual)
                 </span>
               </div>
             </div>
