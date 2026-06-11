@@ -171,6 +171,22 @@ export interface PageOrderToolServices {
   confirmStage(projectId: string): Promise<{ ok: boolean }>;
 
   /**
+   * W5.5 — Initial fetch replacing the FOLIO_PUSH/FOLIOS_DONE streaming design.
+   *
+   * GET /api/data/projects/{id}/pages + page_order artifact.
+   * Fetches all pages (roles, scan indices) and any available folio data
+   * in a single HTTP call and returns a fully-hydrated initial model.
+   *
+   * CT decision 2026-06-11: drop streaming; fetch on mount.
+   * See DIVERGENCES.md §W5.5-fetchFolios.
+   */
+  fetchFolios(projectId: string): Promise<{
+    leaves: Leaf[];
+    runs: Run[];
+    totals: PageOrderTotals;
+  }>;
+
+  /**
    * W5.3 — called after DROP reorders pages so pipelineShell can fan-out
    * UPSTREAM_CHANGED to all downstream stage runners.
    * Optional: omitting is safe (no fan-out until wired by caller).
@@ -477,6 +493,19 @@ export const pageOrderToolMachine = setup({
   },
 
   actors: {
+    /**
+     * W5.5 — initial fetch (replaces FOLIO_PUSH/FOLIOS_DONE streaming).
+     *
+     * CT decision 2026-06-11: fetch manifest + detected folios in one GET on
+     * mount. The streaming design (FOLIO_PUSH → FOLIOS_DONE via SSE) is
+     * dropped; the machine transitions directly from loading → workspace via
+     * this actor. See DIVERGENCES.md §W5.5-fetchFolios.
+     */
+    fetchFolios: fromPromise<
+      { leaves: Leaf[]; runs: Run[]; totals: PageOrderTotals },
+      { projectId: string; services: PageOrderToolServices }
+    >(({ input }) => input.services.fetchFolios(input.projectId)),
+
     /**
      * YAML: `invoke.src: confirmStage`
      * DIVERGENCE #3: onDone carries event.output not event.data.
@@ -850,7 +879,7 @@ export const pageOrderToolMachine = setup({
   },
 }).createMachine({
   id: "pageOrderTool",
-  initial: "readingFolios",
+  initial: "loading",
 
   context: ({
     input,
@@ -878,9 +907,41 @@ export const pageOrderToolMachine = setup({
 
   states: {
     // -------------------------------------------------------------------------
-    // readingFolios — accumulates FOLIO_PUSH events until FOLIOS_DONE
+    // loading — W5.5: initial fetch (replaces FOLIO_PUSH/FOLIOS_DONE streaming)
+    //
+    // CT decision 2026-06-11: fetch manifest + detected folios in one GET.
+    // The streaming design (FOLIO_PUSH accumulation → FOLIOS_DONE) is dropped.
+    // `FOLIOS_DONE` is kept as a direct-event escape hatch for tests/legacy callers.
+    // See DIVERGENCES.md §W5.5-fetchFolios.
     // -------------------------------------------------------------------------
-    readingFolios: {
+    loading: {
+      invoke: {
+        src: "fetchFolios",
+        input: ({ context }) => ({
+          projectId: context.projectId,
+          services: context.services,
+        }),
+        onDone: {
+          target: "workspace",
+          actions: {
+            type: "assignModelAndCompute",
+            params: ({ event }) => ({
+              leaves: event.output.leaves,
+              runs: event.output.runs,
+              totals: event.output.totals,
+            }),
+          },
+        },
+        onError: {
+          target: "loadError",
+          actions: {
+            type: "assignError",
+            params: ({ event }) => ({ error: event.error }),
+          },
+        },
+      },
+      // Legacy / test-injection bypass: FOLIOS_DONE can still transition
+      // directly without waiting for the invoke actor.
       on: {
         FOLIO_PUSH: { actions: ["mergeFolio"] },
         FOLIOS_DONE: {
@@ -894,6 +955,16 @@ export const pageOrderToolMachine = setup({
             }),
           },
         },
+      },
+    },
+
+    // -------------------------------------------------------------------------
+    // loadError — fetchFolios failed; surface shows retry button
+    // -------------------------------------------------------------------------
+    loadError: {
+      on: {
+        // User retries — re-enter loading state to re-invoke fetchFolios
+        UPSTREAM_CHANGED: { target: "loading" },
       },
     },
 
@@ -1063,7 +1134,8 @@ export const pageOrderToolMachine = setup({
     // -------------------------------------------------------------------------
     settled: {
       on: {
-        UPSTREAM_CHANGED: { target: "readingFolios" },
+        // W5.5: reset to loading (was readingFolios) to re-invoke fetchFolios
+        UPSTREAM_CHANGED: { target: "loading" },
       },
     },
   },

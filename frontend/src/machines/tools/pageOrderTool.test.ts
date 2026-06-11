@@ -3,7 +3,8 @@
  *
  * TDD invariants from tool-page-order.yaml:
  *
- * Suite 1 "folio reading lifecycle" — readingFolios → workspace via FOLIOS_DONE
+ * Suite 1 (W5.5) "loading lifecycle" — loading → workspace via fetchFolios invoke
+ *   (FOLIOS_DONE still works as test-injection bypass for enterWorkspace helpers)
  * Suite 2 "ledger: drag-reorder" — DRAG_START → reordering → DROP → browsing
  * Suite 3 "ledger: role / run assignment" — SET_ROLE, SET_RUN + persistLeaf
  * Suite 4 "ledger: lens + view filters" — SET_LENS, SET_VIEW
@@ -11,7 +12,7 @@
  * Suite 6 "runs: add / edit / remove" — ADD_RUN → CONFIRM_ADD; EDIT_RUN → DONE
  * Suite 7 "naming" — SET_NAME_PART patches naming context
  * Suite 8 "confirm advance" — sequenceClean guard + confirming → settled
- * Suite 9 "UPSTREAM_CHANGED resets to readingFolios" from settled
+ * Suite 9 "UPSTREAM_CHANGED resets to loading" from settled (W5.5)
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -56,6 +57,12 @@ function makeServices(
   overrides: Partial<PageOrderToolServices> = {},
 ): PageOrderToolServices {
   return {
+    // W5.5: fetchFolios is now required — default mock returns 2 leaves
+    fetchFolios: vi.fn().mockResolvedValue({
+      leaves: [makeLeaf({ scan: 1 }), makeLeaf({ scan: 2, ocrFolio: "2" })],
+      runs: [makeRun()],
+      totals: { total: 2, scanned: 2, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    }),
     persistLeaf: vi.fn().mockResolvedValue(undefined),
     persistOrder: vi.fn().mockResolvedValue(undefined),
     persistRuns: vi.fn().mockResolvedValue(undefined),
@@ -104,28 +111,56 @@ async function waitForState(
 }
 
 // ---------------------------------------------------------------------------
-// Suite 1: folio reading lifecycle
+// Suite 1 (W5.5): loading lifecycle — fetchFolios invoke replaces streaming
 // ---------------------------------------------------------------------------
 
-describe("pageOrderTool — folio reading lifecycle", () => {
-  it("starts in readingFolios", () => {
+describe("pageOrderTool — loading lifecycle (W5.5)", () => {
+  it("starts in loading state (was readingFolios)", () => {
     const actor = createActor(pageOrderToolMachine, { input: makeInput() });
     actor.start();
-    expect(actor.getSnapshot().matches("readingFolios")).toBe(true);
+    expect(actor.getSnapshot().matches("loading")).toBe(true);
     actor.stop();
   });
 
-  it("FOLIO_PUSH merges a folio into leaves context", () => {
+  it("fetchFolios resolve transitions to workspace", async () => {
     const actor = createActor(pageOrderToolMachine, { input: makeInput() });
     actor.start();
-    actor.send({ type: "FOLIO_PUSH", scan: 1, ocrFolio: "1" });
+    await waitForState(actor, (s) => s.matches("workspace"));
     const snap = actor.getSnapshot();
-    expect(snap.context.partialLeaves).toHaveLength(1);
-    expect(snap.context.partialLeaves[0]!.ocrFolio).toBe("1");
+    expect(snap.matches("workspace")).toBe(true);
+    expect(snap.context.leaves).toHaveLength(2);
     actor.stop();
   });
 
-  it("FOLIOS_DONE transitions to workspace and assigns model", () => {
+  it("fetchFolios rejection transitions to loadError", async () => {
+    const services = makeServices({
+      fetchFolios: vi.fn().mockRejectedValue(new Error("network error")),
+    });
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("loadError"));
+    expect(actor.getSnapshot().matches("loadError")).toBe(true);
+    actor.stop();
+  });
+
+  it("UPSTREAM_CHANGED from loadError retries (back to loading)", async () => {
+    const services = makeServices({
+      fetchFolios: vi.fn().mockRejectedValue(new Error("fail")),
+    });
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("loadError"));
+    actor.send({ type: "UPSTREAM_CHANGED" });
+    expect(actor.getSnapshot().matches("loading")).toBe(true);
+    actor.stop();
+  });
+
+  it("FOLIOS_DONE bypass still works in loading state (test injection)", () => {
+    // Keep backward compat: FOLIOS_DONE can still bypass the invoke for tests
     const actor = createActor(pageOrderToolMachine, { input: makeInput() });
     actor.start();
     const leaves = [makeLeaf({ scan: 1, ocrFolio: "1" })];
@@ -140,6 +175,16 @@ describe("pageOrderTool — folio reading lifecycle", () => {
     expect(snap.matches("workspace")).toBe(true);
     expect(snap.context.leaves).toHaveLength(1);
     expect(snap.context.runs).toHaveLength(1);
+    actor.stop();
+  });
+
+  it("FOLIO_PUSH accumulates partial leaves in loading state (legacy)", () => {
+    const actor = createActor(pageOrderToolMachine, { input: makeInput() });
+    actor.start();
+    actor.send({ type: "FOLIO_PUSH", scan: 1, ocrFolio: "1" });
+    const snap = actor.getSnapshot();
+    expect(snap.context.partialLeaves).toHaveLength(1);
+    expect(snap.context.partialLeaves[0]!.ocrFolio).toBe("1");
     actor.stop();
   });
 });
@@ -532,12 +577,13 @@ describe("pageOrderTool — confirm advance", () => {
 // ---------------------------------------------------------------------------
 
 describe("pageOrderTool — upstream changed", () => {
-  it("UPSTREAM_CHANGED from settled resets to readingFolios", async () => {
+  it("UPSTREAM_CHANGED from settled resets to loading (W5.5)", async () => {
     const services = makeServices();
     const actor = createActor(pageOrderToolMachine, {
       input: makeInput({ services }),
     });
     actor.start();
+    // Use FOLIOS_DONE bypass to reach workspace quickly
     actor.send({
       type: "FOLIOS_DONE",
       leaves: [makeLeaf()],
@@ -547,7 +593,8 @@ describe("pageOrderTool — upstream changed", () => {
     actor.send({ type: "CONFIRM_ADVANCE" });
     await waitForState(actor, (s) => s.matches("settled"));
     actor.send({ type: "UPSTREAM_CHANGED" });
-    expect(actor.getSnapshot().matches("readingFolios")).toBe(true);
+    // W5.5: resets to loading (was readingFolios)
+    expect(actor.getSnapshot().matches("loading")).toBe(true);
     actor.stop();
   });
 });

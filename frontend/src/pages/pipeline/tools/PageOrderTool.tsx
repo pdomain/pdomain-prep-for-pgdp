@@ -463,7 +463,9 @@ export function PageOrderTool({
   });
 
   const ctx = snapshot.context;
-  const isReadingFolios = snapshot.matches("readingFolios");
+  // W5.5: readingFolios renamed to loading (fetchFolios invoke replaces streaming)
+  const isReadingFolios = snapshot.matches("loading");
+  const isLoadError = snapshot.matches("loadError");
   const isWorkspace = snapshot.matches("workspace");
   const isConfirming = snapshot.matches("confirming");
   const isSettled = snapshot.matches("settled");
@@ -549,7 +551,45 @@ export function PageOrderTool({
             color: "var(--ink-2)",
           }}
         >
-          Reading folios… extracting printed numbers from each leaf.
+          Loading page order… fetching page data from server.
+        </div>
+      )}
+
+      {isLoadError && (
+        <div
+          data-testid="po-banner-load-error"
+          style={{
+            padding: "10px 16px",
+            background:
+              "color-mix(in oklab, var(--mismatch) 8%, var(--bg-surface))",
+            border:
+              "1px solid color-mix(in oklab, var(--mismatch) 30%, var(--border-1))",
+            borderRadius: 8,
+            fontSize: 13,
+            color: "var(--mismatch)",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <span>
+            Failed to load page order: {ctx.error?.message ?? "unknown error"}
+          </span>
+          <button
+            data-testid="po-retry-btn"
+            onClick={() => send({ type: "UPSTREAM_CHANGED" })}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 5,
+              border: "1px solid var(--mismatch)",
+              background: "transparent",
+              color: "var(--mismatch)",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 

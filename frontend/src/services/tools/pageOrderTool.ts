@@ -40,6 +40,7 @@ import type {
   LeafRole,
   Run,
   NamingScheme,
+  PageOrderTotals,
 } from "@/machines/tools/pageOrderTool";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,15 @@ function roleToPageType(role: LeafRole): string {
       // When SET_PLATE_TAG arrives the inspector will have an explicit kind field.
       return "plate_p";
   }
+}
+
+/** Map wire PageType value to design-layer LeafRole. */
+function pageTypeToRole(pageType: string): LeafRole {
+  if (pageType === "blank") return "blank";
+  if (pageType === "skip") return "skip";
+  if (pageType === "cover") return "cover";
+  if (pageType.startsWith("plate")) return "plate";
+  return "text"; // "normal" and any unknown types default to text
 }
 
 // ---------------------------------------------------------------------------
@@ -134,6 +144,84 @@ function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
 }
 
 // ---------------------------------------------------------------------------
+// W5.5 — fetchFolios (replaces FOLIO_PUSH/FOLIOS_DONE streaming)
+// ---------------------------------------------------------------------------
+
+/** Wire shape of a single page record from GET /api/data/projects/{id}/pages */
+interface WirePageRecord {
+  idx0: number;
+  page_type: string;
+  prefix: string;
+  source_stem: string;
+}
+
+interface WireListPagesResponse {
+  pages: WirePageRecord[];
+  total: number;
+  next_cursor: string | null;
+}
+
+/**
+ * Fetch all pages for the project and assemble the initial pageOrderTool model.
+ *
+ * CT decision 2026-06-11: replaces FOLIO_PUSH/FOLIOS_DONE streaming.
+ * Calls GET /api/data/projects/{id}/pages (up to 500 pages per request).
+ *
+ * Transforms the flat page list into:
+ *   - leaves: one Leaf per page (role from page_type, ocrFolio from prefix)
+ *   - runs: single default body run (at I1, replace with a real runs endpoint)
+ *   - totals: derived from the page count
+ *
+ * See DIVERGENCES.md §W5.5-fetchFolios.
+ */
+async function fetchFolios(projectId: string): Promise<{
+  leaves: Leaf[];
+  runs: Run[];
+  totals: PageOrderTotals;
+}> {
+  // Fetch all pages (max 500; projects with >500 pages are degenerate)
+  const raw = await api.get<WireListPagesResponse>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=500`,
+  );
+
+  const leaves: Leaf[] = (raw.pages ?? []).map((p) => ({
+    scan: p.idx0,
+    role: pageTypeToRole(p.page_type),
+    runId: null,
+    folioLabel: null,
+    // W5.5: ocrFolio from the page prefix (best available at initial load;
+    // real folio detection arrives via the page_order artifact at I1).
+    ocrFolio: p.prefix || null,
+    flags: [],
+  }));
+
+  // Default body run covering all pages (placeholder until a real runs
+  // endpoint is available — see DIVERGENCES.md §W5.5-fetchFolios).
+  const defaultRun: Run = {
+    id: "body",
+    label: "Body",
+    style: "arabic",
+    start: { mode: "set", value: 1 },
+    step: 1,
+    span: [0, Math.max(0, leaves.length - 1)],
+  };
+
+  const totals: PageOrderTotals = {
+    total: leaves.length,
+    scanned: leaves.length,
+    outOfSeq: 0,
+    gaps: 0,
+    duplicates: 0,
+  };
+
+  return {
+    leaves,
+    runs: leaves.length > 0 ? [defaultRun] : [],
+    totals,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Exported factory
 // ---------------------------------------------------------------------------
 
@@ -148,6 +236,7 @@ export function buildRealPageOrderToolServices(
   onOrderChanged?: () => void,
 ): PageOrderToolServices {
   return {
+    fetchFolios,
     persistLeaf,
     persistOrder,
     persistRuns,
