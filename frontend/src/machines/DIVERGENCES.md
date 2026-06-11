@@ -789,18 +789,12 @@ simplified end-user vocabulary (warp-strength segmented + anchor-mode toggle).
 Neither set is wrong — they represent different levels of the same
 configuration.
 
-**Status:** Deferred to I1. The schema controls match the settings-panel spec
-and drive the inline editor in F5. The canvas vocabulary (`warpStrength`,
-`anchorMode`) is a higher-level UX abstraction that maps onto the schema
-controls. At I1, decide whether to:
-
-1. Keep the schema controls as the canonical inline-editor controls (exposes
-   raw parameters), or
-2. Replace with canvas-vocabulary controls (`warpStrength` segmented +
-   `anchorMode` toggle) backed by a parameter-mapping layer.
-
-**At I1:** Reconcile by choosing option 1 or 2 above. If option 2, add a
-`warpStrengthToStiffness` mapping in the dewarp stage handler.
+**Resolution (I1):** Option 1 chosen — keep the schema controls (model +
+stiffness + gutterRemove) as the canonical inline-editor controls. These
+controls are already implemented and exercised in tests. The canvas vocabulary
+(`warpStrength` / `anchorMode`) is a UX polish concern appropriate for I3 if
+CT decides the simplified vocabulary is load-bearing for end-user workflows.
+No mapping layer needed at I1.
 
 ---
 
