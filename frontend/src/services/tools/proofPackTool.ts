@@ -1,19 +1,18 @@
 /**
  * proofPackTool.ts — Real ProofPackToolServices backed by the v2 API.
  *
- * Backend route (api-v2-deltas.md §1.2):
+ * Backend routes used:
  *   POST /api/data/projects/{id}/project-stages/proof_pack/run → Job (202)
+ *   GET  /api/data/projects/{id}/project-stages/proof_pack/artifact
+ *        → { tree: TreeRow[], completeness: { complete, total } }
  *
- * The run is fire-and-forget: the SSE project channel delivers ZIP_PROGRESS /
- * ZIP_DONE / ZIP_FAILED events (F5.6-3). `assemblePack` returns an empty tree
- * and zero completeness stats immediately so the machine can enter `assembling`.
- * Real completeness data arrives via SSE at I2 once the proof_pack stage emits
- * a structured artifact.
+ * `assemblePack`: POSTs the run (enqueues), then polls the artifact route
+ * until the stage is clean and the artifact is available.
  *
- * DRIFT: GET .../proof_pack/artifact + structured completeness response deferred to I2.
+ * W4 Group 5 — real structured artifact response.
  *
  * @see frontend/src/machines/tools/proofPackTool.ts — ProofPackToolServices
- * @see docs/specs/api-v2-deltas.md §1.2
+ * @see docs/specs/api-v2-deltas.md §1.2, §1.4
  */
 
 import { api } from "@/api/client";
@@ -24,11 +23,43 @@ import type {
   PackInclude,
 } from "@/machines/tools/proofPackTool";
 
+const ARTIFACT_URL = (projectId: string) =>
+  `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/proof_pack/artifact`;
+
 /**
- * Trigger the proof-pack assembly via the project-stage run route.
+ * Poll until the proof_pack artifact is available (up to 90 s).
  *
- * Returns a minimal { tree: [], completeness: { complete: 0, total: 0 } } so
- * the machine enters `assembling`; real tree/completeness data arrives via SSE.
+ * Returns { tree, completeness } from the JSON artifact.
+ */
+async function pollForArtifact(
+  projectId: string,
+  pollMs = 2000,
+  maxAttempts = 45,
+): Promise<{ tree: TreeRow[]; completeness: CompletenessStats }> {
+  const url = ARTIFACT_URL(projectId);
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const result = await api.get<{
+        tree: TreeRow[];
+        completeness: CompletenessStats;
+      }>(url);
+      return result;
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 404) throw err;
+      // 404 = stage not yet clean; wait and retry.
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+  }
+  // Timed out — return empty scaffold so the machine can still render.
+  return { tree: [], completeness: { complete: 0, total: 0 } };
+}
+
+/**
+ * Assemble the proof pack.
+ *
+ * Enqueues the run via POST, then polls for the structured artifact.
+ * Returns real { tree, completeness } once the stage completes.
  */
 async function assemblePack(
   projectId: string,
@@ -39,10 +70,9 @@ async function assemblePack(
       `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/proof_pack/run`,
     );
   } catch {
-    // Best-effort fire-and-forget — SSE delivers the real result and errors.
+    // Ignore run errors — stage may already be running; poll for artifact.
   }
-  // Return empty scaffold; SSE / polling fills the real data at I2.
-  return { tree: [], completeness: { complete: 0, total: 0 } };
+  return pollForArtifact(projectId);
 }
 
 // ---------------------------------------------------------------------------

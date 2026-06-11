@@ -125,15 +125,23 @@ async function runChecks(
 /**
  * Persist a validation rule waiver.
  *
- * DRIFT: route not implemented at I1 — returns { ok: true }.
- * Add POST /api/data/projects/{id}/project-stages/validation/waive at I2.
+ * Route: POST /api/data/projects/{id}/project-stages/validation/waive
+ * W4 Group 4 — real route.
  */
-function persistWaiver(
-  _projectId: string,
-  _ruleId: string,
-  _note: string,
+async function persistWaiver(
+  projectId: string,
+  ruleId: string,
+  note: string,
 ): Promise<{ ok: boolean }> {
-  return Promise.resolve({ ok: true });
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/validation/waive`,
+      { rule_id: ruleId, note },
+    );
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ---------------------------------------------------------------------------
