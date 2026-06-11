@@ -385,6 +385,24 @@ class ResolvedPageConfig(ApiModel):
     flip_horizontal: bool
     flip_vertical: bool
 
+    # ── Stage-settings fields (W1) ────────────────────────────────────────────
+    # These carry the effective stage-level settings resolved from StageSettingsStore
+    # (override > saved default > registry default).  They are NOT per-page
+    # PageConfigOverrides — they are per-stage tunable knobs that the UI exposes
+    # via the settings panel and that run_stage merges into cfg before dispatch.
+
+    # denoise (W1.2)
+    denoise_min_component_area: int = 6
+    """Minimum connected-component area (pixels) kept by denoise_binary.
+    Components smaller than this are treated as speckle and removed."""
+    denoise_median_kernel_size: int = 0
+    """Median filter kernel size for denoise_binary. 0 = disabled."""
+
+    # post_transform_crop (W1.6): (top, bottom, left, right) pixel insets
+    post_transform_crop_insets: tuple[int, int, int, int] = (0, 0, 0, 0)
+    """Post-transform crop insets in pixels: (top, bottom, left, right).
+    Applied after dewarp; default (0,0,0,0) is a pass-through."""
+
 
 # ─── Job ─────────────────────────────────────────────────────────────────────
 
