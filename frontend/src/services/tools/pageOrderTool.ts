@@ -111,26 +111,35 @@ async function persistOrder(projectId: string, scans: number[]): Promise<void> {
 /**
  * Persist the full runs array.
  *
- * DIVERGENCE: route not yet implemented — no-op.
- * Recorded in DIVERGENCES.md §F5.4-services.
+ * W4 Group 2 — PUT /api/data/projects/{id}/project-stages/page_order/runs
  */
-function persistRuns(_projectId: string, _runs: Run[]): Promise<void> {
-  // No-op: PUT /api/projects/:id/stages/page_order/runs not yet landed.
-  return Promise.resolve();
+async function persistRuns(projectId: string, runs: Run[]): Promise<void> {
+  await api.put(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/runs`,
+    {
+      runs: runs.map((r) => ({
+        start_idx: r.span[0],
+        style: r.style,
+        number_start: r.start.mode === "set" ? r.start.value : 1,
+        type_code: r.style === "arabic" ? "p" : "f",
+      })),
+    },
+  );
 }
 
 /**
  * Persist the naming scheme.
  *
- * DIVERGENCE: route not yet implemented — no-op.
- * Recorded in DIVERGENCES.md §F5.4-services.
+ * W4 Group 2 — PUT /api/data/projects/{id}/project-stages/page_order/naming
  */
-function persistNaming(
-  _projectId: string,
-  _naming: NamingScheme,
+async function persistNaming(
+  projectId: string,
+  naming: NamingScheme,
 ): Promise<void> {
-  // No-op: PUT /api/projects/:id/stages/page_order/naming not yet landed.
-  return Promise.resolve();
+  await api.put(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/naming`,
+    { naming },
+  );
 }
 
 /**

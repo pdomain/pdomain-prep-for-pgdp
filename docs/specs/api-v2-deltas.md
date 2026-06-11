@@ -52,8 +52,27 @@ under `/projects/{id}/project-stages/`.
 | POST | `/projects/{id}/project-stages/wordcheck/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms wordcheck review-complete (all suspects resolved). W4 Group 1. |
 | POST | `/projects/{id}/project-stages/page_order/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms page_order review-complete (naming manifest frozen, page roles locked). W4 Group 1. Project-scoped stage. |
 | POST | `/projects/{id}/project-stages/source/confirm` | `StageConfirmRequest` | `{ stage_id, status, confirmed_at }` | `ReviewDecision` (eventsourcing) + `project-stage-status` SSE | Confirms source review-complete (thumbnails and attributes confirmed). W4 Group 1. Project-scoped stage. |
+| PUT | `/projects/{id}/project-stages/page_order/runs` | `PageOrderRunsRequest` | `{ stage_id, run_count }` | `SettingsChange` (eventsourcing) + `project-stage-status` SSE (settings-changed) | Persists N-run folio schema to `stages/page_order/runs.json`. W4 Group 2. |
+| PUT | `/projects/{id}/project-stages/page_order/naming` | `PageOrderNamingRequest` | `{ stage_id, naming }` | `SettingsChange` (eventsourcing) + `project-stage-status` SSE (settings-changed) | Persists naming scheme to `stages/page_order/naming.json`. W4 Group 2. |
 
 `StageConfirmRequest`: `{ note?: string }` (optional reviewer note).
+
+`PageOrderRunsRequest`: `{ runs: list[{ start_idx, style, number_start, type_code }] }`.
+Each run: start_idx (0-based proof-range position), style ("roman"|"arabic"|"letters"),
+number_start (1-indexed first folio), type_code ("f"|"p").
+
+`PageOrderNamingRequest`: `{ naming: object }` — opaque naming scheme dict
+(e.g. `{ parts: { seq: true, type: true, folio: true }, digits: 3 }`).
+
+**v2 prefix format (W4 Group 2 — CT decision):** `compute_prefix_v2` in `core/prefix.py`.
+Format: `<seq:3-4><type><folio?>` where seq = binding-order position zero-padded (3 digits
+≤999 pages, 4 digits >999 pages), type = "f"/"p"/"e" + optional plate suffix, folio = 3-digit
+counter for numbered pages (omitted for cover and plates). Examples: "000f001", "005p001",
+"000e", "003fp". Seq prefix ensures lexicographic sort = binding order.
+
+Numeric export rename (`export_name_for_seq`): bare zero-padded seq used as zip entry
+basename when numeric export is enabled. PGDP validator validates EXPORT names.
+Both `prefix` (descriptive) and `export_name` (numeric) appear in manifest entries.
 
 **StageReviewStore** (`core/pipeline/project_stages.py`): per-project SQLite table
 `stage_reviews(project_id, stage_id, confirmed_at, actor_id, note)` with no CHECK
