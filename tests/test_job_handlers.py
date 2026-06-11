@@ -105,6 +105,7 @@ async def test_build_package_handler_writes_zip(
         owner_id="default",
         type=JobType.run_project_stage,
         status=JobStatus.queued,
+        payload={"stage_id": "build_package"},
     )
     await db.put_job(job)
 

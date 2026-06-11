@@ -328,18 +328,25 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
     expect(buildLabel).toBeInTheDocument();
   });
 
-  it("Build package button POSTs to /api/data/projects/{id}/build-package", async () => {
+  it("Build package button POSTs to /api/data/projects/{id}/project-stages/build_package/run", async () => {
     setupBaseHandlers();
     let called = false;
     let calledUrl = "";
     server.use(
       http.post(
-        "/api/data/projects/proj1/build-package",
+        "/api/data/projects/proj1/project-stages/build_package/run",
         async ({ request }) => {
           called = true;
           calledUrl = request.url;
           return HttpResponse.json(
-            { job_id: "job_build_1", status: "queued" },
+            {
+              id: "job_build_1",
+              project_id: "proj1",
+              owner_id: "default",
+              type: "run_project_stage",
+              status: "queued",
+              payload: { stage_id: "build_package" },
+            },
             { status: 202 },
           );
         },
@@ -360,7 +367,9 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
 
     await waitFor(() => {
       expect(called).toBe(true);
-      expect(calledUrl).toContain("/api/data/projects/proj1/build-package");
+      expect(calledUrl).toContain(
+        "/api/data/projects/proj1/project-stages/build_package/run",
+      );
     });
   });
 
@@ -425,13 +434,23 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
         }
         return HttpResponse.json([]);
       }),
-      http.post("/api/data/projects/proj1/build-package", () => {
-        submitted = true;
-        return HttpResponse.json(
-          { job_id: "job_build_new", status: "queued" },
-          { status: 202 },
-        );
-      }),
+      http.post(
+        "/api/data/projects/proj1/project-stages/build_package/run",
+        () => {
+          submitted = true;
+          return HttpResponse.json(
+            {
+              id: "job_build_new",
+              project_id: "proj1",
+              owner_id: "default",
+              type: "run_project_stage",
+              status: "queued",
+              payload: { stage_id: "build_package" },
+            },
+            { status: 202 },
+          );
+        },
+      ),
       http.get("/api/data/projects/proj1/review-status", () =>
         HttpResponse.json({
           unreviewed_count: 0,
@@ -735,11 +754,20 @@ describe("ProjectConfigurePage — RunPipelinePanel P0.2 (Download package)", ()
     setupBaseHandlers();
 
     server.use(
-      http.post("/api/data/projects/proj1/build-package", () =>
-        HttpResponse.json(
-          { job_id: "job_build_dl", status: "queued" },
-          { status: 202 },
-        ),
+      http.post(
+        "/api/data/projects/proj1/project-stages/build_package/run",
+        () =>
+          HttpResponse.json(
+            {
+              id: "job_build_dl",
+              project_id: "proj1",
+              owner_id: "default",
+              type: "run_project_stage",
+              status: "queued",
+              payload: { stage_id: "build_package" },
+            },
+            { status: 202 },
+          ),
       ),
       http.get(
         "/api/data/projects/proj1/assets/download-url",
