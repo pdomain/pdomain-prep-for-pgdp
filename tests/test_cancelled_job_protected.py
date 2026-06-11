@@ -69,7 +69,7 @@ async def test_mark_complete_skips_already_cancelled_job(db, storage, tmp_path) 
         id="j-cmp",
         project_id="cp1",
         owner_id="default",
-        type=JobType.build_package,
+        type=JobType.run_project_stage,
         status=JobStatus.running,
     )
     await db.put_project(_project())
@@ -96,7 +96,7 @@ async def test_mark_failed_skips_already_cancelled_job(db, storage, tmp_path) ->
         id="j-fail",
         project_id="cp1",
         owner_id="default",
-        type=JobType.build_package,
+        type=JobType.run_project_stage,
         status=JobStatus.running,
     )
     await db.put_project(_project())

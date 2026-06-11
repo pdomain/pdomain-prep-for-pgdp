@@ -215,7 +215,7 @@ convention = "google"
 # loop-var reassignment (PLW2901); list-building in tests fine (PERF401/PERF402);
 # PT018 multi-condition asserts common in parametrized tests; S301 pickle in fixtures;
 # S603 subprocess in test helpers; TRY rules in test conftest; BLE001 in e2e.
-"tests/*" = ["E741", "N806", "S101", "S104", "S105", "S106", "S301", "S311", "S603", "S607", "T201", "ANN", "D", "PLR2004", "PT011", "PT018", "S108", "PLR0133", "PLW2901", "PLW1510", "PERF401", "PERF402", "TRY", "BLE001"]
+"tests/*" = ["E741", "N806", "S101", "S104", "S105", "S106", "S301", "S311", "S603", "S607", "T201", "ANN", "D", "PLR2004", "PT011", "PT018", "S108", "PLR0133", "PLW2901", "PLW1510", "PERF401", "PERF402", "TRY", "BLE001", "TC"]
 # Mock class mimics boto3's uppercase keyword argument names (Params, ExpiresIn).
 "tests/test_s3_storage.py" = ["N803", "N805"]
 # Scripts: print() is the output mechanism; no docstrings required; S603/S607/ANN

@@ -31,13 +31,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import {
-  Route,
-  Routes,
-  useLocation,
-  useMatch,
-  useNavigate,
-} from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useHotkeys } from "react-hotkeys-hook";
 import {
   AppShell,
@@ -48,7 +42,6 @@ import {
   type LaunchResult,
 } from "@pdomain/pdomain-ui/shell";
 import { api, getAuthToken } from "./api/client";
-import { AwaitingReviewBanner } from "./components/AwaitingReviewBanner";
 import { ServerInfoFooter } from "./components/ServerInfoFooter";
 import { TooltipProvider } from "./components/ui/Tooltip";
 import { HotkeyHelpModal } from "./components/shell/HotkeyHelpModal";
@@ -274,7 +267,6 @@ export default function App() {
   // Phase 2.7c (#330): searchOpen moved from uiPrefs store to local React
   // state. SearchModal now accepts explicit open/onOpenChange props.
   const [searchOpen, setSearchOpen] = useState(false);
-  const projectMatch = useMatch("/projects/:projectId/*");
   const [hotkeyHelpOpen, setHotkeyHelpOpen] = useState(false);
   const activeJobs = useActiveJobs();
 
@@ -340,10 +332,6 @@ export default function App() {
                   onClose={() => setHotkeyHelpOpen(false)}
                 />
                 <AuthGuard />
-                {/* Global banner slot — rendered above all page content */}
-                <div className="banner-slot mx-auto max-w-7xl px-4 pt-4 space-y-2">
-                  {projectMatch && <AwaitingReviewBanner />}
-                </div>
                 <div className="flex-1 overflow-auto mx-auto max-w-7xl p-4 w-full">
                   <Routes>
                     <Route path="/login" element={<LoginPage />} />

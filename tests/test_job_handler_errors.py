@@ -9,7 +9,7 @@ Locks in:
   - unzip handler raises FileNotFoundError when the project is gone,
   - unzip handler raises ValueError when source_key is empty,
   - thumbnails handler raises FileNotFoundError when project is gone,
-  - build_package handler raises FileNotFoundError when project is gone,
+  - run_project_stage handler raises FileNotFoundError when project is gone,
   - run_pending wraps each as JobStatus.error so the job table reflects it.
 """
 
@@ -23,7 +23,7 @@ from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pdomain_prep_for_pgdp.core.job_runner import (
     InProcessJobRunner,
-    _handle_build_package,
+    _handle_run_project_stage,
     _handle_thumbnails,
     _handle_unzip,
 )
@@ -115,12 +115,14 @@ async def test_thumbnails_missing_project_raises(db, storage, tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_package_missing_project_raises(db, storage, tmp_path) -> None:
+async def test_run_project_stage_missing_project_raises(db, storage, tmp_path) -> None:
     runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
-    job = _job(JobType.build_package, project_id="ghost")
+    job = _job(JobType.run_project_stage, project_id="ghost")
+    # Need to add stage_id to payload so handler doesn't fail on missing stage_id
+    job = job.model_copy(update={"payload": {"stage_id": "source"}})
     await db.put_job(job)
     with pytest.raises(FileNotFoundError, match="ghost"):
-        await _handle_build_package(runner, job)
+        await _handle_run_project_stage(runner, job)
 
 
 # ─── runner integration: handler error → JobStatus.error ───────────────────
@@ -128,11 +130,12 @@ async def test_build_package_missing_project_raises(db, storage, tmp_path) -> No
 
 @pytest.mark.asyncio
 async def test_runner_records_handler_failure_as_job_error(db, storage, tmp_path) -> None:
-    """End-to-end: enqueue a build_package job for a missing project and
+    """End-to-end: enqueue a run_project_stage job for a missing project and
     let `run_pending` execute it. The job should land in JobStatus.error
     with the exception message persisted."""
     runner = InProcessJobRunner(database=db, storage=storage, data_root=tmp_path / "data")
-    job = _job(JobType.build_package, project_id="vanished")
+    job = _job(JobType.run_project_stage, project_id="vanished")
+    job = job.model_copy(update={"payload": {"stage_id": "source"}})
     await db.put_job(job)
 
     await runner.run_pending(max_jobs=1)

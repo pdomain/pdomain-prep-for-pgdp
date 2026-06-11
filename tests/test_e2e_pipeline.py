@@ -40,7 +40,7 @@ def _wait_for_job(client: TestClient, job_id: str, timeout: float = 5.0) -> str:
     while time.time() < deadline:
         r = client.get(f"/api/data/jobs/{job_id}")
         s = r.json()["status"]
-        if s in {"complete", "error", "cancelled", "awaiting_review"}:
+        if s in {"complete", "error", "cancelled"}:
             return s
         time.sleep(0.05)
     raise AssertionError(f"job {job_id} did not complete within {timeout}s")
@@ -86,11 +86,11 @@ def test_ingest_then_assign_prefixes_then_package(client: TestClient) -> None:
     assert by_idx[1]["prefix"].startswith("p")
     assert by_idx[2]["prefix"].startswith("p")
 
-    # Submit a build_package job — proves the runner picks up the handler.
-    # Pages have no text_review=clean rows, so the job parks in awaiting_review.
-    pkg = client.post(f"/api/data/projects/{project_id}/build-package")
-    assert pkg.status_code == 202
-    assert _wait_for_job(client, pkg.json()["job_id"]) == "awaiting_review"
+    # Verify the project-stage run route exists (W0.1 replacement for build-package).
+    # build_package will be gate-blocked (validation not yet clean) → 409, not 404.
+    pkg = client.post(f"/api/data/projects/{project_id}/project-stages/build_package/run")
+    assert pkg.status_code == 409, f"expected 409 gate-blocked, got {pkg.status_code}: {pkg.text}"
+    assert pkg.json()["error"] == "stage_gate_blocked"
 
     pages = client.get(f"/api/data/projects/{project_id}/pages").json()["pages"]
     assert len(pages) == 3

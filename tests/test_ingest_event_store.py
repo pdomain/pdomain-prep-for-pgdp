@@ -6,7 +6,7 @@ import io
 import uuid
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path  # noqa: TC003  # used at runtime (tmp_path construction)
+from pathlib import Path  # used at runtime (tmp_path construction)
 
 import pytest
 

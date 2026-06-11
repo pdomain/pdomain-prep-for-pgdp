@@ -674,55 +674,27 @@ function BulkActions({
 // ─── M5: Run all dirty stages panel ───────────────────────────────────────
 
 /**
- * One-click project-level fan-out: POST /api/data/projects/{id}/run-dirty.
- * Shows inline progress after submission using the job's SSE stream.
+ * Run-all-dirty panel — placeholder until pipelineShell.RUN_ALL_STALE is wired.
+ *
+ * The old POST /api/data/projects/{id}/run-dirty fan-out endpoint was removed in
+ * W6.3 (seam-remediation). The v2 replacement is pipelineShell.RUN_ALL_STALE which
+ * triggers each dirty stage individually via POST /project-stages/{stage_id}/run.
+ * Until the pipelineShell machine is fully wired, the button is disabled.
  */
-function RunAllDirtyPanel({ projectId }: { projectId: string }) {
-  const [jobId, setJobId] = useState<string | null>(null);
-  const { event, isTerminal } = useJobProgress(jobId);
-
-  // Clear job display when it reaches a terminal state so the button
-  // is re-enabled and the panel resets to "idle".
-  useEffect(() => {
-    if (isTerminal) setJobId(null);
-  }, [isTerminal]);
-
-  const submit = useMutation({
-    mutationFn: () =>
-      api.post<{ job_id: string; status: string }>(
-        `/api/data/projects/${projectId}/run-dirty`,
-      ),
-    onSuccess: (res) => setJobId(res.job_id),
-  });
-
-  const colour =
-    event?.status === "complete"
-      ? "text-emerald-700"
-      : event?.status === "error"
-        ? "text-rose-600"
-        : "text-ink-3";
-  const progress =
-    event && event.total > 0 ? `${event.current}/${event.total} pages` : "";
-
+function RunAllDirtyPanel({ projectId: _projectId }: { projectId: string }) {
   return (
     <div className="flex items-center gap-3 rounded border bg-surface px-4 py-3">
       <button
-        onClick={() => submit.mutate()}
-        disabled={submit.isPending || jobId !== null}
-        className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page disabled:opacity-50"
+        disabled
+        className="rounded border border-border-2 px-3 py-1.5 text-sm disabled:opacity-50"
         aria-label="Run all dirty stages"
+        title="Use the per-stage Run buttons below (run-dirty fan-out removed in v2)"
       >
         Run all dirty stages
       </button>
-      {jobId && event && (
-        <span className={`text-xs ${colour}`}>
-          {event.status} {progress}
-          {event.error ? ` · ${event.error}` : ""}
-        </span>
-      )}
-      {submit.isError && (
-        <span className="text-xs text-rose-600">Submit failed</span>
-      )}
+      <span className="text-xs text-ink-3">
+        Use per-stage Run buttons (see pipeline shell)
+      </span>
     </div>
   );
 }
@@ -755,32 +727,34 @@ function RunPipelinePanel({
   const [completedJobId, setCompletedJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  // Track any build_package job that is already running on this project (e.g.
-  // user came back to this page mid-run, or it was kicked off elsewhere).
-  // Pre-populate `active.build_package` so the inline progress and tile-pulse
-  // render without requiring the user to click Run again.
+  // Track any run_project_stage job for build_package that is already running
+  // on this project (e.g. user came back to this page mid-run, or it was
+  // kicked off elsewhere). Pre-populate `active.build_package` so the inline
+  // progress and tile-pulse render without requiring the user to click Run again.
+  // W6.3: build_package JobType removed; now tracked as run_project_stage jobs.
   // Reuses the shared `["jobs", projectId]` poll so this is free.
-  const liveBatch = useActiveBatchJob(projectId, ["build_package"]);
+  const liveBatch = useActiveBatchJob(projectId, ["run_project_stage"]);
   useEffect(() => {
     if (liveBatch.jobId && active.build_package !== liveBatch.jobId) {
       setActive((s) => ({ ...s, build_package: liveBatch.jobId }));
     }
   }, [liveBatch.jobId, active.build_package]);
 
-  // Find the completed build_package job to pass to DownloadPackageButton
+  // Find the completed run_project_stage (build_package) job to pass to DownloadPackageButton
   const completedBuildJob = useMemo(() => {
     if (!liveBatch.jobs) return null;
     return (
       liveBatch.jobs.find(
-        (j) => j.type === "build_package" && j.status === "complete",
+        (j) => j.type === "run_project_stage" && j.status === "complete",
       ) ?? null
     );
   }, [liveBatch.jobs]);
 
   const submit = useMutation({
     mutationFn: async (type: JobType) => {
+      // W6.3: POST .../build-package removed; replaced by per-stage project-stage run route.
       const r = await api.post<{ job_id: string }>(
-        `/api/data/projects/${projectId}/build-package`,
+        `/api/data/projects/${projectId}/project-stages/${type}/run`,
       );
       setActive((s) => ({ ...s, [type]: r.job_id }));
       // Clear any previous download link when a new build starts.

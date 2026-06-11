@@ -47,6 +47,7 @@ under `/projects/{id}/project-stages/`.
 | GET | `/projects/{id}/pipeline` | — | `PipelineSnapshot` (new) | — | Single fetch to hydrate `pipelineShell`: `{ project, page_stages_summary, project_stages, automation }`. Replaces the fragmented load. See §1.5. |
 
 All project-stage routes return 409 on registry version mismatch (§1.3).
+All project-stage run routes return 409 on upstream dependency not clean (§1.3b).
 All project-stage routes filter by `user.user_id` via the project ownership check.
 
 ### 1.3 Registry-version 409 shape
@@ -64,6 +65,34 @@ From `stage-registry-v2.md §1`. Body for every project-scoped stage route when
 
 The page-stage routes (`/pages/{idx0}/stages/...`) also return this 409 — any
 request to a v2 app with a v1 project is rejected uniformly.
+
+### 1.3b Stage-gate-blocked 409 shape (W0.4)
+
+When `POST /projects/{id}/project-stages/{stage_id}/run` is called and a
+required upstream project-stage dependency is not in `clean` state, the route
+returns **HTTP 409** with the following JSON body:
+
+```json
+{
+  "error": "stage_gate_blocked",
+  "stage_id": "build_package",
+  "reason": "proof_pack is not clean"
+}
+```
+
+Fields:
+
+- `error` — always `"stage_gate_blocked"` (discriminator for the frontend).
+- `stage_id` — the stage that was requested to run.
+- `reason` — human-readable description of which upstream dep is not clean,
+  or `"upstream dep not clean"` if no specific reason is available.
+
+Implemented in `api/data/project_stages.py` via `check_stage_gate()` from
+`core/pipeline/project_stages.py`. The gate is enforced **before** the job is
+enqueued — the route returns 409 without creating a job row.
+
+This body shape is the frontend's discriminator to show a "gate blocked" notice
+instead of a generic error toast.
 
 ### 1.4 Artifact fetch — project-scoped stage outputs
 
@@ -232,19 +261,18 @@ current decision state. Returns 404 if no text artifact is available.
 
 ### 1.7 Deprecations
 
-Routes and patterns that die with the legacy surfaces:
+Routes and patterns removed in W6.3 (seam-remediation, 2026-06-11):
 
-| Deprecated | Replaced by | When |
-|------------|-------------|------|
-| `POST /projects/{id}/build-package` (flat job submit) | `POST /projects/{id}/project-stages/build_package/run` | When Track B4 lands |
-| `POST /projects/{id}/run-dirty` (batch-all fan-out) | `pipelineShell` + `runAllStale.yaml` driving per-stage `stageRunner` runs | When Track F4 + B5 land |
-| `GET /projects/{id}/review-status` (unreviewed count + awaiting_review job) | `GET /projects/{id}/pipeline` `project_stages` + `page_stages_summary` | When B5 lands |
-| v1 page-stage IDs in `PAGE_STAGE_IDS` tuple | v2 IDs from `stage-registry-v2.md §2` | When B1 lands |
-| `project_run_stage_all_pages` JobType | `runAllStale` coordinator (frontend-driven) + per-stage run routes | When F4 + B5 land |
-
-The deprecated routes remain functional until the integration checkpoint (Task I1)
-for their launcher group. They are removed in the same commit as the replacement
-surfaces.
+| Deprecated | Status | Replaced by |
+|------------|--------|-------------|
+| `POST /projects/{id}/build-package` (flat job submit) | **REMOVED** | `POST /projects/{id}/project-stages/build_package/run` |
+| `POST /projects/{id}/run-dirty` (batch-all fan-out) | **REMOVED** | `pipelineShell` + `RUN_ALL_STALE` event driving per-stage `stageRunner` runs (frontend-side, Track F4) |
+| `GET /projects/{id}/review-status` (unreviewed count + awaiting_review job) | **REMOVED** | `GET /projects/{id}/pipeline` `project_stages` + `page_stages_summary` (B5) |
+| `JobType.build_package` | **REMOVED** | `JobType.run_project_stage` with `payload.stage_id="build_package"` |
+| `JobType.project_run_dirty` | **REMOVED** | Frontend-driven per-stage `run_project_stage` jobs (no backend fan-out) |
+| `JobType.project_run_stage_all_pages` | **REMOVED** | Frontend-driven per-stage `run_project_stage` jobs (no backend fan-out) |
+| v1 page-stage IDs in `PAGE_STAGE_IDS` tuple | pending | v2 IDs from `stage-registry-v2.md §2` — removal blocked on B1 migration |
+| `PipelineState`/`StepState`/`StepId` models | pending | v2 project-stage models — removal blocked on `core/ingest.py` migration |
 
 ---
 

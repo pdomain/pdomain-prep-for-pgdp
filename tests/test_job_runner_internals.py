@@ -93,7 +93,7 @@ async def test_on_dispatcher_flush_marks_job_error_when_all_failed(
         id="j-flush",
         project_id="dp1",
         owner_id="default",
-        type=JobType.build_package,
+        type=JobType.run_project_stage,
         status=JobStatus.scheduled,
     )
     await db.put_job(job)

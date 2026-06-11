@@ -26,10 +26,8 @@ router = APIRouter(tags=["gpu"])
 _RETRY_SAFE_KEYS: dict[str, frozenset[str]] = {
     "unzip": frozenset(),
     "thumbnails": frozenset(),
-    "build_package": frozenset(),
     "run_page_stage": frozenset({"device"}),
-    "project_run_dirty": frozenset(),
-    "project_run_stage_all_pages": frozenset(),
+    "run_project_stage": frozenset({"device"}),
 }
 
 

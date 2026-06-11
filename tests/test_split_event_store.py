@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 
 from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
 from pdomain_ops.pages import PageRecord as OpsPageRecord

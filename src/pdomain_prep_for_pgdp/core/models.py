@@ -404,16 +404,13 @@ class JobType(str, Enum):
     # progress + can keep working on the project page while thumbnails finish.
     unzip = "unzip"
     thumbnails = "thumbnails"
-    build_package = "build_package"
     # Per-page stage execution via the async route (?async=true).
     # payload: {"project_id": str, "page_id": str, "stage_id": str, "device": str}  # noqa: ERA001
     run_page_stage = "run_page_stage"
-    # Project-level fan-out: run every dirty stage on every page (M5).
-    # payload: {"data_root": str, "stage_filter": str | None, "device": str}  # noqa: ERA001
-    project_run_dirty = "project_run_dirty"
-    # Run one specific stage on every page that needs it (M5).
-    # payload: {"data_root": str, "stage_id": str, "device": str}  # noqa: ERA001
-    project_run_stage_all_pages = "project_run_stage_all_pages"
+    # Project-scoped stage execution (W0.1 — replaces deprecated build_package /
+    # project_run_dirty / project_run_stage_all_pages job types).
+    # payload: {"stage_id": str, "device": str}  # noqa: ERA001
+    run_project_stage = "run_project_stage"
 
 
 class JobProgress(ApiModel):

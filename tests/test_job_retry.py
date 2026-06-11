@@ -76,7 +76,7 @@ def _seed_project_and_job(settings: Settings, status: JobStatus) -> str:
                 id=job_id,
                 project_id="r1",
                 owner_id="default",
-                type=JobType.build_package,
+                type=JobType.run_project_stage,
                 status=status,
                 payload={"page_idxs": [0, 1]},
                 error_message="build failed" if status == JobStatus.error else None,
@@ -153,7 +153,7 @@ def test_retry_creates_new_queued_job_with_same_payload(tmp_path) -> None:
         # key invariant is that a *new* job was created (new_id != old_id) and
         # that the new job is active (not still in the original "error" state).
         assert new_job["status"] in ("queued", "scheduled", "running")
-        assert new_job["type"] == "build_package"
+        assert new_job["type"] == "run_project_stage"
         assert new_job["payload"] == {"page_idxs": [0, 1]}
         assert new_job["project_id"] == "r1"
         assert new_job["error_message"] is None
@@ -184,12 +184,12 @@ def test_retry_unknown_job_404(tmp_path) -> None:
 # mutated (the audit trail stays intact).
 #
 # Issue #126 — allowlist: only keys in _RETRY_SAFE_KEYS for the job type are
-# accepted; all others are rejected with 400. build_package has no safe keys,
-# so ANY payload_override with a non-empty key set returns 400.
+# accepted; all others are rejected with 400. run_project_stage only allows
+# "device" as a safe override key; page_idxs and other keys return 400.
 
 
-def test_retry_build_package_any_override_rejected(tmp_path) -> None:
-    """build_package has an empty safe-keys set; any override key returns 400."""
+def test_retry_run_project_stage_page_idxs_override_rejected(tmp_path) -> None:
+    """run_project_stage: page_idxs is not a safe override key; returns 400."""
     settings = _settings(tmp_path)
     old_id = _seed_project_and_job(settings, JobStatus.error)
     app = build_app(settings)
@@ -203,8 +203,8 @@ def test_retry_build_package_any_override_rejected(tmp_path) -> None:
         assert "page_idxs" in r.text
 
 
-def test_retry_build_package_arbitrary_key_rejected(tmp_path) -> None:
-    """Arbitrary keys on build_package are also rejected (no allowlist entries)."""
+def test_retry_run_project_stage_arbitrary_key_rejected(tmp_path) -> None:
+    """Arbitrary keys on run_project_stage are also rejected (only device is safe)."""
     settings = _settings(tmp_path)
     old_id = _seed_project_and_job(settings, JobStatus.error)
     app = build_app(settings)

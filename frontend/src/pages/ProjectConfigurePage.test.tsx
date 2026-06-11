@@ -1,12 +1,9 @@
 /**
- * Tests for ProjectConfigurePage — covers the M5 RunAllDirtyPanel
+ * Tests for ProjectConfigurePage — covers the RunAllDirtyPanel placeholder
  * and P2-2 tab scaffold (Pipeline / Pages / Settings, URL-stateful).
  *
  * Covers:
- * - "Run all dirty stages" button is visible in the page.
- * - Clicking the button POSTs to /api/data/projects/{id}/run-dirty.
- * - A progress indicator appears after the button is clicked.
- * - The button is disabled while a run is in progress.
+ * - "Run all dirty stages" button renders disabled (W6.3 placeholder — run-dirty removed).
  * - Pipeline tab is active by default (?tab=pipeline / no param).
  * - Switching to Pages tab shows page-list content.
  * - Switching to Settings tab shows settings content.
@@ -166,9 +163,6 @@ function setupBaseHandlers() {
     ),
     http.get("/api/gpu/jobs", () => HttpResponse.json([])),
     http.get("/api/data/jobs", () => HttpResponse.json([])),
-    http.get("/api/data/projects/proj1/review-status", () =>
-      HttpResponse.json({ unreviewed_count: 0, awaiting_review_job_id: null }),
-    ),
   );
 }
 
@@ -180,62 +174,20 @@ function setupHandlersWithPage() {
     ),
     http.get("/api/gpu/jobs", () => HttpResponse.json([])),
     http.get("/api/data/jobs", () => HttpResponse.json([])),
-    http.get("/api/data/projects/proj1/review-status", () =>
-      HttpResponse.json({ unreviewed_count: 0, awaiting_review_job_id: null }),
-    ),
   );
 }
 
 describe("ProjectConfigurePage — RunAllDirtyPanel", () => {
-  it("renders the Run all dirty stages button", async () => {
+  it("renders the Run all dirty stages button (disabled — v2 placeholder)", async () => {
     setupBaseHandlers();
-    renderWithProviders(<ProjectConfigurePage />);
-    expect(
-      await screen.findByRole("button", { name: /run all dirty stages/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("POSTs to /api/data/projects/{id}/run-dirty when button is clicked", async () => {
-    setupBaseHandlers();
-    let called = false;
-    server.use(
-      http.post("/api/data/projects/proj1/run-dirty", () => {
-        called = true;
-        return HttpResponse.json(
-          { job_id: "job_x", status: "queued" },
-          { status: 202 },
-        );
-      }),
-      http.get("/api/gpu/jobs/:jobId/events", () => HttpResponse.json({})),
-    );
-
     renderWithProviders(<ProjectConfigurePage />);
     const btn = await screen.findByRole("button", {
       name: /run all dirty stages/i,
     });
-    await userEvent.click(btn);
-
-    await waitFor(() => expect(called).toBe(true));
-  });
-
-  it("disables the button while a run-dirty mutation is pending", async () => {
-    setupBaseHandlers();
-    // Never-resolving handler — keeps mutation pending indefinitely.
-    server.use(
-      http.post(
-        "/api/data/projects/proj1/run-dirty",
-        () => new Promise(() => {}),
-      ),
-    );
-
-    renderWithProviders(<ProjectConfigurePage />);
-    const btn = await screen.findByRole("button", {
-      name: /run all dirty stages/i,
-    });
-    await userEvent.click(btn);
-
-    // Mutation is pending — button becomes disabled.
-    await waitFor(() => expect(btn).toBeDisabled());
+    expect(btn).toBeInTheDocument();
+    // W6.3: run-dirty fan-out removed; button is permanently disabled until
+    // pipelineShell.RUN_ALL_STALE is wired.
+    expect(btn).toBeDisabled();
   });
 });
 

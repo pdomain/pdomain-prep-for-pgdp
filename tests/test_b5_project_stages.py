@@ -189,7 +189,9 @@ def test_run_project_stage_placeholder_returns_error_status(tmp_path, monkeypatc
     monkeypatching one stage's impl to raise StageNotImplemented — the route
     must surface a clean error state, never a 500.
     """
+    from pdomain_prep_for_pgdp.core.models import ProjectStageState, ProjectStageStatus
     from pdomain_prep_for_pgdp.core.pipeline import stage_registry
+    from pdomain_prep_for_pgdp.core.pipeline.project_stages import ProjectStageStore
 
     def _placeholder(*args: object, **kwargs: object) -> bytes:
         raise stage_registry.StageNotImplemented("validation: simulated placeholder")
@@ -197,6 +199,14 @@ def test_run_project_stage_placeholder_returns_error_status(tmp_path, monkeypatc
     monkeypatch.setitem(stage_registry.V2_STAGE_IMPL["validation"], "cpu", _placeholder)
     settings = _settings(tmp_path)
     _seed_project(settings, "proj1")
+
+    # W0.4: validation requires page_order (project-scoped) to be clean.
+    # Seed the project stage store so the gate passes.
+    db_path = settings.data_root / "projects" / "proj1" / "project_stages.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = ProjectStageStore(db_path)
+    store.write(ProjectStageState(project_id="proj1", stage_id="page_order", status=ProjectStageStatus.clean))
+
     app = build_app(settings)
     stage_id = "validation"
     with TestClient(app) as client:

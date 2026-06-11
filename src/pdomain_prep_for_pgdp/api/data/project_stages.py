@@ -304,14 +304,17 @@ async def run_project_stage(
 ) -> JSONResponse:
     """Submit a project-stage run. Always async (returns Job, HTTP 202).
 
-    Stages not yet implemented surface their StageNotImplemented as a clean
-    failed state with error_message, NOT a 500. The contract is:
-      - Implemented stage (source): Job accepted, stage row → running → clean|failed
-      - Placeholder stage: Job accepted, stage row → failed with error_message
-        "stage not implemented"
+    W0.1: enqueues JobType.run_project_stage (not run_page_stage with scope='project').
+    W0.4: gate enforcement — if any project-scoped dep is not clean, returns 409
+          with {error: 'stage_gate_blocked', stage_id, reason}.
+
+    The handler (_handle_run_project_stage in job_runner.py) calls V2_STAGE_IMPL
+    in a thread pool and dual-writes the artifact + ProjectStageStore row.
 
     api-v2-deltas.md §1.2.
     """
+    from pdomain_prep_for_pgdp.core.pipeline.project_stages import check_stage_gate
+
     if stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown project stage_id: {stage_id!r}")
 
@@ -329,26 +332,40 @@ async def run_project_stage(
         row = ProjectStageState(project_id=project_id, stage_id=stage_id)
         store.write(row)
 
-    # Check if stage has a real implementation (not a placeholder).
-    # Probe by calling the impl with sentinel bytes — placeholder raises StageNotImplementedError.
+    # ── W0.4: gate enforcement ────────────────────────────────────────────────
+    # Lazy-init all stage rows so check_stage_gate finds all deps.
+    _lazy_init_project_stages(store, project_id)
+
+    gate_ok, gate_reason = check_stage_gate(project_id, stage_id, store)
+    if not gate_ok:
+        return JSONResponse(
+            content={
+                "error": "stage_gate_blocked",
+                "stage_id": stage_id,
+                "reason": gate_reason or "upstream dep not clean",
+            },
+            status_code=409,
+        )
+
+    # ── Check if stage has a real implementation ──────────────────────────────
     impl_entry = V2_STAGE_IMPL.get(stage_id, {})
     impl_callable = impl_entry.get("cpu")
-    is_placeholder = True
+    is_placeholder = impl_callable is None
     if impl_callable is not None:
         try:
-            impl_callable(b"")
-            is_placeholder = False
+            # Probe with no args — project-stage impls raise StageNotImplemented
+            # or TypeError; either signals it's a real impl (TypeError = wrong args = real).
+            impl_callable()  # type: ignore[call-arg]
         except StageNotImplementedError:
             is_placeholder = True
         except Exception:
-            # Other exceptions mean the impl exists but failed on bad input — it's real.
+            # Other exceptions: TypeError on wrong args = impl is real.
             is_placeholder = False
-    impl = None if is_placeholder else impl_callable
 
     job_id = uuid.uuid4().hex
     now = datetime.now(UTC).timestamp()
 
-    if impl is None:
+    if is_placeholder:
         # Placeholder stage: immediately surface as failed with informational message.
         failed_row = row.model_copy(
             update={
@@ -359,8 +376,6 @@ async def run_project_stage(
             }
         )
         store.write(failed_row)
-        # Push SSE notification to project channel.
-
         project_key = f"project:{project_id}"
         await stage_events.publish(
             project_key,
@@ -376,7 +391,7 @@ async def run_project_stage(
             id=job_id,
             project_id=project_id,
             owner_id=user.user_id,
-            type=JobType.run_page_stage,
+            type=JobType.run_project_stage,  # W0.1: correct job type
             status=JobStatus.error,
             payload={
                 "stage_id": stage_id,
@@ -386,40 +401,27 @@ async def run_project_stage(
         await db.put_job(job)
         return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
 
-    # Implemented stage: enqueue a job and return 202.
+    # ── Implemented stage: enqueue JobType.run_project_stage (W0.1) ──────────
     job = Job(
         id=job_id,
         project_id=project_id,
         owner_id=user.user_id,
-        type=JobType.run_page_stage,
+        type=JobType.run_project_stage,  # W0.1: was run_page_stage — now correct
         status=JobStatus.queued,
         payload={
-            "project_id": project_id,
             "stage_id": stage_id,
-            "data_root": str(settings.data_root),
-            "scope": "project",
         },
     )
     await db.put_job(job)
 
-    # Mark stage as running.
-    running_row = row.model_copy(
-        update={
-            "status": ProjectStageStatus.running,
-            "job_id": job_id,
-            "last_run_at": now,
-        }
-    )
-    store.write(running_row)
-
-    # Push SSE status update.
+    # Push SSE status update: queued (handler will update to running).
     project_key = f"project:{project_id}"
     await stage_events.publish(
         project_key,
         {
             "type": "project-stage-status",
             "stage_id": stage_id,
-            "status": ProjectStageStatus.running.value,
+            "status": "queued",
             "job_id": job_id,
             "error_message": None,
         },

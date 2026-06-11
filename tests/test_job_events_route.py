@@ -65,7 +65,7 @@ def _seed_other_user_job(settings: Settings, job_id: str) -> None:
                 id=job_id,
                 project_id="je1",
                 owner_id="someone-else",
-                type=JobType.build_package,
+                type=JobType.run_project_stage,
                 status=JobStatus.running,
             )
         )

@@ -6,12 +6,15 @@ shared-container backends override the runner with their own dispatch path;
 local + self-hosted modes use this one.
 
 Job types -> handler:
-  - unzip                          -> core.ingest.unzip_source (chains a thumbnails job)
-  - thumbnails                     -> core.ingest.generate_thumbnails
-  - build_package                  -> core.packaging.build_package
-  - run_page_stage                 -> core.pipeline.stage_runner.run_stage (async route)
-  - project_run_dirty              -> fan-out: run every dirty stage on every page (M5)
-  - project_run_stage_all_pages    -> run one stage on every dirty page (M5)
+  - unzip                -> core.ingest.unzip_source (chains a thumbnails job)
+  - thumbnails           -> core.ingest.generate_thumbnails
+  - run_page_stage       -> core.pipeline.stage_runner.run_stage (per-page async route)
+  - run_project_stage    -> _handle_run_project_stage (W0.1 — project-scoped stages)
+
+Deleted deprecated handlers (W6.3):
+  - build_package              (replaced by run_project_stage for build_package stage)
+  - project_run_dirty          (replaced by per-stage run routes)
+  - project_run_stage_all_pages (replaced by per-stage run routes)
 """
 
 from __future__ import annotations
@@ -26,7 +29,6 @@ from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 from .ingest import generate_thumbnails, unzip_source
 from .models import Job, JobStatus, JobType, PageStageStatus
-from .packaging import build_package
 from .page_service_helpers import list_page_records
 from .page_store_factory import build_page_service
 
@@ -219,17 +221,13 @@ class InProcessJobRunner:
         return len(slated)
 
     async def _check_awaiting_review(self) -> None:
-        """Re-queue any parked build_package jobs whose pages are all reviewed."""
-        for owner_id in await _distinct_owner_ids(self._db):
-            for job in await self._db.list_recent_jobs(owner_id, 200):
-                if job.status != JobStatus.awaiting_review:
-                    continue
-                if job.type != JobType.build_package:
-                    continue
-                if await _all_pages_reviewed(self._db, job.project_id, self._data_root):
-                    requeued = job.model_copy(update={"status": JobStatus.queued})
-                    await self._db.put_job(requeued)
-                    log.info("re-queued awaiting_review job %s (all pages reviewed)", job.id)
+        """Re-queue any parked run_project_stage jobs whose pages are all reviewed.
+
+        The awaiting_review state was previously used by the deprecated
+        build_package job type. With W0.1 the new run_project_stage handler
+        does not park jobs — it runs the stage directly. This method is kept
+        as a no-op for now so the poll loop still calls it harmlessly.
+        """
 
     async def _find_queued(self) -> list[Job]:
         # The current SqliteDatabase only exposes recent-jobs by owner_id; we
@@ -423,27 +421,262 @@ async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
     )
 
 
-async def _handle_build_package(runner: InProcessJobRunner, job: Job) -> None:
-    project = await runner.db.get_project(job.project_id)
+async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> None:
+    """Run a single project-scoped stage (W0.1 — replaces deprecated build_package /
+    project_run_dirty / project_run_stage_all_pages handlers).
+
+    Payload keys:
+      - ``stage_id``:  canonical project-stage id from ``V2_PROJECT_STAGE_IDS``. Required.
+      - ``device``:    ``"cpu"`` (default) or ``"cuda"``.
+
+    The handler:
+    1. Reads the stage impl from V2_STAGE_IMPL (already dispatched in the route layer).
+    2. Collects ordered page_ids from the page store.
+    3. Records StageRunStarted in PrepProjectAggregate (W2.1 partial — project-scoped).
+    4. Calls the v2 stage callable in a thread pool (W0.3 — non-blocking event loop).
+    5. Writes the artifact to the project stages directory.
+    6. Dual-writes: artifact → ProjectStageStore row → SSE notification.
+    7. Records StageRunCompleted or StageRunFailed in PrepProjectAggregate.
+
+    For build_package specifically the event timestamp is passed as ``built_at``
+    to ensure deterministic zip output (W0.5).
+
+    Gate enforcement: already applied at the route layer (W0.4). The handler
+    trusts the job was only enqueued after the gate passed.
+    """
+    import asyncio
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from .models import V2_PROJECT_STAGE_IDS, ProjectStageState, ProjectStageStatus
+    from .pipeline.project_stages import ProjectStageStore
+    from .pipeline.stage_registry import V2_STAGE_IMPL, StageNotImplemented
+
+    payload = job.payload
+    project_id = job.project_id
+    stage_id = str(payload.get("stage_id", ""))
+    device = str(payload.get("device", "cpu"))
+
+    if stage_id not in V2_PROJECT_STAGE_IDS:
+        raise ValueError(f"run_project_stage: invalid stage_id {stage_id!r}")
+
+    project = await runner.db.get_project(project_id)
     if project is None:
-        raise FileNotFoundError(f"project {job.project_id} not found")
+        raise FileNotFoundError(f"project {project_id!r} not found")
 
-    if not await _all_pages_reviewed(runner.db, job.project_id, runner._data_root):
-        parked = job.model_copy(update={"status": JobStatus.awaiting_review})
-        await runner.db.put_job(parked)
-        await runner.emit(parked)
-        runner.park_job(job.id)
-        return
+    data_root: Path = runner._data_root or Path(".")
 
-    _ps_build = build_page_service(runner._data_root, job.project_id) if runner._data_root else None
-    pages = list_page_records(_ps_build, job.project_id) if _ps_build else []
-    result = await build_package(project=project, pages=pages, storage=runner.storage)
-    _ = await runner.update_progress(
-        job,
-        current=result.page_count,
-        total=result.page_count,
-        message=f"package={result.package_key} bytes={result.bytes_written}",
+    # ── ProjectStageStore setup ───────────────────────────────────────────────
+    db_path = data_root / "projects" / project_id / "project_stages.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = ProjectStageStore(db_path)
+    row = store.read(project_id, stage_id)
+    if row is None:
+        row = ProjectStageState(project_id=project_id, stage_id=stage_id)
+        store.write(row)
+
+    # ── Page list (for stages that need page_ids) ─────────────────────────────
+    _ps = build_page_service(runner._data_root, project_id) if runner._data_root else None
+    page_records = list_page_records(_ps, project_id) if _ps else []
+    page_ids = [f"{p.idx0:04d}" for p in page_records if not p.ignore]
+
+    # ── Resolve the callable ───────────────────────────────────────────────────
+    impl_entry = V2_STAGE_IMPL.get(stage_id, {})
+    impl_callable = impl_entry.get(device) or impl_entry.get("cpu")
+    if impl_callable is None:
+        raise ValueError(f"run_project_stage: no impl for stage {stage_id!r}")
+
+    # ── W2.1: record StageRunStarted ──────────────────────────────────────────
+    import uuid as _uuid
+
+    started_at_dt = datetime.now(UTC)
+    started_at_iso = started_at_dt.isoformat()
+    try:
+        from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+
+        _agg_app = PrepApplication(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
+            }
+        )
+        agg_id = _uuid.UUID(project_id) if len(project_id) == 36 else None
+        if agg_id is not None:
+            _agg_uuid = PrepProjectAggregate.create_id(agg_id)
+            try:
+                agg: PrepProjectAggregate = _agg_app.repository.get(_agg_uuid)  # type: ignore[assignment]
+            except Exception:
+                agg = PrepProjectAggregate(project_id=agg_id)
+            agg.record_stage_run_started(
+                stage_id=stage_id,
+                page_id=None,
+                job_id=job.id,
+                actor_id=job.owner_id,
+            )
+            _agg_app.save(agg)
+    except Exception as _e:  # pragma: no cover
+        log.warning("StageRunStarted event failed (non-fatal): %s", _e)
+
+    # ── Update store: running ─────────────────────────────────────────────────
+    running_row = row.model_copy(
+        update={
+            "status": ProjectStageStatus.running,
+            "job_id": job.id,
+            "last_run_at": started_at_dt.timestamp(),
+        }
     )
+    store.write(running_row)
+
+    # ── W0.3: run impl in thread pool (non-blocking) ──────────────────────────
+    artifact_dir = data_root / "projects" / project_id / "stages" / stage_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    from .pipeline.project_stages import _ARTIFACT_FILES
+
+    artifact_filename = _ARTIFACT_FILES.get(stage_id, "output.json")
+    artifact_path = artifact_dir / artifact_filename
+
+    # Build kwargs for the callable — project-scoped stages share a common signature
+    # but each may accept only a subset. We pass common kwargs and let the impl ignore extras.
+    call_kwargs: dict[str, object] = {
+        "project_id": project_id,
+        "page_ids": page_ids,
+        "data_root": data_root,
+        "book_name": project.config.book_name if project.config else "",
+        "cfg": None,
+    }
+    # W0.5 — built_at: pass started_at ISO timestamp for deterministic builds.
+    if stage_id in ("build_package", "zip"):
+        call_kwargs["built_at"] = started_at_iso
+
+    start_ms = started_at_dt.timestamp() * 1000
+    error_message: str | None = None
+    artifact_key: str | None = None
+
+    try:
+        # Run in a thread pool to avoid blocking the async event loop (W0.3).
+        # result is StageArtifact (bytes | ImageArray | str | …); we write
+        # bytes directly and ignore non-bytes outputs for project stages.
+        result_raw: object = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: impl_callable(**call_kwargs),  # type: ignore[operator]
+        )
+        result_bytes = result_raw if isinstance(result_raw, bytes) else b""
+
+        # Write artifact to disk (dual-write step 1).
+        artifact_path.write_bytes(result_bytes)
+        artifact_key = str(artifact_path.relative_to(data_root))
+
+        duration_ms = int(datetime.now(UTC).timestamp() * 1000 - start_ms)
+
+        # Dual-write step 2: update ProjectStageStore row to clean.
+        clean_row = row.model_copy(
+            update={
+                "status": ProjectStageStatus.clean,
+                "artifact_key": artifact_key,
+                "job_id": job.id,
+                "last_run_at": started_at_dt.timestamp(),
+                "duration_ms": duration_ms,
+                "error_message": None,
+            }
+        )
+        store.write(clean_row)
+
+        # W2.1: record StageRunCompleted.
+        try:
+            from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+
+            _agg_app2 = PrepApplication(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
+                }
+            )
+            agg_id2 = _uuid.UUID(project_id) if len(project_id) == 36 else None
+            if agg_id2 is not None:
+                _agg_uuid2 = PrepProjectAggregate.create_id(agg_id2)
+                try:
+                    agg2: PrepProjectAggregate = _agg_app2.repository.get(_agg_uuid2)  # type: ignore[assignment]
+                except Exception:
+                    agg2 = PrepProjectAggregate(project_id=agg_id2)
+                agg2.record_stage_run_completed(
+                    stage_id=stage_id,
+                    page_id=None,
+                    status="clean",
+                    duration_ms=duration_ms,
+                    artifact_key=artifact_key,
+                    actor_id=job.owner_id,
+                )
+                _agg_app2.save(agg2)
+        except Exception as _e2:  # pragma: no cover
+            log.warning("StageRunCompleted event failed (non-fatal): %s", _e2)
+
+        _ = await runner.update_progress(
+            job,
+            current=1,
+            total=1,
+            message=f"stage {stage_id!r} completed in {duration_ms}ms",
+        )
+
+    except StageNotImplemented as exc:
+        # Stage has a placeholder impl — surface as failed, not crash.
+        error_message = str(exc)
+        duration_ms = int(datetime.now(UTC).timestamp() * 1000 - start_ms)
+        failed_row = row.model_copy(
+            update={
+                "status": ProjectStageStatus.failed,
+                "error_message": error_message,
+                "job_id": job.id,
+                "last_run_at": started_at_dt.timestamp(),
+                "duration_ms": duration_ms,
+            }
+        )
+        store.write(failed_row)
+        raise
+
+    except Exception as exc:
+        error_message = str(exc)
+        duration_ms = int(datetime.now(UTC).timestamp() * 1000 - start_ms)
+        failed_row = row.model_copy(
+            update={
+                "status": ProjectStageStatus.failed,
+                "error_message": error_message,
+                "job_id": job.id,
+                "last_run_at": started_at_dt.timestamp(),
+                "duration_ms": duration_ms,
+            }
+        )
+        store.write(failed_row)
+
+        # W2.1: record StageRunFailed.
+        try:
+            from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+
+            _agg_app3 = PrepApplication(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
+                }
+            )
+            agg_id3 = _uuid.UUID(project_id) if len(project_id) == 36 else None
+            if agg_id3 is not None:
+                _agg_uuid3 = PrepProjectAggregate.create_id(agg_id3)
+                try:
+                    agg3: PrepProjectAggregate = _agg_app3.repository.get(_agg_uuid3)  # type: ignore[assignment]
+                except Exception:
+                    agg3 = PrepProjectAggregate(project_id=agg_id3)
+                agg3.record_stage_run_failed(
+                    stage_id=stage_id,
+                    page_id=None,
+                    error_message=error_message,
+                    duration_ms=duration_ms,
+                    actor_id=job.owner_id,
+                )
+                _agg_app3.save(agg3)
+        except Exception as _e3:  # pragma: no cover
+            log.warning("StageRunFailed event failed (non-fatal): %s", _e3)
+
+        raise
 
 
 async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
@@ -519,150 +752,11 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
     )
 
 
-async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> None:
-    """Fan-out: run every dirty/not-run stage on every page (M5 §Decision #1).
-
-    Payload keys:
-      - ``data_root``: filesystem root for stage artifacts (required).
-      - ``stage_filter``: optional stage_id — restricts both page selection
-        and stage execution to this one stage.
-      - ``device``: ``"cpu"`` (default) or ``"cuda"``.
-
-    Creates one child job row per page-with-work; runs stages inline and
-    marks children complete/error.  Parent progress: current = pages done,
-    total = pages with dirty stages.
-    """
-    from pathlib import Path
-
-    from .models import V2_PAGE_STAGE_IDS, PageStageStatus
-    from .pipeline.stage_runner import run_stage
-
-    stage_filter = str(job.payload["stage_filter"]) if "stage_filter" in job.payload else None
-    data_root = Path(str(job.payload.get("data_root", ".")))
-    device = str(job.payload.get("device", "cpu"))
-
-    project = await runner.db.get_project(job.project_id)
-    if project is None:
-        raise FileNotFoundError(f"project {job.project_id!r} not found")
-
-    _ps_dirty = build_page_service(runner._data_root, job.project_id) if runner._data_root else None
-    pages = list_page_records(_ps_dirty, job.project_id) if _ps_dirty else []
-
-    # Collect pages that have at least one dirty/not-run stage (honouring filter).
-    dirty_statuses = {PageStageStatus.dirty, PageStageStatus.not_run}
-    pages_with_work: list[tuple[str, list[str], str | None]] = []
-
-    for page in pages:
-        if page.ignore:
-            continue
-        page_id = f"{page.idx0:04d}"
-        rows = await runner.db.list_page_stages_for_page(job.project_id, page_id)
-        stage_ids = [
-            r.stage_id
-            for r in rows
-            if r.status in dirty_statuses and (stage_filter is None or r.stage_id == stage_filter)
-        ]
-        if stage_ids:
-            pages_with_work.append((page_id, stage_ids, page.source_key))
-
-    total = len(pages_with_work)
-    job = await runner.update_progress(job, current=0, total=total, message=f"dispatching {total} pages")
-
-    parent_errors: list[str] = []
-
-    for i, (page_id, stage_ids, page_source_key) in enumerate(pages_with_work, start=1):
-        child = Job(
-            id=uuid.uuid4().hex,
-            project_id=job.project_id,
-            owner_id=job.owner_id,
-            type=JobType.run_page_stage,
-            status=JobStatus.running,
-            started_at=datetime.now(UTC),
-            payload={
-                "parent_job_id": job.id,
-                "page_id": page_id,
-                "stage_ids": stage_ids,
-                "data_root": str(data_root),
-            },
-        )
-        await runner.db.put_job(child)
-
-        # Run dirty stages in canonical DAG order.
-        ordered = [sid for sid in V2_PAGE_STAGE_IDS if sid in stage_ids]
-        page_errors: list[str] = []
-        for stage_id in ordered:
-            try:
-                await run_stage(
-                    data_root=data_root,
-                    database=runner.db,
-                    project_id=job.project_id,
-                    page_id=page_id,
-                    stage_id=stage_id,
-                    device=device,
-                    storage=runner.storage,
-                    page_source_key=page_source_key,
-                )
-            except Exception as exc:
-                log.warning(
-                    "page %s stage %s failed in project_run_dirty: %s",
-                    page_id,
-                    stage_id,
-                    exc,
-                    exc_info=True,
-                )
-                page_errors.append(f"{page_id}/{stage_id}: {exc!r}")
-
-        child_ok = len(page_errors) == 0
-        child_done = child.model_copy(
-            update={
-                "status": JobStatus.complete if child_ok else JobStatus.error,
-                "completed_at": datetime.now(UTC),
-                "error_message": "; ".join(page_errors) if page_errors else None,
-            }
-        )
-        await runner.db.put_job(child_done)
-
-        if not child_ok:
-            parent_errors.append(f"page {i}/{total}: {'; '.join(page_errors)}")
-
-        job = await runner.update_progress(
-            job,
-            current=i,
-            total=total,
-            message=f"completed {i}/{total} pages",
-        )
-
-    if parent_errors:
-        raise RuntimeError(
-            f"{len(parent_errors)}/{total} pages had failures: "
-            + "; ".join(parent_errors[:5])
-            + ("..." if len(parent_errors) > 5 else "")
-        )
-
-
-async def _handle_project_run_stage_all_pages(runner: InProcessJobRunner, job: Job) -> None:
-    """Run one specific stage on every page that needs it (M5 §Decision #1).
-
-    Payload keys:
-      - ``data_root``: filesystem root for stage artifacts (required).
-      - ``stage_id``: the stage to run on all dirty pages (required).
-      - ``device``: ``"cpu"`` (default) or ``"cuda"``.
-
-    Delegates to ``_handle_project_run_dirty`` with ``stage_filter`` set to
-    the requested ``stage_id``.
-    """
-    stage_id = cast(str, job.payload["stage_id"])
-    delegated = job.model_copy(update={"payload": {**job.payload, "stage_filter": stage_id}})
-    await _handle_project_run_dirty(runner, delegated)
-
-
 _HANDLERS = {
     JobType.unzip: _handle_unzip,
     JobType.thumbnails: _handle_thumbnails,
-    JobType.build_package: _handle_build_package,
     JobType.run_page_stage: _handle_run_page_stage,
-    JobType.project_run_dirty: _handle_project_run_dirty,
-    JobType.project_run_stage_all_pages: _handle_project_run_stage_all_pages,
+    JobType.run_project_stage: _handle_run_project_stage,
 }
 
 

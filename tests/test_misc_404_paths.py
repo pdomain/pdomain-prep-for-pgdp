@@ -66,7 +66,7 @@ def _seed_other_user_job(settings: Settings) -> None:
                 id="stranger-job",
                 project_id="x1",
                 owner_id="someone-else",
-                type=JobType.build_package,
+                type=JobType.run_project_stage,
                 status=JobStatus.queued,
             )
         )

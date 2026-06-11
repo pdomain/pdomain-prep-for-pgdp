@@ -20,10 +20,6 @@ from pdomain_prep_for_pgdp.api.dependencies import (
 )
 from pdomain_prep_for_pgdp.core.ingest import extract_zip_image_thumbnail, peek_zip_image_names
 from pdomain_prep_for_pgdp.core.models import (
-    Job,
-    JobStatus,
-    JobType,
-    PageStageStatus,
     PipelineState,
     Project,
     ProjectConfig,
@@ -345,123 +341,10 @@ async def unarchive_project(
     return await _set_archived(project_id, archived=False, user=user, db=db)
 
 
-class ReviewStatusResponse(BaseModel):
-    unreviewed_count: int
-    """Number of non-ignored proof pages without a clean text_review stage row."""
-    awaiting_review_job_id: str | None
-    """Job id of the parked build_package job, or null if none exists."""
-
-
-@router.get(
-    "/projects/{project_id}/review-status",
-    response_model=ReviewStatusResponse,
-    operation_id="get_project_review_status",
-)
-async def get_project_review_status(
-    project_id: str,
-    user: UserDep,
-    db: DatabaseDep,
-    page_service: PageServiceDep,
-) -> ReviewStatusResponse:
-    """Return unreviewed page count + awaiting_review job for a project."""
-    project = await db.get_project(project_id)
-    if project is None or project.owner_id != user.user_id:
-        raise HTTPException(404, "project not found")
-
-    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
-
-    pages = list_page_records(page_service, project_id)
-    proof_pages = [p for p in pages if not p.ignore]
-    proof_page_ids = {f"{p.idx0:04d}" for p in proof_pages}
-
-    clean_stages = await db.list_page_stages_by_status(project_id, PageStageStatus.clean)
-    reviewed_ids = {s.page_id for s in clean_stages if s.stage_id == "text_review"}
-    unreviewed_count = len(proof_page_ids - reviewed_ids)
-
-    awaiting_review_job_id: str | None = None
-    jobs = await db.list_recent_jobs(user.user_id, 200)
-    for job in jobs:
-        if (
-            job.project_id == project_id
-            and job.type == JobType.build_package
-            and job.status == JobStatus.awaiting_review
-        ):
-            awaiting_review_job_id = job.id
-            break
-
-    return ReviewStatusResponse(
-        unreviewed_count=unreviewed_count,
-        awaiting_review_job_id=awaiting_review_job_id,
-    )
-
-
-class JobSubmitResponse(BaseModel):
-    """Minimal response for project-level job submission routes."""
-
-    job_id: str
-    status: str
-
-
-@router.post(
-    "/projects/{project_id}/run-dirty",
-    response_model=JobSubmitResponse,
-    status_code=202,
-    operation_id="project_run_dirty",
-    deprecated=True,  # api-v2-deltas.md §4 — replaced by pipelineShell.RUN_ALL_STALE + per-stage routes; removal: I1
-)
-async def project_run_dirty(
-    project_id: str,
-    user: UserDep,
-    db: DatabaseDep,
-    settings: SettingsDep,
-    stage_filter: str | None = None,
-) -> JobSubmitResponse:
-    """Submit a project_run_dirty job.
-
-    DEPRECATED: use `pipelineShell.RUN_ALL_STALE` + per-stage run routes instead.
-    """
-    project = await db.get_project(project_id)
-    if project is None or project.owner_id != user.user_id:
-        raise HTTPException(404, "project not found")
-
-    payload: dict[str, str] = {"data_root": str(settings.data_root)}
-    if stage_filter is not None:
-        payload["stage_filter"] = stage_filter
-
-    job = Job(
-        id=uuid.uuid4().hex,
-        project_id=project_id,
-        owner_id=user.user_id,
-        type=JobType.project_run_dirty,
-        status=JobStatus.queued,
-        payload=payload,
-    )
-    await db.put_job(job)
-    return JobSubmitResponse(job_id=job.id, status=job.status.value)
-
-
-@router.post(
-    "/projects/{project_id}/build-package",
-    response_model=JobSubmitResponse,
-    status_code=202,
-    operation_id="project_build_package",
-)
-async def project_build_package(
-    project_id: str,
-    user: UserDep,
-    db: DatabaseDep,
-) -> JobSubmitResponse:
-    """Submit a build_package job for the project."""
-    project = await db.get_project(project_id)
-    if project is None or project.owner_id != user.user_id:
-        raise HTTPException(404, "project not found")
-
-    job = Job(
-        id=uuid.uuid4().hex,
-        project_id=project_id,
-        owner_id=user.user_id,
-        type=JobType.build_package,
-        status=JobStatus.queued,
-    )
-    await db.put_job(job)
-    return JobSubmitResponse(job_id=job.id, status=job.status.value)
+# W6.3: ReviewStatusResponse, get_project_review_status, project_run_dirty,
+# and project_build_package routes were deleted here. They were backed by the
+# deprecated JobType.build_package / project_run_dirty job types.
+# Replacements:
+#   - build_package → POST /projects/{id}/project-stages/build_package/run
+#   - run-dirty → per-stage run routes via pipelineShell.RUN_ALL_STALE
+#   - review-status → project-stages snapshot (GET /projects/{id}/pipeline)
