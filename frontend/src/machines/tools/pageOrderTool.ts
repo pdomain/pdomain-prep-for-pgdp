@@ -110,6 +110,15 @@ export interface Leaf {
   plateTag?: string;
   /** Foldout segments data */
   foldout?: unknown;
+  /**
+   * PGDP output filename prefix from the naming manifest (e.g. "f001", "c001").
+   * Null for skip pages (not included in package). Undefined if manifest has
+   * not yet been fetched (page_order stage not yet clean).
+   *
+   * Populated by the MANIFEST_PUSH event after fetching
+   * GET /api/data/projects/{id}/project-stages/page_order/artifact.
+   */
+  prefix?: string | null;
 }
 
 export interface PageOrderTotals {
@@ -208,6 +217,18 @@ export type PageOrderToolEvent =
       runs: Run[];
       totals: PageOrderTotals;
     }
+  /**
+   * Naming manifest fetched from the backend.
+   *
+   * Carries {scan → prefix} map from
+   * GET /api/data/projects/{id}/project-stages/page_order/artifact.
+   * scan is the 0-based idx0 (matches Leaf.scan).
+   * prefix is the PGDP filename prefix (e.g. "f001", "c001"), or null for skip pages.
+   *
+   * Sent by the surface component after FOLIOS_DONE and after any re-run.
+   * The machine merges these into Leaf.prefix for the naming preview column.
+   */
+  | { type: "MANIFEST_PUSH"; prefixes: Record<number, string | null> }
   // ledger
   | { type: "SELECT_LEAF"; scan: number }
   | { type: "TOGGLE_SCAN"; scan: number }
@@ -525,6 +546,27 @@ export const pageOrderToolMachine = setup({
         };
       },
     ),
+
+    /**
+     * Naming manifest received — merge prefixes into leaves.
+     *
+     * Fired by MANIFEST_PUSH (from surface component after fetching the
+     * page_order artifact). Updates Leaf.prefix for each leaf whose scan
+     * (idx0) appears in event.prefixes. Leaves not in the map keep their
+     * existing prefix (undefined = not yet received).
+     */
+    assignPrefixes: assign({
+      leaves: ({ context, event }) => {
+        if (event.type !== "MANIFEST_PUSH") return context.leaves;
+        const { prefixes } = event;
+        return context.leaves.map((leaf): Leaf => {
+          if (!(leaf.scan in prefixes)) return leaf;
+          // prefixes[leaf.scan] is string | null — the key exists (checked above)
+          const prefix: string | null = prefixes[leaf.scan] ?? null;
+          return { ...leaf, prefix };
+        });
+      },
+    }),
 
     /** YAML: `assignLens: ctx.lens = event.value` */
     assignLens: assign({
@@ -858,6 +900,8 @@ export const pageOrderToolMachine = setup({
         SET_NAME_PART: {
           actions: ["patchNaming", "patchNamingSideEffect"],
         },
+        // Naming manifest received from backend — update prefix on each leaf
+        MANIFEST_PUSH: { actions: ["assignPrefixes"] },
       },
       states: {
         // ---- Region: ledger --------------------------------------------------

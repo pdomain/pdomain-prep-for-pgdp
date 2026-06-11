@@ -2180,7 +2180,7 @@ export interface components {
          * PageType
          * @enum {string}
          */
-        PageType: "normal" | "blank" | "plate_b" | "plate_p" | "plate_r";
+        PageType: "normal" | "blank" | "plate_b" | "plate_p" | "plate_r" | "skip" | "cover";
         /** PipelineState */
         PipelineState: {
             /** Steps */

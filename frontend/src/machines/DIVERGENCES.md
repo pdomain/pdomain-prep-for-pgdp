@@ -1566,3 +1566,47 @@ directive; this entry supersedes the default-branch description.
 **If DP exposes an upload API in future:** Add a `liveSubmit` actor back into
 `submitting` state; gate it behind a new setting `useApiSubmit` (default off).
 The manual attestation flow remains valid as a fallback.
+
+---
+
+## Task naming-wire — pageOrderTool service wiring divergences
+
+### F5.4-services — `persistRuns`, `persistNaming`, `confirmStage` are no-ops (pageOrderTool)
+
+**Intent (YAML):** `PageOrderToolServices` defines five service methods:
+
+- `persistLeaf` — PATCH page metadata (role / page_type)
+- `persistOrder` — PATCH page order
+- `persistRuns` — PUT run configuration
+- `persistNaming` — PUT naming scheme
+- `confirmStage` — POST stage confirm
+
+**Current wiring (naming-wire):** `persistLeaf` and `persistOrder` are fully wired
+to the backend (`PATCH /api/data/projects/{id}/pages/{idx0}` and
+`PATCH /api/data/projects/{id}/pages/reorder` respectively). The role→PageType
+mapping is: text→normal, blank→blank, skip→skip, cover→cover, plate→plate_p.
+
+`persistRuns`, `persistNaming`, and `confirmStage` are explicit no-ops. The
+machine controls that depend on them (run editing, naming scheme apply, stage
+confirm) operate locally in machine context but the persistence side-effect is
+a no-op until the backend routes are landed.
+
+**Pending routes (I1):**
+
+- `PUT /api/projects/{id}/stages/page_order/runs` — persist run configuration
+- `PUT /api/projects/{id}/stages/page_order/naming` — persist naming scheme
+- `POST /api/projects/{id}/stages/page_order/confirm` — confirm stage and trigger downstream
+
+**Impact:** The naming preview panel (ledger column) reads from the manifest
+served by the backend via `GET /api/data/projects/{id}/project-stages/page_order/artifact`.
+This is the real backend manifest (JSON naming artifact from `page_order_v2_cpu`).
+Only the write-back for runs/naming/confirm is deferred — the read path is live.
+
+**Controls that are NOT hidden:** Per workspace rules, controls must be either
+visible + enabled + functional, or not rendered at all. These three services back
+affordances (run editing, naming scheme apply button, confirm button) that are
+rendered and clickable. They update machine context correctly — only the
+persistence side-effect is a no-op. At I1, swap the no-op implementations for
+real API calls. Do not hide the controls.
+
+**Reference:** `frontend/src/services/tools/pageOrderTool.ts` — service factory.

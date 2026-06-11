@@ -35,6 +35,8 @@ const PAGE_TYPE_LABELS: Record<
   plate_b: "Plate (B)",
   plate_p: "Plate (P)",
   plate_r: "Plate (R)",
+  skip: "Skip",
+  cover: "Cover",
 };
 
 interface PageDrawerProps {

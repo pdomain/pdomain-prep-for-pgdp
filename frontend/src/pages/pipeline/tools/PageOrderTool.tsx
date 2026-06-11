@@ -17,7 +17,7 @@
  * @see src/pages/pipeline/toolSlot.tsx — F5.4 registration
  */
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -30,6 +30,7 @@ import {
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { buildRealPageOrderToolServices } from "@/services/tools/pageOrderTool";
+import { api } from "@/api/client";
 
 // ---------------------------------------------------------------------------
 // Leaf flag chip
@@ -152,7 +153,7 @@ function LeafRow({
       }}
       style={{
         display: "grid",
-        gridTemplateColumns: "32px 60px 1fr 80px 1fr 1fr",
+        gridTemplateColumns: "32px 60px 1fr 80px 1fr 60px 1fr",
         gap: 8,
         padding: "6px 10px",
         alignItems: "center",
@@ -218,6 +219,30 @@ function LeafRow({
       {/* Run */}
       <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
         {run?.label ?? "—"}
+      </span>
+      {/* PGDP prefix from naming manifest (null = skip, undefined = not yet fetched) */}
+      <span
+        data-testid={`po-prefix-${leaf.scan}`}
+        title={
+          leaf.prefix === undefined
+            ? "Naming manifest not yet fetched"
+            : leaf.prefix === null
+              ? "Excluded from package (skip)"
+              : `PGDP filename: ${leaf.prefix}.png / ${leaf.prefix}.txt`
+        }
+        style={{
+          fontFamily: "monospace",
+          fontSize: 10.5,
+          color:
+            leaf.prefix === undefined
+              ? "var(--ink-4)"
+              : leaf.prefix === null
+                ? "var(--ink-4)"
+                : "var(--exact)",
+          fontStyle: leaf.prefix === null ? "italic" : "normal",
+        }}
+      >
+        {leaf.prefix === undefined ? "—" : (leaf.prefix ?? "skip")}
       </span>
       {/* Flags */}
       <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -451,6 +476,36 @@ export function PageOrderTool({
   const hasFlaggedLeaves =
     (ctx.totals?.outOfSeq ?? 0) > 0 || (ctx.totals?.duplicates ?? 0) > 0;
 
+  // Naming manifest fetch: when entering workspace (page_order stage clean),
+  // fetch the manifest artifact and send MANIFEST_PUSH to populate leaf prefixes.
+  // Re-fetches whenever the machine returns to workspace (e.g. after re-run).
+  useEffect(() => {
+    if (!isWorkspace) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await api.get<{
+          version: number;
+          pages: { page_id: string; idx0: number; prefix: string | null }[];
+        }>(
+          `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/artifact`,
+        );
+        if (cancelled) return;
+        const prefixes: Record<number, string | null> = {};
+        for (const entry of raw.pages ?? []) {
+          prefixes[entry.idx0] = entry.prefix;
+        }
+        send({ type: "MANIFEST_PUSH", prefixes });
+      } catch {
+        // Manifest not yet available (stage not clean or first run) — no-op.
+        // The prefix column will show "—" until the stage runs successfully.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isWorkspace, projectId, send]);
+
   return (
     <div
       data-testid={`page-order-tool`}
@@ -661,29 +716,35 @@ export function PageOrderTool({
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "32px 60px 1fr 80px 1fr 1fr",
+                    gridTemplateColumns: "32px 60px 1fr 80px 1fr 60px 1fr",
                     gap: 8,
                     padding: "6px 10px",
                     borderBottom: "1px solid var(--border-1)",
                     background: "var(--bg-page)",
                   }}
                 >
-                  {["#", "Role", "OCR folio", "Computed", "Run", "Flags"].map(
-                    (h) => (
-                      <span
-                        key={h}
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "var(--ink-4)",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                        }}
-                      >
-                        {h}
-                      </span>
-                    ),
-                  )}
+                  {[
+                    "#",
+                    "Role",
+                    "OCR folio",
+                    "Computed",
+                    "Run",
+                    "Prefix",
+                    "Flags",
+                  ].map((h) => (
+                    <span
+                      key={h}
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: "var(--ink-4)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                      }}
+                    >
+                      {h}
+                    </span>
+                  ))}
                 </div>
               )}
 
