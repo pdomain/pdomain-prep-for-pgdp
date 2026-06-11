@@ -429,6 +429,9 @@ class JobType(str, Enum):
     # project_run_dirty / project_run_stage_all_pages job types).
     # payload: {"stage_id": str, "device": str}  # noqa: ERA001
     run_project_stage = "run_project_stage"
+    # Phase 3: batch-OCR all pages in a project in one predictor call.
+    # payload: {"device": str, "batch_size": int|null, "pipeline_slots": int}  # noqa: ERA001
+    run_project_ocr_batch = "run_project_ocr_batch"
 
 
 class JobProgress(ApiModel):

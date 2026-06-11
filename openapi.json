@@ -4741,7 +4741,8 @@
           "unzip",
           "thumbnails",
           "run_page_stage",
-          "run_project_stage"
+          "run_project_stage",
+          "run_project_ocr_batch"
         ],
         "title": "JobType"
       },

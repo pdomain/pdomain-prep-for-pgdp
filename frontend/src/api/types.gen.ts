@@ -1780,7 +1780,7 @@ export interface components {
          * JobType
          * @enum {string}
          */
-        JobType: "unzip" | "thumbnails" | "run_page_stage" | "run_project_stage";
+        JobType: "unzip" | "thumbnails" | "run_page_stage" | "run_project_stage" | "run_project_ocr_batch";
         /**
          * LayerColors
          * @description Hex color assignments for OCR layer overlays.
