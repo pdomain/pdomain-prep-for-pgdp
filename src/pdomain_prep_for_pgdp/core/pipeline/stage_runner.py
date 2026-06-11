@@ -1056,6 +1056,48 @@ async def run_stage(
     await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "running")
     await _emit(stage_events, project_id, page_id, "stage-progress", stage_id, "running")
 
+    # W2.1: record StageRunStarted in PrepProjectAggregate (warn-and-continue).
+    _started_at_ms = time() * 1000
+    _prep_agg_job_id = f"sync:{stage_id}:{page_id}"
+    try:
+        import uuid as _uuid_mod
+
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db = data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _agg_app_start = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        # Derive UUID: standard UUID if project_id is a valid UUID-hex/hyphen,
+        # else uuid5 in OID namespace (same pattern as job_runner.py W2.1).
+        try:
+            _proj_uuid = _uuid_mod.UUID(project_id)
+        except ValueError:
+            _proj_uuid = _uuid_mod.uuid5(_uuid_mod.NAMESPACE_OID, project_id)
+        _agg_uuid_start = _PrepAgg.create_id(_proj_uuid)
+        try:
+            _agg_start: _PrepAgg = _agg_app_start.repository.get(_agg_uuid_start)  # type: ignore[assignment]
+        except Exception:
+            _agg_start = _PrepAgg(project_id=_proj_uuid)
+        _agg_start.record_stage_run_started(
+            stage_id=stage_id,
+            page_id=page_id,
+            job_id=_prep_agg_job_id,
+            actor_id="default",
+        )
+        _agg_app_start.save(_agg_start)
+    except Exception as _e_start:  # pragma: no cover
+        log.warning("W2.1 StageRunStarted event failed (non-fatal): %s", _e_start)
+
     # Resolve per-page config. When the caller pre-resolves (e.g. the sync route
     # handler), use that value directly. Otherwise read the latest page + project
     # + system rows from DB so config changes between request and execution are
@@ -1393,38 +1435,195 @@ async def run_stage(
                     artifact_ndarray=_ndarray_for_cache,
                 )
     except StageNotImplemented as exc:
+        _err_msg_ni = str(exc)
         await _mark_failed(
             database=database,
             project_id=project_id,
             page_id=page_id,
             stage_id=stage_id,
-            error_message=str(exc),
+            error_message=_err_msg_ni,
         )
         await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        # W2.1: StageRunFailed event (non-fatal if event recording fails).
+        try:
+            _duration_ni = int(time() * 1000 - _started_at_ms)
+            import uuid as _uuid_mod
+
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepApplication as _PrepApp,
+            )
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepProjectAggregate as _PrepAgg,
+            )
+
+            _events_db_ni = data_root / "projects" / project_id / "events.db"
+            _app_ni = _PrepApp(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(_events_db_ni),
+                }
+            )
+            try:
+                _puid_ni = _uuid_mod.UUID(project_id)
+            except ValueError:
+                _puid_ni = _uuid_mod.uuid5(_uuid_mod.NAMESPACE_OID, project_id)
+            _aid_ni = _PrepAgg.create_id(_puid_ni)
+            try:
+                _agg_ni: _PrepAgg = _app_ni.repository.get(_aid_ni)  # type: ignore[assignment]
+            except Exception:
+                _agg_ni = _PrepAgg(project_id=_puid_ni)
+            _agg_ni.record_stage_run_failed(
+                stage_id=stage_id,
+                page_id=page_id,
+                error_message=_err_msg_ni,
+                duration_ms=_duration_ni,
+                actor_id="default",
+            )
+            _app_ni.save(_agg_ni)
+        except Exception as _e_ni:  # pragma: no cover
+            log.warning("W2.1 StageRunFailed event failed (non-fatal): %s", _e_ni)
         raise StageRunFailed(str(exc)) from exc
     except StageArtifactWriteError as exc:
+        _err_msg_aw = f"dual-write failed: {exc}"
         await _mark_failed(
             database=database,
             project_id=project_id,
             page_id=page_id,
             stage_id=stage_id,
-            error_message=f"dual-write failed: {exc}",
+            error_message=_err_msg_aw,
         )
         await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        # W2.1: StageRunFailed event.
+        try:
+            _duration_aw = int(time() * 1000 - _started_at_ms)
+            import uuid as _uuid_mod
+
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepApplication as _PrepApp,
+            )
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepProjectAggregate as _PrepAgg,
+            )
+
+            _events_db_aw = data_root / "projects" / project_id / "events.db"
+            _app_aw = _PrepApp(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(_events_db_aw),
+                }
+            )
+            try:
+                _puid_aw = _uuid_mod.UUID(project_id)
+            except ValueError:
+                _puid_aw = _uuid_mod.uuid5(_uuid_mod.NAMESPACE_OID, project_id)
+            _aid_aw = _PrepAgg.create_id(_puid_aw)
+            try:
+                _agg_aw: _PrepAgg = _app_aw.repository.get(_aid_aw)  # type: ignore[assignment]
+            except Exception:
+                _agg_aw = _PrepAgg(project_id=_puid_aw)
+            _agg_aw.record_stage_run_failed(
+                stage_id=stage_id,
+                page_id=page_id,
+                error_message=_err_msg_aw,
+                duration_ms=_duration_aw,
+                actor_id="default",
+            )
+            _app_aw.save(_agg_aw)
+        except Exception as _e_aw:  # pragma: no cover
+            log.warning("W2.1 StageRunFailed event failed (non-fatal): %s", _e_aw)
         raise StageRunFailed(f"dual-write failed for {stage_id!r}: {exc}") from exc
     except StageRunFailed:
         # Already shaped — re-raise as-is.
         raise
     except Exception as exc:
+        _err_msg_ex = f"{type(exc).__name__}: {exc}"
         await _mark_failed(
             database=database,
             project_id=project_id,
             page_id=page_id,
             stage_id=stage_id,
-            error_message=f"{type(exc).__name__}: {exc}",
+            error_message=_err_msg_ex,
         )
         await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        # W2.1: StageRunFailed event.
+        try:
+            _duration_ex = int(time() * 1000 - _started_at_ms)
+            import uuid as _uuid_mod
+
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepApplication as _PrepApp,
+            )
+            from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+                PrepProjectAggregate as _PrepAgg,
+            )
+
+            _events_db_ex = data_root / "projects" / project_id / "events.db"
+            _app_ex = _PrepApp(
+                env={
+                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                    "SQLITE_DBNAME": str(_events_db_ex),
+                }
+            )
+            try:
+                _puid_ex = _uuid_mod.UUID(project_id)
+            except ValueError:
+                _puid_ex = _uuid_mod.uuid5(_uuid_mod.NAMESPACE_OID, project_id)
+            _aid_ex = _PrepAgg.create_id(_puid_ex)
+            try:
+                _agg_ex: _PrepAgg = _app_ex.repository.get(_aid_ex)  # type: ignore[assignment]
+            except Exception:
+                _agg_ex = _PrepAgg(project_id=_puid_ex)
+            _agg_ex.record_stage_run_failed(
+                stage_id=stage_id,
+                page_id=page_id,
+                error_message=_err_msg_ex,
+                duration_ms=_duration_ex,
+                actor_id="default",
+            )
+            _app_ex.save(_agg_ex)
+        except Exception as _e_ex:  # pragma: no cover
+            log.warning("W2.1 StageRunFailed event failed (non-fatal): %s", _e_ex)
         raise StageRunFailed(f"stage {stage_id!r} impl raised {type(exc).__name__}: {exc}") from exc
+
+    # W2.1: StageRunCompleted event (non-fatal if event recording fails).
+    try:
+        _duration_ok = int(time() * 1000 - _started_at_ms)
+        import uuid as _uuid_mod
+
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db_ok = data_root / "projects" / project_id / "events.db"
+        _app_ok = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db_ok),
+            }
+        )
+        try:
+            _puid_ok = _uuid_mod.UUID(project_id)
+        except ValueError:
+            _puid_ok = _uuid_mod.uuid5(_uuid_mod.NAMESPACE_OID, project_id)
+        _aid_ok = _PrepAgg.create_id(_puid_ok)
+        try:
+            _agg_ok: _PrepAgg = _app_ok.repository.get(_aid_ok)  # type: ignore[assignment]
+        except Exception:
+            _agg_ok = _PrepAgg(project_id=_puid_ok)
+        _agg_ok.record_stage_run_completed(
+            stage_id=stage_id,
+            page_id=page_id,
+            status="clean",
+            duration_ms=_duration_ok,
+            artifact_key=committed.artifact_key or "",
+            actor_id="default",
+        )
+        _app_ok.save(_agg_ok)
+    except Exception as _e_ok:  # pragma: no cover
+        log.warning("W2.1 StageRunCompleted event failed (non-fatal): %s", _e_ok)
 
     # Step 8a: if auto_detect_attrs just ran, mark not-applicable stages based
     # on the detected page type. This happens before dirty cascade so the
