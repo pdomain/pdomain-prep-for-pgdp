@@ -1116,22 +1116,22 @@ describe("SourcePageWorkbench — Src-WB3 cover page role", () => {
 
 describe("SourceTool integrated", () => {
   it("renders source-tool container", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null as never} />));
+    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
     expect(screen.getByTestId("source-tool")).toBeDefined();
   });
 
   it("renders source-tabs", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null as never} />));
+    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
     expect(screen.getByTestId("source-tabs")).toBeDefined();
   });
 
   it("starts on Files tab by default — renders file-grid", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null as never} />));
+    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
     expect(screen.getByTestId("file-grid")).toBeDefined();
   });
 
   it("switches to Settings tab and shows settings-banner", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null as never} />));
+    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
     // Find the settings tab in the Seg component and click it
     const tabs = screen.getByTestId("source-tabs");
     const settingsBtn = Array.from(
@@ -1145,7 +1145,7 @@ describe("SourceTool integrated", () => {
   });
 
   it("does not show source-error-strip when no error", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null as never} />));
+    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
     expect(screen.queryByTestId("source-error-strip")).toBeNull();
   });
 });

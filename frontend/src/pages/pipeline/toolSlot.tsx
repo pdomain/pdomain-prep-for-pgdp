@@ -59,7 +59,13 @@ import { ArchiveTool } from "./tools/ArchiveTool";
  */
 export interface ToolSlotProps {
   stageId: string;
-  runnerRef: StageRunnerRef;
+  /**
+   * The stageRunner actor reference for this stage.
+   * Optional for source stage (which has no stageRunner — F5.1 contract:
+   * runnerRef is retained in props for interface uniformity but SourceTool
+   * does not use it). All other stages must receive a non-null runnerRef.
+   */
+  runnerRef: StageRunnerRef | null;
   /** W5.3: forward events to pipelineShell (e.g. STAGE_COMPLETED fan-out). */
   shellSend?: (event: PipelineShellEvent) => void;
 }

@@ -1140,14 +1140,20 @@ export function PipelinePage({
             data-testid="tool-slot-area"
             style={{ flex: 1, display: "flex", padding: 24, minHeight: 0 }}
           >
-            {currentRunnerRef ? (
+            {currentRunnerRef || ctx.currentStageId === "source" ? (
+              /* Source stage has no stageRunner but does have a tool (SourceTool).
+               * Pass null as runnerRef — SourceTool accepts it (F5.1 contract:
+               * the prop is retained for interface compatibility but not used).
+               * ToolSlotProps.runnerRef is typed as StageRunnerRef | null
+               * to accommodate this case. */
               <ToolComponent
                 stageId={ctx.currentStageId}
                 runnerRef={currentRunnerRef}
                 shellSend={send}
               />
             ) : (
-              /* Source stage — no runner */
+              /* Unreachable in normal use: every runner stage has a runner actor.
+               * Kept as a safety net for unexpected state. */
               <div
                 data-testid="tool-slot-placeholder"
                 data-stage-id={ctx.currentStageId}
@@ -1160,7 +1166,7 @@ export function PipelinePage({
                   borderRadius: 10,
                 }}
               >
-                Source stage — no runner (F5 pending)
+                No runner for stage: {ctx.currentStageId}
               </div>
             )}
           </div>
