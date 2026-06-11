@@ -51,6 +51,10 @@ from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     reconcile_page,
     stage_artifact_path,
 )
+from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
+    ProjectStageStore,
+    reindex_project_stages,
+)
 from pdomain_prep_for_pgdp.core.pipeline.stage_dag import compute_dirty_descendants
 from pdomain_prep_for_pgdp.settings import Settings
 
@@ -133,7 +137,10 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
     typed_args = cast(_ReindexArgs, cast(object, args))
     settings = Settings()
     data_root = (typed_args.data_root or settings.data_root).expanduser().resolve()
-    db = SqliteDatabase(settings.derived_database_url)
+    # W2.5: derive DB URL from the resolved data_root so --data-root overrides
+    # also override the database path (both default to data_root/state.db).
+    db_url = f"sqlite:///{(data_root / 'state.db').as_posix()}"
+    db = SqliteDatabase(db_url)
     await db.initialize()
     try:
         projects = await _resolve_projects(db, typed_args)
@@ -142,6 +149,8 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
             return 1
 
         all_reports: list[tuple[Project, str, ReconcileReport]] = []
+        # W2.5: project_stages reindex summaries per project.
+        project_stage_summaries: dict[str, dict[str, str]] = {}
         for project in projects:
             page_ids = _enumerate_page_ids_on_disk(data_root, project.id)
             for page_id in page_ids:
@@ -153,6 +162,12 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
                 )
                 all_reports.append((project, page_id, report))
 
+            # W2.5: reindex project-scoped stage rows from on-disk artifacts.
+            _ps_db_path = data_root / "projects" / project.id / "project_stages.db"
+            _ps_db_path.parent.mkdir(parents=True, exist_ok=True)
+            _ps_store = ProjectStageStore(_ps_db_path)
+            project_stage_summaries[project.id] = reindex_project_stages(project.id, data_root, _ps_store)
+
         any_drift = any(not r.is_clean for _, _, r in all_reports)
 
         if typed_args.heal:
@@ -160,7 +175,12 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
             _print_heal_summary(all_reports, counts, json_mode=typed_args.json, stdout=stdout)
             return 0
 
-        _print_drift_report(all_reports, json_mode=typed_args.json, stdout=stdout)
+        _print_drift_report(
+            all_reports,
+            json_mode=typed_args.json,
+            stdout=stdout,
+            project_stage_summaries=project_stage_summaries,
+        )
         return 2 if any_drift else 0
     finally:
         await db.close()
@@ -247,9 +267,10 @@ def _print_drift_report(
     *,
     json_mode: bool,
     stdout: TextIO,
+    project_stage_summaries: dict[str, dict[str, str]] | None = None,
 ) -> None:
     if json_mode:
-        out = {
+        out: dict[str, object] = {
             "summary": _drift_summary(reports),
             "details": [
                 {
@@ -263,6 +284,9 @@ def _print_drift_report(
                 if not r.is_clean
             ],
         }
+        # W2.5: include project_stages reindex summary.
+        if project_stage_summaries is not None:
+            out["project_stages"] = project_stage_summaries
         print(json.dumps(out, indent=2), file=stdout)
         return
 

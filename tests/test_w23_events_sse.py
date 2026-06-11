@@ -830,9 +830,13 @@ class TestW25ReindexCoverage:
         from pdomain_prep_for_pgdp.settings import Settings
 
         project_id = "reindex-test-proj"
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True, exist_ok=True)
         settings = Settings(
-            data_root=tmp_path / "data",
-            database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+            data_root=data_root,
+            # Put the DB inside data_root so reindex (which derives url from
+            # data_root) finds the same database the test seeds.
+            database_url=f"sqlite:///{(data_root / 'state.db').as_posix()}",
             storage_backend="filesystem",
             gpu_backend="cpu",
         )
@@ -922,9 +926,11 @@ class TestW25ReindexCoverage:
         from pdomain_prep_for_pgdp.settings import Settings
 
         project_id = "reindex-json-proj"
+        data_root2 = tmp_path / "data2"
+        data_root2.mkdir(parents=True, exist_ok=True)
         settings = Settings(
-            data_root=tmp_path / "data",
-            database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+            data_root=data_root2,
+            database_url=f"sqlite:///{(data_root2 / 'state.db').as_posix()}",
             storage_backend="filesystem",
             gpu_backend="cpu",
         )
