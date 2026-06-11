@@ -1157,6 +1157,7 @@ Cross-check whether the field is read by any guard or action — if yes, keep
 it in context (see also DIVERGENCES.md F5-3-4 `_weights` rule).
 
 ---
+
 ## Task F5.5 (text tools) divergences
 
 ### F5.5-D1 — wordcheckTool: parallel regions (suspects + listBuilder)
@@ -1320,7 +1321,7 @@ The machine event is wired; the UI affordance is deferred to I1 where the
 word-grouping panel (likely a word-frequency histogram overlay) will make the
 interaction meaningful.
 
-### F5.5-D11 — hyphenJoin: `ADD_WORD_RULE` has no canvas affordance in main views (omitted at F5)
+### F5.5-D11 — hyphenJoin: `ADD_WORD_RULE` not in main views (omitted at F5)
 
 **Machine event:** `ADD_WORD_RULE { rule: string; join: boolean }` — appends a
 word to the join-rule library.
