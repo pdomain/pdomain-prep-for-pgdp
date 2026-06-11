@@ -306,6 +306,51 @@ describe("TextZonesTool — ZoneStepSettingsTab", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "false");
   });
+
+  // W5.1 — machine-backed settings (splitsOn/granularity come from machine context)
+
+  it("splits toggle is backed by machine context (re-render reflects machine state)", async () => {
+    renderTool();
+    await waitFor(() => {
+      expect(screen.getByTestId("zone-tab-bar")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("zone-tab-settings"));
+
+    const toggle = screen.getByTestId("zone-settings-splits-toggle");
+    // Machine default splitsOn=true
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    // Click → machine receives SET_SPLITS_ON(false)
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    // Click again → machine receives SET_SPLITS_ON(true)
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("clicking granularity button sends SET_GRANULARITY to machine", async () => {
+    renderTool();
+    await waitFor(() => {
+      expect(screen.getByTestId("zone-tab-bar")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId("zone-tab-settings"));
+
+    // Default is 'line' — click 'word' to change
+    const wordBtn = screen.getByTestId("zone-settings-granularity-word");
+    const lineBtn = screen.getByTestId("zone-settings-granularity-line");
+
+    // Line is default active
+    expect(lineBtn).toHaveStyle({ fontWeight: "600" });
+
+    // Click word
+    fireEvent.click(wordBtn);
+
+    // Word is now active
+    expect(wordBtn).toHaveStyle({ fontWeight: "600" });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -680,20 +680,23 @@ function ZoneOverviewTab({ totals }: { totals: ZoneTotals | null }): ReactNode {
 // ---------------------------------------------------------------------------
 
 /**
- * F5-3-5 — ZoneStepSettings uses local state only (no stageSettings machine).
+ * W5.1 — ZoneStepSettingsTab wired to machine context (splitsOn, granularity).
  *
- * stageSettings.ts exists in the f51-source worktree (F5.1) but NOT in this
- * worktree at F5.3 time. Per task instructions, we use a local minimal panel
- * driven by local state + no-op handlers. The ActionFunction phantom-type
- * constraint still applies: when F5.1 is rebased in, each machine must inline
- * the 9 settings actions typed to its own Context/Event.
+ * Previously used local useState for splitsOn/granularity. Now receives
+ * machine-context values and callback props so clicking sends SET_SPLITS_ON /
+ * SET_GRANULARITY to the textZonesToolMachine.
  */
-function ZoneStepSettingsTab(): ReactNode {
-  const [splitsOn, setSplitsOn] = useState(true);
-  const [granularity, setGranularity] = useState<
-    "Block" | "Paragraph" | "Line" | "Word"
-  >("Line");
-
+function ZoneStepSettingsTab({
+  splitsOn,
+  granularity,
+  onSetSplitsOn,
+  onSetGranularity,
+}: {
+  splitsOn: boolean;
+  granularity: "block" | "paragraph" | "line" | "word";
+  onSetSplitsOn: (v: boolean) => void;
+  onSetGranularity: (v: "block" | "paragraph" | "line" | "word") => void;
+}): ReactNode {
   return (
     <div
       data-testid="zone-step-settings-tab"
@@ -749,7 +752,7 @@ function ZoneStepSettingsTab(): ReactNode {
           </div>
           <button
             data-testid="zone-settings-splits-toggle"
-            onClick={() => setSplitsOn((v) => !v)}
+            onClick={() => onSetSplitsOn(!splitsOn)}
             role="switch"
             aria-checked={splitsOn}
             style={{
@@ -820,13 +823,13 @@ function ZoneStepSettingsTab(): ReactNode {
               borderRadius: 7,
             }}
           >
-            {(["Block", "Paragraph", "Line", "Word"] as const).map((opt) => {
+            {(["block", "paragraph", "line", "word"] as const).map((opt) => {
               const active = granularity === opt;
               return (
                 <button
                   key={opt}
-                  data-testid={`zone-settings-granularity-${opt.toLowerCase()}`}
-                  onClick={() => setGranularity(opt)}
+                  data-testid={`zone-settings-granularity-${opt}`}
+                  onClick={() => onSetGranularity(opt)}
                   style={{
                     padding: "5px 12px",
                     borderRadius: 5,
@@ -839,7 +842,7 @@ function ZoneStepSettingsTab(): ReactNode {
                     color: active ? "var(--ink-1)" : "var(--ink-3)",
                   }}
                 >
-                  {opt}
+                  {opt.charAt(0).toUpperCase() + opt.slice(1)}
                 </button>
               );
             })}
@@ -941,8 +944,17 @@ export function TextZonesTool({
   const [snapshot, send] = useActor(textZonesToolMachine, {
     input: { projectId, stageIndex: 9, services },
   });
-  const { rows, totals, filter, density, editing, editorKind, splitDraft } =
-    snapshot.context;
+  const {
+    rows,
+    totals,
+    filter,
+    density,
+    editing,
+    editorKind,
+    splitDraft,
+    splitsOn,
+    granularity,
+  } = snapshot.context;
 
   // Tab state — local per F5.3-2 convention (view-only, not guarded by machine)
   const [activeTab, setActiveTab] = useState<ZoneTab>("pages");
@@ -1075,7 +1087,14 @@ export function TextZonesTool({
       {activeTab === "overview" ? <ZoneOverviewTab totals={totals} /> : null}
 
       {/* Settings tab */}
-      {activeTab === "settings" ? <ZoneStepSettingsTab /> : null}
+      {activeTab === "settings" ? (
+        <ZoneStepSettingsTab
+          splitsOn={splitsOn}
+          granularity={granularity}
+          onSetSplitsOn={(v) => send({ type: "SET_SPLITS_ON", value: v })}
+          onSetGranularity={(v) => send({ type: "SET_GRANULARITY", value: v })}
+        />
+      ) : null}
 
       {/* Pages tab */}
       {activeTab === "pages" ? (

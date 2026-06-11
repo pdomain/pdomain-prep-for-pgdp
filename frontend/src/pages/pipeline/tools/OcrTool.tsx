@@ -839,9 +839,13 @@ function OcrOverviewTab({ totals }: { totals: OcrTotals | null }): ReactNode {
 function OcrStepSettingsTab({
   engine,
   backend,
+  onSetEngine,
+  onSetBackend,
 }: {
   engine: "doctr" | "tesseract";
   backend: "gpu" | "cpu";
+  onSetEngine: (eng: "doctr" | "tesseract") => void;
+  onSetBackend: (b: "gpu" | "cpu") => void;
 }): ReactNode {
   const isDoctr = engine === "doctr";
 
@@ -903,11 +907,18 @@ function OcrStepSettingsTab({
               return (
                 <div
                   key={eng}
+                  role="button"
+                  tabIndex={0}
                   data-testid={`ocr-settings-engine-${eng}`}
+                  onClick={() => onSetEngine(eng)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") onSetEngine(eng);
+                  }}
                   style={{
                     flex: 1,
                     padding: "10px 12px",
                     borderRadius: 8,
+                    cursor: "pointer",
                     background: active
                       ? "color-mix(in oklab, var(--accent) 8%, var(--bg-surface))"
                       : "var(--bg-surface)",
@@ -985,9 +996,16 @@ function OcrStepSettingsTab({
                 return (
                   <div
                     key={b}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSetBackend(b)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") onSetBackend(b);
+                    }}
                     style={{
                       padding: "5px 12px",
                       borderRadius: 5,
+                      cursor: "pointer",
                       background: active ? "var(--bg-surface)" : "transparent",
                       boxShadow: active ? "0 0 0 1px var(--border-1)" : "none",
                       fontSize: 12,
@@ -1178,7 +1196,12 @@ export function OcrTool({
 
       {/* Settings tab */}
       {activeTab === "settings" ? (
-        <OcrStepSettingsTab engine={engine} backend={backend} />
+        <OcrStepSettingsTab
+          engine={engine}
+          backend={backend}
+          onSetEngine={(eng) => send({ type: "SET_ENGINE", value: eng })}
+          onSetBackend={(b) => send({ type: "SET_BACKEND", value: b })}
+        />
       ) : null}
 
       {/* Pages tab */}

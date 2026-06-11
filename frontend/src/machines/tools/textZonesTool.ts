@@ -178,6 +178,10 @@ export interface TextZonesToolContext {
   density: "S" | "M" | "L";
   selected: string[];
 
+  /** W5.1 — settings fields moved from local useState to machine context. */
+  splitsOn: boolean;
+  granularity: "block" | "paragraph" | "line" | "word";
+
   /** idx of the row currently open in an inline editor, or null. */
   editing: string | null;
   /** Which editor is open for the editing row. */
@@ -224,6 +228,9 @@ export type TextZonesToolEvent =
   // Global controls
   | { type: "SET_FILTER"; value: string }
   | { type: "SET_DENSITY"; value: "S" | "M" | "L" }
+  // W5.1 — settings controls (moved from local useState to machine events)
+  | { type: "SET_SPLITS_ON"; value: boolean }
+  | { type: "SET_GRANULARITY"; value: "block" | "paragraph" | "line" | "word" }
   | { type: "RETRY" }
   | { type: "CONFIRM_ADVANCE" }
   | { type: "UPSTREAM_CHANGED" };
@@ -412,6 +419,22 @@ export const textZonesToolMachine = setup({
     assignDensity: assign({
       density: ({ event }) => {
         if (event.type !== "SET_DENSITY") return "M" as const;
+        return event.value;
+      },
+    }),
+
+    /** W5.1 — `assignSplitsOn`: move splitsOn from local useState to machine context. */
+    assignSplitsOn: assign({
+      splitsOn: ({ context, event }) => {
+        if (event.type !== "SET_SPLITS_ON") return context.splitsOn;
+        return event.value;
+      },
+    }),
+
+    /** W5.1 — `assignGranularity`: move granularity from local useState to machine context. */
+    assignGranularity: assign({
+      granularity: ({ context, event }) => {
+        if (event.type !== "SET_GRANULARITY") return context.granularity;
         return event.value;
       },
     }),
@@ -714,6 +737,9 @@ export const textZonesToolMachine = setup({
     filter: "all",
     density: "M",
     selected: [],
+    // W5.1 — settings fields with defaults
+    splitsOn: true,
+    granularity: "line" as const,
     editing: null,
     editorKind: null,
     tool: "box",
@@ -782,6 +808,9 @@ export const textZonesToolMachine = setup({
       on: {
         SET_FILTER: { actions: ["assignFilter"] },
         SET_DENSITY: { actions: ["assignDensity"] },
+        // W5.1 — settings controls wired to machine context
+        SET_SPLITS_ON: { actions: ["assignSplitsOn"] },
+        SET_GRANULARITY: { actions: ["assignGranularity"] },
         CONFIRM_ADVANCE: {
           target: "confirming",
           guard: "allFlagsReviewed",

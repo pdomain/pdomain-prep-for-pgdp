@@ -154,4 +154,35 @@ describe("OcrTool — OcrStepSettingsTab", () => {
     const doctrCard = screen.getByTestId("ocr-settings-engine-doctr");
     expect(doctrCard).toBeInTheDocument();
   });
+
+  // W5.1 — engine/backend selector cards must be interactive (fire machine events)
+
+  it("engine selector cards have role=button (interactive)", () => {
+    renderTool();
+    fireEvent.click(screen.getByTestId("ocr-tab-settings"));
+    const doctrCard = screen.getByTestId("ocr-settings-engine-doctr");
+    const tesseractCard = screen.getByTestId("ocr-settings-engine-tesseract");
+    expect(doctrCard).toHaveAttribute("role", "button");
+    expect(tesseractCard).toHaveAttribute("role", "button");
+  });
+
+  it("clicking tesseract engine card changes active engine styling", () => {
+    renderTool();
+    fireEvent.click(screen.getByTestId("ocr-tab-settings"));
+    const tesseractCard = screen.getByTestId("ocr-settings-engine-tesseract");
+    // Before click: tesseract is not active (no accent border)
+    expect(tesseractCard.style.border).not.toContain("var(--accent)");
+    // Click tesseract to send SET_ENGINE
+    fireEvent.click(tesseractCard);
+    // After click: tesseract card becomes active (accent border)
+    expect(tesseractCard.style.border).toContain("var(--accent)");
+  });
+
+  it("backend segmented control buttons have role=button", () => {
+    renderTool();
+    fireEvent.click(screen.getByTestId("ocr-tab-settings"));
+    const backendControl = screen.getByTestId("ocr-settings-backend");
+    const buttons = backendControl.querySelectorAll("[role=button]");
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+  });
 });
