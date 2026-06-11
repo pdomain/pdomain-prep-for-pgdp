@@ -200,12 +200,9 @@ interface BackendActivityEntry {
 /**
  * Fetch recent activity for a project.
  *
- * NOTE: /api/data/projects/{id}/activity does not exist yet — this is a
- * stub that derives activity from the project's event log or returns an
- * empty feed. At I2, add a real /activity route.
- *
- * DRIFT: frontend/src/mocks/types.ts ActivityFeedResponse vs backend.
- * Tracked: add GET /api/data/projects/{id}/activity to projects.py.
+ * Route: GET /api/data/projects/{id}/activity (W4 Group 4 — real route).
+ * Returns the project event log as an ActivityFeedResponse.
+ * Falls back to an empty feed on error (e.g. while the project is initialising).
  */
 export async function fetchRecentActivity(
   projectId: string,
@@ -240,9 +237,10 @@ export async function fetchRecentActivity(
 /**
  * Fetch project attributes.
  *
- * NOTE: /api/data/projects/{id}/attributes does not exist yet.
- * At I1, derive bib/pgdp/fmt fields from the project config.
- * DRIFT: add GET /api/data/projects/{id}/attributes to projects.py.
+ * Route: GET /api/data/projects/{id}/attributes (W4 Group 4 — real route).
+ * Returns bib/pgdp/fmt fields from the project config.
+ * Falls back to deriving from the project record when the attributes route
+ * returns an error (e.g. legacy projects without stored attributes).
  */
 export async function fetchAttributes(
   projectId: string,

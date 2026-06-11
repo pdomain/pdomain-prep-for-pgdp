@@ -5,7 +5,7 @@ the user sets ranges + page types; calling `assign_prefixes` writes prefixes
 onto every page in the proof range and persists them.
 
 Locks in:
-  - prefix shape matches `compute_prefix` (so spec-01 off-by-one is preserved),
+  - prefix shape matches `compute_prefix_v2` (v2 format: <seq:3-4><type><folio?>),
   - pages outside the proof range get prefix="" and ignore=True,
   - plate pages get the correct b/p/r suffix and don't consume a number,
   - patch is idempotent (running it twice produces the same result).
@@ -107,12 +107,18 @@ async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatab
 
     result = list_page_records(svc, project.id)
     by_idx = {p.idx0: p for p in result}
-    # Fixed: first frontmatter page is f001.
-    assert by_idx[0].prefix == "f001"
-    assert by_idx[1].prefix == "f002"
-    assert by_idx[2].prefix == "p000"
-    assert by_idx[3].prefix == "p001"
-    assert by_idx[4].prefix == "p002"
+    # v2 format: <seq:3><type><folio>
+    # proof_start=0, fm=0-1, bm=2-4, fm_nbr_start=1, bm_nbr_start=1
+    # idx0=0: seq=0, type=f, folio=1 → "000f001"
+    # idx0=1: seq=1, type=f, folio=2 → "001f002"
+    # idx0=2: seq=2, type=p, folio=1 → "002p001"
+    # idx0=3: seq=3, type=p, folio=2 → "003p002"
+    # idx0=4: seq=4, type=p, folio=3 → "004p003"
+    assert by_idx[0].prefix == "000f001"
+    assert by_idx[1].prefix == "001f002"
+    assert by_idx[2].prefix == "002p001"
+    assert by_idx[3].prefix == "003p002"
+    assert by_idx[4].prefix == "004p003"
     for p in result:
         assert p.ignore is False
 
@@ -141,9 +147,9 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(db: SqliteDatab
     assert by_idx[0].prefix == ""
     assert by_idx[1].ignore is True
     assert by_idx[2].ignore is False
-    assert by_idx[2].prefix.startswith("f")
+    assert "f" in by_idx[2].prefix  # v2: seq+f+folio (e.g. "000f001")
     assert by_idx[3].ignore is False
-    assert by_idx[3].prefix.startswith("p")
+    assert "p" in by_idx[3].prefix  # v2: seq+p+folio (e.g. "001p001")
     assert by_idx[4].ignore is True
 
 
@@ -176,12 +182,13 @@ async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase, tmp_path
     await assign_prefixes(project=project, page_service=svc)
     result = list_page_records(svc, project.id)
     by_idx = {p.idx0: p for p in result}
-    # plate_p gets a "p" suffix and doesn't consume a body number.
+    # plate_p gets a "p" suffix (v2: seq+pp e.g. "002pp") and doesn't consume a body number.
     assert by_idx[2].prefix.endswith("p")
     # Numbering continues past the plate.
-    assert by_idx[1].prefix.startswith("p")
-    assert not by_idx[1].prefix.endswith("p")
-    assert by_idx[3].prefix.startswith("p")
+    # v2 bodymatter normal: seq+p+folio (e.g. "001p001") — contains "p" but doesn't end with "p"
+    assert "p" in by_idx[1].prefix  # type letter present
+    assert not by_idx[1].prefix.endswith("p")  # not a plate suffix
+    assert "p" in by_idx[3].prefix
     assert not by_idx[3].prefix.endswith("p")
 
 

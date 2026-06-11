@@ -602,3 +602,163 @@ class TestPageOrderNamingRoute:
         assert naming_path.exists(), "naming.json not created"
         stored = json.loads(naming_path.read_text())
         assert stored["digits"] == 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Wired-path tests: page_order stage → manifest artifact → v2 prefixes + export_name
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestPageOrderStageWiredPath:
+    """End-to-end wired-path tests: materialize_naming_manifest → load_naming_manifest → v2 prefixes.
+
+    These tests exercise the full production seam:
+      page_order stage invokes compute_prefix_v2 → JSON manifest written to disk →
+      load_naming_manifest reads it back → consumers see v2 prefixes and export_name.
+    """
+
+    def _make_pages(
+        self,
+        count: int,
+        project_id: str = "proj",
+        types: dict[int, PageType] | None = None,
+    ) -> list[PageRecord]:
+        pages = []
+        for i in range(count):
+            pt = (types or {}).get(i, PageType.normal)
+            pages.append(
+                PageRecord(
+                    project_id=project_id,
+                    idx0=i,
+                    prefix="",
+                    source_stem=f"src{i}",
+                    processing_status=PageProcessingStatus.pending,
+                    page_type=pt,
+                )
+            )
+        return pages
+
+    def test_stage_output_uses_v2_prefixes(self, tmp_path: Path) -> None:
+        """page_order stage emits v2 manifest: seq+type+folio, not v1 f001/c001.
+
+        Runs materialize_naming_manifest then loads the manifest via
+        load_naming_manifest.  Asserts the round-trip carries v2 prefixes.
+        """
+        import json
+
+        from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import (
+            load_naming_manifest,
+            materialize_naming_manifest,
+        )
+
+        cfg = ProjectConfig(
+            book_name="test",
+            source_uri="",
+            proof_start_idx0=0,
+            proof_end_idx0=4,
+            frontmatter_start_idx0=0,
+            frontmatter_end_idx0=1,
+            frontmatter_page_nbr_start=1,
+            bodymatter_start_idx0=2,
+            bodymatter_end_idx0=4,
+            bodymatter_page_nbr_start=1,
+        )
+        pages = self._make_pages(
+            5,
+            types={0: PageType.cover},
+        )
+        # Run the stage function (pure function path).
+        manifest_bytes = materialize_naming_manifest("proj", pages, cfg, tmp_path)
+
+        # Write to disk to test load_naming_manifest round-trip.
+        manifest_path = tmp_path / "projects" / "proj" / "stages" / "page_order" / "output.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_bytes(manifest_bytes)
+
+        # Load via the manifest loader.
+        manifest = load_naming_manifest(tmp_path, "proj")
+        prefixes = manifest.page_prefixes()
+
+        # idx0=0 is cover: v2 format = "000e"
+        assert prefixes["0000"] == "000e", f"expected '000e', got {prefixes['0000']!r}"
+        # idx0=1 is first frontmatter normal: v2 format = "001f001"
+        assert prefixes["0001"] == "001f001", f"expected '001f001', got {prefixes.get('0001')!r}"
+        # idx0=2 is first bodymatter normal: v2 format = "002p001"
+        assert prefixes["0002"] == "002p001", f"expected '002p001', got {prefixes.get('0002')!r}"
+
+        # Validate JSON content directly — check export_name present in schema.
+        raw = json.loads(manifest_bytes)
+        for entry in raw["pages"]:
+            assert "export_name" in entry, f"export_name missing from manifest entry: {entry}"
+
+    def test_numeric_export_populates_export_name(self, tmp_path: Path) -> None:
+        """When numeric_export=True, export_name is populated for non-skip pages."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import (
+            load_naming_manifest,
+            materialize_naming_manifest,
+        )
+
+        cfg = ProjectConfig(
+            book_name="test",
+            source_uri="",
+            proof_start_idx0=0,
+            proof_end_idx0=4,
+            frontmatter_start_idx0=0,
+            frontmatter_end_idx0=2,
+            frontmatter_page_nbr_start=1,
+            bodymatter_start_idx0=3,
+            bodymatter_end_idx0=4,
+            bodymatter_page_nbr_start=1,
+        )
+        pages = self._make_pages(
+            5,
+            types={2: PageType.skip},
+        )
+        manifest_bytes = materialize_naming_manifest("proj", pages, cfg, tmp_path, numeric_export=True)
+
+        manifest_path = tmp_path / "projects" / "proj" / "stages" / "page_order" / "output.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_bytes(manifest_bytes)
+
+        manifest = load_naming_manifest(tmp_path, "proj")
+
+        # Skip page has no export_name.
+        skip_entry = next(e for e in manifest.pages if e.role == "skip")
+        assert skip_entry.export_name is None
+
+        # Non-skip pages have numeric export_name (3 digits for ≤999 total).
+        non_skip = [e for e in manifest.pages if e.role != "skip"]
+        for entry in non_skip:
+            assert entry.export_name is not None, f"expected export_name for {entry}"
+            assert entry.export_name.isdigit(), f"export_name not numeric: {entry.export_name!r}"
+            assert len(entry.export_name) == 3, f"export_name wrong width: {entry.export_name!r}"
+
+    def test_skip_excluded_from_page_prefixes(self, tmp_path: Path) -> None:
+        """Skip pages appear in skip_ids but not in page_prefixes() after round-trip."""
+        from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import (
+            load_naming_manifest,
+            materialize_naming_manifest,
+        )
+
+        cfg = ProjectConfig(
+            book_name="test",
+            source_uri="",
+            proof_start_idx0=0,
+            proof_end_idx0=3,
+            frontmatter_start_idx0=0,
+            frontmatter_end_idx0=1,
+            frontmatter_page_nbr_start=1,
+            bodymatter_start_idx0=2,
+            bodymatter_end_idx0=3,
+            bodymatter_page_nbr_start=1,
+        )
+        pages = self._make_pages(4, types={1: PageType.skip})
+        manifest_bytes = materialize_naming_manifest("proj2", pages, cfg, tmp_path)
+
+        manifest_path = tmp_path / "projects" / "proj2" / "stages" / "page_order" / "output.json"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_bytes(manifest_bytes)
+
+        manifest = load_naming_manifest(tmp_path, "proj2")
+        assert "0001" in manifest.skip_set()
+        assert "0001" not in manifest.page_prefixes()

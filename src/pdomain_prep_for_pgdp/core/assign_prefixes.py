@@ -1,8 +1,8 @@
 """Step 3 helper -- assign `PageRecord.prefix` for every page in a project.
 
 Called after the user finalises the proof / frontmatter / bodymatter ranges
-on the Configure page. Uses `compute_prefix` (spec 01) so the same numbering
-logic the pipeline uses is the one persisted to disk.
+on the Configure page. Uses `compute_prefix_v2` so the same v2 naming logic
+the page_order stage manifest uses is what gets persisted to PageRecord.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .page_service_helpers import list_page_records, put_page_records
-from .prefix import compute_prefix
+from .prefix import compute_prefix_v2
 
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.core.models import Project
@@ -30,7 +30,7 @@ async def assign_prefixes(*, project: Project, page_service: PageService) -> int
 
     updates = []
     for page in pages_in:
-        new_prefix = compute_prefix(page.idx0, project.config, pages_by_idx) or ""
+        new_prefix = compute_prefix_v2(page.idx0, project.config, pages_by_idx) or ""
         # ignore = outside proof range OR skip page (excluded from the package)
         out_of_range = (
             page.idx0 < project.config.proof_start_idx0 or page.idx0 > project.config.proof_end_idx0

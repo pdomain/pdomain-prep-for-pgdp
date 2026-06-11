@@ -220,7 +220,8 @@ async def test_assign_prefixes_skip_gets_empty_prefix_and_ignore(tmp_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_assign_prefixes_cover_gets_c_prefix(tmp_path: Path) -> None:
+async def test_assign_prefixes_cover_gets_v2_e_prefix(tmp_path: Path) -> None:
+    """assign_prefixes uses compute_prefix_v2: cover gets seq+e (e.g. '000e'), not 'c001'."""
     from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
     from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
     from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
@@ -265,10 +266,11 @@ async def test_assign_prefixes_cover_gets_c_prefix(tmp_path: Path) -> None:
     await assign_prefixes(project=project, page_service=svc)
     result = list_page_records(svc, project.id)
     by_idx = {p.idx0: p for p in result}
-    assert by_idx[0].prefix == "c001"
+    # v2: cover page at idx0=0 → seq=0 → "000e"
+    assert by_idx[0].prefix == "000e", f"expected v2 '000e', got {by_idx[0].prefix!r}"
     assert by_idx[0].ignore is False
-    # frontmatter pages should start at f001 (cover not counted in fm run)
-    assert by_idx[1].prefix.startswith("f")
+    # frontmatter pages should have v2 prefix with "f" in it (e.g. "001f001")
+    assert "f" in by_idx[1].prefix, f"expected 'f' in frontmatter v2 prefix, got {by_idx[1].prefix!r}"
 
 
 # ─── 3. materialize_naming_manifest ───────────────────────────────────────────
@@ -326,16 +328,24 @@ class TestMaterializeNamingManifest:
         # idx0=3 is skip, page_id = "0003"
         assert "0003" in parsed["skip_ids"]
 
-    def test_cover_page_has_c_prefix(self, tmp_path: Path) -> None:
+    def test_cover_page_has_e_suffix_v2(self, tmp_path: Path) -> None:
+        """v2 manifest: cover page uses seq+e format (e.g. '000e'), not 'c001'."""
         from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import materialize_naming_manifest
 
         pages, cfg = self._pages_and_cfg()
         parsed = json.loads(materialize_naming_manifest("proj", pages, cfg, tmp_path))
         cover_entry = next(e for e in parsed["pages"] if e["role"] == "cover")
         assert cover_entry["prefix"] is not None
-        assert cover_entry["prefix"].startswith("c")
+        # v2 format: <seq:3>e — no "c" prefix, ends with "e"
+        assert cover_entry["prefix"].endswith("e"), (
+            f"expected v2 cover prefix ending with 'e', got {cover_entry['prefix']!r}"
+        )
+        assert not cover_entry["prefix"].startswith("c"), (
+            f"v1 cover prefix 'c' leaked into v2 manifest: {cover_entry['prefix']!r}"
+        )
 
-    def test_normal_pages_have_f_or_p_prefix(self, tmp_path: Path) -> None:
+    def test_normal_pages_have_v2_prefix_format(self, tmp_path: Path) -> None:
+        """v2 manifest: normal pages use seq+f/p+folio format (e.g. '001f001')."""
         from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import materialize_naming_manifest
 
         pages, cfg = self._pages_and_cfg()
@@ -343,7 +353,9 @@ class TestMaterializeNamingManifest:
         normal_entries = [e for e in parsed["pages"] if e["role"] == "normal"]
         for e in normal_entries:
             assert e["prefix"] is not None
-            assert e["prefix"][0] in ("f", "p")
+            # v2 prefix: starts with digits (the seq), contains f or p after the digits
+            prefix = e["prefix"]
+            assert any(c in prefix for c in ("f", "p")), f"expected v2 prefix with 'f' or 'p', got {prefix!r}"
 
     def test_page_id_field_format(self, tmp_path: Path) -> None:
         from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import materialize_naming_manifest

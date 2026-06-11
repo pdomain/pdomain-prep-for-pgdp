@@ -255,12 +255,15 @@ class TestConfirmRouteRecordsEvent:
             }
         )
         try:
-            loaded = ev_app.repository.get(agg_id)
-        except Exception:
-            pytest.fail(f"PrepProjectAggregate not found after {stage_id} confirm")
+            try:
+                loaded = ev_app.repository.get(agg_id)
+            except Exception:
+                pytest.fail(f"PrepProjectAggregate not found after {stage_id} confirm")
 
-        # Aggregate should have at least one event recorded
-        assert loaded.version >= 1  # type: ignore[attr-defined]
+            # Aggregate should have at least one event recorded
+            assert loaded.version >= 1  # type: ignore[attr-defined]
+        finally:
+            ev_app.close()
 
 
 class TestConfirmRouteEmitsSSE:

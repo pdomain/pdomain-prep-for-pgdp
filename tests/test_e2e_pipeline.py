@@ -82,9 +82,10 @@ def test_ingest_then_assign_prefixes_then_package(client: TestClient) -> None:
 
     pages = client.get(f"/api/data/projects/{project_id}/pages").json()["pages"]
     by_idx = {p["idx0"]: p for p in pages}
-    assert by_idx[0]["prefix"].startswith("f")
-    assert by_idx[1]["prefix"].startswith("p")
-    assert by_idx[2]["prefix"].startswith("p")
+    # v2 prefix: seq+type+folio (e.g. "000f001") — check type letter is present
+    assert "f" in by_idx[0]["prefix"]  # frontmatter: seq+f+folio
+    assert "p" in by_idx[1]["prefix"]  # bodymatter: seq+p+folio
+    assert "p" in by_idx[2]["prefix"]  # bodymatter: seq+p+folio
 
     # Verify the project-stage run route exists (W0.1 replacement for build-package).
     # build_package will be gate-blocked (validation not yet clean) → 409, not 404.

@@ -16,17 +16,20 @@ The stage artifact is a JSON object with schema:
     {
       "version": 1,
       "pages": [
-        {"page_id": "0005", "idx0": 5, "role": "normal", "prefix": "f001"},
-        {"page_id": "0006", "idx0": 6, "role": "blank",  "prefix": "f002"},
-        {"page_id": "0007", "idx0": 7, "role": "skip",   "prefix": null},
-        {"page_id": "0008", "idx0": 8, "role": "cover",  "prefix": "c001"},
+        {"page_id": "0005", "idx0": 5, "role": "normal", "prefix": "000f001", "export_name": null},
+        {"page_id": "0006", "idx0": 6, "role": "blank",  "prefix": "001f002", "export_name": null},
+        {"page_id": "0007", "idx0": 7, "role": "skip",   "prefix": null,       "export_name": null},
+        {"page_id": "0008", "idx0": 8, "role": "cover",  "prefix": "003e",     "export_name": null},
         ...
       ],
       "skip_ids": ["0007", ...]
     }
 
   - ``role``: the PageType string value for the page.
-  - ``prefix``: the PGDP filename prefix (from compute_prefix), or null for skip pages.
+  - ``prefix``: the v2 PGDP filename prefix (from compute_prefix_v2), or null for skip pages.
+    Format: ``<seq:3-4><type><folio?>`` — e.g. "000f001", "003e", "012pp".
+  - ``export_name``: bare numeric filename for use in the submission zip when the
+    numeric-export option is enabled (e.g. "005"). Null when numeric export is off.
   - ``skip_ids``: page_ids excluded from the submission zip (role == "skip").
 
 The consumer (build_package) loads this manifest to get page_prefixes and the
@@ -86,7 +89,14 @@ class NamingManifestEntry:
     role: str
     """PageType value (e.g. "normal", "blank", "skip", "cover", "plate_b")."""
     prefix: str | None
-    """PGDP filename prefix (e.g. "f001", "c001"), or None for skip pages."""
+    """v2 PGDP filename prefix (e.g. "000f001", "003e"), or None for skip pages."""
+    export_name: str | None = None
+    """Bare numeric export basename (e.g. "005") when numeric export is enabled.
+
+    Populated by ``materialize_naming_manifest`` when the numeric export option
+    is on; None otherwise.  The PGDP validator validates export_name values,
+    not the descriptive prefix strings.
+    """
 
 
 @dataclass
@@ -137,23 +147,29 @@ def materialize_naming_manifest(
     ordered_pages: list[PageRecord],
     project_config: ProjectConfig,
     data_root: Path,
+    *,
+    numeric_export: bool = False,
 ) -> bytes:
     """Materialize the naming manifest artifact.
 
-    Computes ``prefix`` for every page via ``compute_prefix``, assembles the
+    Computes ``prefix`` for every page via ``compute_prefix_v2``, assembles the
     manifest, and returns UTF-8 JSON bytes.
 
     Args:
         project_id: Project identifier (informational; not written to manifest).
         ordered_pages: Pages in reading order (caller applies PageReorder events
             before calling this).
-        project_config: ProjectConfig with range fields used by compute_prefix.
+        project_config: ProjectConfig with range fields used by compute_prefix_v2.
         data_root: Accepted for API compatibility (not used by this function).
+        numeric_export: When True, populate ``export_name`` for each non-skip
+            page with a bare zero-padded sequence number (e.g. "005").  The
+            PGDP validator validates export_name values; consumers should use
+            export_name when it is non-None and fall back to prefix otherwise.
 
     Returns:
         UTF-8 JSON bytes of the naming manifest.
     """
-    from pdomain_prep_for_pgdp.core.prefix import compute_prefix
+    from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2, export_name_for_seq
 
     _ = data_root  # available for future disk-caching
     _ = project_id  # available for future project-scoped logic
@@ -162,14 +178,31 @@ def materialize_naming_manifest(
 
     entries: list[dict[str, Any]] = []
     skip_ids: list[str] = []
+    # Seq counter for export_name: counts only non-skip pages in binding order.
+    non_skip_seq = 0
+    total_non_skip = sum(
+        1
+        for p in ordered_pages
+        if p.idx0 >= project_config.proof_start_idx0
+        and p.idx0 <= project_config.proof_end_idx0
+        and p.page_type.value != "skip"
+    )
 
     for page in ordered_pages:
         page_id = _page_id_for_idx0(page.idx0)
-        prefix = compute_prefix(page.idx0, project_config, pages_by_idx)
+        prefix = compute_prefix_v2(page.idx0, project_config, pages_by_idx)
         role = page.page_type.value
 
         if prefix is None:
             skip_ids.append(page_id)
+            export_name: str | None = None
+        elif numeric_export:
+            export_name = export_name_for_seq(non_skip_seq, total=total_non_skip)
+            non_skip_seq += 1
+        else:
+            export_name = None
+            if prefix is not None:
+                non_skip_seq += 1
 
         entries.append(
             {
@@ -177,6 +210,7 @@ def materialize_naming_manifest(
                 "idx0": page.idx0,
                 "role": role,
                 "prefix": prefix,
+                "export_name": export_name,
             }
         )
 
@@ -224,6 +258,7 @@ def load_naming_manifest(data_root: Path, project_id: str) -> NamingManifest:
             idx0=e["idx0"],
             role=e["role"],
             prefix=e.get("prefix"),
+            export_name=e.get("export_name"),
         )
         for e in raw.get("pages", [])
     ]

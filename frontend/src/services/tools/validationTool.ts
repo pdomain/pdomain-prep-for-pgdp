@@ -7,8 +7,8 @@
  *
  * Adapts ValidationReport { blockers, warnings } → { rules, counts } expected by the machine.
  *
- * DRIFT: persistWaiver has no backend route at I1 — remains a no-op stub.
- * Add POST /api/data/projects/{id}/project-stages/validation/waive at I2.
+ * persistWaiver: POST /api/data/projects/{id}/project-stages/validation/waive
+ *   W4 Group 4 — real route, returns { ok: true } on success.
  *
  * @see frontend/src/machines/tools/validationTool.ts — ValidationToolServices
  * @see docs/specs/api-v2-deltas.md §1.2, §3 — ValidationReport schema
@@ -125,8 +125,8 @@ async function runChecks(
 /**
  * Persist a validation rule waiver.
  *
- * Route: POST /api/data/projects/{id}/project-stages/validation/waive
- * W4 Group 4 — real route.
+ * Route: POST /api/data/projects/{id}/project-stages/validation/waive (W4 Group 4).
+ * Returns { ok: true } on success, { ok: false } on error (non-throwing).
  */
 async function persistWaiver(
   projectId: string,
