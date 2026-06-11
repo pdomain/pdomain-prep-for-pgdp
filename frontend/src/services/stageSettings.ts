@@ -32,6 +32,7 @@ function settingsBase(projectId: string, stageId: string): string {
 /**
  * GET effective settings (override > saved default > registry default).
  * Used by tools on mount to pre-populate their settings state.
+ * @internal — Called directly by stage-settings tool surfaces at I2.
  */
 export async function getStageSettings(
   projectId: string,
@@ -42,6 +43,7 @@ export async function getStageSettings(
 
 /**
  * PUT saves a session-level override (not persisted as "my default").
+ * @internal — Called directly by stage-settings tool surfaces at I2.
  */
 export async function putStageSettings(
   projectId: string,

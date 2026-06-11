@@ -18,15 +18,16 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   archiveToolMachine,
-  type ArchiveToolServices,
   type ArchiveItem,
+  type ArchiveToolServices,
 } from "@/machines/tools/archiveTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
+import { buildRealArchiveToolServices } from "@/services/tools/archiveTool";
 
 // ---------------------------------------------------------------------------
-// Mock services
+// Initial items (UI state seed — not from API at I1)
 // ---------------------------------------------------------------------------
 
 const MOCK_ITEMS: ArchiveItem[] = [
@@ -58,14 +59,6 @@ const MOCK_ITEMS: ArchiveItem[] = [
     keep: false,
   },
 ];
-
-function makeMockArchiveServices(_projectId: string): ArchiveToolServices {
-  return {
-    archiveProject: (_pid, _items, _dest, _ret) =>
-      Promise.resolve({ kept: "3.5 GB", dropped: "18.4 GB" }),
-    persistItem: (_pid, _name, _keep) => Promise.resolve({ ok: true }),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -163,9 +156,10 @@ function ItemRow({
 export function ArchiveTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: ArchiveToolServices }): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockArchiveServices(projectId);
+  const services = _testServices ?? buildRealArchiveToolServices();
 
   const [snapshot, send] = useActor(archiveToolMachine, {
     input: {

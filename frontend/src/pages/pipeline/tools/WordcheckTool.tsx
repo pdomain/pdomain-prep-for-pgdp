@@ -16,40 +16,13 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   wordcheckToolMachine,
-  type WordcheckToolServices,
   type Suspect,
 } from "@/machines/tools/wordcheckTool";
-
-// ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-function createMockWordcheckServices(): WordcheckToolServices {
-  return {
-    async acceptDictionaryFixes(_pid) {
-      return { fixedIds: [] };
-    },
-    async acceptHighConfidence(_pid) {
-      return { acceptedIds: [] };
-    },
-    async promoteToLibrary(_pid) {
-      return {
-        good: 0,
-        bad: 0,
-        bookGood: 0,
-        bookBad: 0,
-        libraryGood: 0,
-        libraryBad: 0,
-      };
-    },
-    async confirmStage(_pid) {
-      return { ok: true };
-    },
-  };
-}
+import { buildRealWordcheckToolServices } from "@/services/tools/wordcheckTool";
 
 const MOCK_SUSPECTS: Suspect[] = [
   {
@@ -556,8 +529,8 @@ export function WordcheckTool({
 }: ToolSlotProps): ReactNode {
   void runnerRef; // wired at I1
 
-  const projectId = "mock-project";
-  const services = useMemo(() => createMockWordcheckServices(), []);
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  const services = useMemo(() => buildRealWordcheckToolServices(), []);
 
   const [snapshot, send] = useActor(wordcheckToolMachine, {
     input: { projectId, stageIndex: 8, services },

@@ -41,9 +41,9 @@ import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
 import {
   imageStageReviewMachine,
+  type PageRow,
   type ImageStageReviewEvent,
   type ImageStageReviewServices,
-  type PageRow,
 } from "@/machines/imageStageReview";
 import type { ToolSlotProps } from "../toolSlot";
 import {
@@ -52,51 +52,7 @@ import {
   type ControlDef,
 } from "./stageSchemas";
 import { Button } from "@/components/ui/Button";
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-function makeImageStageReviewServices(
-  _projectId: string,
-  _stageId: string,
-): ImageStageReviewServices {
-  const mockPages: PageRow[] = Array.from({ length: 6 }, (_, i) => ({
-    idx: `page-${i + 1}`,
-    prefix: `p${String(i + 1).padStart(3, "0")}`,
-    state: i === 1 || i === 3 ? "flagged" : "clean",
-    flags: i === 1 ? ["speckle"] : i === 3 ? ["lowContrast"] : [],
-    pageNumber: i + 1,
-  }));
-
-  return {
-    fetchStagePages: () =>
-      Promise.resolve({
-        rows: mockPages,
-        totals: {
-          total: 6,
-          done: 6,
-          flagged: 2,
-          clean: 4,
-          reviewed: 0,
-          errors: 0,
-          running: 0,
-        },
-      }),
-    reRunPages: (_projectId, _stageId, draft, pageIds) =>
-      Promise.resolve(
-        pageIds.map((idx) => ({
-          idx,
-          prefix: idx,
-          state: "clean" as const,
-          flags: [],
-          pageNumber: 1,
-          ...draft,
-        })),
-      ),
-    confirmStage: () => Promise.resolve({ ok: true }),
-  };
-}
+import { buildRealImageStageReviewServices } from "@/services/tools/imageStageReview";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -847,6 +803,8 @@ export interface ImageStageReviewToolProps extends ToolSlotProps {
     snapshot: SnapshotFrom<typeof imageStageReviewMachine>;
     send: (event: ImageStageReviewEvent) => void;
   };
+  /** Test-only: inject services directly to bypass real API calls. */
+  _testServices?: ImageStageReviewServices;
 }
 
 /**
@@ -859,6 +817,7 @@ export function ImageStageReviewTool({
   stageId,
   runnerRef: _runnerRef,
   actorOverride,
+  _testServices,
 }: ImageStageReviewToolProps) {
   const { projectId = "mock-project" } = useParams();
 
@@ -868,8 +827,8 @@ export function ImageStageReviewTool({
   const controls = schema?.controls ?? [];
 
   const services = useMemo(
-    () => makeImageStageReviewServices(projectId, stageId),
-    [projectId, stageId],
+    () => _testServices ?? buildRealImageStageReviewServices(),
+    [_testServices],
   );
 
   const ownActor = useActor(imageStageReviewMachine, {

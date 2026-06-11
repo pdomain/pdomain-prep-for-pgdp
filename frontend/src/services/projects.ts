@@ -356,12 +356,18 @@ export function buildRealProjectDetailServices(): {
   return { fetchProjects };
 }
 
-/** Build real RecentActivityServices. */
+/**
+ * Build real RecentActivityServices.
+ * @internal — Wired to RecentActivityPanel at I2.
+ */
 export function buildRealRecentActivityServices(): RecentActivityServices {
   return { fetchRecentActivity };
 }
 
-/** Build real AttributesPanelServices. */
+/**
+ * Build real AttributesPanelServices.
+ * @internal — Wired to AttributesPanel at I2.
+ */
 export function buildRealAttributesPanelServices(): AttributesPanelServices {
   return { fetchAttributes, saveAttributes };
 }

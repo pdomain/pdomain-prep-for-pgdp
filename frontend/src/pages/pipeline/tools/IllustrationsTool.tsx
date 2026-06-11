@@ -20,74 +20,13 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   illustrationsToolMachine,
-  type IllustrationsToolServices,
-  type IllustrationRegion,
   type IllustrationKind,
+  type IllustrationRegion,
   type GalleryFilter,
 } from "@/machines/tools/illustrationsTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-function makeIllustrationsServices(
-  _projectId: string,
-): IllustrationsToolServices {
-  const mockItems: IllustrationRegion[] = [
-    {
-      id: "il-1",
-      page: "p0001",
-      kind: "plate",
-      w: 900,
-      h: 1100,
-      status: "review",
-      note: "Halftone frontispiece — verify no text overlap",
-    },
-    {
-      id: "il-2",
-      page: "p0003",
-      kind: "lineart",
-      w: 640,
-      h: 480,
-      status: "extracted",
-      note: "Chapter heading vignette",
-    },
-    {
-      id: "il-3",
-      page: "p0005",
-      kind: "initial",
-      w: 120,
-      h: 130,
-      status: "review",
-      note: "Drop-cap initial T — possible text overlap",
-    },
-    {
-      id: "il-4",
-      page: "p0009",
-      kind: "figure",
-      w: 800,
-      h: 600,
-      status: "extracted",
-      note: "Diagram with caption",
-    },
-  ];
-
-  return {
-    detectRegions: () =>
-      Promise.resolve({
-        items: mockItems,
-        counts: {
-          detected: mockItems.length,
-          extracted: mockItems.filter((i) => i.status === "extracted").length,
-          review: mockItems.filter((i) => i.status === "review").length,
-          flagged: mockItems.filter((i) => i.status === "flagged").length,
-        },
-      }),
-    persistRegion: () => Promise.resolve(),
-  };
-}
+import { buildRealIllustrationsToolServices } from "@/services/tools/illustrationsTool";
 
 // ---------------------------------------------------------------------------
 // Kind definitions
@@ -449,7 +388,7 @@ export function IllustrationsTool({
   const { projectId = "mock-project" } = useParams();
 
   const services = useMemo(
-    () => makeIllustrationsServices(projectId),
+    () => buildRealIllustrationsToolServices(),
     [projectId],
   );
 

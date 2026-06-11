@@ -7,5 +7,7 @@
     "src/design/index.ts",
     "src/machines/**"
   ],
-  "ignoreDependencies": ["lucide-react", "jszip"]
+  "ignoreDependencies": ["lucide-react"],
+  "ignoreExportsUsedInFile": true,
+  "tags": ["-@internal"]
 }

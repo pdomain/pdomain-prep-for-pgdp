@@ -15,38 +15,13 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   proofPackToolMachine,
-  type ProofPackToolServices,
   type TreeRow,
+  type ProofPackToolServices,
 } from "@/machines/tools/proofPackTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-
-// ---------------------------------------------------------------------------
-// Mock services
-// ---------------------------------------------------------------------------
-
-const MOCK_TREE: TreeRow[] = [
-  { name: "images/", dir: true, d: 0 },
-  { name: "p0001.png", d: 1, meta: "1.1 MB" },
-  { name: "p0002.png", d: 1, meta: "1.0 MB" },
-  { name: "text/", dir: true, d: 0 },
-  { name: "p0001.txt", d: 1, meta: "2.4 KB" },
-  { name: "p0002.txt", d: 1, meta: "2.2 KB" },
-  { name: "illustrations/", dir: true, d: 0 },
-  { name: "ill_001.png", d: 1, meta: "450 KB" },
-  { name: "metadata.json", d: 0, meta: "8.2 KB" },
-];
-
-function makeMockProofPackServices(_projectId: string): ProofPackToolServices {
-  return {
-    assemblePack: (_pid, _include) =>
-      Promise.resolve({
-        tree: MOCK_TREE,
-        completeness: { complete: 387, total: 387 },
-      }),
-  };
-}
+import { buildRealProofPackToolServices } from "@/services/tools/proofPackTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -211,9 +186,10 @@ function TreeView({ rows }: { rows: TreeRow[] }) {
 export function ProofPackTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: ProofPackToolServices }): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockProofPackServices(projectId);
+  const services = _testServices ?? buildRealProofPackToolServices();
 
   const [snapshot, send] = useActor(proofPackToolMachine, {
     input: { projectId, stageIndex: 18, services },

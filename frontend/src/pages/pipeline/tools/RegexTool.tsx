@@ -30,82 +30,14 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   regexPassMachine,
   type RegexRule,
   type RegexPassServices,
 } from "@/machines/tools/regexPass";
-
-// ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-const MOCK_RULES: RegexRule[] = [
-  {
-    id: "rx1",
-    name: "Fix em-dash spacing",
-    find: " -- ",
-    repl: "—",
-    flags: "g",
-    scope: "all",
-    status: "applied",
-    enabled: true,
-    matches: 12,
-  },
-  {
-    id: "rx2",
-    name: "Straighten quotes",
-    find: '"',
-    repl: "“",
-    flags: "g",
-    scope: "all",
-    status: "review",
-    enabled: true,
-    matches: 34,
-  },
-  {
-    id: "rx3",
-    name: "Fix tbe → the",
-    find: "\\btbe\\b",
-    repl: "the",
-    flags: "gi",
-    scope: "all",
-    status: "pending",
-    enabled: true,
-    matches: 3,
-  },
-];
-
-function createMockRegexServices(): RegexPassServices {
-  return {
-    async fetchRules(_pid) {
-      return {
-        rules: MOCK_RULES,
-        counts: {
-          rules: MOCK_RULES.length,
-          applied: 1,
-          review: 1,
-          pending: 1,
-          matches: MOCK_RULES.reduce((s, r) => s + r.matches, 0),
-        },
-        snapshotId: "snap-001",
-      };
-    },
-    async applyRule(_pid, ruleId) {
-      const rule = MOCK_RULES.find((r) => r.id === ruleId);
-      const applied: RegexRule = {
-        ...(rule ?? MOCK_RULES[0]!),
-        id: ruleId,
-        status: "applied",
-      };
-      return {
-        rule: applied,
-        counts: { rules: 3, applied: 2, review: 0, pending: 0, matches: 49 },
-      };
-    },
-  };
-}
+import { buildRealRegexPassServices } from "@/services/tools/regexPass";
 
 // ---------------------------------------------------------------------------
 // Status badge
@@ -528,11 +460,18 @@ function RegexTabBar({
 // Main RegexTool
 // ---------------------------------------------------------------------------
 
-export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
+export function RegexTool({
+  stageId,
+  runnerRef,
+  _testServices,
+}: ToolSlotProps & { _testServices?: RegexPassServices }): ReactNode {
   void runnerRef; // wired at I1
 
-  const projectId = "mock-project";
-  const services = useMemo(() => createMockRegexServices(), []);
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  const services = useMemo(
+    () => _testServices ?? buildRealRegexPassServices(),
+    [_testServices],
+  );
 
   const [snapshot, send] = useActor(regexPassMachine, {
     input: { projectId, stageIndex: 11, services },

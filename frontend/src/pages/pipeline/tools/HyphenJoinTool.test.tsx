@@ -22,13 +22,75 @@ import {
   waitFor,
   act,
 } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { HyphenJoinTool } from "./HyphenJoinTool";
+import type {
+  HyphenJoinServices,
+  HyphenCase,
+} from "@/machines/tools/hyphenJoin";
 
 // ---------------------------------------------------------------------------
-// Minimal runnerRef stub (unused at F5 — wired at I1)
+// Minimal runnerRef stub + test services
 // ---------------------------------------------------------------------------
 
 const fakeRunnerRef = {} as never;
+
+const MOCK_CASES: HyphenCase[] = [
+  {
+    caseId: "hc1",
+    kind: "auto",
+    head: "house",
+    tail: "hold",
+    line: 22,
+    page: "p0004",
+    status: "undecided",
+    validated: false,
+    conf: 0.88,
+    book: { inBody: true, joinedElsewhere: true, mismatch: false },
+  },
+  {
+    caseId: "hc2",
+    kind: "auto",
+    head: "break",
+    tail: "fast",
+    line: 7,
+    page: "p0005",
+    status: "joined",
+    validated: false,
+    conf: 0.91,
+    book: { inBody: true, joinedElsewhere: false, mismatch: false },
+  },
+  {
+    caseId: "hc3",
+    kind: "mismatch",
+    head: "over",
+    tail: "coat",
+    line: 14,
+    page: "p0006",
+    status: "mismatch",
+    validated: false,
+    conf: 0.77,
+    book: { inBody: false, joinedElsewhere: true, mismatch: true },
+  },
+];
+
+const TEST_SERVICES: HyphenJoinServices = {
+  async scanHyphenation(_pid) {
+    return {
+      cases: MOCK_CASES,
+      totals: {
+        total: 3,
+        joined: 1,
+        validated: 0,
+        undecided: 1,
+        flagged: 0,
+        crosspage: 0,
+        mismatch: 1,
+        unvalidated: 1,
+      },
+    };
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Render helper
@@ -36,7 +98,13 @@ const fakeRunnerRef = {} as never;
 
 function renderTool() {
   return render(
-    <HyphenJoinTool stageId="hyphen_join" runnerRef={fakeRunnerRef} />,
+    <MemoryRouter>
+      <HyphenJoinTool
+        stageId="hyphen_join"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
   );
 }
 

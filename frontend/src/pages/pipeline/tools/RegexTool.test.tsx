@@ -16,7 +16,9 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { RegexTool } from "./RegexTool";
+import type { RegexPassServices, RegexRule } from "@/machines/tools/regexPass";
 
 // ---------------------------------------------------------------------------
 // Minimal runnerRef stub (unused at F5 — wired at I1)
@@ -25,11 +27,80 @@ import { RegexTool } from "./RegexTool";
 const fakeRunnerRef = {} as never;
 
 // ---------------------------------------------------------------------------
+// Test services + mock rules
+// ---------------------------------------------------------------------------
+
+const MOCK_RULES: RegexRule[] = [
+  {
+    id: "rx1",
+    name: "Ligature fi",
+    find: "fi",
+    repl: "fi",
+    flags: "g",
+    scope: "all",
+    status: "pending",
+    enabled: true,
+    matches: 12,
+  },
+  {
+    id: "rx2",
+    name: "Ligature fl",
+    find: "fl",
+    repl: "fl",
+    flags: "g",
+    scope: "all",
+    status: "pending",
+    enabled: true,
+    matches: 8,
+  },
+  {
+    id: "rx3",
+    name: "Em-dash",
+    find: "--",
+    repl: "—",
+    flags: "g",
+    scope: "all",
+    status: "pending",
+    enabled: true,
+    matches: 5,
+  },
+];
+
+const TEST_SERVICES: RegexPassServices = {
+  fetchRules: async (_projectId) => ({
+    rules: MOCK_RULES,
+    counts: {
+      rules: 3,
+      applied: 0,
+      review: 0,
+      pending: 3,
+      matches: 25,
+    },
+    snapshotId: null,
+  }),
+  applyRule: async (_projectId, ruleId) => {
+    const rule = MOCK_RULES.find((r) => r.id === ruleId) ?? MOCK_RULES[0]!;
+    return {
+      rule: { ...rule, status: "applied" as const },
+      counts: { rules: 3, applied: 1, review: 0, pending: 2, matches: 25 },
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderTool() {
-  return render(<RegexTool stageId="regex" runnerRef={fakeRunnerRef} />);
+  return render(
+    <MemoryRouter>
+      <RegexTool
+        stageId="regex"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
+  );
 }
 
 // ---------------------------------------------------------------------------

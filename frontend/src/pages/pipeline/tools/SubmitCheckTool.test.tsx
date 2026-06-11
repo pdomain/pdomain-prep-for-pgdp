@@ -16,7 +16,12 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { SubmitCheckTool } from "./SubmitCheckTool";
+import type {
+  SubmitCheckToolServices,
+  SubmitCheck,
+} from "@/machines/tools/submitCheckTool";
 
 // ---------------------------------------------------------------------------
 // Stub runnerRef
@@ -25,12 +30,35 @@ import { SubmitCheckTool } from "./SubmitCheckTool";
 const fakeRunnerRef = {} as never;
 
 // ---------------------------------------------------------------------------
+// Test services + mock checks
+// ---------------------------------------------------------------------------
+
+const MOCK_CHECKS: SubmitCheck[] = [
+  { ok: true, label: "All pages have images" },
+  { ok: true, label: "All pages have text" },
+  { ok: true, label: "Metadata complete" },
+  { ok: true, label: "No missing illustrations" },
+  { ok: true, label: "Package size within limits" },
+];
+
+const TEST_SERVICES: SubmitCheckToolServices = {
+  dryRun: async (_projectId, _target) => MOCK_CHECKS,
+  liveSubmit: async (_projectId, _target) => ({ at: "2026-06-11T00:00:00Z" }),
+};
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderSubmitCheck() {
   return render(
-    <SubmitCheckTool stageId="submit_check" runnerRef={fakeRunnerRef} />,
+    <MemoryRouter>
+      <SubmitCheckTool
+        stageId="submit_check"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
   );
 }
 

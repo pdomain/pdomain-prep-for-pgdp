@@ -10,7 +10,13 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { TextZonesTool } from "./TextZonesTool";
+import type {
+  TextZonesToolServices,
+  ZonePageRow,
+  ZoneTotals,
+} from "@/machines/tools/textZonesTool";
 
 // ---------------------------------------------------------------------------
 // Minimal runnerRef stub (unused at F5 — wired at I1)
@@ -19,12 +25,95 @@ import { TextZonesTool } from "./TextZonesTool";
 const fakeRunnerRef = {} as never;
 
 // ---------------------------------------------------------------------------
+// Test services + mock zone pages (total=3; idx "0002" is clean)
+// ---------------------------------------------------------------------------
+
+const MOCK_ZONE_ROWS: ZonePageRow[] = [
+  {
+    idx: "0001",
+    prefix: "p001",
+    state: "flagged",
+    flags: ["splitSuggested"],
+    zones: 4,
+    lines: 32,
+    words: 180,
+    pageNumber: 1,
+    split: { axis: "col", into: 2, gutter: 0.5, conf: 0.92 },
+  },
+  {
+    idx: "0002",
+    prefix: "p002",
+    state: "clean",
+    flags: [],
+    zones: 3,
+    lines: 28,
+    words: 160,
+    pageNumber: 2,
+  },
+  {
+    idx: "0003",
+    prefix: "p003",
+    state: "flagged",
+    flags: ["splitSuggested"],
+    zones: 5,
+    lines: 38,
+    words: 200,
+    pageNumber: 3,
+    split: { axis: "col", into: 2, gutter: 0.5, conf: 0.88 },
+  },
+];
+
+const MOCK_TOTALS: ZoneTotals = {
+  total: 3,
+  done: 3,
+  clean: 1,
+  flagged: 2,
+  reviewed: 0,
+  splits: 1,
+};
+
+const TEST_SERVICES: TextZonesToolServices = {
+  fetchZonePages: async (_projectId) => ({
+    rows: MOCK_ZONE_ROWS,
+    totals: MOCK_TOTALS,
+  }),
+  applySplit: async (_projectId, _pageId, _draft) => ({
+    parentRow: { ...MOCK_ZONE_ROWS[0]!, state: "split" as const },
+    childRows: [
+      {
+        idx: "0001a",
+        prefix: "p001a",
+        state: "clean" as const,
+        flags: [],
+        pageNumber: 1,
+      },
+      {
+        idx: "0001b",
+        prefix: "p001b",
+        state: "clean" as const,
+        flags: [],
+        pageNumber: 1,
+      },
+    ],
+  }),
+  redetectLayout: async (_projectId, _pageId, _draft) => ({ zones: [] }),
+  persistLayout: async (_projectId, _pageId, _data) => ({ ok: true }),
+  confirmStage: async (_projectId) => ({ ok: true }),
+};
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderTool() {
   return render(
-    <TextZonesTool stageId="text_zones" runnerRef={fakeRunnerRef} />,
+    <MemoryRouter>
+      <TextZonesTool
+        stageId="text_zones"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
   );
 }
 

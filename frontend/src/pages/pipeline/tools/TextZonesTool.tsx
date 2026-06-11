@@ -20,138 +20,16 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   textZonesToolMachine,
   type ZonePageRow,
   type ZoneTotals,
-  type Zone,
   type SplitDraft,
   type TextZonesToolServices,
 } from "@/machines/tools/textZonesTool";
-
-// ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-/**
- * F5 mock services for textZonesTool.
- * Realistic shapes; no real I/O.
- */
-function createMockTextZonesServices(projectId: string): TextZonesToolServices {
-  return {
-    async fetchZonePages(_pid) {
-      // Deterministic fixture: 3 pages
-      const rows: ZonePageRow[] = [
-        {
-          idx: "0001",
-          prefix: "p0001",
-          state: "flagged",
-          flags: ["splitSuggested"],
-          zones: 4,
-          lines: 42,
-          words: 310,
-          pageNumber: 1,
-          layoutKind: "double",
-          split: { axis: "col", into: 2, gutter: 0.49, conf: 0.92 },
-        },
-        {
-          idx: "0002",
-          prefix: "p0002",
-          state: "clean",
-          zones: 3,
-          lines: 38,
-          words: 285,
-          pageNumber: 2,
-          layoutKind: "single",
-        },
-        {
-          idx: "0003",
-          prefix: "p0003",
-          state: "flagged",
-          flags: ["mergedBlocks"],
-          zones: 5,
-          lines: 44,
-          words: 330,
-          pageNumber: 3,
-          layoutKind: "single",
-        },
-      ];
-      const totals: ZoneTotals = {
-        total: 3,
-        done: 3,
-        clean: 1,
-        flagged: 2,
-        reviewed: 0,
-        splits: 1,
-      };
-      void projectId;
-      return { rows, totals };
-    },
-
-    async applySplit(pid, pageId, draft) {
-      void pid;
-      void draft;
-      const parentRow: ZonePageRow = {
-        idx: pageId,
-        prefix: `p${pageId}`,
-        state: "split",
-        layoutKind: "double",
-      };
-      const childRows: [ZonePageRow, ZonePageRow] = [
-        {
-          idx: `${pageId}-a`,
-          prefix: `p${pageId}a`,
-          state: "clean",
-          zones: 3,
-          lines: 22,
-          words: 160,
-          layoutKind: "single",
-        },
-        {
-          idx: `${pageId}-b`,
-          prefix: `p${pageId}b`,
-          state: "clean",
-          zones: 2,
-          lines: 20,
-          words: 150,
-          layoutKind: "single",
-        },
-      ];
-      return { parentRow, childRows };
-    },
-
-    async redetectLayout(pid, pageId, _current) {
-      void pid;
-      void pageId;
-      // Return a minimal zone set
-      const zones: Zone[] = [
-        { id: "z1", type: "body", x: 0.1, y: 0.1, w: 0.8, h: 0.7, order: 1 },
-        {
-          id: "z2",
-          type: "footer",
-          x: 0.1,
-          y: 0.85,
-          w: 0.8,
-          h: 0.08,
-          order: null,
-        },
-      ];
-      return { zones };
-    },
-
-    async persistLayout(pid, pageId, _data) {
-      void pid;
-      void pageId;
-      return { ok: true };
-    },
-
-    async confirmStage(pid) {
-      void pid;
-      return { ok: true };
-    },
-  };
-}
+import { buildRealTextZonesToolServices } from "@/services/tools/textZonesTool";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1048,15 +926,16 @@ function ZoneTabBar({
 export function TextZonesTool({
   stageId,
   runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: TextZonesToolServices }): ReactNode {
   void runnerRef; // wired at I1
 
   // Extract projectId from the runner context (at I1; for now use fixture)
-  const projectId = "mock-project";
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
 
   const services = useMemo(
-    () => createMockTextZonesServices(projectId),
-    [projectId],
+    () => _testServices ?? buildRealTextZonesToolServices(),
+    [_testServices],
   );
 
   const [snapshot, send] = useActor(textZonesToolMachine, {

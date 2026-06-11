@@ -18,34 +18,13 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   submitCheckToolMachine,
-  type SubmitCheckToolServices,
   type SubmitCheck,
+  type SubmitCheckToolServices,
 } from "@/machines/tools/submitCheckTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-
-// ---------------------------------------------------------------------------
-// Mock services
-// ---------------------------------------------------------------------------
-
-const MOCK_CHECKS: SubmitCheck[] = [
-  { ok: true, label: "File naming scheme matches PGDP convention" },
-  { ok: true, label: "Package size within upload limits (1.38 GB)" },
-  { ok: true, label: "Manifest SHA-256 verified" },
-  { ok: true, label: "Metadata fields complete" },
-  { ok: true, label: "No unsupported characters in text files" },
-];
-
-function makeMockSubmitCheckServices(
-  _projectId: string,
-): SubmitCheckToolServices {
-  return {
-    dryRun: (_pid, _target) => Promise.resolve(MOCK_CHECKS),
-    liveSubmit: (_pid, _target) =>
-      Promise.resolve({ at: new Date().toISOString() }),
-  };
-}
+import { buildRealSubmitCheckToolServices } from "@/services/tools/submitCheckTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -152,9 +131,10 @@ function ConfirmDialog({
 export function SubmitCheckTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: SubmitCheckToolServices }): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockSubmitCheckServices(projectId);
+  const services = _testServices ?? buildRealSubmitCheckToolServices();
 
   const [snapshot, send] = useActor(submitCheckToolMachine, {
     input: {

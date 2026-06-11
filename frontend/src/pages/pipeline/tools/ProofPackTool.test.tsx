@@ -14,7 +14,12 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ProofPackTool } from "./ProofPackTool";
+import type {
+  ProofPackToolServices,
+  TreeRow,
+} from "@/machines/tools/proofPackTool";
 
 // ---------------------------------------------------------------------------
 // Stub runnerRef
@@ -23,12 +28,37 @@ import { ProofPackTool } from "./ProofPackTool";
 const fakeRunnerRef = {} as never;
 
 // ---------------------------------------------------------------------------
+// Test services + mock tree (complete 387 / 387)
+// ---------------------------------------------------------------------------
+
+const MOCK_TREE: TreeRow[] = [
+  { name: "proof-pack/", dir: true, d: 0 },
+  { name: "images/", dir: true, d: 1 },
+  { name: "p001.png", d: 2, meta: "1.2 MB" },
+  { name: "text/", dir: true, d: 1 },
+  { name: "p001.txt", d: 2, meta: "4.1 KB" },
+];
+
+const TEST_SERVICES: ProofPackToolServices = {
+  assemblePack: async (_projectId, _include) => ({
+    tree: MOCK_TREE,
+    completeness: { complete: 387, total: 387 },
+  }),
+};
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderProofPack() {
   return render(
-    <ProofPackTool stageId="proof_pack" runnerRef={fakeRunnerRef} />,
+    <MemoryRouter>
+      <ProofPackTool
+        stageId="proof_pack"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
   );
 }
 

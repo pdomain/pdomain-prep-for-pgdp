@@ -76,6 +76,8 @@ export function subscribeProject(
  *     (projectId, cb) => subscribePageChannel(projectId, idx0, cb),
  *     projectId
  *   )
+ *
+ * @internal — Wired to per-page tool components at I2.
  */
 export function subscribePageChannel(
   projectId: string,

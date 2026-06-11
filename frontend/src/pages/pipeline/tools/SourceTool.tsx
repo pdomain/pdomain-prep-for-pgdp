@@ -56,15 +56,12 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
+import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
-import {
-  sourceToolMachine,
-  type SourceToolServices,
-} from "@/machines/tools/source";
+import { sourceToolMachine } from "@/machines/tools/source";
 import type { ToolSlotProps } from "@/pages/pipeline/toolSlot";
 import { Seg } from "@/design/Seg";
-import { createMockServer } from "@/mocks/server";
-import { MOCK_PROJECT_ID } from "@/mocks/fixtures";
+import { buildRealSourceToolServices } from "@/services/tools/sourceTool";
 
 // Sub-module imports — all exports re-exported for test convenience
 export {
@@ -83,30 +80,6 @@ import { SourceFiles } from "./SourceToolFiles";
 import { SourceOverview } from "./SourceToolOverview";
 import { SourceStepSettings } from "./SourceToolSettings";
 import { SourcePageWorkbench } from "./SourceToolWorkbench";
-
-// ---------------------------------------------------------------------------
-// SourceTool — main tool component (registered in TOOL_REGISTRY)
-// ---------------------------------------------------------------------------
-
-/**
- * Service adapter: wraps the mock server for use with sourceToolMachine.
- */
-function createSourceToolServices(): SourceToolServices {
-  const mockServer = createMockServer();
-  return {
-    confirmSelection: (projectId, files) =>
-      mockServer.confirmSourceSelection(
-        projectId,
-        files.map((f) => ({ idx: f.idx, state: f.state })),
-      ),
-    saveAsDefault: (projectId, stageId, draft) =>
-      mockServer.saveStageSettingsAsDefault(projectId, stageId, draft),
-    revertSettings: (projectId, stageId) =>
-      mockServer.revertStageSettings(projectId, stageId),
-    resetSettings: (projectId, stageId) =>
-      mockServer.resetStageSettings(projectId, stageId),
-  };
-}
 
 /** The tabs available on the source stage. */
 const SOURCE_TABS = [
@@ -144,13 +117,14 @@ function matchesState(
  */
 export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
   // useQueryClient() reserved for TanStack Query integration at I1
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
   const [activeTab, setActiveTab] = useState<SourceTab>("files");
 
-  const services = useMemo(() => createSourceToolServices(), []);
+  const services = useMemo(() => buildRealSourceToolServices(), []);
 
   const [snapshot, send] = useActor(sourceToolMachine, {
     input: {
-      projectId: MOCK_PROJECT_ID,
+      projectId,
       stageId,
       services,
     },

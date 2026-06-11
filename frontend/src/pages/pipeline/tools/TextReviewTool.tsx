@@ -31,28 +31,14 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   textReviewToolMachine,
   type QueueItem,
   type Thread,
-  type TextReviewToolServices,
 } from "@/machines/tools/textReviewTool";
-
-// ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-function createMockTextReviewServices(): TextReviewToolServices {
-  return {
-    async approveLowRisk(_pid) {
-      return { approvedIds: [] };
-    },
-    async confirmStage(_pid) {
-      return { ok: true };
-    },
-  };
-}
+import { buildRealTextReviewToolServices } from "@/services/tools/textReviewTool";
 
 const MOCK_ITEMS: QueueItem[] = [
   {
@@ -538,8 +524,8 @@ export function TextReviewTool({
 }: ToolSlotProps): ReactNode {
   void runnerRef; // wired at I1
 
-  const projectId = "mock-project";
-  const services = useMemo(() => createMockTextReviewServices(), []);
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  const services = useMemo(() => buildRealTextReviewToolServices(), []);
 
   const [snapshot, send] = useActor(textReviewToolMachine, {
     input: { projectId, stageIndex: 9, services },

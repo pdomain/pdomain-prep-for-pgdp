@@ -25,6 +25,7 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
   hyphenJoinMachine,
@@ -33,72 +34,10 @@ import {
   type HyphenJoinEvent,
   type HyphenJoinServices,
 } from "@/machines/tools/hyphenJoin";
+import { buildRealHyphenJoinServices } from "@/services/tools/hyphenJoin";
 
 // ---------------------------------------------------------------------------
-// Mock services (F5 — replaced at I1)
-// ---------------------------------------------------------------------------
-
-const MOCK_CASES: HyphenCase[] = [
-  {
-    caseId: "hc1",
-    kind: "auto",
-    head: "house",
-    tail: "hold",
-    line: 22,
-    page: "p0004",
-    status: "undecided",
-    validated: false,
-    conf: 0.88,
-    book: { inBody: true, joinedElsewhere: true, mismatch: false },
-  },
-  {
-    caseId: "hc2",
-    kind: "auto",
-    head: "break",
-    tail: "fast",
-    line: 7,
-    page: "p0005",
-    status: "joined",
-    validated: false,
-    conf: 0.91,
-    book: { inBody: true, joinedElsewhere: false, mismatch: false },
-  },
-  {
-    caseId: "hc3",
-    kind: "mismatch",
-    head: "over",
-    tail: "coat",
-    line: 14,
-    page: "p0006",
-    status: "mismatch",
-    validated: false,
-    conf: 0.77,
-    book: { inBody: false, joinedElsewhere: true, mismatch: true },
-  },
-];
-
-function createMockHyphenJoinServices(): HyphenJoinServices {
-  return {
-    async scanHyphenation(_pid) {
-      return {
-        cases: MOCK_CASES,
-        totals: {
-          total: 3,
-          joined: 1,
-          validated: 0,
-          undecided: 1,
-          flagged: 0,
-          crosspage: 0,
-          mismatch: 1,
-          unvalidated: 1,
-        },
-      };
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Mock page-workbench data (F5 only — replaced at I1 via OPEN_PAGE payload)
+// Mock page-workbench data (UI state seed — not from API at I1)
 // ---------------------------------------------------------------------------
 
 const MOCK_PAGE_CASES: HyphenCase[] = [
@@ -1035,11 +974,15 @@ function HyphenCaseList({
 export function HyphenJoinTool({
   stageId,
   runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: HyphenJoinServices }): ReactNode {
   void runnerRef; // wired at I1
 
-  const projectId = "mock-project";
-  const services = useMemo(() => createMockHyphenJoinServices(), []);
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  const services = useMemo(
+    () => _testServices ?? buildRealHyphenJoinServices(),
+    [_testServices],
+  );
 
   const [snapshot, send] = useActor(hyphenJoinMachine, {
     input: { projectId, stageIndex: 6, services },

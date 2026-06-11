@@ -18,43 +18,13 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   buildPackageToolMachine,
-  type BuildPackageToolServices,
   type PreflightStatus,
 } from "@/machines/tools/buildPackageTool";
 import type { TreeRow } from "@/machines/tools/proofPackTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-
-// ---------------------------------------------------------------------------
-// Mock services
-// ---------------------------------------------------------------------------
-
-const MOCK_BP_TREE: TreeRow[] = [
-  { name: "manifest.json", d: 0, meta: "4.2 KB" },
-  { name: "belloc-survivals.zip", d: 0, meta: "1.38 GB" },
-  { name: "provenance.md", d: 0, meta: "2.1 KB" },
-  { name: "checksums.sha256", d: 0, meta: "38 KB" },
-  { name: "metadata.json", d: 0, meta: "8.2 KB" },
-];
-
-function makeMockBuildServices(_projectId: string): BuildPackageToolServices {
-  return {
-    buildArtifacts: (_pid, _algo) =>
-      Promise.resolve({
-        deliverable: { files: MOCK_BP_TREE, count: 5 },
-        manifest: {
-          project: "belloc-survivals",
-          pages: 387,
-          canvas: "2480x3400",
-          built: "2026-06-02T00:00:00Z",
-          pipeline: "pd-prep v1.0",
-          files: 1229,
-          sha256: "a3f1…9c2",
-        },
-      }),
-  };
-}
+import { buildRealBuildPackageToolServices } from "@/services/tools/buildPackageTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -132,7 +102,7 @@ export function BuildPackageTool({
   runnerRef: _runnerRef,
 }: ToolSlotProps): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockBuildServices(projectId);
+  const services = buildRealBuildPackageToolServices();
 
   const [snapshot, send] = useActor(buildPackageToolMachine, {
     input: { projectId, stageIndex: 19, services },

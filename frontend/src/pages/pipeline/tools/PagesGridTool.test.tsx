@@ -26,6 +26,24 @@ import type { PagesGridServices } from "@/machines/tools/pagesGrid";
 
 const MOCK_RUNNER_REF = {} as ToolSlotProps["runnerRef"];
 
+// ---------------------------------------------------------------------------
+// Default mock pages (8 pages; page-2 flagged with overCrop)
+// ---------------------------------------------------------------------------
+
+const MOCK_PAGES = Array.from({ length: 8 }, (_, i) => ({
+  pageId: `page-${i + 1}`,
+  n: i + 1,
+  thumbUrl: "",
+  flags: i + 1 === 2 ? ["overCrop"] : [],
+  bbox: [0.08, 0.07, 0.92, 0.93] as [number, number, number, number],
+  skewDeg: null,
+}));
+
+const DEFAULT_TEST_SERVICES: PagesGridServices = {
+  fetchPages: async (_pid, _sid) => MOCK_PAGES,
+  savePage: async (_pid, _sid, draft) => draft,
+};
+
 function renderPagesGrid(
   props: Partial<ToolSlotProps> & {
     _testServices?: PagesGridServices;
@@ -33,7 +51,12 @@ function renderPagesGrid(
 ) {
   return render(
     <MemoryRouter>
-      <PagesGridTool stageId="crop" runnerRef={MOCK_RUNNER_REF} {...props} />
+      <PagesGridTool
+        stageId="crop"
+        runnerRef={MOCK_RUNNER_REF}
+        _testServices={DEFAULT_TEST_SERVICES}
+        {...props}
+      />
     </MemoryRouter>,
   );
 }

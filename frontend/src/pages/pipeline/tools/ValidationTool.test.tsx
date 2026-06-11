@@ -23,7 +23,12 @@ import {
   act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ValidationTool } from "./ValidationTool";
+import type {
+  ValidationToolServices,
+  ValidationRule,
+} from "@/machines/tools/validationTool";
 
 // ---------------------------------------------------------------------------
 // Stub runnerRef
@@ -32,12 +37,61 @@ import { ValidationTool } from "./ValidationTool";
 const fakeRunnerRef = {} as never;
 
 // ---------------------------------------------------------------------------
+// Test services + mock rules (r1–r8; r4 is error, r2 is warn)
+// ---------------------------------------------------------------------------
+
+const MOCK_RULES: ValidationRule[] = [
+  {
+    id: "r1",
+    name: "All pages have images",
+    level: "pass",
+    detail: "387 pages OK",
+  },
+  {
+    id: "r2",
+    name: "Metadata fields present",
+    level: "warn",
+    detail: "Author missing",
+  },
+  { id: "r3", name: "No zero-byte files", level: "pass", detail: "Clean" },
+  {
+    id: "r4",
+    name: "OCR text present",
+    level: "error",
+    detail: "12 pages missing text",
+  },
+  { id: "r5", name: "Image format valid", level: "pass", detail: "All PNG" },
+  {
+    id: "r6",
+    name: "Package structure",
+    level: "pass",
+    detail: "Correct layout",
+  },
+  { id: "r7", name: "Filename convention", level: "pass", detail: "All match" },
+  { id: "r8", name: "Zip integrity", level: "pass", detail: "No corruption" },
+];
+
+const TEST_SERVICES: ValidationToolServices = {
+  runChecks: async (_projectId) => ({
+    rules: MOCK_RULES,
+    counts: { pass: 6, warn: 1, error: 1 },
+  }),
+  persistWaiver: async (_projectId, _ruleId, _note) => ({ ok: true }),
+};
+
+// ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderValidation() {
   return render(
-    <ValidationTool stageId="validation" runnerRef={fakeRunnerRef} />,
+    <MemoryRouter>
+      <ValidationTool
+        stageId="validation"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
   );
 }
 

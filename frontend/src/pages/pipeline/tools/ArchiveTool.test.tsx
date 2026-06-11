@@ -15,20 +15,36 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { ArchiveTool } from "./ArchiveTool";
+import type { ArchiveToolServices } from "@/machines/tools/archiveTool";
 
 // ---------------------------------------------------------------------------
-// Stub runnerRef
+// Stub runnerRef + test services
 // ---------------------------------------------------------------------------
 
 const fakeRunnerRef = {} as never;
+
+const TEST_SERVICES: ArchiveToolServices = {
+  archiveProject: (_pid, _items, _dest, _ret) =>
+    Promise.resolve({ kept: "3.5 GB", dropped: "18.4 GB" }),
+  persistItem: (_pid, _name, _keep) => Promise.resolve({ ok: true }),
+};
 
 // ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
 function renderArchive() {
-  return render(<ArchiveTool stageId="archive" runnerRef={fakeRunnerRef} />);
+  return render(
+    <MemoryRouter>
+      <ArchiveTool
+        stageId="archive"
+        runnerRef={fakeRunnerRef}
+        _testServices={TEST_SERVICES}
+      />
+    </MemoryRouter>,
+  );
 }
 
 // ---------------------------------------------------------------------------

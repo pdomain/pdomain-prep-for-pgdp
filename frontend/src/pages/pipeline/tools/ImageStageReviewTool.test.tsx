@@ -24,6 +24,10 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ImageStageReviewTool } from "./ImageStageReviewTool";
 import type { ToolSlotProps } from "../toolSlot";
+import type {
+  ImageStageReviewServices,
+  PageRow,
+} from "@/machines/imageStageReview";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -31,10 +35,50 @@ import type { ToolSlotProps } from "../toolSlot";
 
 const MOCK_RUNNER_REF = {} as ToolSlotProps["runnerRef"];
 
+const MOCK_PAGES: PageRow[] = Array.from({ length: 6 }, (_, i) => ({
+  idx: `page-${i + 1}`,
+  prefix: `p${String(i + 1).padStart(3, "0")}`,
+  state: i === 1 || i === 3 ? "flagged" : "clean",
+  flags: i === 1 ? ["speckle"] : i === 3 ? ["lowContrast"] : [],
+  pageNumber: i + 1,
+}));
+
+const TEST_SERVICES: ImageStageReviewServices = {
+  fetchStagePages: () =>
+    Promise.resolve({
+      rows: MOCK_PAGES,
+      totals: {
+        total: 6,
+        done: 6,
+        flagged: 2,
+        clean: 4,
+        reviewed: 0,
+        errors: 0,
+        running: 0,
+      },
+    }),
+  reRunPages: (_projectId, _stageId, draft, pageIds) =>
+    Promise.resolve(
+      pageIds.map((idx) => ({
+        idx,
+        prefix: idx,
+        state: "clean" as const,
+        flags: [],
+        pageNumber: 1,
+        ...draft,
+      })),
+    ),
+  confirmStage: () => Promise.resolve({ ok: true }),
+};
+
 function renderReview(stageId: string) {
   return render(
     <MemoryRouter>
-      <ImageStageReviewTool stageId={stageId} runnerRef={MOCK_RUNNER_REF} />
+      <ImageStageReviewTool
+        stageId={stageId}
+        runnerRef={MOCK_RUNNER_REF}
+        _testServices={TEST_SERVICES}
+      />
     </MemoryRouter>,
   );
 }

@@ -27,70 +27,14 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   validationToolMachine,
-  type ValidationToolServices,
   type ValidationRule,
   type RuleLevel,
+  type ValidationToolServices,
 } from "@/machines/tools/validationTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-const MOCK_RULES: ValidationRule[] = [
-  {
-    id: "r1",
-    name: "Metadata complete",
-    level: "pass",
-    detail: "all fields filled",
-  },
-  {
-    id: "r2",
-    name: "Zero open scannos",
-    level: "warn",
-    detail: "2 open scannos in Wordcheck",
-  },
-  { id: "r3", name: "All pages have text", level: "pass", detail: "387 / 387" },
-  {
-    id: "r4",
-    name: "No stale stages",
-    level: "error",
-    detail: "text_review is stale",
-  },
-  {
-    id: "r5",
-    name: "Proof pack complete",
-    level: "pass",
-    detail: "387 / 387 pages",
-  },
-  {
-    id: "r6",
-    name: "Image quality",
-    level: "pass",
-    detail: "all pages within bounds",
-  },
-  { id: "r7", name: "Page order confirmed", level: "pass", detail: "no gaps" },
-  { id: "r8", name: "OCR confidence", level: "pass", detail: "≥ 0.85 mean" },
-];
-
-function makeMockValidationServices(
-  _projectId: string,
-): ValidationToolServices {
-  return {
-    runChecks: () =>
-      Promise.resolve({
-        rules: MOCK_RULES,
-        counts: {
-          pass: MOCK_RULES.filter((r) => r.level === "pass").length,
-          warn: MOCK_RULES.filter((r) => r.level === "warn").length,
-          error: MOCK_RULES.filter((r) => r.level === "error").length,
-        },
-      }),
-    persistWaiver: (_pid, _ruleId, _note) => Promise.resolve({ ok: true }),
-  };
-}
+import { buildRealValidationToolServices } from "@/services/tools/validationTool";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -438,9 +382,10 @@ function ValidationSettings() {
 export function ValidationTool({
   stageId,
   runnerRef: _runnerRef,
-}: ToolSlotProps): ReactNode {
+  _testServices,
+}: ToolSlotProps & { _testServices?: ValidationToolServices }): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = makeMockValidationServices(projectId);
+  const services = _testServices ?? buildRealValidationToolServices();
 
   const [snapshot, send] = useActor(validationToolMachine, {
     input: {

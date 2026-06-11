@@ -28,6 +28,7 @@ import {
 } from "@/machines/tools/pagesGrid";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
+import { buildRealPagesGridServices } from "@/services/tools/pagesGrid";
 
 // ---------------------------------------------------------------------------
 // Crop flag taxonomy (crop stage)
@@ -40,26 +41,6 @@ const CROP_FLAGS: Record<string, { label: string; tone: string }> = {
   skewed: { label: "Skewed", tone: "var(--ink-3)" },
   blurry: { label: "Blurry", tone: "var(--fuzzy)" },
 };
-
-// ---------------------------------------------------------------------------
-// Mock service adapter (replaced at I1)
-// ---------------------------------------------------------------------------
-
-const MOCK_PAGES: CropPageRow[] = Array.from({ length: 8 }, (_, i) => ({
-  pageId: `page-${i + 1}`,
-  n: i + 1,
-  thumbUrl: "",
-  flags: i === 1 ? ["overCrop"] : i === 4 ? ["finger"] : [],
-  bbox: [0.08, 0.07, 0.92, 0.93] as [number, number, number, number],
-  skewDeg: i === 2 ? 0.4 : null,
-}));
-
-function makePagesGridServices(_projectId: string): PagesGridServices {
-  return {
-    fetchPages: () => Promise.resolve(MOCK_PAGES),
-    savePage: (_pid, _sid, draft) => Promise.resolve({ ...draft, flags: [] }),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -464,7 +445,7 @@ export function PagesGridTool({
   const { projectId = "mock-project" } = useParams();
 
   const services = useMemo(
-    () => _testServices ?? makePagesGridServices(projectId),
+    () => _testServices ?? buildRealPagesGridServices(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectId],
   );
