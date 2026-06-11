@@ -1390,11 +1390,13 @@ def _stage_settings_store(settings_dep: Settings, project_id: str) -> StageSetti
 def _stage_registry_default(stage_id: str) -> dict[str, object]:
     """Return the registry default settings for a v2 stage.
 
-    V2_STAGE_IMPL entries hold CPU callables only; no defaults key yet.
-    Returns an empty dict — StageSettingsStore falls back to registry_default
-    when neither override nor saved default exists.
+    Uses ``STAGE_SETTINGS_DEFAULTS`` (W1.1) as the authoritative source so that
+    the settings API and ``run_stage`` agree on defaults.
+    Returns an empty dict for stages without tunable settings.
     """
-    return {}
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import STAGE_SETTINGS_DEFAULTS
+
+    return dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
 
 
 @router.get(
