@@ -261,14 +261,17 @@ if CT decides it is load-bearing.
 
 ## Open questions for CT
 
-1. **pdomain-book-tools release gate.** The convergence spec says all new
-   `denoise`/`dewarp` wrappers in B2 should call book-tools APIs. `dewarp`
-   works today because pdomain-book-tools textline dewarp shipped in v0.17.x
-   (current pin: `>=0.17.0`). `denoise` is implemented app-locally (no
-   book-tools API yet). Decision needed: should denoise be promoted to
-   pdomain-book-tools (reusable by labeler/CLI), or is it PGDP-specific
-   enough to stay here? If promoted, the B2 denoise step needs a book-tools
-   release `>=0.18` and a pin bump before the convergence is fully wired.
+1. **pdomain-book-tools release gate.** Both B2 wrappers call book-tools
+   APIs: `dewarp` uses `GeometryPipeline`/`TextlineDisparityDewarp` and
+   `denoise` calls `denoise_binary` (added upstream during this effort,
+   commit 6cd97ea on book-tools **local main** — NOT yet in any published
+   release; the pinned 0.17.1 wheel lacks both `denoise_binary` and the
+   `geometry_correction` package). Until CT cuts a book-tools release
+   `>=0.18` and bumps the pin (`make update-pdomain-deps`), this repo's
+   backend only works with the editable install
+   (`uv pip install --no-deps -e ../pdomain-book-tools` + `UV_NO_SYNC=1`,
+   or `make local-dev`). **Action: push book-tools main, cut the release,
+   bump the pin.**
 
 2. **pdomain-ui jsxDEV external fix and shim retirement.** The convergence
    ships a `react/jsx-dev-runtime` shim in `frontend/src/shims/` (commit
