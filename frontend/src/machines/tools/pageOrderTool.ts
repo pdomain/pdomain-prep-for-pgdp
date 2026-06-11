@@ -169,6 +169,13 @@ export interface PageOrderToolServices {
    * Commits order, runs, and naming; advances to next stage.
    */
   confirmStage(projectId: string): Promise<{ ok: boolean }>;
+
+  /**
+   * W5.3 — called after DROP reorders pages so pipelineShell can fan-out
+   * UPSTREAM_CHANGED to all downstream stage runners.
+   * Optional: omitting is safe (no fan-out until wired by caller).
+   */
+  onOrderChanged?(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -825,11 +832,15 @@ export const pageOrderToolMachine = setup({
     /**
      * YAML: `emitOrderChanged` — notify pipelineShell that page order changed
      * so it can fan-out UPSTREAM_CHANGED to all downstream stage runners.
-     * No-op at F5; at I1 pipelineShell orchestrates the fan-out.
+     *
+     * W5.3: calls `services.onOrderChanged()` when provided. The caller
+     * (PageOrderTool) supplies this as a closure over the pipelineShell `send`
+     * function, emitting `STAGE_COMPLETED` to trigger `fanOutStaleSideEffect`.
+     *
      * See DIVERGENCES.md §F5.4-emitOrderChanged.
      */
-    emitOrderChanged: () => {
-      /* At I1: send ORDER_CHANGED to the parent pipelineShell actor */
+    emitOrderChanged: ({ context }) => {
+      context.services.onOrderChanged?.();
     },
 
     /** YAML: `emitResolved` — notify parent stageRunner (no-op at F5) */

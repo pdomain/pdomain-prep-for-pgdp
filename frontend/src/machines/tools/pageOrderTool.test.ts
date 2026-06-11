@@ -527,6 +527,7 @@ describe("pageOrderTool — confirm advance", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Suite 9: UPSTREAM_CHANGED from settled
 // ---------------------------------------------------------------------------
 
@@ -547,6 +548,65 @@ describe("pageOrderTool — upstream changed", () => {
     await waitForState(actor, (s) => s.matches("settled"));
     actor.send({ type: "UPSTREAM_CHANGED" });
     expect(actor.getSnapshot().matches("readingFolios")).toBe(true);
+    actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 10 (W5.3): emitOrderChanged calls onOrderChanged callback
+// ---------------------------------------------------------------------------
+
+describe("pageOrderTool — emitOrderChanged (W5.3)", () => {
+  it("calls onOrderChanged after DROP reorders leaves", () => {
+    const onOrderChanged = vi.fn();
+    const services = makeServices({ onOrderChanged });
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+
+    // Transition to workspace with 3 leaves so we can reorder
+    const leaves = [
+      makeLeaf({ scan: 1 }),
+      makeLeaf({ scan: 2 }),
+      makeLeaf({ scan: 3 }),
+    ];
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves,
+      runs: [makeRun()],
+      totals: { total: 3, scanned: 3, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+    expect(actor.getSnapshot().matches("workspace")).toBe(true);
+
+    // Perform a drag-reorder: drag scan 1 after scan 3
+    actor.send({ type: "DRAG_START", scan: 1 });
+    actor.send({ type: "DRAG_OVER", scan: 3, after: true });
+    actor.send({ type: "DROP", scan: 3 });
+
+    expect(onOrderChanged).toHaveBeenCalledTimes(1);
+    actor.stop();
+  });
+
+  it("works without onOrderChanged (backward compat — no crash)", () => {
+    // Services without onOrderChanged — should not throw
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+
+    const leaves = [makeLeaf({ scan: 1 }), makeLeaf({ scan: 2 })];
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves,
+      runs: [makeRun()],
+      totals: { total: 2, scanned: 2, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+
+    actor.send({ type: "DRAG_START", scan: 1 });
+    actor.send({ type: "DRAG_OVER", scan: 2, after: true });
+    expect(() => actor.send({ type: "DROP", scan: 2 })).not.toThrow();
     actor.stop();
   });
 });

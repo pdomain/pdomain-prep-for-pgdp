@@ -1144,6 +1144,7 @@ export function PipelinePage({
               <ToolComponent
                 stageId={ctx.currentStageId}
                 runnerRef={currentRunnerRef}
+                shellSend={send}
               />
             ) : (
               /* Source stage — no runner */

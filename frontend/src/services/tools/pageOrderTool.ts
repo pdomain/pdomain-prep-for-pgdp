@@ -137,13 +137,23 @@ function confirmStage(_projectId: string): Promise<{ ok: boolean }> {
 // Exported factory
 // ---------------------------------------------------------------------------
 
-/** Build real PageOrderToolServices for injection into the machine. */
-export function buildRealPageOrderToolServices(): PageOrderToolServices {
+/**
+ * Build real PageOrderToolServices for injection into the machine.
+ *
+ * @param onOrderChanged W5.3 — called after DROP; triggers pipelineShell
+ *   fan-out of UPSTREAM_CHANGED to all downstream runners. Optional: omitting
+ *   disables fan-out (safe default for tests and non-PipelinePage mounts).
+ */
+export function buildRealPageOrderToolServices(
+  onOrderChanged?: () => void,
+): PageOrderToolServices {
   return {
     persistLeaf,
     persistOrder,
     persistRuns,
     persistNaming,
     confirmStage,
+    // Omit onOrderChanged when not provided to satisfy exactOptionalPropertyTypes.
+    ...(onOrderChanged ? { onOrderChanged } : {}),
   };
 }

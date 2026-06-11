@@ -21,7 +21,10 @@
  */
 
 import type { ReactNode } from "react";
-import type { StageRunnerRef } from "@/machines/pipelineShell";
+import type {
+  StageRunnerRef,
+  PipelineShellEvent,
+} from "@/machines/pipelineShell";
 import { SourceTool } from "@/pages/pipeline/tools/SourceTool";
 import { GrayscaleTool } from "./tools/GrayscaleTool";
 import { PagesGridTool } from "./tools/PagesGridTool";
@@ -49,10 +52,16 @@ import { ArchiveTool } from "./tools/ArchiveTool";
 /**
  * Props received by every tool slot component.
  * F5 fills the TOOL_REGISTRY; each value must satisfy this interface.
+ *
+ * `shellSend` is optional — only tools that must notify pipelineShell
+ * (e.g. PageOrderTool for W5.3 fan-out after reorder) use it.
+ * Existing tools that ignore it remain unchanged.
  */
 export interface ToolSlotProps {
   stageId: string;
   runnerRef: StageRunnerRef;
+  /** W5.3: forward events to pipelineShell (e.g. STAGE_COMPLETED fan-out). */
+  shellSend?: (event: PipelineShellEvent) => void;
 }
 
 export type ToolSlotComponent = (props: ToolSlotProps) => ReactNode;
@@ -77,6 +86,8 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   denoise: ImageStageReviewTool,
   dewarp: ImageStageReviewTool,
   post_transform_crop: ImageStageReviewTool,
+  // W5.8 — post_ocr_crop registered (was missing, rendering placeholder)
+  post_ocr_crop: ImageStageReviewTool,
   // F5.3 — OCR group (task/f53-ocr-tools)
   text_zones: TextZonesTool,
   ocr: OcrTool,

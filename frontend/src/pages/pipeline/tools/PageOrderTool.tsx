@@ -432,10 +432,27 @@ function LensBar({
 export function PageOrderTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
+  shellSend,
 }: ToolSlotProps) {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 
-  const services = useMemo(() => buildRealPageOrderToolServices(), []);
+  // W5.3: onOrderChanged triggers STAGE_COMPLETED fan-out in pipelineShell.
+  // shellSend is passed from PipelinePage; absent in tests or non-shell mounts.
+  const services = useMemo(
+    () =>
+      buildRealPageOrderToolServices(
+        shellSend
+          ? () =>
+              shellSend({
+                type: "STAGE_COMPLETED",
+                stageId: "page_order",
+                fromIndex: 9,
+              })
+          : undefined,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const [snapshot, send] = useActor(pageOrderToolMachine, {
     input: {
