@@ -3,10 +3,32 @@
 Spec: docs/specs/stage-registry-v2.md §5.2 (SettingsChange event)
       docs/specs/2026-06-10-statechart-convergence-design.md (B2 settings)
 
-Resolution precedence (highest → lowest):
-  1. Project override — a per-run per-project override saved via ``save_override``.
-  2. Saved project default — a project-level "my default" saved via ``save_as_default``.
-  3. Registry default — the caller-supplied ``registry_default`` dict.
+Effective-settings precedence (highest wins):
+  1. Per-page ``PageConfigOverrides`` — already resolved into ``ResolvedPageConfig``
+     by ``resolve_page_config`` before ``run_stage`` calls this module.  These are
+     never overwritten by stage settings.
+  2. Project override — a per-run per-project override saved via ``save_override``.
+  3. Saved project default — a project-level "my default" saved via ``save_as_default``.
+  4. Registry default — the ``STAGE_SETTINGS_DEFAULTS`` dict for the stage.
+
+This three-tier store handles tiers 2-4.  ``apply_stage_settings_to_config``
+merges effective store settings into a ``ResolvedPageConfig`` by writing only
+the fields that correspond to stage-settings knobs; per-page overrides already
+embedded in the config are **not** overwritten.
+
+Field ownership:
+- Per-page PageConfigOverrides controls: ``skip_auto_deskew``, ``do_morph``,
+  ``white_space_additional``, ``ocr_crop`` (via ProjectConfig), ``alignment``.
+- Stage settings controls (new W1 knobs): ``denoise_min_component_area``,
+  ``denoise_median_kernel_size``, ``post_transform_crop_insets``.
+- Shared fields (``skip_auto_deskew``, ``do_morph``, ``page_h_w_ratio``,
+  ``ocr_crop``, ``white_space_additional``) can also be set via stage settings
+  but per-page PageConfigOverrides always wins when the page has an explicit override.
+
+Config-hash impact:
+  ``STAGE_CONFIG_FIELDS`` in stage_runner.py includes the stage-settings fields
+  so that a settings change causes ``_compute_config_hash`` to differ, which
+  triggers a dirty cascade — making the stage re-run automatically.
 
 Operations that mutate state append a ``SettingsChange`` event to the supplied
 ``PrepProjectAggregate`` (if provided). This keeps the event-sourcing store
@@ -28,6 +50,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import os
 
+    from pdomain_prep_for_pgdp.core.models import ResolvedPageConfig
     from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepProjectAggregate
 
 _SCHEMA = """
@@ -43,6 +66,97 @@ CREATE TABLE IF NOT EXISTS stage_settings (
 CREATE INDEX IF NOT EXISTS stage_settings_proj ON stage_settings(project_id);
 """
 
+# ── Registry defaults ─────────────────────────────────────────────────────────
+#
+# STAGE_SETTINGS_DEFAULTS maps v2 stage_id → the "registry default" dict passed
+# to StageSettingsStore.get_effective when no project-level settings are saved.
+#
+# Keys in each dict must correspond 1:1 to ResolvedPageConfig fields (for shared
+# fields) or to the stage-settings-specific field names on ResolvedPageConfig
+# (for the new W1 knobs).  apply_stage_settings_to_config() maps these to the
+# correct ResolvedPageConfig fields.
+#
+# Stages absent from this map have no tunable stage-level settings.
+
+STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
+    # denoise (W1.2): component-area and median-kernel thresholds
+    "denoise": {
+        "min_component_area": 6,
+        "median_kernel_size": 0,
+    },
+    # deskew (W1.3): skip_auto_deskew (default True = always skip in registry)
+    "deskew": {
+        "skip_auto_deskew": True,
+    },
+    # canvas_map (W1.4 + W1.5): do_morph toggle + page aspect ratio
+    "canvas_map": {
+        "do_morph": False,
+        "page_h_w_ratio": 1.294,
+    },
+    # post_transform_crop (W1.6): (top, bottom, left, right) pixel insets
+    "post_transform_crop": {
+        "post_transform_crop_insets": (0, 0, 0, 0),
+    },
+    # post_ocr_crop (W1.7): (top, bottom, left, right) pixel trims
+    "post_ocr_crop": {
+        "ocr_crop": (0, 0, 0, 0),
+    },
+    # crop (W1.8): fractional whitespace-pad after bbox crop
+    "crop": {
+        "white_space_additional": None,
+    },
+}
+
+# ── Settings key → ResolvedPageConfig field mapping ───────────────────────────
+#
+# Maps the key used in the settings dict to the ResolvedPageConfig field name.
+# When they match, the key is omitted (identity mapping assumed).
+# Used by apply_stage_settings_to_config to write the correct attribute.
+
+_SETTINGS_KEY_TO_FIELD: dict[str, str] = {
+    "min_component_area": "denoise_min_component_area",
+    "median_kernel_size": "denoise_median_kernel_size",
+    # The remaining keys match their ResolvedPageConfig field names directly.
+}
+
+
+def apply_stage_settings_to_config(
+    cfg: ResolvedPageConfig,
+    stage_id: str,
+    effective_settings: dict[str, Any],
+) -> ResolvedPageConfig:
+    """Merge effective stage settings into a ``ResolvedPageConfig``.
+
+    Precedence rule: per-page ``PageConfigOverrides`` values embedded in ``cfg``
+    are NOT overwritten (they already won at resolve_page_config time).
+
+    Only the fields declared in ``STAGE_SETTINGS_DEFAULTS[stage_id]`` are
+    considered.  Unknown keys in ``effective_settings`` are ignored to allow
+    forward-compatible settings dicts stored in older projects.
+
+    Returns a new ``ResolvedPageConfig`` (``model_copy``); the input is
+    unchanged.
+    """
+    if not effective_settings:
+        return cfg
+
+    registry_defaults = STAGE_SETTINGS_DEFAULTS.get(stage_id, {})
+    updates: dict[str, Any] = {}
+
+    for key, value in effective_settings.items():
+        if key not in registry_defaults:
+            # Unknown key — future-compat ignore.
+            continue
+        field = _SETTINGS_KEY_TO_FIELD.get(key, key)
+        if not hasattr(cfg, field):
+            # Field not on ResolvedPageConfig yet — ignore.
+            continue
+        updates[field] = value
+
+    if not updates:
+        return cfg
+    return cfg.model_copy(update=updates)
+
 
 class StageSettingsStore:
     """SQLite-backed store for per-stage, per-project settings.
@@ -53,10 +167,12 @@ class StageSettingsStore:
 
         store = StageSettingsStore(data_root / "stage_settings.db")
         effective = store.get_effective(
-            project_id, "denoise", registry_default={"min_component_area": 6}
+            project_id, "denoise", registry_default=STAGE_SETTINGS_DEFAULTS["denoise"]
         )
         store.save_as_default(project_id, "denoise", {"min_component_area": 12},
-                              aggregate=agg, registry_default=..., actor_id="user-1")
+                              aggregate=agg,
+                              registry_default=STAGE_SETTINGS_DEFAULTS["denoise"],
+                              actor_id="user-1")
     """
 
     def __init__(self, db_path: str | os.PathLike[str]) -> None:
