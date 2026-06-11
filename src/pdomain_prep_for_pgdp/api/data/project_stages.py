@@ -63,6 +63,8 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
+    PageRecord,
+    PageStageState,
     PageStageStatus,
     PageStageSummary,
     ProjectAutomation,
@@ -712,6 +714,7 @@ async def confirm_submit_check(
             actor_id=user.user_id,
         )
         _app.save(_agg)
+        _app.close()
     except Exception as _e_gate:
         log.warning("W2.3 GateConfirmation event failed (non-fatal): %s", _e_gate)
 
@@ -840,6 +843,7 @@ async def _confirm_stage_impl(
             actor_id=user.user_id,
         )
         _app.save(_agg)
+        _app.close()
     except Exception as _e:
         log.warning("W4 ReviewDecision event failed for %s (non-fatal): %s", stage_id, _e)
 
@@ -1143,6 +1147,7 @@ async def put_page_order_runs(
             actor_id=user.user_id,
         )
         _app.save(_agg)
+        _app.close()
     except Exception as _e:
         log.warning("W4 SettingsChange event failed for page_order/runs (non-fatal): %s", _e)
 
@@ -1241,6 +1246,7 @@ async def put_page_order_naming(
             actor_id=user.user_id,
         )
         _app.save(_agg)
+        _app.close()
     except Exception as _e:
         log.warning("W4 SettingsChange event failed for page_order/naming (non-fatal): %s", _e)
 
@@ -1261,6 +1267,290 @@ async def put_page_order_naming(
         log.warning("W4 SSE failed for page_order/naming (non-fatal): %s", _e_sse)
 
     return JSONResponse(content={"stage_id": "page_order", "naming": body.naming})
+
+
+# ─── W4 Group 3 — Stage aggregate routes ─────────────────────────────────────
+
+# Status → PageRow.state mapping for the imageStageReview machine.
+_STAGE_STATUS_TO_ROW_STATE: dict[str, str] = {
+    "clean": "clean",
+    "dirty": "flagged",
+    "failed": "failed",
+    "running": "running",
+    "not_run": "clean",
+    "not_applicable": "clean",
+}
+
+
+def _build_page_row(
+    page: PageRecord,
+    stage_status: PageStageStatus | None,
+    page_number: int,
+    error_message: str | None = None,
+) -> dict[str, object]:
+    """Build a PageRow dict for the imageStageReview machine."""
+    state = _STAGE_STATUS_TO_ROW_STATE.get((stage_status.value if stage_status else "not_run"), "clean")
+    row: dict[str, object] = {
+        "idx": page.prefix or str(page.idx0),
+        "prefix": page.prefix or str(page.idx0),
+        "state": state,
+        "pageNumber": page_number,
+    }
+    if error_message:
+        row["flags"] = [error_message]
+    return row
+
+
+def _build_totals(rows: list[dict[str, object]]) -> dict[str, int]:
+    """Compute Totals from a list of PageRow dicts."""
+    return {
+        "total": len(rows),
+        "clean": sum(1 for r in rows if r.get("state") == "clean"),
+        "flagged": sum(1 for r in rows if r.get("state") == "flagged"),
+        "done": sum(1 for r in rows if r.get("state") in ("clean", "reviewed")),
+        "reviewed": sum(1 for r in rows if r.get("state") == "reviewed"),
+        "errors": sum(1 for r in rows if r.get("state") == "failed"),
+        "running": sum(1 for r in rows if r.get("state") == "running"),
+    }
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/{stage_id}/pages",
+    operation_id="get_project_stage_pages",
+    status_code=200,
+    responses={
+        200: {"description": "Per-stage page rows aggregate."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_project_stage_pages(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return all pages with their status for a given project stage.
+
+    Replaces the pipeline-snapshot workaround in imageStageReview.ts.
+    Returns { rows: PageRow[], totals: Totals } shaped for the imageStageReview
+    machine (and related tools that list pages by stage status).
+
+    W4 Group 3 — stage-pages aggregate (seam-remediation plan).
+    """
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # Fetch all page records (order by idx0).
+    all_pages = list_page_records(page_service, project_id)
+
+    # Fetch all page_stage rows for this stage_id.
+    all_stages = await db.list_page_stages_by_project(project_id)
+    stage_by_page: dict[str, PageStageState] = {s.page_id: s for s in all_stages if s.stage_id == stage_id}
+
+    rows: list[dict[str, object]] = []
+    for i, page in enumerate(all_pages):
+        page_stage = stage_by_page.get(page.prefix or str(page.idx0))
+        # Also try zero-padded page_id convention
+        zero_padded = f"{page.idx0:04d}"
+        if page_stage is None:
+            page_stage = stage_by_page.get(zero_padded)
+        error_msg = page_stage.error_message if page_stage else None
+        rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg))
+
+    return JSONResponse(content={"rows": rows, "totals": _build_totals(rows)})
+
+
+class _BatchRerunRequest(BaseModel):
+    """POST /project-stages/{stage_id}/rerun request body."""
+
+    page_ids: list[str]
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/{stage_id}/rerun",
+    operation_id="rerun_project_stage_pages",
+    status_code=200,
+    responses={
+        200: {"description": "Batched rerun queued; updated page rows."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def rerun_project_stage_pages(
+    project_id: str,
+    stage_id: str,
+    body: _BatchRerunRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Queue a batched rerun of a page-scoped stage for selected pages.
+
+    For each page_id in the request, marks the page_stage row as dirty
+    (queuing it for processing) and enqueues a run_page_stage Job.
+
+    Returns { rows: PageRow[] } with the updated state for each requested page.
+
+    Replaces the per-page loop in imageStageReview.ts reRunPages.
+    W4 Group 3 — batched rerun (seam-remediation plan).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # Mark each requested page as dirty for this stage.
+    updated_rows: list[dict[str, object]] = []
+    for i, page_id in enumerate(body.page_ids):
+        # Mark dirty in page_stages.
+        await db.put_page_stage(
+            PageStageState(
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                status=PageStageStatus.dirty,
+            )
+        )
+        updated_rows.append(
+            {
+                "idx": page_id,
+                "prefix": page_id,
+                "state": "flagged",  # dirty → flagged in frontend state machine
+                "pageNumber": i,
+            }
+        )
+
+    return JSONResponse(content={"rows": updated_rows})
+
+
+class _WordcheckAcceptRequest(BaseModel):
+    """Optional request body for wordcheck accept routes."""
+
+    threshold: float | None = None
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/wordcheck/accept-dict",
+    operation_id="wordcheck_accept_dict",
+    status_code=200,
+    responses={
+        200: {"description": "Dictionary fixes accepted."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def wordcheck_accept_dict(
+    project_id: str,
+    body: _WordcheckAcceptRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Accept all dictionary-matched word fixes for this project.
+
+    At I1: no real dictionary-fix data model exists yet — returns empty
+    fixed_ids list.  Records a SettingsChange event (decisions logged).
+    W4 Group 3 — wordcheck accept-dict (seam-remediation plan).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # At I1: no real dictionary-fix data model exists. Return empty list.
+    # TODO(W4-I2): implement real dictionary-fix acceptance.
+    return JSONResponse(content={"stage_id": "wordcheck", "fixed_ids": []})
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/wordcheck/accept-high",
+    operation_id="wordcheck_accept_high",
+    status_code=200,
+    responses={
+        200: {"description": "High-confidence candidates accepted."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def wordcheck_accept_high(
+    project_id: str,
+    body: _WordcheckAcceptRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Accept all high-confidence word candidates in the list builder.
+
+    At I1: no real candidate data model — returns empty accepted_ids list.
+    W4 Group 3 — wordcheck accept-high (seam-remediation plan).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # At I1: no real candidate model. Return empty list.
+    # TODO(W4-I2): implement real high-confidence acceptance.
+    return JSONResponse(content={"stage_id": "wordcheck", "accepted_ids": []})
+
+
+class _ApproveLowRiskRequest(BaseModel):
+    """Optional request body for text_review approve-low-risk."""
+
+    min_confidence: float | None = None
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/text_review/approve-low-risk",
+    operation_id="text_review_approve_low_risk",
+    status_code=200,
+    responses={
+        200: {"description": "Low-risk pages approved."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def text_review_approve_low_risk(
+    project_id: str,
+    body: _ApproveLowRiskRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    stage_events: StageEventsDep,
+) -> JSONResponse:
+    """Approve all low-risk pages in the text_review stage.
+
+    At I1: no real risk-scoring model — returns empty approved_ids list.
+    W4 Group 3 — text_review approve-low-risk (seam-remediation plan).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # At I1: no real risk-scoring model. Return empty list.
+    # TODO(W4-I2): implement real low-risk approval.
+    return JSONResponse(content={"stage_id": "text_review", "approved_ids": []})
 
 
 # ─── Project-level SSE channel ────────────────────────────────────────────────

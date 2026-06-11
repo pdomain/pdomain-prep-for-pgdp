@@ -1,17 +1,16 @@
 /**
  * wordcheckTool.ts — Real WordcheckToolServices backed by the v2 API.
  *
- * Backend routes used (all exist at I1):
+ * Backend routes used:
  *   POST /api/data/projects/{id}/wordlist-promotion (promote to library)
  *
- * NOT yet implemented (I1 stubs):
- *   POST /api/projects/:id/stages/scannocheck/accept-dict
- *   POST /api/projects/:id/stages/scannocheck/lists/accept-high
- *   POST /api/projects/:id/stages/scannocheck/confirm
+ * W4 Group 3 — now real:
+ *   POST /api/data/projects/{id}/project-stages/wordcheck/accept-dict
+ *   POST /api/data/projects/{id}/project-stages/wordcheck/accept-high
+ *   POST /api/data/projects/{id}/project-stages/wordcheck/confirm (W4 G1)
  *
- * DRIFT: Add scannocheck aggregation routes to project_stages.py at I2.
- * The wordcheck flags/decisions routes exist per-page but not as project-level
- * aggregations.
+ * At I1: accept-dict and accept-high routes exist but return empty results
+ * (no real dictionary-fix or candidate data model yet — I2 TODO).
  *
  * @see frontend/src/machines/tools/wordcheckTool.ts — WordcheckToolServices
  * @see src/pdomain_prep_for_pgdp/api/data/pages.py — wordlist-promotion route
@@ -28,23 +27,41 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 /**
  * Accept all dictionary-matched fixes.
  *
- * DRIFT: route not implemented at I1 — returns empty fixedIds.
+ * W4 Group 3: POST /api/data/projects/{id}/project-stages/wordcheck/accept-dict
+ * At I1: returns empty fixedIds (no real fix model yet — I2 TODO).
  */
-function acceptDictionaryFixes(
-  _projectId: string,
+async function acceptDictionaryFixes(
+  projectId: string,
 ): Promise<{ fixedIds: string[] }> {
-  return Promise.resolve({ fixedIds: [] });
+  try {
+    const result = await api.post<{ fixed_ids: string[] }>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/wordcheck/accept-dict`,
+      {},
+    );
+    return { fixedIds: result.fixed_ids ?? [] };
+  } catch {
+    return { fixedIds: [] };
+  }
 }
 
 /**
  * Accept all high-confidence candidates in the list builder.
  *
- * DRIFT: route not implemented at I1 — returns empty acceptedIds.
+ * W4 Group 3: POST /api/data/projects/{id}/project-stages/wordcheck/accept-high
+ * At I1: returns empty acceptedIds (no real candidate model yet — I2 TODO).
  */
-function acceptHighConfidence(
-  _projectId: string,
+async function acceptHighConfidence(
+  projectId: string,
 ): Promise<{ acceptedIds: string[] }> {
-  return Promise.resolve({ acceptedIds: [] });
+  try {
+    const result = await api.post<{ accepted_ids: string[] }>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/wordcheck/accept-high`,
+      {},
+    );
+    return { acceptedIds: result.accepted_ids ?? [] };
+  } catch {
+    return { acceptedIds: [] };
+  }
 }
 
 /**

@@ -2,7 +2,13 @@
  * textReviewTool.ts — Real TextReviewToolServices backed by the v2 API.
  *
  * W4 Group 1: confirmStage wired.
- * W4 Group 3: approveLowRisk (approve-low-risk route) still stub.
+ * W4 Group 3: approveLowRisk wired to real route.
+ *
+ * Backend routes used:
+ *   POST /api/data/projects/{id}/project-stages/text_review/approve-low-risk
+ *   POST /api/data/projects/{id}/project-stages/text_review/confirm
+ *
+ * At I1: approve-low-risk returns empty approvedIds (no real risk model yet).
  *
  * @see frontend/src/machines/tools/textReviewTool.ts — TextReviewToolServices
  */
@@ -15,13 +21,21 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 /**
  * Approve all low-risk items.
  *
- * DRIFT: POST .../project-stages/text_review/approve-low-risk not yet
- * implemented (W4 Group 3). Returns empty approvedIds.
+ * W4 Group 3: POST /api/data/projects/{id}/project-stages/text_review/approve-low-risk
+ * At I1: returns empty approvedIds (no real risk model yet — I2 TODO).
  */
-function approveLowRisk(
-  _projectId: string,
+async function approveLowRisk(
+  projectId: string,
 ): Promise<{ approvedIds: string[] }> {
-  return Promise.resolve({ approvedIds: [] });
+  try {
+    const result = await api.post<{ approved_ids: string[] }>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_review/approve-low-risk`,
+      {},
+    );
+    return { approvedIds: result.approved_ids ?? [] };
+  } catch {
+    return { approvedIds: [] };
+  }
 }
 
 /**

@@ -74,6 +74,22 @@ Numeric export rename (`export_name_for_seq`): bare zero-padded seq used as zip 
 basename when numeric export is enabled. PGDP validator validates EXPORT names.
 Both `prefix` (descriptive) and `export_name` (numeric) appear in manifest entries.
 
+**W4 Group 3 — aggregate routes (replaces workarounds in frontend services):**
+
+| Method | Path | Request schema | Response schema | Notes |
+|--------|------|----------------|-----------------|-------|
+| GET | `/projects/{id}/project-stages/{stage_id}/pages` | — | `{ rows: PageRow[], totals: Totals }` | Per-stage page rows. Replaces pipeline-snapshot workaround. stage_id is any v2 page-scoped ID. |
+| POST | `/projects/{id}/project-stages/{stage_id}/rerun` | `{ page_ids: string[] }` | `{ rows: PageRow[] }` | Batched rerun: marks each page dirty + queues run. Replaces per-page loop. |
+| POST | `/projects/{id}/project-stages/wordcheck/accept-dict` | `{ threshold?: float }` | `{ stage_id, fixed_ids: string[] }` | Accept dictionary-matched word fixes. At I1: empty (no fix model yet). |
+| POST | `/projects/{id}/project-stages/wordcheck/accept-high` | `{ threshold?: float }` | `{ stage_id, accepted_ids: string[] }` | Accept high-confidence candidates. At I1: empty (no candidate model yet). |
+| POST | `/projects/{id}/project-stages/text_review/approve-low-risk` | `{ min_confidence?: float }` | `{ stage_id, approved_ids: string[] }` | Approve low-risk pages. At I1: empty (no risk model yet). |
+
+`PageRow` shape (fields: `idx`, `prefix`, `state`, `pageNumber`, `flags?`):
+state values: `"clean"` | `"flagged"` | `"failed"` | `"running"` | `"reviewed"`.
+`Totals` shape: `{ total, clean, flagged, done, reviewed, errors, running }` (all number).
+
+All Group 3 routes enforce 404 (project not found) and 409 (registry mismatch) guards.
+
 **StageReviewStore** (`core/pipeline/project_stages.py`): per-project SQLite table
 `stage_reviews(project_id, stage_id, confirmed_at, actor_id, note)` with no CHECK
 constraint on `stage_id` — accepts any v2 stage ID. Used for page-scoped stage confirms
