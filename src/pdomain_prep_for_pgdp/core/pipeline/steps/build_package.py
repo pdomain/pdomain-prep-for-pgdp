@@ -54,6 +54,12 @@ import zipfile
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import (
+    PgdpNamingError,
+    validate_package_naming,
+    validate_pgdp_filename,
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -141,6 +147,31 @@ def build_submission_zip(
     """
     if built_at is None:
         built_at = datetime.now(UTC).isoformat()
+
+    # ── PGDP naming compliance hard-assert ────────────────────────────────
+    # Rules: https://www.pgdp.net/wiki/DP_Official_Documentation:CP_and_PM/Content_Providing_FAQ
+    # When page_prefixes is supplied, validate every prefix before zipping.
+    # Fail fast with a clear error rather than silently producing a bad archive.
+    if page_prefixes:
+        per_file_errors: list[str] = []
+        for page_id in page_ids:
+            prefix = page_prefixes.get(page_id, page_id)
+            for ext in (".png", ".txt"):
+                errs = validate_pgdp_filename(prefix, ext)
+                per_file_errors.extend(errs)
+        if per_file_errors:
+            raise PgdpNamingError(f"PGDP naming violations in page_prefixes: {'; '.join(per_file_errors)}")
+        # Build the prospective zip entry names in page_order sequence for
+        # the sort-order check.
+        prospective_names: list[str] = []
+        for page_id in page_ids:
+            prefix = page_prefixes.get(page_id, page_id)
+            prospective_names.append(f"{prefix}.png")
+            prospective_names.append(f"{prefix}.txt")
+        package_errors = validate_package_naming(prospective_names, page_order=list(page_ids))
+        if package_errors:
+            raise PgdpNamingError(f"PGDP package naming violations: {'; '.join(package_errors)}")
+    # ─────────────────────────────────────────────────────────────────────
 
     buf = io.BytesIO()
     page_count = 0

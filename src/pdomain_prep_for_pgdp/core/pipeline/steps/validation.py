@@ -38,6 +38,11 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import (
+    validate_package_naming,
+    validate_pgdp_filename,
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -119,6 +124,7 @@ def validate_project(
     project_id: str,
     page_ids: list[str],
     data_root: Path,
+    page_prefixes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Aggregate page facts into a ValidationReport dict.
 
@@ -126,6 +132,26 @@ def validate_project(
     matching the ValidationReport schema from api-v2-deltas.md §3.
 
     Rules are data-driven (see _RULES above) so F5.6 can render them.
+
+    Args:
+        project_id: Project identifier.
+        page_ids: Ordered list of page IDs to validate.
+        data_root: Root of the on-disk data tree.
+        page_prefixes: Optional mapping of page_id → PGDP filename prefix
+            (e.g. "f001", "p045"). When supplied, PGDP naming compliance
+            rules are checked for each prefix and added as blockers if
+            violated. When None, the naming check is skipped (legacy path).
+
+    Naming rules applied when page_prefixes is provided:
+        - basename_too_long  : prefix > 8 chars
+        - invalid_chars      : prefix contains chars outside [A-Za-z0-9_-]
+        - uppercase_ext      : extension is not lowercase (always .png/.txt here)
+        - disallowed_ext     : extension not in .png/.txt/.jpg
+        - ad_substring       : "ad" appears in prefix (ad-blocker risk)
+        - sort_order         : sorted(prefixes) disagrees with page reading order
+
+    Reference:
+        https://www.pgdp.net/wiki/DP_Official_Documentation:CP_and_PM/Content_Providing_FAQ
     """
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -133,6 +159,33 @@ def validate_project(
     for page_id in page_ids:
         page_blockers = _check_text_review(data_root, project_id, page_id)
         blockers.extend(page_blockers)
+
+    # ── PGDP naming compliance check (when prefixes are known) ────────────────
+    if page_prefixes:
+        naming_errors: list[str] = []
+        for page_id in page_ids:
+            prefix = page_prefixes.get(page_id, page_id)
+            for ext in (".png", ".txt"):
+                naming_errors.extend(validate_pgdp_filename(prefix, ext))
+
+        # Check sort order as a package-level rule
+        prospective_names: list[str] = []
+        for page_id in page_ids:
+            prefix = page_prefixes.get(page_id, page_id)
+            prospective_names.append(f"{prefix}.png")
+            prospective_names.append(f"{prefix}.txt")
+        naming_errors.extend(validate_package_naming(prospective_names, page_order=list(page_ids)))
+
+        if naming_errors:
+            blockers.append(
+                {
+                    "page_id": None,
+                    "stage_id": "build_package",
+                    "message": f"PGDP naming violations: {'; '.join(naming_errors)}",
+                    "code": "pgdp_naming",
+                }
+            )
+    # ─────────────────────────────────────────────────────────────────────────
 
     return {
         "project_id": project_id,
