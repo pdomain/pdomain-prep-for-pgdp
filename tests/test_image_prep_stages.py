@@ -9,12 +9,36 @@ Spec: docs/specs/stage-registry-v2.md §2 (table rows 06-08)
 
 All tests use UV_NO_SYNC mode (editable pdomain-book-tools local main installed
 in worktree venv; see DEP APPROACH in B2 commit message).
+
+Availability: denoise and dewarp require pdomain-book-tools >=0.18.0 (local main),
+which includes the geometry_correction and updated image_processing modules.
+When only the published wheel (0.17.x) is installed, these tests skip cleanly.
 """
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pytest
+
+# Skip all denoise/dewarp tests when the required pdomain-book-tools sub-modules
+# are not available (i.e. the published 0.17.x wheel is installed instead of
+# the local editable main). post_transform_crop tests still run.
+_HAS_GEOMETRY_CORRECTION = importlib.util.find_spec("pdomain_book_tools.geometry_correction") is not None
+_HAS_DENOISE = importlib.util.find_spec("pdomain_book_tools.image_processing") is not None
+
+# Checked lazily inside each test — see _require_geometry_correction() helper below.
+
+
+def _require_geometry_correction() -> None:
+    """Skip the calling test if geometry_correction is unavailable."""
+    if not _HAS_GEOMETRY_CORRECTION:
+        pytest.skip(
+            "pdomain_book_tools.geometry_correction not available — "
+            "install editable pdomain-book-tools (>=0.18 local main)"
+        )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -92,6 +116,7 @@ def _warped_page_for_dewarp_test(
 
 def test_denoise_stage_registered_in_v2() -> None:
     """denoise is registered in V2_STAGE_IMPL and no longer raises StageNotImplemented."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
         StageNotImplemented,
         get_v2_stage_impl,
@@ -109,6 +134,7 @@ def test_denoise_stage_registered_in_v2() -> None:
 
 def test_denoise_removes_speckle() -> None:
     """Denoise stage removes isolated 1-pixel speckle from the background."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("denoise", "cpu")
@@ -137,6 +163,7 @@ def test_denoise_removes_speckle() -> None:
 
 def test_denoise_preserves_glyphs() -> None:
     """Denoise stage preserves large connected text glyphs."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("denoise", "cpu")
@@ -158,6 +185,7 @@ def test_denoise_preserves_glyphs() -> None:
 
 def test_denoise_output_polarity_matches_input() -> None:
     """Denoise output polarity is text=255/bg=0, same as v2 pipeline convention."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("denoise", "cpu")
@@ -176,6 +204,7 @@ def test_denoise_output_polarity_matches_input() -> None:
 
 def test_denoise_equivalence_to_v1_chain() -> None:
     """v2 denoise output has same shape and dtype as its binary input."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("denoise", "cpu")
@@ -196,6 +225,7 @@ def test_denoise_equivalence_to_v1_chain() -> None:
 
 def test_dewarp_stage_registered_in_v2() -> None:
     """dewarp is registered in V2_STAGE_IMPL and no longer raises StageNotImplemented."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
         StageNotImplemented,
         get_v2_stage_impl,
@@ -212,6 +242,7 @@ def test_dewarp_stage_registered_in_v2() -> None:
 
 def test_dewarp_preserves_shape() -> None:
     """Dewarp output has the same shape as the input."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
@@ -224,6 +255,7 @@ def test_dewarp_preserves_shape() -> None:
 
 def test_dewarp_output_polarity_matches_input() -> None:
     """Dewarp output polarity is text=255/bg=0, matching the v2 pipeline convention."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
@@ -258,6 +290,7 @@ def test_dewarp_on_warped_image_increases_row_projection_variance() -> None:
     The synthetic image uses 20 sinusoidal text-block rows at h=1000/w=760,
     which reliably provides ≥15 detected textlines for TextlineDisparityDewarp.
     """
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
@@ -285,6 +318,7 @@ def test_dewarp_low_textline_image_is_identity() -> None:
     than 15 textlines are detected.  The output must have the same shape and
     dtype as the input (graceful pass-through, no crash).
     """
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
@@ -300,6 +334,7 @@ def test_dewarp_low_textline_image_is_identity() -> None:
 
 def test_dewarp_output_is_binary() -> None:
     """Dewarp output contains only 0 and 255 values (binary polarity preserved)."""
+    _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("dewarp", "cpu")
@@ -363,6 +398,8 @@ def test_post_transform_crop_shape_preserved() -> None:
 @pytest.mark.parametrize("stage_id", ["denoise", "dewarp", "post_transform_crop"])
 def test_image_prep_stages_not_placeholder(stage_id: str) -> None:
     """denoise, dewarp, post_transform_crop must NOT raise StageNotImplemented."""
+    if stage_id in ("denoise", "dewarp"):
+        _require_geometry_correction()
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
         StageNotImplemented,
         get_v2_stage_impl,
