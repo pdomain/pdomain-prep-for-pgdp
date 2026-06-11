@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Annotated, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.core.models import Project
@@ -1449,6 +1449,44 @@ def _stage_registry_default(stage_id: str) -> dict[str, object]:
     return dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
 
 
+def _load_prep_aggregate(settings_dep: Settings, project_id: str) -> tuple[Any, Any]:
+    """Load (or create) PrepProjectAggregate + its application for settings events.
+
+    W2.4: returns (app, agg) so the caller can record SettingsChange events and
+    then call app.save(agg). Returns (None, None) on any failure — caller
+    must treat aggregate=None as warn-and-continue (no event recorded).
+    """
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication as _PrepApp,
+        )
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepProjectAggregate as _PrepAgg,
+        )
+
+        _events_db = settings_dep.data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _app = _PrepApp(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        try:
+            _proj_uuid = uuid.UUID(project_id)
+        except ValueError:
+            _proj_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        _agg_id = _PrepAgg.create_id(_proj_uuid)
+        try:
+            _agg: _PrepAgg = _app.repository.get(_agg_id)  # type: ignore[assignment]
+        except Exception:
+            _agg = _PrepAgg(project_id=_proj_uuid)
+        return _app, _agg
+    except Exception as _e:
+        log.warning("W2.4 could not load PrepProjectAggregate (non-fatal): %s", _e)
+        return None, None
+
+
 @router.get(
     "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings",
     operation_id="get_page_stage_settings",
@@ -1529,13 +1567,20 @@ async def put_page_stage_settings(
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
     store.save_override(
         project_id,
         stage_id,
         body,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
         registry_default=registry_default,
         actor_id=user.user_id,
     )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("W2.4 save_override aggregate persist failed: %s", _e_save)
     effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
     return JSONResponse(content=effective)
 
@@ -1578,13 +1623,20 @@ async def save_page_stage_settings_as_default(
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
     store.save_as_default(
         project_id,
         stage_id,
         body,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
         registry_default=registry_default,
         actor_id=user.user_id,
     )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("W2.4 save_as_default aggregate persist failed: %s", _e_save)
     effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
     return JSONResponse(content=effective)
 
@@ -1626,12 +1678,19 @@ async def revert_page_stage_settings(
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
     store.revert(
         project_id,
         stage_id,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
         registry_default=registry_default,
         actor_id=user.user_id,
     )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("W2.4 revert aggregate persist failed: %s", _e_save)
     effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
     return JSONResponse(content=effective)
 
@@ -1673,12 +1732,19 @@ async def reset_page_stage_settings(
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
     store.reset(
         project_id,
         stage_id,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
         registry_default=registry_default,
         actor_id=user.user_id,
     )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("W2.4 reset aggregate persist failed: %s", _e_save)
     effective = store.get_effective(project_id, stage_id, registry_default=registry_default)
     return JSONResponse(content=effective)
 
