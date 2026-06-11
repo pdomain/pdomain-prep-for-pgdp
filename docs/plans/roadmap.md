@@ -11,6 +11,10 @@ under "Deferred — remote / cloud mode" at the bottom.
 
 **Reference for finished work:**
 
+- Statechart convergence (2026-06-11) — 24-stage v2 registry, 28 XState v5
+  machines, TOOL_REGISTRY, SSE channels wired, legacy surfaces removed. See
+  `docs/plans/2026-06-10-statechart-convergence.md` and
+  `docs/architecture/statechart-convergence-notes.md`.
 - Pipeline task-model M1–M6 — fully shipped (see
   `docs/archive/plans/roadmap-shipped.md` §P0.5).
 - §13a Radix primitives — fully shipped.
