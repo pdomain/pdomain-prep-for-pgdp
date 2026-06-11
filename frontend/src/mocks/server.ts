@@ -1512,6 +1512,9 @@ export function createMockServer(): MockServer {
           matchCount: 5,
         },
         counts: { applied: 2, review: 0, pending: 1, disabled: 0 },
+      };
+    },
+
     // ---- F5.6: Pack group tool endpoints ----------------------------------------
 
     async runValidationChecks(_projectId) {

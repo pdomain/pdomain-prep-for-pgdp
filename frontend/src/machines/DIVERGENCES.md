@@ -1335,6 +1335,7 @@ The `ADD_WORD_RULE` event is intended for use inside that dialog.
 **Resolution (F5.5 fix round):** `ADD_WORD_RULE` is not surfaced at F5 in
 the main tool panel. The machine event is wired; the UI affordance lives inside
 the global library dialog, which is the I1 workstream.
+
 ## Task F5.6 (pack tools) divergences
 
 Pack group: `validationTool`, `proofPackTool`, `buildPackageTool`, `zipTool`,
