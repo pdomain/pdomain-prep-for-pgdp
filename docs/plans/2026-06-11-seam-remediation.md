@@ -68,9 +68,9 @@ User-saved settings are stored and **ignored**.
 
 Confirm routes (machines advance, server never told — stage rows never go clean
 from the UI): imageStageReview/text_zones/ocr/text_review/wordcheck/page_order/
-source `confirmStage` + submit_check confirm (W2.3). One generic
-`POST /project-stages/{stage_id}/confirm` route + per-stage hooks preferred
-over 7 bespoke routes — decide at implementation.
+source `confirmStage` + submit_check confirm (W2.3). **CT decision 2026-06-11:
+bespoke routes** — one explicit route per stage, each typed to its stage's
+payload (clear OpenAPI surface; no generic dispatch).
 
 Aggregates (tools render empty on real projects): stage-pages aggregate
 (`GET /project-stages/{stage_id}/pages` — replaces the pipeline-snapshot
@@ -78,8 +78,18 @@ workaround), ocr low-confidence tokens, hyphen scan, wordcheck accept-dict /
 accept-high, text_review approve-low-risk, batched rerun (`POST .../rerun`
 with pageIds — replaces the per-page loop).
 
-Persistence (edits silently lost): page_order runs + naming (PUT routes →
-ProjectConfig mapping), validation waiver, archive item toggles, text_zones
+Persistence (edits silently lost): page_order runs + naming — **CT decisions
+2026-06-11: (a) N-run schema now** (new runs model supporting arbitrary folio
+runs roman/arabic/letter-starts, replacing the two-range ProjectConfig mapping;
+prefix computation reads the runs model); **(b) filename format gets a
+universal 3–4 digit binding-order sequence number BEFORE the type code** —
+target shape `<seq:3-4><type><folio?>` per the design's naming.jsx parts
+{seq, type, folio} (e.g. `012f003`, 4-digit seq for >999 pages; total ≤8 chars
+holds at 4+1+3); **(c) cover pages use type letter `e`** (free in the design
+code table; the seq prefix makes sort=binding order regardless of letter, so
+front AND back covers both work). compute_prefix/assign_prefixes + the naming
+manifest + pgdp_naming validator + tests all update to this format. Also:
+validation waiver, archive item toggles, text_zones
 redetect/persist-layout + illustrations detect/persist-region (per-page),
 project activity/attributes GET+PATCH, manage clean/saveCopy, pipeline
 reset/purge destructive routes.
@@ -95,7 +105,7 @@ tree/completeness, archive manifest — replace scaffold returns in services.
 | W5.2 | Settings tabs G1–G6: wire `buildRealStageSettingsServices` into grayscale/ocr/text_zones/wordcheck/text_review/regex tools (Source is the wired reference) |
 | W5.3 | `emitOrderChanged` no-op → notify pipelineShell (UPSTREAM_CHANGED fan-out after reorder) |
 | W5.4 | WordcheckTool mounts a setTimeout feeding MOCK_SUSPECTS in production (mock-leak, breaks real flow) |
-| W5.5 | pageOrderTool FOLIO_PUSH/FOLIOS_DONE never arrive (needs backend folio events or initial-fetch redesign) |
+| W5.5 | pageOrderTool FOLIO_PUSH/FOLIOS_DONE never arrive — **CT decision 2026-06-11: initial fetch**. Drop the streaming design; fetch manifest + detected folios in one GET on mount; record the divergence. |
 | W5.6 | Mock-leak imports: move computeDownstream/STAGE_DEPS + shared types out of `@/mocks/` into `lib/`+`types/` (5 machines + sse.ts + PostImportPage import from mocks) |
 | W5.7 | MANIFEST_PUSH refetch gap after confirm (PageOrderTool effect only fires on workspace re-entry) |
 | W5.8 | **`post_ocr_crop` missing from TOOL_REGISTRY** — renders placeholder; registry doc says imageStageReview (add schema entry + registration) |

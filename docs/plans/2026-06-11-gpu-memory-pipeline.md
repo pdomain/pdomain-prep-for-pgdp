@@ -135,12 +135,12 @@ boundaries (a CPU-only stage, or artifact materialization).
   (settings threading) must land first so segment execution reads the same
   effective settings as single-stage runs.
 
-## Open questions for CT
+## Decisions (CT, 2026-06-11)
 
-1. CuPy as the GPU vehicle for the cv2 chain (matches book-tools' existing
-   mirrors) vs torch-only (one runtime, but rewriting the mirrors) — plan
-   assumes CuPy.
-2. Default cache budget (`PGDP_STAGE_CACHE_MB`) and VRAM semaphore sizing —
-   propose defaults, tune on the local GPU.
-3. Is run-all throughput the priority (Phase 3 first after Phase 1) or
-   single-page workbench latency (Phase 2 first)?
+1. **CuPy** is the GPU vehicle for the cv2 chain (reuses book-tools' existing
+   mirrors; torch stays DocTR-only).
+2. **Phase order: 1 → 3 → 2.** Batch OCR (run-all throughput) before
+   GPU-resident segments (workbench latency).
+3. Cache/VRAM defaults are implementation-proposed, tuned on the local GPU:
+   `PGDP_STAGE_CACHE_MB` default 512; VRAM page-semaphore sized at startup
+   from free VRAM minus DocTR predictor residency.
