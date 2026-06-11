@@ -61,7 +61,7 @@ function traverses them). Cross-scope edges are noted explicitly.
 | 09 | `post_ocr_crop` | Image prep | page | `canvas_map` | image_bytes → image_bytes (OCR-margin trim) | `ocr_crop` | re-cut | `imageStageReview` |
 | 10 | `text_zones` | OCR | page | `post_transform_crop` | binary → zone JSON + proofing-image (owns APPLY_SPLIT page-set mutation) | _(no legacy counterpart; zone detection was inside monolith)_ | new | `textZonesTool` |
 | 11 | `ocr` | OCR | page | `post_ocr_crop` | image_bytes → words.json + raw.txt | `ocr` | exists | `ocrTool` |
-| 12 | `page_order` | Compose | project | `source` (cross-scope), `text_zones` (cross-scope, all pages settled) | reading-order list → ordered page sequence | _(no legacy counterpart; drag-drop reorder was UI-only)_ | new | `pageOrderTool` |
+| 12 | `page_order` | Compose | project | `source` (cross-scope), `text_zones` (cross-scope, all pages settled) | page records + ProjectConfig ranges + reading order → naming manifest JSON (`output.json`): `{version, pages:[{page_id,idx0,role,prefix}], skip_ids}` | _(no legacy counterpart; drag-drop reorder was UI-only)_ | new | `pageOrderTool` |
 | 13 | `wordcheck` | Text | page | `ocr` | words.json → flagged-words report | _(no legacy counterpart; scannos were in text_postprocess)_ | new | `wordcheckTool` |
 | 14 | `canvas_map` | Compose | page | `post_transform_crop`, `blank_proof_synth` (alt path) | binary → image_bytes (proofing image PNG) | `morph_fill`, `rescale`, `canvas_map` (legacy), `blank_proof_synth` | re-cut | `imageStageReview` (+ extras) |
 | 15 | `hyphen_join` | Text | page | `wordcheck` | words.json → hyphen-candidate decisions | _(no legacy counterpart)_ | new | `hyphenJoin` |

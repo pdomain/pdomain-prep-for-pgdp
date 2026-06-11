@@ -433,7 +433,7 @@ async def run_project_stage(
 # Content-type map per project-stage artifact type (api-v2-deltas.md §1.4).
 _PROJECT_STAGE_CONTENT_TYPES: dict[str, str] = {
     "source": "application/json",
-    "page_order": "text/plain",
+    "page_order": "application/json",
     "validation": "application/json",
     "proof_pack": "application/octet-stream",  # redirect in practice
     "build_package": "application/zip",
@@ -444,7 +444,7 @@ _PROJECT_STAGE_CONTENT_TYPES: dict[str, str] = {
 
 _PROJECT_STAGE_ARTIFACT_FILES: dict[str, str] = {
     "source": "output.json",
-    "page_order": "output.txt",
+    "page_order": "output.json",
     "validation": "output.json",
     "proof_pack": "output.json",
     "build_package": "output.zip",

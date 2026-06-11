@@ -1,45 +1,246 @@
-"""page_order stage — materializes project reading order.
+"""page_order stage — materializes project reading order + naming manifest.
 
 PLACEMENT: App-local PGDP-specific (docs/specs/library-placement.md §3).
 
 Stage scope: project (stage-registry-v2.md §2, row #12)
-  - Inputs: page-id list (from source + text_zones all-pages-settled)
-  - Outputs: ordered page-id manifest (text/plain, newline-separated)
+  - Inputs: page records (roles, page_type) + ProjectConfig ranges + reading order
+  - Outputs: JSON naming manifest (application/json)
   - Events: PageReorder (eventsourcing, full before/after arrays)
 
 Reading order is determined by:
   1. User-specified reorder (drag-drop in UI), captured as PageReorder events.
   2. Default: source ingest order (idx0 lexicographic order).
 
-The stage artifact is a newline-separated list of page IDs in reading order.
-Re-running after a page-set change (add/remove pages) recomputes from the
-current page set, applying any previously-recorded PageReorder events.
+The stage artifact is a JSON object with schema:
 
-PageReorder events follow the spec §5.2 vocabulary:
-  - event_type: "PageReorder"
-  - new_order: list[str]  — full ordered page-id sequence after the reorder
-  - previous_order: list[str]  — full ordered page-id sequence before
-  - actor_id: str
+    {
+      "version": 1,
+      "pages": [
+        {"page_id": "0005", "idx0": 5, "role": "normal", "prefix": "f001"},
+        {"page_id": "0006", "idx0": 6, "role": "blank",  "prefix": "f002"},
+        {"page_id": "0007", "idx0": 7, "role": "skip",   "prefix": null},
+        {"page_id": "0008", "idx0": 8, "role": "cover",  "prefix": "c001"},
+        ...
+      ],
+      "skip_ids": ["0007", ...]
+    }
+
+  - ``role``: the PageType string value for the page.
+  - ``prefix``: the PGDP filename prefix (from compute_prefix), or null for skip pages.
+  - ``skip_ids``: page_ids excluded from the submission zip (role == "skip").
+
+The consumer (build_package) loads this manifest to get page_prefixes and the
+skip-exclusion set.  If the manifest is absent or stale (page_order status !=
+clean), build_package raises MissingNamingManifest.
+
+Backward compatibility: re-running the stage regenerates the manifest; no
+migration needed — it's a derived artifact.
 
 This module provides:
-  1. materialize_page_order(project_id, page_ids, data_root) -> bytes
-     Pure function: takes page_ids, returns manifest bytes.
-  2. make_page_reorder_event(...) -> dict
+  1. NamingManifestEntry — typed dataclass for one manifest row.
+  2. NamingManifest — full manifest (version + pages + skip_ids).
+  3. materialize_naming_manifest(project_id, ordered_pages, project_config,
+                                  data_root) -> bytes
+     Pure function: builds manifest bytes from ordered PageRecords + config.
+  4. load_naming_manifest(data_root, project_id) -> NamingManifest
+     Load and parse the on-disk manifest; raises MissingNamingManifest if absent.
+  5. make_page_reorder_event(...) -> dict
      Pure event constructor (no side effects).
-  3. page_order_v2_cpu(...) -> bytes
+  6. page_order_v2_cpu(...) -> bytes
      Stage callable registered in V2_STAGE_IMPL.
 """
 
 from __future__ import annotations
 
+import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pdomain_prep_for_pgdp.core.models import PageRecord, ProjectConfig
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Manifest data structures
+# ────────────────────────────────────────────────────────────────────────────
+
+MANIFEST_VERSION = 1
+"""Current naming manifest schema version.
+
+Increment when the JSON schema changes in a backward-incompatible way.
+Consumers may reject manifests with an older version; the stage runner
+always regenerates on re-run.
+"""
+
+
+@dataclass
+class NamingManifestEntry:
+    """One row in the naming manifest."""
+
+    page_id: str
+    """Canonical page identifier (e.g. "0005")."""
+    idx0: int
+    """Zero-based scan index."""
+    role: str
+    """PageType value (e.g. "normal", "blank", "skip", "cover", "plate_b")."""
+    prefix: str | None
+    """PGDP filename prefix (e.g. "f001", "c001"), or None for skip pages."""
+
+
+@dataclass
+class NamingManifest:
+    """Deserialized naming manifest artifact."""
+
+    version: int
+    pages: list[NamingManifestEntry] = field(default_factory=list)
+    skip_ids: list[str] = field(default_factory=list)
+
+    def page_prefixes(self) -> dict[str, str]:
+        """Return {page_id: prefix} for all non-skip pages."""
+        return {e.page_id: e.prefix for e in self.pages if e.prefix is not None}
+
+    def skip_set(self) -> frozenset[str]:
+        """Return the set of page_ids excluded from the package."""
+        return frozenset(self.skip_ids)
+
+
+class MissingNamingManifest(RuntimeError):  # noqa: N818  # intentional: describes missing artifact, not an error state
+    """Raised by load_naming_manifest when the artifact is absent or unreadable.
+
+    The caller (build_package) should surface this as a stage-gate failure:
+    the page_order stage must be re-run before building the package.
+    """
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Manifest path helper
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _manifest_path(data_root: Path, project_id: str) -> Path:
+    return data_root / "projects" / project_id / "stages" / "page_order" / "output.json"
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Core materialization (pure function)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def _page_id_for_idx0(idx0: int) -> str:
+    return f"{idx0:04d}"
+
+
+def materialize_naming_manifest(
+    project_id: str,
+    ordered_pages: list[PageRecord],
+    project_config: ProjectConfig,
+    data_root: Path,
+) -> bytes:
+    """Materialize the naming manifest artifact.
+
+    Computes ``prefix`` for every page via ``compute_prefix``, assembles the
+    manifest, and returns UTF-8 JSON bytes.
+
+    Args:
+        project_id: Project identifier (informational; not written to manifest).
+        ordered_pages: Pages in reading order (caller applies PageReorder events
+            before calling this).
+        project_config: ProjectConfig with range fields used by compute_prefix.
+        data_root: Accepted for API compatibility (not used by this function).
+
+    Returns:
+        UTF-8 JSON bytes of the naming manifest.
+    """
+    from pdomain_prep_for_pgdp.core.prefix import compute_prefix
+
+    _ = data_root  # available for future disk-caching
+    _ = project_id  # available for future project-scoped logic
+
+    pages_by_idx = {p.idx0: p for p in ordered_pages}
+
+    entries: list[dict[str, Any]] = []
+    skip_ids: list[str] = []
+
+    for page in ordered_pages:
+        page_id = _page_id_for_idx0(page.idx0)
+        prefix = compute_prefix(page.idx0, project_config, pages_by_idx)
+        role = page.page_type.value
+
+        if prefix is None:
+            skip_ids.append(page_id)
+
+        entries.append(
+            {
+                "page_id": page_id,
+                "idx0": page.idx0,
+                "role": role,
+                "prefix": prefix,
+            }
+        )
+
+    manifest: dict[str, Any] = {
+        "version": MANIFEST_VERSION,
+        "pages": entries,
+        "skip_ids": skip_ids,
+    }
+    return json.dumps(manifest, indent=2).encode("utf-8")
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Manifest loader
+# ────────────────────────────────────────────────────────────────────────────
+
+
+def load_naming_manifest(data_root: Path, project_id: str) -> NamingManifest:
+    """Load and parse the on-disk naming manifest for a project.
+
+    Raises:
+        MissingNamingManifest: if the artifact is absent, unreadable, or
+            has an incompatible version.
+    """
+    path = _manifest_path(data_root, project_id)
+    if not path.exists():
+        raise MissingNamingManifest(
+            f"page_order naming manifest not found at {path}. "
+            "Re-run the page_order stage before building the package."
+        )
+    try:
+        raw = json.loads(path.read_bytes())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise MissingNamingManifest(f"page_order naming manifest at {path} is unreadable: {exc}") from exc
+
+    version = raw.get("version", 0)
+    if version != MANIFEST_VERSION:
+        raise MissingNamingManifest(
+            f"page_order naming manifest version {version} is not supported "
+            f"(expected {MANIFEST_VERSION}). Re-run the page_order stage."
+        )
+
+    pages = [
+        NamingManifestEntry(
+            page_id=e["page_id"],
+            idx0=e["idx0"],
+            role=e["role"],
+            prefix=e.get("prefix"),
+        )
+        for e in raw.get("pages", [])
+    ]
+    return NamingManifest(
+        version=version,
+        pages=pages,
+        skip_ids=raw.get("skip_ids", []),
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Event constructor (pure, no side effects)
+# ────────────────────────────────────────────────────────────────────────────
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Legacy compatibility shim (for tests that used the old text-manifest API)
 # ────────────────────────────────────────────────────────────────────────────
 
 
@@ -48,20 +249,14 @@ def materialize_page_order(
     page_ids: list[str],
     data_root: Path,
 ) -> bytes:
-    """Materialize the page reading order manifest.
+    """DEPRECATED: legacy newline-separated manifest shim.
 
-    Takes the list of page IDs in their current order (caller is responsible
-    for sorting by reading_order / applying any PageReorder events before
-    calling this). Writes a newline-separated list of page IDs.
+    Existing tests that call this function directly still work.  New code
+    should call ``materialize_naming_manifest`` instead.
 
     Returns UTF-8 bytes: one page_id per line, trailing newline.
-
-    Re-running after a page-set change recomputes from the provided page_ids.
-    The data_root is accepted for API compatibility (future: could write a
-    cached artifact to disk); currently not used for reading.
+    This is the old text/plain format — used only for backward compatibility.
     """
-    _ = data_root  # available for future disk-caching
-    _ = project_id  # available for future project-scoped logic
     content = "\n".join(page_ids) + ("\n" if page_ids else "")
     return content.encode("utf-8")
 
@@ -100,24 +295,37 @@ def make_page_reorder_event(
 
 
 def page_order_v2_cpu(
-    page_ids: list[str],
+    ordered_pages: list[PageRecord],
     project_id: str,
     data_root: Path,
+    project_config: ProjectConfig | None = None,
     cfg: Any = None,
 ) -> bytes:
     """v2 page_order stage callable.
 
-    Takes the ordered page_ids list (sorted by reading_order from the DB,
-    with any PageReorder events already applied by the caller).
+    Takes the ordered pages list (sorted by reading_order / with any
+    PageReorder events already applied by the caller) + the ProjectConfig.
 
-    Returns UTF-8 bytes: one page_id per line (the page-order artifact).
+    Returns UTF-8 JSON bytes: the naming manifest (version, pages, skip_ids).
 
-    The stage is project-scoped; the runner calls this with all page IDs in
+    The stage is project-scoped; the runner calls this with all pages in
     the project's current reading order.
     """
     _ = cfg
-    return materialize_page_order(
+
+    if project_config is None:
+        # Fallback for callers that pass only page_ids (legacy integration path).
+        # In this case we can't compute prefixes, so we emit a minimal manifest
+        # that marks all pages as skip with null prefix.  The full runner always
+        # passes project_config.
+        raise ValueError(
+            "page_order_v2_cpu requires project_config to compute naming prefixes. "
+            "Pass project_config= from the stage runner."
+        )
+
+    return materialize_naming_manifest(
         project_id=project_id,
-        page_ids=page_ids,
+        ordered_pages=ordered_pages,
+        project_config=project_config,
         data_root=data_root,
     )

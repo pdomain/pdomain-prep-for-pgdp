@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 # Artifact filenames per project-scoped stage (mirrors stage-registry-v2.md §6)
 _ARTIFACT_FILES: dict[str, str] = {
     "source": "output.json",
-    "page_order": "output.txt",
+    "page_order": "output.json",
     "validation": "output.json",
     "proof_pack": "output.json",  # placeholder; real=directory artifact
     "build_package": "output.zip",
