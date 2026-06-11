@@ -84,8 +84,13 @@ runs roman/arabic/letter-starts, replacing the two-range ProjectConfig mapping;
 prefix computation reads the runs model); **(b) filename format gets a
 universal 3–4 digit binding-order sequence number BEFORE the type code** —
 target shape `<seq:3-4><type><folio?>` per the design's naming.jsx parts
-{seq, type, folio} (e.g. `012f003`, 4-digit seq for >999 pages; total ≤8 chars
-holds at 4+1+3); **(c) cover pages use type letter `e`** (free in the design
+{seq, type, folio} (e.g. `012f003`). **Two output naming modes** (project-level
+setting): `descriptive` = seq+type+folio (default for ≤999 pages, 3-digit seq);
+`numeric` = the bare zero-padded sequence number only (`0001`…) — offered as
+the secondary mode and recommended for huge books (>999 pages), where the
+descriptive form is not required (no need to squeeze type+folio after a
+4-digit seq). Validator accepts both modes; **(c) cover pages use type letter
+`e`** (free in the design
 code table; the seq prefix makes sort=binding order regardless of letter, so
 front AND back covers both work). compute_prefix/assign_prefixes + the naming
 manifest + pgdp_naming validator + tests all update to this format. Also:
