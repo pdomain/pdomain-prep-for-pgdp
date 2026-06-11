@@ -753,10 +753,11 @@ function RunPipelinePanel({
   const submit = useMutation({
     mutationFn: async (type: JobType) => {
       // W6.3: POST .../build-package removed; replaced by per-stage project-stage run route.
-      const r = await api.post<{ job_id: string }>(
+      // Route returns a full Job body (id, type, status, payload, …).
+      const r = await api.post<{ id: string }>(
         `/api/data/projects/${projectId}/project-stages/${type}/run`,
       );
-      setActive((s) => ({ ...s, [type]: r.job_id }));
+      setActive((s) => ({ ...s, [type]: r.id }));
       // Clear any previous download link when a new build starts.
       setCompletedJobId(null);
       return r;

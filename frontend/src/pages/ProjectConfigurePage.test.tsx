@@ -375,10 +375,10 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
 
   it("disables Build package button while build_package job is pending", async () => {
     setupBaseHandlers();
-    // Return a build_package job that is "running"
+    // Return a run_project_stage job (build_package stage) that is "running"
     const buildJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "running",
       progress: { current: 1, total: 1, message: "" },
       error_message: null,
@@ -425,7 +425,7 @@ describe("ProjectConfigurePage — RunPipelinePanel", () => {
             return HttpResponse.json([
               {
                 id: "job_build_new",
-                type: "build_package",
+                type: "run_project_stage",
                 status: "queued",
                 progress: { current: 0, total: 1, message: "" },
               },
@@ -502,7 +502,7 @@ describe("ProjectConfigurePage — Download Package button", () => {
     setupBaseHandlers();
     const completedJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "complete",
       progress: { current: 1, total: 1, message: "" },
       error_message: null,
@@ -526,7 +526,7 @@ describe("ProjectConfigurePage — Download Package button", () => {
     setupBaseHandlers();
     const completedJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "complete",
       progress: { current: 1, total: 1, message: "" },
       error_message: null,
@@ -572,7 +572,7 @@ describe("ProjectConfigurePage — Download Package button", () => {
     setupBaseHandlers();
     const completedJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "complete",
       progress: { current: 1, total: 1, message: "" },
       error_message: null,
@@ -606,7 +606,7 @@ describe("ProjectConfigurePage — Download Package button", () => {
     setupBaseHandlers();
     const completedJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "complete",
       progress: { current: 1, total: 1, message: "" },
       error_message: null,
@@ -639,7 +639,7 @@ describe("ProjectConfigurePage — Download Package button", () => {
     setupBaseHandlers();
     const runningJob = {
       id: "job_build_1",
-      type: "build_package",
+      type: "run_project_stage",
       status: "running",
       progress: { current: 0, total: 1, message: "" },
       error_message: null,
