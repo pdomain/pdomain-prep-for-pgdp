@@ -27,7 +27,6 @@ from pdomain_prep_for_pgdp.api.dependencies import (
     UserDep,
 )
 from pdomain_prep_for_pgdp.core.models import (
-    PAGE_STAGE_IDS,
     V2_PAGE_STAGE_IDS,
     AlignmentOverride,
     IllustrationRegion,
@@ -768,7 +767,7 @@ async def split_page(
     Children start at post-ingest state; page_stages rows are lazy-init'd on
     first access (same contract as root pages).
     """
-    if body.split_at_stage not in PAGE_STAGE_IDS:
+    if body.split_at_stage not in V2_PAGE_STAGE_IDS:
         raise HTTPException(422, f"unknown split_at_stage: {body.split_at_stage!r}")
     if not body.suffixes:
         raise HTTPException(422, "suffixes must not be empty")

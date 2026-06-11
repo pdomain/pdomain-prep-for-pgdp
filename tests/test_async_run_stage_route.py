@@ -154,19 +154,26 @@ def test_async_flag_returns_202_for_fast_stages_too(
 def test_async_flag_false_stays_synchronous(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """`?async=false` (explicit) is the same as omitting the flag — sync path."""
+    """`?async=false` (explicit) is the same as omitting the flag — sync path.
+
+    v2 DAG: `crop` depends on `grayscale`. Without grayscale clean, the
+    sync path returns 409 Conflict.
+    """
     client, _ = seeded_client
-    # No parent seeded, so dependency-not-met → 409 via the sync path.
-    r = client.post("/api/data/projects/async_proj/pages/0/stages/grayscale/run?async=false")
+    # Use `crop` (depends on `grayscale`); no parent seeded → dep-not-met → 409.
+    r = client.post("/api/data/projects/async_proj/pages/0/stages/crop/run?async=false")
     assert r.status_code == 409, r.text
 
 
 def test_async_flag_omitted_stays_synchronous(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """Omitting ?async keeps the current sync behaviour (409 when deps missing)."""
+    """Omitting ?async keeps the current sync behaviour (409 when deps missing).
+
+    v2 DAG: `crop` depends on `grayscale`. Without grayscale clean, returns 409.
+    """
     client, _ = seeded_client
-    r = client.post("/api/data/projects/async_proj/pages/0/stages/grayscale/run")
+    r = client.post("/api/data/projects/async_proj/pages/0/stages/crop/run")
     assert r.status_code == 409, r.text
 
 
@@ -252,6 +259,9 @@ def test_async_job_runs_to_completion_and_stage_is_clean(
     The `ocr` impl is monkeypatched to avoid loading DocTR weights in CI.
     The test exercises the full route → DB job insert → InProcessJobRunner →
     run_stage → DB stage row = clean path.
+
+    v2 DAG: `ocr` depends on `post_ocr_crop` (replaced `ocr_crop`).
+    The monkeypatch now targets V2_STAGE_IMPL since v2 stage IDs route there.
     """
     import json
 
@@ -269,13 +279,15 @@ def test_async_job_runs_to_completion_and_stage_is_clean(
         "words.json": json.dumps(fake_words).encode(),
         "raw.txt": b"Hello",
     }
-    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
+    monkeypatch.setitem(reg_module.V2_STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
 
     settings = _settings(tmp_path)
     _seed(settings)
 
-    # Seed ocr_crop as a clean parent so the ocr stage can run.
-    asyncio.run(_seed_clean_parent_async(settings, "async_proj", "0000", "ocr_crop", _checkerboard_bgr_png()))
+    # Seed post_ocr_crop as a clean parent so the ocr stage can run (v2 dep).
+    asyncio.run(
+        _seed_clean_parent_async(settings, "async_proj", "0000", "post_ocr_crop", _checkerboard_bgr_png())
+    )
 
     app = build_app(settings)
     with TestClient(app) as client:

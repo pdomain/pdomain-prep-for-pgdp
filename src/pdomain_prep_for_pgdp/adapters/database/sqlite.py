@@ -18,7 +18,6 @@ from typing import ParamSpec, TypeVar, cast
 import anyio.to_thread
 
 from pdomain_prep_for_pgdp.core.models import (
-    PAGE_STAGE_IDS,
     V2_PAGE_STAGE_IDS,
     Job,
     PageStageState,
@@ -43,11 +42,38 @@ def _normalize_fts_score(rank: float) -> float:
 
 
 # Inline string-list literal of all canonical stage IDs for the page_stages
-# CHECK constraint. Includes both v1 (PAGE_STAGE_IDS) and v2 (V2_PAGE_STAGE_IDS)
-# to allow coexistence during the B5 migration window. The v1 set is retained
-# for existing rows written by pre-B5 code; the v2 set allows new v2 stage rows.
-# Deduplication ensures no duplicate entries in the constraint.
-_ALL_STAGE_IDS = tuple(dict.fromkeys(list(PAGE_STAGE_IDS) + list(V2_PAGE_STAGE_IDS)))
+# CHECK constraint. Includes v2 IDs (V2_PAGE_STAGE_IDS) plus the legacy v1
+# IDs that the runner still writes for split-child paths (decode_source,
+# ingest_source) and composed v1 stages. The v1 IDs are listed explicitly
+# here to avoid re-importing the deleted PAGE_STAGE_IDS constant.
+# Both sets must coexist: v2 rows are created by init_page_stages_for_page;
+# v1 rows may still be written by the runner's ingest_source / decode_source
+# code paths and by existing test fixtures.
+_V1_STAGE_IDS_FOR_CONSTRAINT: tuple[str, ...] = (
+    "ingest_source",
+    "thumbnail",
+    "auto_detect_attrs",
+    "auto_detect_illustrations",
+    "decode_source",
+    "initial_crop",
+    "manual_deskew_pre",
+    "grayscale",
+    "threshold",
+    "invert",
+    "find_content_edges",
+    "crop_to_content",
+    "auto_deskew",
+    "morph_fill",
+    "rescale",
+    "canvas_map",
+    "blank_proof_synth",
+    "ocr_crop",
+    "extract_illustrations",
+    "ocr",
+    "text_postprocess",
+    "text_review",
+)
+_ALL_STAGE_IDS = tuple(dict.fromkeys(list(_V1_STAGE_IDS_FOR_CONSTRAINT) + list(V2_PAGE_STAGE_IDS)))
 _STAGE_ID_CHECK_CLAUSE = "(" + ", ".join(f"'{s}'" for s in _ALL_STAGE_IDS) + ")"
 
 # CHECK clause for page_stages.status — mirrors the PageStageStatus enum
@@ -625,7 +651,7 @@ class SqliteDatabase:
                         (project_id, page_id, stage_id, status, stage_version)
                     VALUES (?, ?, ?, '{initial_status}', 1)
                     """,
-                    [(project_id, page_id, sid) for sid in PAGE_STAGE_IDS],
+                    [(project_id, page_id, sid) for sid in V2_PAGE_STAGE_IDS],
                 )
                 _ = cur.execute(
                     "SELECT COUNT(*) FROM page_stages WHERE project_id=? AND page_id=?",

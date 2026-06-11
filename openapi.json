@@ -3091,49 +3091,6 @@
         }
       }
     },
-    "/api/data/pipeline/stages/{stage_id}/fields": {
-      "get": {
-        "tags": [
-          "pipeline"
-        ],
-        "summary": "Get Stage Fields",
-        "operationId": "get_stage_fields",
-        "deprecated": true,
-        "parameters": [
-          {
-            "name": "stage_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Stage Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StageFieldsResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/data/projects/{project_id}/search": {
       "get": {
         "tags": [
@@ -6586,27 +6543,6 @@
           "children"
         ],
         "title": "SplitPageResponse"
-      },
-      "StageFieldsResponse": {
-        "properties": {
-          "stage_id": {
-            "type": "string",
-            "title": "Stage Id"
-          },
-          "fields": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Fields"
-          }
-        },
-        "type": "object",
-        "required": [
-          "stage_id",
-          "fields"
-        ],
-        "title": "StageFieldsResponse"
       },
       "StageRunRequest": {
         "properties": {

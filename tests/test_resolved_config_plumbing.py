@@ -139,12 +139,13 @@ async def test_threshold_stage_uses_resolved_config_threshold_level(
     )
     gray_png = _gray_gradient_png()
     await db.init_page_stages_for_page(project_id, page_id)
+    # v2 DAG: threshold depends on crop (not grayscale directly).
     await commit_stage_artifact(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="grayscale",
+        stage_id="crop",
         artifact_bytes=gray_png,
     )
 
@@ -160,9 +161,13 @@ async def test_threshold_stage_uses_resolved_config_threshold_level(
     artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "threshold")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
-    assert arr.max() == 0, (
-        "threshold_level=255 sets every uint8 pixel to 0 — all-black binary "
-        "image; non-zero pixels mean cfg was not passed to the threshold impl"
+    # v2 threshold = threshold + invert. threshold_level=255 sets every uint8
+    # pixel to 0 (all black before invert), then invert flips to all-white (255).
+    # If cfg was NOT passed, Otsu thresholding on a gradient produces ~50/50 mix,
+    # so min() would be 0. All-white (min==255) proves cfg flowed through.
+    assert arr.min() == 255, (
+        "threshold_level=255 + v2 invert = all-white; mixed pixels mean cfg "
+        "was not passed to the threshold impl"
     )
 
 
@@ -217,11 +222,15 @@ async def test_cascade_dirty_for_config_change_dirties_threshold_not_grayscale(
 @pytest.mark.asyncio
 async def test_cascade_dirty_propagates_to_threshold_descendants(tmp_path: Path, db: SqliteDatabase) -> None:
     """``cascade_dirty_for_config_change`` also dirties ``threshold``'s
-    descendants (e.g. ``invert``)."""
+    descendants (e.g. ``deskew`` in v2 DAG).
+
+    v1 had `invert` as a downstream of `threshold`; in v2 that micro-step was
+    folded into `threshold` itself. The v2 downstream is `deskew`.
+    """
     project_id, page_id = "cfg_b2b", "0000"
     gray_png = _gray_gradient_png()
     await db.init_page_stages_for_page(project_id, page_id)
-    for sid in ("threshold", "invert"):
+    for sid in ("threshold", "deskew"):
         await commit_stage_artifact(
             data_root=tmp_path,
             database=db,
@@ -238,9 +247,9 @@ async def test_cascade_dirty_propagates_to_threshold_descendants(tmp_path: Path,
         changed_fields={"threshold_level"},
     )
 
-    invert_after = await db.get_page_stage(project_id, page_id, "invert")
-    assert invert_after is not None and invert_after.status == PageStageStatus.dirty, (
-        "invert is a descendant of threshold → must be dirtied transitively"
+    deskew_after = await db.get_page_stage(project_id, page_id, "deskew")
+    assert deskew_after is not None and deskew_after.status == PageStageStatus.dirty, (
+        "deskew is a descendant of threshold → must be dirtied transitively"
     )
 
 
@@ -639,7 +648,7 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
                 )
             ],
         )
-        # Seed grayscale artifact (manual_deskew_pre must also exist as parent).
+        # Seed crop artifact (v2 DAG: threshold depends on crop, not grayscale).
         await db.init_page_stages_for_page("b87_route", "0000")
         gray_png = _gray_gradient_png()
         await commit_stage_artifact(
@@ -647,7 +656,7 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
             database=db,
             project_id="b87_route",
             page_id="0000",
-            stage_id="grayscale",
+            stage_id="crop",
             artifact_bytes=gray_png,
         )
         await db.close()
@@ -661,10 +670,13 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
         resp = client.post("/api/data/projects/b87_route/pages/0/stages/threshold/run")
         assert resp.status_code == 200, resp.text
 
-    # Verify the artifact is all-black (threshold_level=255 → every pixel ≤ 255 → 0).
+    # v2 threshold = threshold + invert. With threshold_level=255: threshold →
+    # all-black (every pixel ≤ 255 → 0); invert → all-white (255). Without cfg,
+    # Otsu on a gradient produces a mixed image (min==0). All-white proves config flows.
     artifact_path = stage_artifact_path(settings.data_root, "b87_route", "0000", "threshold")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
-    assert arr.max() == 0, (
-        "threshold_level=255 should produce all-black image when route plumbs resolved config through"
+    assert arr.min() == 255, (
+        "threshold_level=255 + v2 invert = all-white; mixed pixels mean route "
+        "did not plumb resolved config through"
     )

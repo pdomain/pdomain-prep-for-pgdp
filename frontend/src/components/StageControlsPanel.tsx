@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
@@ -17,7 +17,9 @@ const SLOW_STAGES = new Set(["ocr", "extract_illustrations"]);
 type PageRecord = components["schemas"]["PageRecord"];
 type PageConfigOverrides = components["schemas"]["PageConfigOverrides-Input"];
 type PageStageState = components["schemas"]["PageStageState"];
-type StageFieldsResponse = components["schemas"]["StageFieldsResponse"];
+// StageFieldsResponse was removed in I1 (the /pipeline/stages/{id}/fields route
+// was retired; the replacement is GET /projects/{id}/pipeline, PipelineSnapshot).
+// visibleFields is now empty — all config is driven through PageConfigOverrides.
 
 // Boolean fields in PageConfigOverrides.
 const BOOL_FIELDS = new Set<keyof PageConfigOverrides>([
@@ -62,14 +64,9 @@ export function StageControlsPanel({
     () => page?.config_overrides ?? {},
   );
 
-  const fields = useQuery<StageFieldsResponse>({
-    queryKey: ["stage-fields", stageId],
-    queryFn: () =>
-      api.get<StageFieldsResponse>(
-        `/api/data/pipeline/stages/${stageId}/fields`,
-      ),
-    enabled: !!stageId,
-  });
+  // The /pipeline/stages/{id}/fields route was removed in I1. Fields are now
+  // driven entirely through PageConfigOverrides; visibleFields is always empty.
+  const visibleFields: (keyof PageConfigOverrides)[] = [];
 
   const applyMutation = useMutation({
     mutationFn: () =>
@@ -103,8 +100,6 @@ export function StageControlsPanel({
 
   if (!stageId) return null;
 
-  const visibleFields = fields.data?.fields ?? [];
-
   return (
     <div
       data-testid="stage-controls-panel"
@@ -115,17 +110,13 @@ export function StageControlsPanel({
       </h2>
 
       <Card className="p-4">
-        {fields.isLoading && (
-          <p className="text-xs text-ink-4">Loading fields…</p>
-        )}
-
-        {visibleFields.length === 0 && !fields.isLoading && (
+        {visibleFields.length === 0 && (
           <p className="text-xs text-ink-4">No config fields for this stage.</p>
         )}
 
         <div className="space-y-2">
           {visibleFields.map((field) => {
-            const f = field as keyof PageConfigOverrides;
+            const f = field;
             if (BOOL_FIELDS.has(f)) {
               return (
                 <ToggleField

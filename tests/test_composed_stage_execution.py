@@ -126,9 +126,13 @@ def test_threshold_v2_returns_binary_values() -> None:
 
 
 def test_threshold_v2_equivalent_to_v1_chain() -> None:
-    """v2 threshold output == v1 threshold + invert."""
+    """v2 threshold output == v1 threshold + invert.
+
+    `get_stage_impl` routes v2 stage IDs to V2_STAGE_IMPL, so the v1
+    impls are accessed via STAGE_IMPL directly to isolate the comparison.
+    """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
-        get_stage_impl,
+        STAGE_IMPL,
         get_v2_stage_impl,
     )
 
@@ -137,8 +141,9 @@ def test_threshold_v2_equivalent_to_v1_chain() -> None:
     v2_fn = get_v2_stage_impl("threshold", "cpu")
     v2_out = v2_fn(gray)
 
-    thresh_fn = get_stage_impl("threshold", "cpu")
-    invert_fn = get_stage_impl("invert", "cpu")
+    # Access v1 impls directly (STAGE_IMPL still holds v1 cpu impls).
+    thresh_fn = STAGE_IMPL["threshold"]["cpu"]
+    invert_fn = STAGE_IMPL["invert"]["cpu"]
     v1_out = invert_fn(thresh_fn(gray))
 
     assert np.array_equal(v2_out, v1_out), "v2 threshold must equal v1 threshold+invert"
@@ -159,8 +164,14 @@ def test_canvas_map_v2_returns_array() -> None:
 
 
 def test_canvas_map_v2_equivalent_to_v1_chain() -> None:
-    """v2 canvas_map output == v1 morph_fill + rescale + canvas_map."""
+    """v2 canvas_map output == v1 morph_fill + rescale + canvas_map.
+
+    Note: get_stage_impl("canvas_map", "cpu") now routes to V2_STAGE_IMPL because
+    canvas_map is in V2_PAGE_STAGE_IDS. The v1 chain must use STAGE_IMPL directly
+    to access the v1 canvas_map impl (same pattern as test_threshold_v2_equivalent_to_v1_chain).
+    """
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
+        STAGE_IMPL,
         get_stage_impl,
         get_v2_stage_impl,
     )
@@ -172,8 +183,9 @@ def test_canvas_map_v2_equivalent_to_v1_chain() -> None:
 
     morph_fn = get_stage_impl("morph_fill", "cpu")
     rescale_fn = get_stage_impl("rescale", "cpu")
-    canvas_fn = get_stage_impl("canvas_map", "cpu")
-    v1_out = canvas_fn(rescale_fn(morph_fn(binary)))
+    # Use STAGE_IMPL directly to get the v1 canvas_map impl, bypassing the v2 router.
+    canvas_v1_fn = STAGE_IMPL["canvas_map"]["cpu"]
+    v1_out = canvas_v1_fn(rescale_fn(morph_fn(binary)))
 
     assert np.array_equal(v2_out, v1_out), "v2 canvas_map must equal v1 chain output"
 

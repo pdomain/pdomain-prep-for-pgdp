@@ -30,28 +30,30 @@ import shutil
 import numpy as np
 import pytest
 
-from pdomain_prep_for_pgdp.core.models import PAGE_STAGE_IDS
+from pdomain_prep_for_pgdp.core.models import V2_PAGE_STAGE_IDS, V2_PROJECT_STAGE_IDS
 from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
-    STAGE_IMPL,
+    V2_STAGE_IMPL,
     StageNotImplemented,
     get_stage_impl,
 )
 
+_ALL_V2_STAGE_IDS = V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS
+
 # ─── Registry shape ─────────────────────────────────────────────────────────
 
 
-def test_registry_covers_every_canonical_stage() -> None:
-    """Every stage_id in PAGE_STAGE_IDS has at least one registered device."""
-    for sid in PAGE_STAGE_IDS:
-        assert sid in STAGE_IMPL, f"stage {sid!r} missing from STAGE_IMPL"
-        assert STAGE_IMPL[sid], f"stage {sid!r} has no device entries"
+def test_v2_registry_covers_every_canonical_stage() -> None:
+    """Every v2 stage_id has at least one registered device in V2_STAGE_IMPL."""
+    for sid in _ALL_V2_STAGE_IDS:
+        assert sid in V2_STAGE_IMPL, f"stage {sid!r} missing from V2_STAGE_IMPL"
+        assert V2_STAGE_IMPL[sid], f"stage {sid!r} has no device entries"
 
 
-def test_registry_has_cpu_for_every_stage() -> None:
-    """Every stage_id has a `'cpu'` callable. CUDA entries land later."""
-    for sid in PAGE_STAGE_IDS:
-        assert "cpu" in STAGE_IMPL[sid], f"stage {sid!r} has no cpu impl"
-        assert callable(STAGE_IMPL[sid]["cpu"]), f"stage {sid!r} cpu impl not callable"
+def test_v2_registry_has_cpu_for_every_stage() -> None:
+    """Every v2 stage_id has a `'cpu'` callable. CUDA entries land later."""
+    for sid in _ALL_V2_STAGE_IDS:
+        assert "cpu" in V2_STAGE_IMPL[sid], f"stage {sid!r} has no cpu impl"
+        assert callable(V2_STAGE_IMPL[sid]["cpu"]), f"stage {sid!r} cpu impl not callable"
 
 
 def test_get_stage_impl_returns_registered_callable() -> None:
@@ -80,11 +82,16 @@ def test_placeholder_stages_raise_stage_not_implemented() -> None:
 
     The runner uses this sentinel to record `status=failed` with a clear
     user-facing reason rather than the generic "an exception occurred".
+
+    All v2 page-scoped stages now have real implementations (B2-B4 landed).
+    We verify the _make_placeholder factory directly so this test remains
+    meaningful without depending on a specific stage still being a stub.
     """
-    # `extract_illustrations` is a known placeholder stage as of Slice 2.
-    fn = get_stage_impl("extract_illustrations", "cpu")
-    with pytest.raises(StageNotImplemented, match="extract_illustrations"):
-        fn(None)
+    from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _make_placeholder
+
+    fake_fn = _make_placeholder("test_placeholder_stage")
+    with pytest.raises(StageNotImplemented, match="test_placeholder_stage"):
+        fake_fn(None)
 
 
 def test_stage_not_implemented_is_not_notimplemented_error() -> None:

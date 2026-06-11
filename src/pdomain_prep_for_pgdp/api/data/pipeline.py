@@ -1,34 +1,15 @@
-"""/api/data/pipeline/* — static pipeline metadata (field-to-stage map).
+"""/api/data/pipeline/* — REMOVED in I1.
 
-DEPRECATED routes in this module (api-v2-deltas.md §4):
-  GET /pipeline/stages/{stage_id}/fields  — replaced by GET /projects/{id}/pipeline
-    (PipelineSnapshot) or an explicit v2 stage-fields route; removal in I1.
+This module previously provided a deprecated GET /pipeline/stages/{stage_id}/fields
+route. That route was removed at I1 per api-v2-deltas.md §4. The replacement
+is GET /projects/{id}/pipeline (PipelineSnapshot).
+
+The router is retained as an empty stub so any code that still imports it
+does not break at import time.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-
-from pdomain_prep_for_pgdp.core.models import PAGE_STAGE_IDS
-from pdomain_prep_for_pgdp.core.pipeline.stage_runner import STAGE_CONFIG_FIELDS
+from fastapi import APIRouter
 
 router = APIRouter(tags=["pipeline"])
-
-
-class StageFieldsResponse(BaseModel):
-    stage_id: str
-    fields: list[str]
-
-
-@router.get(
-    "/pipeline/stages/{stage_id}/fields",
-    response_model=StageFieldsResponse,
-    operation_id="get_stage_fields",
-    deprecated=True,  # api-v2-deltas.md §4 — replaced by GET /projects/{id}/pipeline; removal: I1
-)
-async def get_stage_fields(stage_id: str) -> StageFieldsResponse:
-    if stage_id not in PAGE_STAGE_IDS:
-        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
-    fields = sorted(STAGE_CONFIG_FIELDS.get(stage_id, frozenset()))
-    return StageFieldsResponse(stage_id=stage_id, fields=fields)

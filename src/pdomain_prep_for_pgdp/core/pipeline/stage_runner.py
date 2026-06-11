@@ -63,8 +63,16 @@ from typing import TYPE_CHECKING, cast
 import cv2
 import numpy as np
 
-from pdomain_prep_for_pgdp.core.models import PageRecord, PageStageState, PageStageStatus, ResolvedPageConfig
+from pdomain_prep_for_pgdp.core.models import (
+    V2_PAGE_STAGE_IDS,
+    V2_PROJECT_STAGE_IDS,
+    PageRecord,
+    PageStageState,
+    PageStageStatus,
+    ResolvedPageConfig,
+)
 from pdomain_prep_for_pgdp.core.page_service_helpers import (
+    _get_page_agg_and_ext,
     get_page_record,
     list_page_records_by_parent_id,
 )
@@ -83,7 +91,13 @@ from .page_stage_writer import (
     stage_artifact_path,
     stage_thumbnail_path,
 )
-from .stage_dag import compute_dirty_descendants, get_stage, not_applicable_stages_for_page_type
+from .stage_dag import (
+    compute_dirty_descendants,
+    compute_v2_dirty_descendants,
+    get_stage,
+    get_v2_stage,
+    not_applicable_stages_for_page_type,
+)
 from .stage_registry import (
     CompoundStageOutput,
     ImageArray,
@@ -242,9 +256,14 @@ async def cascade_dirty_for_config_change(
         return
 
     to_dirty: set[str] = set()
+    from pdomain_prep_for_pgdp.core.models import V2_PAGE_STAGE_IDS, V2_PROJECT_STAGE_IDS
+
     for sid in directly_affected:
         to_dirty.add(sid)
-        to_dirty.update(compute_dirty_descendants(sid))
+        if sid in V2_PAGE_STAGE_IDS or sid in V2_PROJECT_STAGE_IDS:
+            to_dirty.update(compute_v2_dirty_descendants(sid))
+        else:
+            to_dirty.update(compute_dirty_descendants(sid))
 
     rows = await database.list_page_stages_for_page(project_id, page_id)
     for row in rows:
@@ -384,21 +403,29 @@ async def _load_parent_artifact(
       for when the multi-artifact writer seeds a primary text/json file).
     - Other types: return raw bytes; the impl must handle them.
     """
-    parent_stage = get_stage(parent_stage_id)
+    # Resolve parent stage metadata: try v2 DAG first, fall back to v1.
+    from pdomain_prep_for_pgdp.core.models import V2_PAGE_STAGE_IDS, V2_PROJECT_STAGE_IDS
+
+    if parent_stage_id in V2_PAGE_STAGE_IDS or parent_stage_id in V2_PROJECT_STAGE_IDS:
+        _v2_parent = get_v2_stage(parent_stage_id)
+        _parent_output_type = _v2_parent.output_type
+    else:
+        parent_stage = get_stage(parent_stage_id)
+        _parent_output_type = parent_stage.output_type
 
     # Check in-memory cache first (deferred-write path): the parent's file may
     # not yet be on disk if its write is still in the executor queue.
     if write_executor is not None:
         cached = write_executor.consume_artifact((project_id, page_id, parent_stage_id))
         if cached is not None:
-            if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:
+            if _parent_output_type in _IMAGE_OUTPUT_TYPES:
                 return _decode_image_bytes(cached)
-            if parent_stage.output_type in _JSON_OUTPUT_TYPES:
-                return _decode_json_output(cached, parent_stage.output_type)
+            if _parent_output_type in _JSON_OUTPUT_TYPES:
+                return _decode_json_output(cached, _parent_output_type)
             # Compound or passthrough — return raw bytes; caller handles.
             return cached
 
-    if parent_stage.output_type in COMPOUND_OUTPUT_TYPES:
+    if _parent_output_type in COMPOUND_OUTPUT_TYPES:
         # Compound-output stages write multiple files; the single-file writer
         # refuses to produce a canonical path for them. Look in the stage
         # directory for the first `output.*` file to support downstream
@@ -428,10 +455,10 @@ async def _load_parent_artifact(
 
     raw = path.read_bytes()
 
-    if parent_stage.output_type in _IMAGE_OUTPUT_TYPES:
+    if _parent_output_type in _IMAGE_OUTPUT_TYPES:
         return _decode_image_bytes(raw)
-    if parent_stage.output_type in _JSON_OUTPUT_TYPES:
-        return _decode_json_output(raw, parent_stage.output_type)
+    if _parent_output_type in _JSON_OUTPUT_TYPES:
+        return _decode_json_output(raw, _parent_output_type)
     # Fall back to raw bytes for unknown types; the impl must handle them.
     return raw
 
@@ -449,7 +476,13 @@ async def _cascade_dirty(
     artifact that was previously consistent with the old output. Rows
     that are `not-run` or already `dirty` stay as-is.
     """
-    descendant_ids = compute_dirty_descendants(stage_id)
+    # Use v2 DAG for v2 stage IDs; v1 DAG for legacy stage IDs.
+    from pdomain_prep_for_pgdp.core.models import V2_PAGE_STAGE_IDS, V2_PROJECT_STAGE_IDS
+
+    if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
+        descendant_ids = compute_v2_dirty_descendants(stage_id)
+    else:
+        descendant_ids = compute_dirty_descendants(stage_id)
     if not descendant_ids:
         return
     # Fetch current rows for the page; flip those that are clean/failed.
@@ -491,7 +524,12 @@ async def _cascade_dirty_to_split_children(
     if not children:
         return
 
-    descendants_of_stage = compute_dirty_descendants(stage_id)
+    from pdomain_prep_for_pgdp.core.models import V2_PAGE_STAGE_IDS, V2_PROJECT_STAGE_IDS
+
+    if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
+        descendants_of_stage = compute_v2_dirty_descendants(stage_id)
+    else:
+        descendants_of_stage = compute_dirty_descendants(stage_id)
 
     for child in children:
         if child.split_at_stage is None:
@@ -664,7 +702,12 @@ async def _commit_single_artifact(
     await database.put_page_stage(state)
 
     # Register in-memory bytes for downstream stages (drop-on-last-consumer).
-    num_consumers = sum(1 for s in _stage_dag_module.STAGE_DAG if stage_id in s.depends_on)
+    # For v2 page/project stages use the v2 DAG to count downstream consumers;
+    # for v1 stages use the v1 DAG (STAGE_DAG).
+    if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
+        num_consumers = sum(1 for s in _stage_dag_module.V2_STAGE_DAG if stage_id in s.depends_on)
+    else:
+        num_consumers = sum(1 for s in _stage_dag_module.STAGE_DAG if stage_id in s.depends_on)
     write_executor.put_artifact((project_id, page_id, stage_id), artifact_bytes, num_consumers)
 
     # Submit file write; blocks if queue at capacity (back-pressure, Q8).
@@ -685,8 +728,12 @@ async def _commit_single_artifact(
             stage_id=stage_id,
         )
 
-    _stage = get_stage(stage_id)
-    _thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, _stage.output_type)
+    try:
+        _stage_for_thumb = get_stage(stage_id)
+    except KeyError:
+        # v2-only stage not in the v1 DAG; fall back to the v2 definition.
+        _stage_for_thumb = get_v2_stage(stage_id)
+    _thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, _stage_for_thumb.output_type)
     _thumb_path = stage_thumbnail_path(data_root, project_id, page_id, stage_id) if _thumb_bytes else None
     _tp, _ab, _thp, _thb = target_path, artifact_bytes, _thumb_path, _thumb_bytes
     write_executor.submit_write(
@@ -738,7 +785,7 @@ async def run_stage(
     project_id, page_id
         Identifies the row scope.
     stage_id
-        Canonical stage_id from `PAGE_STAGE_IDS`.
+        Canonical stage_id from `V2_PAGE_STAGE_IDS`.
     device
         ``"cpu"`` (default) or ``"cuda"``. Slice 3 has only cpu impls; cuda
         will fall through to `KeyError` from the registry — caller should
@@ -769,7 +816,58 @@ async def run_stage(
     StageRunFailed
         After marking the row `failed` and updating the DB.
     """
-    stage = get_stage(stage_id)
+    # Route v2 page-scoped stage IDs to the v2 DAG; fall back to v1 for
+    # legacy stages. This ensures the dep-check uses the correct dependency
+    # graph without requiring a full runner rewrite at I1.
+    #
+    # The `stage` variable below is used in artifact-load/encode sections that
+    # read `stage.depends_on`, `stage.any_parent_ok`, and `stage.output_type`.
+    # For v2-only stages (those not present in the v1 DAG), we fall back to
+    # the v2 Stage definition (which uses the same field names with compatible
+    # semantics at I1). Cross-scope deps are stripped from `stage.depends_on`
+    # for artifact loading so the runner does not try to read a project-scoped
+    # artifact from the page-stage artifact directory.
+    _is_v2_page_stage = stage_id in V2_PAGE_STAGE_IDS
+    _v2_stage = get_v2_stage(stage_id) if _is_v2_page_stage else None  # None for v1-only stages
+    if _is_v2_page_stage:
+        assert _v2_stage is not None  # narrowed: _is_v2_page_stage guarantees assignment above
+        # Cross-scope deps (project-scoped stages like "source") are not
+        # tracked in the page_stages table. Filter them out of the dep check
+        # and artifact-loading — they are enforced at the project-stage level.
+        _v2_page_deps = tuple(dep for dep in _v2_stage.depends_on if dep not in V2_PROJECT_STAGE_IDS)
+        # Use v1 Stage if it exists (richer compat: any_parent_ok, etc.); otherwise
+        # use v2 Stage directly. Override depends_on to exclude cross-scope deps.
+        from pdomain_prep_for_pgdp.core.pipeline.stage_dag import Stage as _Stage
+
+        try:
+            _v1_stage = get_stage(stage_id)
+            # Patch depends_on to v2 page-scoped deps so artifact loading doesn't
+            # try to pull from a project-scoped artifact path.
+            stage = _Stage(
+                id=_v1_stage.id,
+                input_type=_v2_stage.input_type,
+                output_type=_v2_stage.output_type,
+                depends_on=_v2_page_deps,
+                default_status=_v1_stage.default_status,
+                code_pointer=_v1_stage.code_pointer,
+                is_terminal=_v1_stage.is_terminal,
+                any_parent_ok=False,
+            )
+        except KeyError:
+            # v2-only stage: synthesise a compat shim from V2Stage fields.
+            stage = _Stage(
+                id=stage_id,
+                input_type=_v2_stage.input_type,
+                output_type=_v2_stage.output_type,
+                depends_on=_v2_page_deps,
+                default_status="not-run",
+                code_pointer=f"v2:{stage_id}",
+                is_terminal=_v2_stage.is_terminal,
+                any_parent_ok=False,
+            )
+    else:
+        stage = get_stage(stage_id)
+        _v2_page_deps = stage.depends_on
 
     # Build page_service from data_root if not provided by the caller.
     _ps: PageService | None = page_service
@@ -807,6 +905,22 @@ async def run_stage(
                 "decode_source",
                 [f"parent[{_child_decode_page.parent_page_id}]:ingest_source"],
             )
+    elif _is_v2_page_stage:
+        # v2 path: use the filtered page-scoped deps (cross-scope deps
+        # like "source" have already been excluded from _v2_page_deps).
+        # `stage.depends_on` is also set to _v2_page_deps above.
+        if stage.depends_on:
+            rows = await database.list_page_stages_for_page(project_id, page_id)
+            rows_by_stage = {r.stage_id: r for r in rows}
+            # v2 DAG has no any_parent_ok; all listed page deps must be clean.
+            missing = [
+                parent_id
+                for parent_id in stage.depends_on
+                if (rows_by_stage.get(parent_id) is None)
+                or (rows_by_stage[parent_id].status != PageStageStatus.clean)
+            ]
+            if missing:
+                raise StageDependenciesNotMet(stage_id, missing)
     elif stage.depends_on:
         rows = await database.list_page_stages_for_page(project_id, page_id)
         rows_by_stage = {r.stage_id: r for r in rows}
@@ -958,6 +1072,72 @@ async def run_stage(
                 artifact_bytes=artifact_bytes_crop,
                 stage_version=_stage_ver,
                 content_hash=_child_input_hash,
+                config_hash=_cfg_hash,
+            )
+        elif (
+            _is_v2_page_stage
+            and not stage.depends_on
+            and _v2_stage is not None
+            and _v2_stage.input_type == "image_bytes"
+        ):
+            # v2 root page stage (e.g. `grayscale`): no page-scoped parents, but
+            # needs the raw source image.
+            #
+            # Primary path: read source bytes from BlobStore via the
+            # PrepPageExtension.source_blob_hash (the fully v2 ingest path).
+            #
+            # Fallback path: if a v1 parent artifact is available on disk
+            # (e.g. tests seed manual_deskew_pre before running grayscale via the
+            # v1 DAG), load that artifact and use it. This keeps the transition
+            # window working without updating all existing test fixtures.
+            _v1_src_img: np.ndarray | None = None
+            try:
+                _v1_fallback_stage = get_stage(stage_id)
+                for _v1_parent_id in _v1_fallback_stage.depends_on:
+                    _v1_parent_path = stage_artifact_path(data_root, project_id, page_id, _v1_parent_id)
+                    if _v1_parent_path.exists():
+                        _v1_src_img = _decode_image_bytes(_v1_parent_path.read_bytes())
+                        break
+            except KeyError:
+                # Stage not in v1 DAG — no v1 fallback possible.
+                pass
+
+            if _v1_src_img is not None:
+                # v1 fallback: use the artifact from the v1 parent stage.
+                output = _call_impl(impl, [_v1_src_img], cfg)
+            else:
+                # v2 primary path: load source from BlobStore.
+                if _ps is None:
+                    raise ValueError(
+                        f"v2 root stage {stage_id!r} requires page_service (PageService); "
+                        + "the runner should have built it from data_root above"
+                    )
+                try:
+                    _idx0_int = int(page_id)
+                except (ValueError, TypeError):
+                    _idx0_int = -1
+                _, _prep_ext = _get_page_agg_and_ext(_ps, project_id, _idx0_int)
+                if _prep_ext is None or not _prep_ext.source_blob_hash:
+                    raise ValueError(
+                        f"v2 root stage {stage_id!r}: page {page_id!r} has no source_blob_hash "
+                        + "in PrepPageExtension — ingest the project source first "
+                        + "(project-stage 'source' must be clean)"
+                    )
+                _src_bytes = _ps.blobs.read(_prep_ext.source_blob_hash)
+                _src_img = _decode_image_bytes(_src_bytes)
+                output = _call_impl(impl, [_src_img], cfg)
+
+            # Encode and commit. v2 root page stages output ndarray (gray/image).
+            artifact_bytes_v2root = _encode_image_to_png(_require_image_artifact(output, stage_id=stage_id))
+            committed = await _commit_single_artifact(
+                data_root=data_root,
+                database=database,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                artifact_bytes=artifact_bytes_v2root,
+                stage_version=_stage_ver,
+                write_executor=write_executor,
                 config_hash=_cfg_hash,
             )
         else:
@@ -1120,7 +1300,10 @@ async def run_stage(
     # that the cascade will mark dirty. The SSE subscribers refetch the full
     # stage list on any event, so emitting the full descendant set is correct
     # even if some rows were already dirty or not-run.
-    descendant_ids = compute_dirty_descendants(stage_id)
+    # Use v2 DAG for v2 stage IDs; v1 DAG for legacy stage IDs.
+    descendant_ids = (
+        compute_v2_dirty_descendants(stage_id) if _is_v2_page_stage else compute_dirty_descendants(stage_id)
+    )
     await _cascade_dirty(
         database=database,
         project_id=project_id,

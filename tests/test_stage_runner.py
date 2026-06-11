@@ -197,8 +197,11 @@ async def test_run_stage_grayscale_happy_path(tmp_path: Path, db: SqliteDatabase
 
 @pytest.mark.asyncio
 async def test_run_stage_raises_when_dependencies_not_met(tmp_path: Path, db: SqliteDatabase) -> None:
-    """`grayscale` requires `manual_deskew_pre` to be clean. Lazy-init creates
-    rows as `not-run`, so a fresh page should fail dep-check."""
+    """`crop` requires `grayscale` to be clean. Lazy-init creates
+    rows as `not-run`, so a fresh page should fail dep-check.
+
+    v2 DAG: `crop` depends on `grayscale`; `grayscale` is the root page stage.
+    """
     project_id, page_id = "p1", "0000"
     await db.init_page_stages_for_page(project_id, page_id)
 
@@ -208,11 +211,11 @@ async def test_run_stage_raises_when_dependencies_not_met(tmp_path: Path, db: Sq
             database=db,
             project_id=project_id,
             page_id=page_id,
-            stage_id="grayscale",
+            stage_id="crop",
         )
     # The exception names the offending stage(s) so the caller can propose
     # auto-running them.
-    assert "manual_deskew_pre" in str(exc_info.value)
+    assert "grayscale" in str(exc_info.value)
 
 
 # ─── Eager dirty cascade ────────────────────────────────────────────────────
@@ -315,12 +318,13 @@ async def test_run_stage_records_failure_when_impl_raises(
     )
 
     # Patch the cpu impl for grayscale to raise.
+    # get_stage_impl routes v2 stage IDs to V2_STAGE_IMPL.
     from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _kaboom(_x, cfg=None):
         raise ValueError("synthetic stage failure for tests")
 
-    monkeypatch.setitem(stage_registry.STAGE_IMPL["grayscale"], "cpu", _kaboom)
+    monkeypatch.setitem(stage_registry.V2_STAGE_IMPL["grayscale"], "cpu", _kaboom)
 
     with pytest.raises(StageRunFailed):
         await run_stage(
@@ -409,19 +413,21 @@ async def test_run_stage_compound_output_no_longer_raises_unsupported(
     (using a monkeypatched impl to avoid loading DocTR weights in CI).
     """
 
+    # get_stage_impl routes v2 stage IDs to V2_STAGE_IMPL.
     from pdomain_prep_for_pgdp.core.pipeline import stage_registry as reg_module
 
     fake_result = {"words.json": b"[]", "raw.txt": b""}
-    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
+    monkeypatch.setitem(reg_module.V2_STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
 
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
+    # v2 DAG: `ocr` depends on `post_ocr_crop` (replaced `ocr_crop`).
     await _seed_clean_parents(
         db,
         tmp_path,
         project_id,
         page_id,
-        parent_stages=["ocr_crop"],
+        parent_stages=["post_ocr_crop"],
         payload=payload,
     )
 
@@ -537,52 +543,14 @@ async def test_run_stage_ingest_source_missing_storage_fails_loud(
     assert row.status == PageStageStatus.failed
 
 
-@pytest.mark.asyncio
-async def test_run_stage_full_chain_to_invert_no_manual_seeding(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """End-to-end click-flow: starting from a fresh page (no rows seeded),
-    running ingest_source → decode_source → initial_crop → manual_deskew_pre
-    → grayscale → threshold → invert in order produces a clean artifact at
-    every step.
-
-    This is the M2 smoke-test pass criterion (no manual SQLite seeding).
-    """
-    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-
-    project_id, page_id = "p1", "0000"
-    storage = FilesystemStorage(tmp_path)
-
-    payload = _checkerboard_bgr_png()
-    source_key = f"projects/{project_id}/source/page0.png"
-    await storage.put_bytes(source_key, payload, "image/png")
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    chain = [
-        "ingest_source",
-        "decode_source",
-        "initial_crop",
-        "manual_deskew_pre",
-        "grayscale",
-        "threshold",
-        "invert",
-    ]
-    for stage_id in chain:
-        state = await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id=stage_id,
-            storage=storage,
-            page_source_key=source_key,
-        )
-        assert state.status == PageStageStatus.clean, (
-            f"stage {stage_id!r} did not reach clean; got {state.status!r} (error={state.error_message!r})"
-        )
-        artifact_path = stage_artifact_path(tmp_path, project_id, page_id, stage_id)
-        assert artifact_path.exists(), f"stage {stage_id!r} produced no artifact on disk"
+# test_run_stage_full_chain_to_invert_no_manual_seeding was deleted in the v1→v2
+# migration (Step 5 / I1 review).  That test exercised the v1 micro-stage chain
+# (ingest_source → decode_source → initial_crop → manual_deskew_pre → grayscale
+# → threshold → invert) which no longer exists as discrete run-able stages in the
+# v2 DAG.  The equivalent v2 smoke test would run
+# ingest_source → grayscale → crop → threshold → … but those require a seeded
+# BlobStore / PrepPageExtension, not a plain FilesystemStorage key.  A dedicated
+# v2 integration smoke test belongs in test_v2_pipeline.py once ingest is wired.
 
 
 # ─── Slice 9: find_content_edges + bbox parent loading ─────────────────────
@@ -841,22 +809,25 @@ async def test_run_stage_rescale_runs_after_morph_fill(
 
 
 @pytest.mark.asyncio
-async def test_run_stage_canvas_map_runs_after_rescale(
+async def test_run_stage_canvas_map_runs_after_post_transform_crop(
     tmp_path: Path,
     db: SqliteDatabase,
 ) -> None:
-    """`canvas_map` runs on the output of `rescale` and produces a PNG artifact.
+    """`canvas_map` runs on the output of `post_transform_crop` and produces a PNG artifact.
 
-    canvas_map outputs image_bytes (output_type='image_bytes'), so the runner
-    must encode the ndarray result to PNG and write it canonically.
+    In v2 the micro-steps morph_fill / rescale are folded into `canvas_map`;
+    its single parent is `post_transform_crop`.  canvas_map outputs an ndarray
+    that the runner encodes as PNG.
     """
     project_id, page_id = "p1", "0000"
-    # Build a realistic-ish rescaled image: tall and narrow (post-rescale shape).
+    # Realistic binary image (post-dewarp/crop shape).
     img = np.full((200, 120), 200, dtype=np.uint8)
     ok, buf = cv2.imencode(".png", img)
     assert ok
     payload = bytes(buf.tobytes())
-    await _seed_clean_parents(db, tmp_path, project_id, page_id, parent_stages=["rescale"], payload=payload)
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["post_transform_crop"], payload=payload
+    )
 
     state = await run_stage(
         data_root=tmp_path,
@@ -1179,64 +1150,13 @@ async def test_run_stage_text_postprocess_normalises_curly_quotes(
     assert "--" in result
 
 
-@pytest.mark.asyncio
-async def test_run_stage_full_chain_through_canvas_map(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """End-to-end chain: ingest_source → canvas_map in topo order.
-
-    Slices 9-11 complete the proofing chain. Starting from a fresh page
-    (no rows seeded), clicking every stage in topo order must produce a
-    clean artifact at every step. `find_content_edges` produces a JSON
-    artifact; `crop_to_content` reads both image and JSON parents.
-    """
-    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-
-    project_id, page_id = "p1", "0000"
-    storage = FilesystemStorage(tmp_path)
-
-    # Build a real-looking source image (tall text-page-like content).
-    src_img = np.full((400, 250, 3), 240, dtype=np.uint8)
-    # Add some 'text-like' dark content.
-    src_img[50:350, 30:220] = 30
-    ok, buf = cv2.imencode(".png", src_img)
-    assert ok
-    source_bytes = bytes(buf.tobytes())
-    source_key = f"projects/{project_id}/source/page0.png"
-    await storage.put_bytes(source_key, source_bytes, "image/png")
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    chain = [
-        "ingest_source",
-        "decode_source",
-        "initial_crop",
-        "manual_deskew_pre",
-        "grayscale",
-        "threshold",
-        "invert",
-        "find_content_edges",
-        "crop_to_content",
-        "auto_deskew",
-        "morph_fill",
-        "rescale",
-        "canvas_map",
-    ]
-    for stage_id in chain:
-        state = await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id=stage_id,
-            storage=storage,
-            page_source_key=source_key,
-        )
-        assert state.status == PageStageStatus.clean, (
-            f"stage {stage_id!r} failed; error={state.error_message!r}"
-        )
-        artifact_path = stage_artifact_path(tmp_path, project_id, page_id, stage_id)
-        assert artifact_path.exists(), f"stage {stage_id!r} produced no artifact on disk"
+# test_run_stage_full_chain_through_canvas_map was deleted in the v1→v2 migration
+# (Step 5 / I1 review).  The v1 chain (ingest_source → … → canvas_map via
+# decode_source / initial_crop / manual_deskew_pre / threshold / invert /
+# find_content_edges / crop_to_content / auto_deskew / morph_fill / rescale) no
+# longer exists in the v2 DAG where these micro-steps are folded.
+# A dedicated v2 chain test (grayscale → crop → threshold → … → canvas_map)
+# belongs in test_v2_pipeline.py once all v2 ingest stages are wired end-to-end.
 
 
 # ─── Issue #58: not-applicable marking after auto_detect_attrs ────────────
@@ -1408,11 +1328,15 @@ async def test_run_stage_ocr_produces_multi_artifact_dir(
         "words.json": json.dumps(fake_words).encode(),
         "raw.txt": b"Hello",
     }
-    monkeypatch.setitem(reg_module.STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
+    # get_stage_impl routes v2 stage IDs to V2_STAGE_IMPL.
+    monkeypatch.setitem(reg_module.V2_STAGE_IMPL["ocr"], "cpu", lambda image, cfg=None: fake_result)
 
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(db, tmp_path, project_id, page_id, parent_stages=["ocr_crop"], payload=payload)
+    # v2 DAG: `ocr` depends on `post_ocr_crop` (v2 re-key of v1 `ocr_crop`).
+    await _seed_clean_parents(
+        db, tmp_path, project_id, page_id, parent_stages=["post_ocr_crop"], payload=payload
+    )
 
     state = await run_stage(
         data_root=tmp_path,
@@ -1439,9 +1363,9 @@ async def test_run_stage_text_review_produces_multi_artifact_dir(
 ) -> None:
     """`text_review` gate stage runs via multi-artifact writer.
 
-    Seeds `text_postprocess` (output_type='text', written as output.txt),
-    then runs `text_review`. Verifies both output.txt and attestation.json
-    land in the stage directory and the DB row is clean.
+    v2 DAG: `text_review` depends on `hyphen_join` (arg 0) and `regex`
+    (arg 1).  The impl uses the `regex` output as the reviewed text and
+    produces output.txt + attestation.json.
     """
     import json
     from time import time
@@ -1449,22 +1373,42 @@ async def test_run_stage_text_review_produces_multi_artifact_dir(
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
 
     project_id, page_id = "p1", "0000"
+    # hyphen_join output: intermediate text (positional arg 0 to text_review).
+    hyphen_content = b"Hello world-\nwide."
+    # regex output: final processed text (positional arg 1 to text_review).
     text_content = b"Hello world."
 
     await db.init_page_stages_for_page(project_id, page_id)
 
-    # Seed text_postprocess artifact directly (it's single-artifact, output.txt).
-    tp_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "text_postprocess"
-    tp_dir.mkdir(parents=True, exist_ok=True)
-    (tp_dir / "output.txt").write_bytes(text_content)
+    # Seed hyphen_join artifact (output_type='text', written as output.txt).
+    hj_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "hyphen_join"
+    hj_dir.mkdir(parents=True, exist_ok=True)
+    (hj_dir / "output.txt").write_bytes(hyphen_content)
     await db.put_page_stage(
         PageStageState(
             project_id=project_id,
             page_id=page_id,
-            stage_id="text_postprocess",
+            stage_id="hyphen_join",
             status=PageStageStatus.clean,
             stage_version=1,
-            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/text_postprocess/output.txt",
+            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/hyphen_join/output.txt",
+            input_hash=compute_content_hash(hyphen_content),
+            last_run_at=time(),
+        )
+    )
+
+    # Seed regex artifact (output_type='text', written as output.txt).
+    rx_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "regex"
+    rx_dir.mkdir(parents=True, exist_ok=True)
+    (rx_dir / "output.txt").write_bytes(text_content)
+    await db.put_page_stage(
+        PageStageState(
+            project_id=project_id,
+            page_id=page_id,
+            stage_id="regex",
+            status=PageStageStatus.clean,
+            stage_version=1,
+            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/regex/output.txt",
             input_hash=compute_content_hash(text_content),
             last_run_at=time(),
         )
@@ -1482,6 +1426,7 @@ async def test_run_stage_text_review_produces_multi_artifact_dir(
     stage_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "text_review"
     assert (stage_dir / "output.txt").exists(), "output.txt missing"
     assert (stage_dir / "attestation.json").exists(), "attestation.json missing"
+    # text_review uses the regex output (arg 1) as the reviewed text.
     assert (stage_dir / "output.txt").read_bytes() == text_content
     attestation = json.loads((stage_dir / "attestation.json").read_bytes())
     assert isinstance(attestation, dict)

@@ -8,7 +8,7 @@ Behavior:
 
 - Validates project ownership (404 on miss / cross-user).
 - Validates the page exists (404).
-- Validates `stage_id` is in `PAGE_STAGE_IDS` (422 unprocessable).
+- Validates `stage_id` is in `V2_PAGE_STAGE_IDS` (422 unprocessable).
 - Calls `run_stage`. On success returns the freshly-committed row
   (status=clean). On `StageDependenciesNotMet` returns 409 conflict
   with a message naming the missing parents. On `StageOutputUnsupported`
@@ -46,6 +46,8 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_service_helpers import update_page_extension
+from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
 from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pdomain_prep_for_pgdp.settings import Settings
 from tests.fixtures.seed_pages import seed_pages_in_store
@@ -104,6 +106,11 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 ),
             ],
         )
+        # Seed a source image blob so v2 root page stages (grayscale) can load it.
+        # v2 grayscale has no page-scoped deps — it reads from BlobStore directly.
+        svc = build_page_service(settings.data_root, "m2s4")
+        blob_hash = svc.blobs.write(_checkerboard_bgr_png())
+        update_page_extension(svc, "m2s4", 0, source_blob_hash=blob_hash)
         await db.close()
 
     asyncio.run(go())
@@ -153,10 +160,13 @@ def seeded_client(tmp_path: Path) -> Iterator[tuple[TestClient, Settings]]:
 def test_run_stage_route_grayscale_happy_path(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """POST run on `grayscale` after seeding `manual_deskew_pre` clean returns
-    200 and a clean PageStageState row."""
-    client, settings = seeded_client
-    asyncio.run(_seed_clean_parent(settings, "m2s4", "0000", "manual_deskew_pre", _checkerboard_bgr_png()))
+    """POST run on `grayscale` returns 200 and a clean PageStageState row.
+
+    v2 DAG: `grayscale` has no page-scoped dependencies (its only dep is the
+    project-scoped `source` stage, which is not checked at the page-stage level).
+    No parent seeding is needed.
+    """
+    client, _ = seeded_client
 
     r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run")
     assert r.status_code == 200, r.text
@@ -171,31 +181,34 @@ def test_run_stage_route_returns_409_when_dependencies_not_met(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
     """Without seeding the parent, the runner raises StageDependenciesNotMet.
-    The route translates to 409 Conflict so the UI can prompt for auto-run."""
+    The route translates to 409 Conflict so the UI can prompt for auto-run.
+
+    v2 DAG: `crop` depends on `grayscale`. Running `crop` without `grayscale`
+    being clean triggers the dep-not-met 409.
+    """
     client, _ = seeded_client
     # Lazy-init the rows so the page is known but no parent is clean yet.
     client.get("/api/data/projects/m2s4/pages/0/stages")
 
-    r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run")
+    r = client.post("/api/data/projects/m2s4/pages/0/stages/crop/run")
     assert r.status_code == 409, r.text
-    assert "manual_deskew_pre" in r.text
+    assert "grayscale" in r.text
 
 
 def test_run_stage_route_returns_409_for_ocr_without_parent(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
-    """`ocr` returns 409 when its parent `ocr_crop` is not clean.
+    """`ocr` returns 409 when its parent `post_ocr_crop` is not clean.
 
-    Slice 14 added the multi-artifact writer so `ocr` no longer returns 501;
-    instead it falls through to the standard dep-check and returns 409 when
-    the parent chain has not been run.
+    v2 DAG: `ocr` depends on `post_ocr_crop` (which replaced `ocr_crop`).
+    Running `ocr` without the parent chain produces 409.
     """
     client, _ = seeded_client
     client.get("/api/data/projects/m2s4/pages/0/stages")
 
     r = client.post("/api/data/projects/m2s4/pages/0/stages/ocr/run")
     assert r.status_code == 409, r.text
-    assert "ocr_crop" in r.text
+    assert "post_ocr_crop" in r.text
 
 
 # ─── Validation paths ──────────────────────────────────────────────────────
@@ -245,16 +258,19 @@ def test_run_stage_route_500_when_impl_raises_with_failed_row(
 ) -> None:
     """A registered impl that raises causes the runner to mark the row failed
     + raise StageRunFailed. The route surfaces 500. A subsequent GET shows
-    the row's `status=failed` so the chip rail tooltip can explain."""
-    client, settings = seeded_client
-    asyncio.run(_seed_clean_parent(settings, "m2s4", "0000", "manual_deskew_pre", _checkerboard_bgr_png()))
+    the row's `status=failed` so the chip rail tooltip can explain.
+
+    v2 DAG: `grayscale` has no page-scoped deps, so no parent seeding needed.
+    The monkeypatch now targets V2_STAGE_IMPL since v2 stage IDs are routed there.
+    """
+    client, _ = seeded_client
 
     from pdomain_prep_for_pgdp.core.pipeline import stage_registry
 
     def _kaboom(_x, cfg=None):
         raise ValueError("synthetic stage failure for tests")
 
-    monkeypatch.setitem(stage_registry.STAGE_IMPL["grayscale"], "cpu", _kaboom)
+    monkeypatch.setitem(stage_registry.V2_STAGE_IMPL["grayscale"], "cpu", _kaboom)
 
     r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run")
     assert r.status_code == 500, r.text

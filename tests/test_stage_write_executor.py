@@ -104,38 +104,56 @@ async def _seed_clean_in_db_only(
 async def test_stage_advances_immediately_on_in_memory_artifact(tmp_path: Path, db: SqliteDatabase) -> None:
     """Stage N+1 can run while stage N's file write is still in-flight.
 
-    Setup: mark manual_deskew_pre as 'clean' in DB (no file on disk), put its
-    artifact bytes in the executor cache. Run grayscale with the executor.
-    Grayscale must complete successfully by reading the parent from the cache,
-    even though manual_deskew_pre has no file on disk.
-    """
-    project_id, page_id = "p1", "0000"
-    parent_bytes = _checkerboard_bgr_png()
+    Setup: mark `grayscale` as 'clean' in DB (no file on disk), put its
+    artifact bytes in the executor cache. Run `crop` with the executor.
+    crop must complete successfully by reading the parent (grayscale) from the
+    cache, even though grayscale has no file on disk.
 
-    # Parent is 'clean' in DB (optimistic) but file not yet on disk.
-    await _seed_clean_in_db_only(db, tmp_path, project_id, page_id, "manual_deskew_pre", parent_bytes)
+    v2 DAG: grayscale is the root page stage; crop depends on grayscale.
+    This test uses the grayscale→crop pair to verify the in-memory advance
+    contract (v1 used manual_deskew_pre→grayscale; v1 chain no longer runnable
+    without a seeded source_blob_hash or on-disk v1 parent).
+    """
+    import cv2 as _cv2
+
+    project_id, page_id = "p1", "0000"
+
+    # Build a 2D grayscale PNG (what grayscale produces).
+    _gray = np.full((40, 60), 200, dtype=np.uint8)
+    _ok, _buf = _cv2.imencode(".png", _gray)
+    assert _ok
+    parent_bytes = bytes(_buf.tobytes())
+
+    # Parent (grayscale) is 'clean' in DB (optimistic) but file not yet on disk.
+    await _seed_clean_in_db_only(db, tmp_path, project_id, page_id, "grayscale", parent_bytes)
 
     # Put parent artifact in executor cache (simulates prior run_stage with executor).
     executor = StageWriteExecutor(pool_size=1, queue_cap=4)
-    executor.put_artifact((project_id, page_id, "manual_deskew_pre"), parent_bytes, num_consumers=1)
+    executor.put_artifact((project_id, page_id, "grayscale"), parent_bytes, num_consumers=1)
 
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+    # Pre-build PageService so run_stage doesn't create its own eventsourcing
+    # connection; this avoids SQLite contention under pytest-xdist -n auto.
+    page_svc = build_page_service(tmp_path, project_id)
     try:
-        # Run grayscale with the executor; it should read parent from cache.
+        # Run crop with the executor; it should read grayscale parent from cache.
         state = await run_stage(
             data_root=tmp_path,
             database=db,
             project_id=project_id,
             page_id=page_id,
-            stage_id="grayscale",
+            stage_id="crop",
             write_executor=executor,
+            page_service=page_svc,
         )
         assert state.status == PageStageStatus.clean
 
         # Parent artifact consumed from cache (count decremented to 0).
-        assert executor.consume_artifact((project_id, page_id, "manual_deskew_pre")) is None
+        assert executor.consume_artifact((project_id, page_id, "grayscale")) is None
 
-        # Grayscale's own bytes are in the executor cache for downstream stages.
-        cached = executor.consume_artifact((project_id, page_id, "grayscale"))
+        # crop's own bytes are in the executor cache for downstream stages.
+        cached = executor.consume_artifact((project_id, page_id, "crop"))
         assert cached is not None
         assert len(cached) > 0
     finally:
@@ -221,6 +239,10 @@ async def test_write_failure_marks_stage_failed(tmp_path: Path, db: SqliteDataba
 
     Mechanism: create the target path as a directory so os.replace fails at
     the OS level, then verify the on_failure callback flips the row to failed.
+
+    v2 DAG chain: grayscale → crop.  Run grayscale (v1 fallback via
+    manual_deskew_pre on disk) first, then run crop with its artifact path
+    blocked by a pre-created directory.
     """
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
@@ -237,7 +259,13 @@ async def test_write_failure_marks_stage_failed(tmp_path: Path, db: SqliteDataba
 
     executor = StageWriteExecutor(pool_size=1, queue_cap=4)
 
-    # Run grayscale with the executor. Its bytes land in the cache so threshold
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+    # Pre-build PageService so run_stage doesn't create its own eventsourcing
+    # connection; this avoids SQLite contention under pytest-xdist -n auto.
+    page_svc = build_page_service(tmp_path, project_id)
+
+    # Run grayscale with the executor. Its bytes land in the cache so crop
     # can read them, and an optimistic clean row is written to DB.
     state = await run_stage(
         data_root=tmp_path,
@@ -246,21 +274,23 @@ async def test_write_failure_marks_stage_failed(tmp_path: Path, db: SqliteDataba
         page_id=page_id,
         stage_id="grayscale",
         write_executor=executor,
+        page_service=page_svc,
     )
     assert state.status == PageStageStatus.clean
 
-    # Make threshold's target path a directory so os.replace fails.
-    threshold_artifact = stage_artifact_path(tmp_path, project_id, page_id, "threshold")
-    threshold_artifact.parent.mkdir(parents=True, exist_ok=True)
-    threshold_artifact.mkdir()  # output.png/ is now a dir → write will fail
+    # Make crop's target path a directory so os.replace fails.
+    crop_artifact = stage_artifact_path(tmp_path, project_id, page_id, "crop")
+    crop_artifact.parent.mkdir(parents=True, exist_ok=True)
+    crop_artifact.mkdir()  # output.png/ is now a dir → write will fail
 
     state2 = await run_stage(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="threshold",
+        stage_id="crop",
         write_executor=executor,
+        page_service=page_svc,
     )
     assert state2.status == PageStageStatus.clean  # optimistic
 
@@ -271,16 +301,16 @@ async def test_write_failure_marks_stage_failed(tmp_path: Path, db: SqliteDataba
     # Poll until the on_failure callback has updated the DB row to 'failed'.
     async def _wait_failed() -> None:
         for _ in range(100):
-            row = await db.get_page_stage(project_id, page_id, "threshold")
+            row = await db.get_page_stage(project_id, page_id, "crop")
             if row is not None and row.status == PageStageStatus.failed:
                 return
             await asyncio.sleep(0.05)
 
     await asyncio.wait_for(_wait_failed(), timeout=5.0)
 
-    threshold_row = await db.get_page_stage(project_id, page_id, "threshold")
-    assert threshold_row is not None
-    assert threshold_row.status == PageStageStatus.failed, f"expected failed, got {threshold_row.status}"
+    crop_row = await db.get_page_stage(project_id, page_id, "crop")
+    assert crop_row is not None
+    assert crop_row.status == PageStageStatus.failed, f"expected failed, got {crop_row.status}"
 
 
 # ─── Bullet 4: env knobs ─────────────────────────────────────────────────────

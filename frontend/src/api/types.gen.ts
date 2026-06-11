@@ -1072,26 +1072,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/data/pipeline/stages/{stage_id}/fields": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Stage Fields
-         * @deprecated
-         */
-        get: operations["get_stage_fields"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/data/projects/{project_id}/search": {
         parameters: {
             query?: never;
@@ -2402,13 +2382,6 @@ export interface components {
         SplitPageResponse: {
             /** Children */
             children: components["schemas"]["PageRecord"][];
-        };
-        /** StageFieldsResponse */
-        StageFieldsResponse: {
-            /** Stage Id */
-            stage_id: string;
-            /** Fields */
-            fields: string[];
         };
         /**
          * StageRunRequest
@@ -4469,37 +4442,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_stage_fields: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stage_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["StageFieldsResponse"];
                 };
             };
             /** @description Validation Error */

@@ -255,8 +255,8 @@ class PageRecord(ApiModel):
 
     split_at_stage: str | None = None
     """The stage on the parent at which the split was created (a stage_id
-    string from `PAGE_STAGE_IDS`). Typically `auto_detect_attrs`; the spec
-    permits any stage whose output is an image."""
+    string from `V2_PAGE_STAGE_IDS`). Typically `post_transform_crop`; the
+    spec permits any stage whose output is an image."""
 
     split_suffix: str | None = None
     """The user-chosen suffix that gets appended in the page prefix
@@ -444,41 +444,6 @@ class PageStageStatus(str, Enum):
     not_applicable = "not-applicable"
 
 
-# Canonical stage-ID list — single source of truth at the model layer; the
-# DAG module (M1 §B) re-uses this tuple to enumerate stages and the SQLite
-# schema's CHECK constraint pins the same set. Order matches a reasonable
-# topological walk of the DAG (per spec §"Per-page stage DAG"); the DAG
-# module is the authority on actual edges.
-PAGE_STAGE_IDS: tuple[str, ...] = (
-    # Pre-existing-today (already discrete; just naming them).
-    "ingest_source",
-    "thumbnail",
-    "auto_detect_attrs",
-    "auto_detect_illustrations",
-    # Per-page pipeline stages.
-    "decode_source",
-    "initial_crop",
-    "manual_deskew_pre",
-    "grayscale",
-    "threshold",
-    "invert",
-    "find_content_edges",
-    "crop_to_content",
-    "auto_deskew",
-    "morph_fill",
-    "rescale",
-    "canvas_map",
-    # Alt to canvas_map for blank-page short-circuit.
-    "blank_proof_synth",
-    # Post-Step-4 chain.
-    "ocr_crop",
-    "extract_illustrations",
-    "ocr",
-    "text_postprocess",
-    "text_review",
-)
-
-
 class PageStageState(ApiModel):
     """One per-page stage row — state of stage `stage_id` on page `page_id`.
 
@@ -505,9 +470,9 @@ class PageStageState(ApiModel):
 
 # ─── Registry v2 stage IDs (stage-registry-v2.md §2) ────────────────────────
 #
-# PAGE_STAGE_IDS above is the v1 tuple retained for backward-compat with
-# existing DB rows and tests. V2_PAGE_STAGE_IDS / V2_PROJECT_STAGE_IDS are the
-# canonical v2 sets per stage-registry-v2.md §2.1-2.2 (B1 re-cut).
+# V2_PAGE_STAGE_IDS / V2_PROJECT_STAGE_IDS are the canonical v2 sets per
+# stage-registry-v2.md §2.1-2.2 (B1 re-cut). The v1 PAGE_STAGE_IDS tuple
+# was removed at I1 — all production code now uses V2_PAGE_STAGE_IDS.
 #
 # Order in V2_PAGE_STAGE_IDS matches a valid topological walk of the page-
 # scoped subgraph (each stage's page-scoped deps appear before it). Cross-scope

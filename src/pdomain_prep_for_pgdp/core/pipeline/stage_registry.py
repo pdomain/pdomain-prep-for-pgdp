@@ -51,7 +51,6 @@ import numpy as np
 import numpy.typing as npt
 
 from pdomain_prep_for_pgdp.core.models import (
-    PAGE_STAGE_IDS,
     V2_PAGE_STAGE_IDS,
     V2_PROJECT_STAGE_IDS,
     ResolvedPageConfig,
@@ -904,13 +903,24 @@ def _ocr_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
     return {"words.json": words_json, "raw.txt": raw_txt}
 
 
-def _text_review_cpu(text_bytes: object, cfg: StageConfig = None) -> CompoundStageOutput:
-    """Gate stage — copy text_postprocess output as the reviewed text.
+def _text_review_cpu(
+    text_bytes: object,
+    regex_bytes: object = None,
+    cfg: StageConfig = None,
+) -> CompoundStageOutput:
+    """Gate stage — copy the final reviewed text as the output.
+
+    In v1 the single parent is ``text_postprocess`` and ``text_bytes`` is that
+    output.  In v2 the two parents are ``hyphen_join`` (positional arg 0) and
+    ``regex`` (positional arg 1 = ``regex_bytes``).  When called from the v2
+    runner, ``regex_bytes`` is the final processed text and is used as the
+    reviewed text; ``text_bytes`` (the hyphen_join output) is available for
+    context but not currently surfaced in the output.
 
     At default config (no human edit) this is an identity pass: the
-    output.txt artifact is the text_postprocess result verbatim, and
-    attestation.json records an empty object. The 'Mark clean' UI button
-    (`POST .../text_review/clean`) short-circuits this by marking the DB
+    output.txt artifact is the final text result verbatim, and
+    attestation.json records an empty object.  The 'Mark clean' UI button
+    (``POST .../text_review/clean``) short-circuits this by marking the DB
     row clean directly without running the stage; this impl exists so
     batch-mode callers can fire the stage programmatically.
 
@@ -919,7 +929,10 @@ def _text_review_cpu(text_bytes: object, cfg: StageConfig = None) -> CompoundSta
     import json
 
     _ = cfg
-    text = bytes(text_bytes) if isinstance(text_bytes, (bytes, bytearray)) else str(text_bytes).encode()
+    # v2 path: use regex_bytes (the regex-processed text) as the reviewed text.
+    # v1 path: use text_bytes directly (text_postprocess output).
+    primary = regex_bytes if regex_bytes is not None else text_bytes
+    text = bytes(primary) if isinstance(primary, (bytes, bytearray)) else str(primary).encode()
 
     attestation = json.dumps({}).encode()
     return {"output.txt": text, "attestation.json": attestation}
@@ -927,7 +940,7 @@ def _text_review_cpu(text_bytes: object, cfg: StageConfig = None) -> CompoundSta
 
 # ─── Registry assembly ──────────────────────────────────────────────────────
 
-# Real implementations registered for cpu. Keys must be in `PAGE_STAGE_IDS`.
+# Real implementations registered for cpu. Keys must be in `V2_PAGE_STAGE_IDS`.
 _REAL_CPU_IMPLS: dict[str, StageImpl] = {
     "ingest_source": _ingest_source_cpu,
     "decode_source": _decode_source_cpu,
@@ -958,39 +971,37 @@ _REAL_CPU_IMPLS: dict[str, StageImpl] = {
 
 
 def _build_registry() -> dict[str, dict[str, StageImpl]]:
-    """Materialise STAGE_IMPL once at import time.
+    """Materialise STAGE_IMPL once at import time (v1 stage IDs → v1 impls).
 
-    For every canonical stage_id, register a `'cpu'` entry — either the
-    real implementation if listed in `_REAL_CPU_IMPLS`, or a placeholder
-    that raises `StageNotImplemented`.
-
-    CUDA entries are intentionally absent at M2 Slice 2; later slices
-    register them alongside the cpu ones (Q10 auto-bridge handles the
-    fallback from a `'cuda'` request to `'cpu'` when the cuda entry is
-    missing — that fallback lives in the runner, not here).
+    V1 registry is retained for use by stage_runner.run_stage() which handles
+    both v1 and v2 stage IDs. For v2 IDs, get_stage_impl() falls through to
+    V2_STAGE_IMPL. See V2 registry section below for the v2 path.
     """
     registry: dict[str, dict[str, StageImpl]] = {}
-    for sid in PAGE_STAGE_IDS:
-        impl = _REAL_CPU_IMPLS.get(sid) or _make_placeholder(sid)
+    for sid, impl in _REAL_CPU_IMPLS.items():
         registry[sid] = {"cpu": impl}
     return registry
 
 
 STAGE_IMPL: dict[str, dict[str, StageImpl]] = _build_registry()
-"""Module-level dispatch table. Keys: stage_id (str) → device (str) → callable.
+"""V1 dispatch table (legacy). Keys: v1 stage_id (str) → device (str) → callable.
 
-Stable in-process; no expectation of mutation at runtime. Tests assert
-exhaustiveness via `PAGE_STAGE_IDS`.
+get_stage_impl() routes v2 stage IDs to V2_STAGE_IMPL instead.
 """
 
 
 def get_stage_impl(stage_id: str, device: str) -> StageImpl:
     """Return the callable registered for ``(stage_id, device)``.
 
-    Raises ``KeyError`` for unknown stage_ids or unregistered devices —
-    callers are expected to validate first (the runner does, before it
-    starts the dual-write transaction).
+    Routes v2 stage IDs (V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS) to
+    V2_STAGE_IMPL. Routes legacy v1 IDs to STAGE_IMPL (still used by
+    page_stage_writer fallback path). Raises ``KeyError`` for unknown
+    stage_ids or unregistered devices.
     """
+    # V2 IDs always route to V2_STAGE_IMPL (defined after this function;
+    # by call-time the module is fully loaded so the name resolves).
+    if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
+        return V2_STAGE_IMPL[stage_id][device]
     devices = STAGE_IMPL[stage_id]
     return devices[device]
 

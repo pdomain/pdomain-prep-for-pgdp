@@ -1,15 +1,20 @@
 /**
  * archiveTool.ts — Real ArchiveToolServices backed by the v2 API.
  *
- * DRIFT: Neither archive/run nor archive/items/:name routes exist at I1.
- * The archive stage is deferred — stub both methods.
+ * Backend route (api-v2-deltas.md §1.2):
+ *   POST /api/data/projects/{id}/project-stages/archive/run → Job (202)
  *
- * DRIFT: Add POST /api/data/projects/{id}/stages/archive/run and
- * PATCH /api/data/projects/{id}/stages/archive/items/{name} at I2.
+ * archiveProject: fires the run route (fire-and-forget); returns a stub
+ * ArchiveResult — the real manifest comes from GET .../archive/artifact at I2.
+ *
+ * DRIFT: persistItem PATCH route deferred to I2.
+ * Add PATCH /api/data/projects/{id}/project-stages/archive/items/{name} at I2.
  *
  * @see frontend/src/machines/tools/archiveTool.ts — ArchiveToolServices
+ * @see docs/specs/api-v2-deltas.md §1.2
  */
 
+import { api } from "@/api/client";
 import type {
   ArchiveToolServices,
   ArchiveItem,
@@ -19,23 +24,32 @@ import type {
 } from "@/machines/tools/archiveTool";
 
 /**
- * Run the archive operation.
+ * Trigger the archive operation via the project-stage run route.
  *
- * DRIFT: route not implemented at I1 — returns stub result.
+ * Fire-and-forget: SSE delivers completion. Returns a stub ArchiveResult
+ * (real manifest from GET .../archive/artifact at I2).
  */
-function archiveProject(
-  _projectId: string,
+async function archiveProject(
+  projectId: string,
   items: ArchiveItem[],
   _destination: ArchiveDestination,
   _retention: ArchiveRetention,
 ): Promise<ArchiveResult> {
-  return Promise.resolve({ kept: `${items.length} items`, dropped: "0 B" });
+  try {
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/archive/run`,
+    );
+  } catch {
+    // Best-effort fire-and-forget — SSE delivers result and errors.
+  }
+  return { kept: `${items.length} items`, dropped: "0 B" };
 }
 
 /**
  * Persist the keep/drop decision for a single archive item.
  *
- * DRIFT: route not implemented at I1 — returns { ok: true }.
+ * DRIFT: PATCH route not implemented at I1 — returns { ok: true }.
+ * Add PATCH /api/data/projects/{id}/project-stages/archive/items/{name} at I2.
  */
 function persistItem(
   _projectId: string,

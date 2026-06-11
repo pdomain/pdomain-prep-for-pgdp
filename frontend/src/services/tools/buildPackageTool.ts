@@ -1,17 +1,18 @@
 /**
  * buildPackageTool.ts — Real BuildPackageToolServices backed by the v2 API.
  *
- * The backend has POST /api/data/projects/{id}/build-package (exists at I1).
- * The machine expects a more structured response; we adapt from the backend.
+ * Backend route (api-v2-deltas.md §1.2):
+ *   POST /api/data/projects/{id}/project-stages/build_package/run → Job (202)
  *
- * Backend POST /projects/{id}/build-package returns a Job or a result dict.
- * At I1, treat as fire-and-forget; SSE delivers build progress/done events.
+ * This replaces the deprecated POST /projects/{id}/build-package flat route
+ * (api-v2-deltas.md §1.7: "Removed at I1, Pack group"). The build is
+ * fire-and-forget — SSE delivers progress and the final artifact.
  *
- * DRIFT: The machine expects buildArtifacts → { deliverable, manifest }.
- * The real backend build-package runs via the project-stage run route and
- * pushes results via SSE. At I2, expose GET for build manifest + artifact list.
+ * DRIFT: Structured { deliverable, manifest } response deferred to I2 once
+ * GET .../project-stages/build_package/artifact returns a structured JSON.
  *
  * @see frontend/src/machines/tools/buildPackageTool.ts — BuildPackageToolServices
+ * @see docs/specs/api-v2-deltas.md §1.2, §1.7
  */
 
 import { api } from "@/api/client";
@@ -25,9 +26,8 @@ import type {
 /**
  * Build the project package.
  *
- * At I1: POST /api/data/projects/{id}/build-package as a fire-and-forget.
- * The actual build is driven by the project-stage run; SSE delivers progress.
- * Returns a stub deliverable/manifest; real data comes via SSE PREFLIGHT_PUSH.
+ * POSTs to the v2 project-stage run route (not the deprecated flat route).
+ * Returns a stub deliverable/manifest; real data arrives via SSE at I2.
  */
 async function buildArtifacts(
   projectId: string,
@@ -35,13 +35,13 @@ async function buildArtifacts(
 ): Promise<{ deliverable: BuildDeliverable; manifest: BuildManifest }> {
   try {
     await api.post(
-      `/api/data/projects/${encodeURIComponent(projectId)}/build-package`,
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/build_package/run`,
     );
   } catch {
-    // Best-effort — SSE delivers the real result.
+    // Best-effort fire-and-forget — SSE delivers the real result and errors.
   }
 
-  // Return stub; real manifest comes via SSE at I2.
+  // Return scaffold; real manifest comes via SSE / GET artifact at I2.
   const now = new Date().toISOString();
   return {
     deliverable: { files: [], count: 0 },

@@ -451,7 +451,7 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
 
     Payload keys:
       - ``page_id``:    zero-padded 4-digit string (e.g. ``"0000"``). Required.
-      - ``stage_id``:   canonical stage id from ``PAGE_STAGE_IDS``. Required.
+      - ``stage_id``:   canonical stage id from ``V2_PAGE_STAGE_IDS``. Required.
       - ``device``:     ``"cpu"`` (default) or ``"cuda"``. Safe to override on retry.
 
     Identity fields (``project_id``, ``data_root``) are intentionally NOT read
@@ -534,7 +534,7 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
     """
     from pathlib import Path
 
-    from .models import PAGE_STAGE_IDS, PageStageStatus
+    from .models import V2_PAGE_STAGE_IDS, PageStageStatus
     from .pipeline.stage_runner import run_stage
 
     stage_filter = str(job.payload["stage_filter"]) if "stage_filter" in job.payload else None
@@ -588,7 +588,7 @@ async def _handle_project_run_dirty(runner: InProcessJobRunner, job: Job) -> Non
         await runner.db.put_job(child)
 
         # Run dirty stages in canonical DAG order.
-        ordered = [sid for sid in PAGE_STAGE_IDS if sid in stage_ids]
+        ordered = [sid for sid in V2_PAGE_STAGE_IDS if sid in stage_ids]
         page_errors: list[str] = []
         for stage_id in ordered:
             try:

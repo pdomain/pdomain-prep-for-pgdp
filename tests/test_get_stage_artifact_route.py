@@ -14,7 +14,7 @@ Status code mapping:
   header echoes `input_hash` so the browser can revalidate cheaply.
 - 404: project not found OR cross-user OR row's status is not `clean`
   OR the file is missing on disk (drift; reconciler will catch).
-- 422: unknown stage_id (validated against PAGE_STAGE_IDS).
+- 422: unknown stage_id (validated against V2_PAGE_STAGE_IDS).
 """
 
 from __future__ import annotations

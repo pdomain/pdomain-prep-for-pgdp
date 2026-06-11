@@ -464,6 +464,21 @@ async def test_parent_ingest_source_does_not_dirty_child_decode_source_if_not_cl
     await db.init_page_stages_for_page(project_id, parent_page_id)
     await db.init_page_stages_for_page(project_id, child_page_id)
 
+    # v2: init_page_stages_for_page only creates v2 stage rows (no decode_source).
+    # Manually seed a not-run decode_source row for the child so the cross-page
+    # cascade test can assert that not-run rows are not flipped to dirty.
+    from pdomain_prep_for_pgdp.core.models import PageStageState
+
+    await db.put_page_stage(
+        PageStageState(
+            project_id=project_id,
+            page_id=child_page_id,
+            stage_id="decode_source",
+            status=PageStageStatus.not_run,
+            stage_version=1,
+        )
+    )
+
     parent_png = _solid_color_png(100, 100, (100, 100, 100))
     source_key = f"projects/{project_id}/source/page0.png"
     await storage.put_bytes(source_key, parent_png, "image/png")

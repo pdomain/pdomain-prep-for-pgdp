@@ -90,7 +90,7 @@ def test_split_creates_two_children(tmp_path) -> None:
             "/api/data/projects/sp1/pages/0/split",
             json={
                 "bbox": [0, 0, 300, 400],
-                "split_at_stage": "auto_detect_attrs",
+                "split_at_stage": "crop",
                 "suffixes": ["a", "b"],
             },
         )
@@ -110,7 +110,7 @@ def test_split_children_have_correct_split_columns(tmp_path) -> None:
             "/api/data/projects/sp1/pages/0/split",
             json={
                 "bbox": [10, 20, 300, 400],
-                "split_at_stage": "auto_detect_attrs",
+                "split_at_stage": "crop",
                 "suffixes": ["a", "b"],
             },
         )
@@ -131,8 +131,8 @@ def test_split_children_have_correct_split_columns(tmp_path) -> None:
         assert children[1]["split_index"] == 2
 
         # split_at_stage
-        assert children[0]["split_at_stage"] == "auto_detect_attrs"
-        assert children[1]["split_at_stage"] == "auto_detect_attrs"
+        assert children[0]["split_at_stage"] == "crop"
+        assert children[1]["split_at_stage"] == "crop"
 
         # split_suffix
         assert children[0]["split_suffix"] == "a"
@@ -153,7 +153,7 @@ def test_split_children_visible_in_page_list(tmp_path) -> None:
             "/api/data/projects/sp1/pages/0/split",
             json={
                 "bbox": [0, 0, 300, 400],
-                "split_at_stage": "auto_detect_attrs",
+                "split_at_stage": "crop",
                 "suffixes": ["a", "b"],
             },
         )
@@ -177,7 +177,7 @@ def test_split_child_inherits_parent_prefix(tmp_path) -> None:
             "/api/data/projects/sp1/pages/0/split",
             json={
                 "bbox": [0, 0, 300, 400],
-                "split_at_stage": "auto_detect_attrs",
+                "split_at_stage": "crop",
                 "suffixes": ["a", "b"],
             },
         )
@@ -200,7 +200,7 @@ def test_recursive_split_creates_grandchildren(tmp_path) -> None:
             "/api/data/projects/sp1/pages/0/split",
             json={
                 "bbox": [0, 0, 300, 400],
-                "split_at_stage": "auto_detect_attrs",
+                "split_at_stage": "crop",
                 "suffixes": ["a", "b"],
             },
         )
@@ -212,7 +212,7 @@ def test_recursive_split_creates_grandchildren(tmp_path) -> None:
             f"/api/data/projects/sp1/pages/{child_a_idx0}/split",
             json={
                 "bbox": [0, 0, 150, 400],
-                "split_at_stage": "auto_deskew",
+                "split_at_stage": "deskew",
                 "suffixes": ["i", "ii"],
             },
         )
@@ -243,7 +243,7 @@ def test_split_unknown_project_404(tmp_path) -> None:
     with TestClient(app) as client:
         r = client.post(
             "/api/data/projects/no-such/pages/0/split",
-            json={"bbox": [0, 0, 300, 400], "split_at_stage": "auto_detect_attrs", "suffixes": ["a"]},
+            json={"bbox": [0, 0, 300, 400], "split_at_stage": "crop", "suffixes": ["a"]},
         )
         assert r.status_code == 404
 
@@ -255,7 +255,7 @@ def test_split_unknown_page_404(tmp_path) -> None:
     with TestClient(app) as client:
         r = client.post(
             "/api/data/projects/sp1/pages/999/split",
-            json={"bbox": [0, 0, 300, 400], "split_at_stage": "auto_detect_attrs", "suffixes": ["a"]},
+            json={"bbox": [0, 0, 300, 400], "split_at_stage": "crop", "suffixes": ["a"]},
         )
         assert r.status_code == 404
 
@@ -267,7 +267,7 @@ def test_split_other_users_project_404(tmp_path) -> None:
     with TestClient(app) as client:
         r = client.post(
             "/api/data/projects/sp1/pages/0/split",
-            json={"bbox": [0, 0, 300, 400], "split_at_stage": "auto_detect_attrs", "suffixes": ["a"]},
+            json={"bbox": [0, 0, 300, 400], "split_at_stage": "crop", "suffixes": ["a"]},
         )
         assert r.status_code == 404
 
@@ -293,6 +293,6 @@ def test_split_empty_suffixes_422(tmp_path) -> None:
     with TestClient(app) as client:
         r = client.post(
             "/api/data/projects/sp1/pages/0/split",
-            json={"bbox": [0, 0, 300, 400], "split_at_stage": "auto_detect_attrs", "suffixes": []},
+            json={"bbox": [0, 0, 300, 400], "split_at_stage": "crop", "suffixes": []},
         )
         assert r.status_code == 422

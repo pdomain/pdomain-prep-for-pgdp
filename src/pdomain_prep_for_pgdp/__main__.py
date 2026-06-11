@@ -183,7 +183,8 @@ def _export_bound_env(host: str, port: int) -> None:
 _SUBCOMMANDS: dict[str, str] = {
     # subcommand name -> dotted module path; module must expose `main(argv)`.
     "reindex": "pdomain_prep_for_pgdp.cli.reindex",
-    "migrate-projects": "pdomain_prep_for_pgdp.cli.migrate_projects",
+    # migrate-projects removed at I1: it initialised v1 PAGE_STAGE_IDS rows,
+    # which are invalid by design in v2 (breaking change; no migration).
 }
 
 
