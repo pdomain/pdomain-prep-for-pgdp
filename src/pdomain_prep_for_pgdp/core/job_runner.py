@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.dispatcher.batched import CompletionCallback
 
     from .job_events import JobEventBroker
+    from .stage_events import StageEventBroker
 
     class GPUBackend(Protocol): ...
 
@@ -65,6 +66,7 @@ class InProcessJobRunner:
         gpu: GPUBackend | None = None,
         dispatcher: IDispatcher | None = None,
         events: JobEventBroker | None = None,
+        stage_events: StageEventBroker | None = None,
         poll_interval: float = 1.0,
         max_concurrency: int = 1,
         data_root: Path | None = None,
@@ -75,6 +77,7 @@ class InProcessJobRunner:
         self._data_root: Path | None = data_root
         self._dispatcher: IDispatcher | None = dispatcher
         self._events: JobEventBroker | None = events
+        self._stage_events: StageEventBroker | None = stage_events
         self._poll: float = poll_interval
         self._max_concurrency: int = max(1, max_concurrency)
         # Jobs that handed themselves off to the dispatcher; _run_one should
@@ -527,6 +530,21 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     )
     store.write(running_row)
 
+    # ── W3.3: project-stage-progress — "started" tick ────────────────────────
+    if runner._stage_events is not None:
+        try:
+            await runner._stage_events.publish(
+                f"project:{project_id}",
+                {
+                    "type": "project-stage-progress",
+                    "stage_id": stage_id,
+                    "progress": 0.0,
+                    "message": f"stage {stage_id!r} started",
+                },
+            )
+        except Exception as _ep0:  # pragma: no cover
+            log.warning("W3.3 progress-started SSE failed (non-fatal): %s", _ep0)
+
     # ── W0.3: run impl in thread pool (non-blocking) ──────────────────────────
     artifact_dir = data_root / "projects" / project_id / "stages" / stage_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -581,6 +599,48 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             }
         )
         store.write(clean_row)
+
+        # W3.3: project-stage-progress — "done" tick.
+        if runner._stage_events is not None:
+            try:
+                await runner._stage_events.publish(
+                    f"project:{project_id}",
+                    {
+                        "type": "project-stage-progress",
+                        "stage_id": stage_id,
+                        "progress": 1.0,
+                        "message": f"stage {stage_id!r} done",
+                    },
+                )
+            except Exception as _ep1:  # pragma: no cover
+                log.warning("W3.3 progress-done SSE failed (non-fatal): %s", _ep1)
+
+        # W3.2: validation-updated SSE after validation stage completes.
+        if stage_id == "validation" and runner._stage_events is not None:
+            try:
+                import json as _json
+
+                _val_data: dict[str, object] = {}
+                if artifact_path.exists():
+                    _raw = artifact_path.read_bytes()
+                    _val_data = _json.loads(_raw)
+                _blockers_raw = _val_data.get("blocker_count", 0)
+                _warnings_raw = _val_data.get("warning_count", 0)
+                _passed_raw = _val_data.get("passed", True)
+                _blockers = int(_blockers_raw) if isinstance(_blockers_raw, int) else 0
+                _warnings = int(_warnings_raw) if isinstance(_warnings_raw, int) else 0
+                _passed = bool(_passed_raw) if isinstance(_passed_raw, bool) else (_blockers == 0)
+                await runner._stage_events.publish(
+                    f"project:{project_id}",
+                    {
+                        "type": "validation-updated",
+                        "blockers": _blockers,
+                        "warnings": _warnings,
+                        "status": "clean" if _passed else "failed",
+                    },
+                )
+            except Exception as _ev:  # pragma: no cover
+                log.warning("W3.2 validation-updated SSE failed (non-fatal): %s", _ev)
 
         # W2.1: record StageRunCompleted.
         try:
@@ -647,6 +707,21 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             }
         )
         store.write(failed_row)
+
+        # W3.2: validation-updated SSE on failure — frontend needs to know validation ran.
+        if stage_id == "validation" and runner._stage_events is not None:
+            try:
+                await runner._stage_events.publish(
+                    f"project:{project_id}",
+                    {
+                        "type": "validation-updated",
+                        "blockers": 0,
+                        "warnings": 0,
+                        "status": "failed",
+                    },
+                )
+            except Exception as _ev_fail:  # pragma: no cover
+                log.warning("W3.2 validation-updated SSE (failure) failed (non-fatal): %s", _ev_fail)
 
         # W2.1: record StageRunFailed.
         try:

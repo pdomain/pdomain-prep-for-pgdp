@@ -282,6 +282,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/submit_check/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Submit Check
+         * @description Record a submit-check gate confirmation.
+         *
+         *     Marks the submit_check project-stage row as clean (attesting the user
+         *     has reviewed the validation results and confirmed the project is ready
+         *     for submission). Records a GateConfirmation event in PrepProjectAggregate
+         *     and emits a project-stage-status SSE on the project channel.
+         *
+         *     Spec: W2.3 (seam-remediation plan).
+         */
+        post: operations["confirm_submit_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/events": {
         parameters: {
             query?: never;
@@ -2704,6 +2731,14 @@ export interface components {
             /** List Scope */
             list_scope: string;
         };
+        /** _SubmitConfirmRequest */
+        _SubmitConfirmRequest: {
+            /**
+             * Gate
+             * @default submit_confirm
+             */
+            gate: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -3190,6 +3225,55 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    confirm_submit_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_SubmitConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Confirmation recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -750,6 +750,68 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/submit_check/confirm": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Confirm Submit Check",
+        "description": "Record a submit-check gate confirmation.\n\nMarks the submit_check project-stage row as clean (attesting the user\nhas reviewed the validation results and confirmed the project is ready\nfor submission). Records a GateConfirmation event in PrepProjectAggregate\nand emits a project-stage-status SSE on the project channel.\n\nSpec: W2.3 (seam-remediation plan).",
+        "operationId": "confirm_submit_check",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_SubmitConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmation recorded.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/events": {
       "get": {
         "tags": [
@@ -7229,6 +7291,17 @@
           "list_scope"
         ],
         "title": "WordlistPromotionRequest"
+      },
+      "_SubmitConfirmRequest": {
+        "properties": {
+          "gate": {
+            "type": "string",
+            "title": "Gate",
+            "default": "submit_confirm"
+          }
+        },
+        "type": "object",
+        "title": "_SubmitConfirmRequest"
       }
     },
     "securitySchemes": {

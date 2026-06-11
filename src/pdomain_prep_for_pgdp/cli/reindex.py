@@ -137,9 +137,10 @@ async def _run(args: argparse.Namespace, *, stdout: TextIO) -> int:
     typed_args = cast(_ReindexArgs, cast(object, args))
     settings = Settings()
     data_root = (typed_args.data_root or settings.data_root).expanduser().resolve()
-    # W2.5: derive DB URL from the resolved data_root so --data-root overrides
-    # also override the database path (both default to data_root/state.db).
-    db_url = f"sqlite:///{(data_root / 'state.db').as_posix()}"
+    # W2.5: derive DB URL from the resolved data_root when no explicit
+    # database_url is configured, so --data-root consistently overrides
+    # the DB path (both default to data_root/state.db).
+    db_url = settings.database_url or f"sqlite:///{(data_root / 'state.db').as_posix()}"
     db = SqliteDatabase(db_url)
     await db.initialize()
     try:
