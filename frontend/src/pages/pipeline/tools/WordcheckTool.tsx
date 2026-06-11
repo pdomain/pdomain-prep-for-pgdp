@@ -108,17 +108,19 @@ function SuspectRow({
   suspect,
   onFix,
   onKeep,
+  onViewOnPage,
 }: {
   suspect: Suspect;
   onFix: () => void;
   onKeep: () => void;
+  onViewOnPage: () => void;
 }): ReactNode {
   return (
     <div
       data-testid={`suspect-row-${suspect.id}`}
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 80px 80px 60px 80px",
+        gridTemplateColumns: "1fr 80px 80px 60px 110px",
         gap: 8,
         padding: "8px 12px",
         borderTop: "1px solid var(--border-1)",
@@ -231,6 +233,25 @@ function SuspectRow({
           }}
         >
           Keep
+        </button>
+        <button
+          data-testid={`view-on-page-suspect-${suspect.id}`}
+          onClick={onViewOnPage}
+          title="View on page"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-surface)",
+            color: "var(--ink-4)",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 11,
+          }}
+        >
+          ⊙
         </button>
       </div>
     </div>
@@ -684,6 +705,22 @@ export function WordcheckTool({
             )}
             <div style={{ display: "flex", gap: 8 }}>
               <button
+                data-testid="wordcheck-send-cleared"
+                onClick={() => send({ type: "SEND_CLEARED" })}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: "var(--accent)",
+                  color: "var(--accent-ink, #fff)",
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                }}
+              >
+                Send cleared to Text review
+              </button>
+              <button
                 data-testid="wordcheck-accept-dict-fixes"
                 onClick={() => send({ type: "ACCEPT_DICT_FIXES" })}
                 style={{
@@ -853,6 +890,9 @@ export function WordcheckTool({
                   suspect={s}
                   onFix={() => send({ type: "FIX", suspectId: s.id })}
                   onKeep={() => send({ type: "KEEP", suspectId: s.id })}
+                  onViewOnPage={() =>
+                    send({ type: "VIEW_ON_PAGE", suspectId: s.id })
+                  }
                 />
               ))
             )}

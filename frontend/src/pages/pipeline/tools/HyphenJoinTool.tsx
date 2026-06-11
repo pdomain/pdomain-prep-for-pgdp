@@ -2,19 +2,24 @@
  * HyphenJoinTool.tsx — React surface for the Hyphen join stage tool.
  *
  * Registered in TOOL_REGISTRY as `hyphen_join`.
- * Three mode tabs matching the canvas variations:
- *  - Queue    — undecided / flagged cases awaiting ACCEPT_JOIN / KEEP_HYPHEN
- *  - Joined   — auto-joined cases awaiting VALIDATE_JOIN
- *  - Mismatch — corpus-mismatch cases awaiting FIX_MISMATCH
- * Plus:
- *  - Overview  — totals summary
- *  - Settings  — minimal F5 placeholder
+ * Tabs:
+ *  - Overview      — totals summary
+ *  - Queue         — undecided / flagged cases awaiting ACCEPT_JOIN / KEEP_HYPHEN
+ *  - Joined        — auto-joined cases awaiting VALIDATE_JOIN
+ *  - Mismatch      — corpus-mismatch cases awaiting FIX_MISMATCH
+ *  - Page workbench — per-page case list + before/after viewer
+ *  - Settings      — minimal F5 placeholder
  *
  * F5 mock-only: scanHyphenation is a no-op returning mock data on mount.
  * I1: real backend POST /api/.../hyphen_join/scan.
  *
+ * Surface controls wired (F5.5 fix round):
+ *  - OPEN_GLOBAL_LIBRARY — "Edit global library" button visible in every tab subhead
+ *  - Page workbench tab — OPEN_PAGE / CLOSE_PAGE / PREV_PAGE / NEXT_PAGE / APPLY_CONTINUE
+ *
  * @see src/machines/tools/hyphenJoin.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-hyphen-join.yaml
+ * @see docs/plans/design_handoff_pgdp_app/final/hyphen_join/hyphen.jsx — canvas authority
  */
 
 import type { ReactNode } from "react";
@@ -91,6 +96,49 @@ function createMockHyphenJoinServices(): HyphenJoinServices {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Mock page-workbench data (F5 only — replaced at I1 via OPEN_PAGE payload)
+// ---------------------------------------------------------------------------
+
+const MOCK_PAGE_CASES: HyphenCase[] = [
+  {
+    caseId: "hp1",
+    kind: "auto",
+    head: "some",
+    tail: "thing",
+    line: 3,
+    page: "p0004",
+    status: "joined",
+    validated: false,
+    conf: 0.9,
+    book: { inBody: true, joinedElsewhere: true, mismatch: false },
+  },
+  {
+    caseId: "hp2",
+    kind: "auto",
+    head: "every",
+    tail: "body",
+    line: 11,
+    page: "p0004",
+    status: "undecided",
+    validated: false,
+    conf: 0.71,
+    book: { inBody: false, joinedElsewhere: false, mismatch: false },
+  },
+  {
+    caseId: "hp3",
+    kind: "crosspage",
+    head: "after",
+    tail: "noon",
+    line: 38,
+    page: "p0004",
+    status: "crosspage",
+    validated: false,
+    conf: 0.85,
+    book: { inBody: true, joinedElsewhere: false, mismatch: false },
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Case row sub-components
@@ -304,6 +352,403 @@ function HyphenCaseRow({
 }
 
 // ---------------------------------------------------------------------------
+// Page workbench panel
+// ---------------------------------------------------------------------------
+
+/**
+ * HyphenPageWorkbenchPanel — per-page case list + before/after viewer.
+ *
+ * Wired events: OPEN_PAGE, CLOSE_PAGE, PREV_PAGE, NEXT_PAGE, APPLY_CONTINUE.
+ * Canvas reference: hyphen.jsx HyphenPageWorkbench (lines 1059–1193).
+ *
+ * The panel receives `pageId` from machine context (set by OPEN_PAGE).
+ * When no page is open the panel prompts the user to open one from a case row.
+ */
+function HyphenPageWorkbenchPanel({
+  pageId,
+  cases,
+  send,
+}: {
+  pageId: string | null;
+  cases: HyphenCase[];
+  send: (event: HyphenJoinEvent) => void;
+}): ReactNode {
+  // Use mock page cases when no real backend yet (F5). I1 will filter by pageId.
+  const pageCases = pageId ? MOCK_PAGE_CASES : ([] as HyphenCase[]);
+
+  const pageCounts = {
+    crosspage: pageCases.filter((c) => c.kind === "crosspage").length,
+    validated: pageCases.filter((c) => c.validated).length,
+    joined: pageCases.filter((c) => c.status === "joined" && !c.validated)
+      .length,
+    undecided: pageCases.filter((c) => c.status === "undecided").length,
+    flagged: pageCases.filter((c) => c.status === "flagged").length,
+  };
+
+  void cases; // will filter by pageId at I1
+
+  if (!pageId) {
+    return (
+      <div
+        data-testid="hyphen-workbench-no-page"
+        style={{
+          flex: 1,
+          padding: "32px 18px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          color: "var(--ink-3)",
+        }}
+      >
+        <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--ink-2)" }}>
+          No page open
+        </div>
+        <div
+          style={{ fontSize: 12, color: "var(--ink-4)", textAlign: "center" }}
+        >
+          Open a page from any case row in the Queue or Joined tab.
+        </div>
+        <button
+          data-testid="hyphen-workbench-open-mock"
+          onClick={() => send({ type: "OPEN_PAGE", pageId: "p0004" })}
+          style={{
+            marginTop: 6,
+            padding: "5px 14px",
+            borderRadius: 5,
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-surface)",
+            cursor: "pointer",
+            fontSize: 11.5,
+            color: "var(--ink-2)",
+          }}
+        >
+          Open p0004 (demo)
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="hyphen-workbench-panel"
+      style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
+      {/* Workbench header */}
+      <div
+        style={{
+          padding: "10px 16px",
+          borderBottom: "1px solid var(--border-1)",
+          background: "var(--bg-raised)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div
+            style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)" }}
+          >
+            Page workbench
+            <span
+              style={{
+                marginLeft: 8,
+                fontFamily: "var(--mono-font)",
+                fontSize: 11,
+                color: "var(--ink-3)",
+                fontWeight: 400,
+              }}
+            >
+              {pageId}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-4)", marginTop: 2 }}>
+            {pageCounts.crosspage} cross-page · {pageCounts.validated} validated
+            · {pageCounts.joined} auto-joined · {pageCounts.undecided} undecided
+            · {pageCounts.flagged} flagged
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button
+            data-testid="hyphen-workbench-prev-page"
+            onClick={() => send({ type: "PREV_PAGE" })}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 5,
+              border: "1px solid var(--border-2)",
+              background: "var(--bg-surface)",
+              cursor: "pointer",
+              fontSize: 11.5,
+              color: "var(--ink-2)",
+            }}
+          >
+            Prev page
+          </button>
+          <button
+            data-testid="hyphen-workbench-next-page"
+            onClick={() => send({ type: "NEXT_PAGE" })}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 5,
+              border: "1px solid var(--border-2)",
+              background: "var(--bg-surface)",
+              cursor: "pointer",
+              fontSize: 11.5,
+              color: "var(--ink-2)",
+            }}
+          >
+            Next page
+          </button>
+          <div
+            style={{
+              width: 1,
+              height: 20,
+              background: "var(--border-2)",
+              margin: "0 2px",
+            }}
+          />
+          <button
+            data-testid="hyphen-workbench-apply-continue"
+            onClick={() => send({ type: "APPLY_CONTINUE" })}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 5,
+              border: "none",
+              background: "var(--accent)",
+              color: "var(--accent-ink, #fff)",
+              cursor: "pointer",
+              fontSize: 11.5,
+              fontWeight: 600,
+            }}
+          >
+            Apply &amp; Continue
+          </button>
+          <button
+            data-testid="hyphen-workbench-close"
+            onClick={() => send({ type: "CLOSE_PAGE" })}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 5,
+              border: "1px solid var(--border-2)",
+              background: "var(--bg-surface)",
+              cursor: "pointer",
+              fontSize: 11.5,
+              color: "var(--ink-3)",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+
+      {/* Content: left case list + right before/after placeholder */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "grid",
+          gridTemplateColumns: "280px 1fr",
+          gap: 12,
+          padding: "12px 16px",
+        }}
+      >
+        {/* Left: cases on this page */}
+        <div
+          style={{
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 8,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 12px",
+              borderBottom: "1px solid var(--border-1)",
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: "0.07em",
+              textTransform: "uppercase",
+              color: "var(--ink-4)",
+            }}
+          >
+            Cases on {pageId} · {pageCases.length} hyphens
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "8px 10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            {pageCases.map((c) => {
+              const statusTone: Record<HyphenCase["status"], string> = {
+                undecided: "var(--fuzzy)",
+                flagged: "var(--mismatch)",
+                joined: "var(--ocr)",
+                crosspage: "var(--ocr)",
+                validated: "var(--exact)",
+                mismatch: "var(--fuzzy)",
+              };
+              return (
+                <div
+                  key={c.caseId}
+                  data-testid={`workbench-case-row-${c.caseId}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "5px 8px",
+                    borderRadius: 5,
+                    background: "var(--bg-raised)",
+                    border: `1px solid color-mix(in oklab, ${statusTone[c.status]} 30%, var(--border-1))`,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "Georgia, serif",
+                      fontSize: 12.5,
+                      color: "var(--ink-1)",
+                    }}
+                  >
+                    {c.head}-{c.tail}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "var(--mono-font)",
+                      fontSize: 10,
+                      color: "var(--ink-4)",
+                    }}
+                  >
+                    :{c.line}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      padding: "1px 5px",
+                      borderRadius: 3,
+                      background: `color-mix(in oklab, ${statusTone[c.status]} 14%, var(--bg-surface))`,
+                      color: statusTone[c.status],
+                      fontWeight: 600,
+                    }}
+                  >
+                    {c.status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: before/after viewer placeholder (wired at I1) */}
+        <div
+          data-testid="hyphen-workbench-viewer"
+          style={{
+            display: "grid",
+            gridTemplateRows: "1fr",
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              flex: 1,
+            }}
+          >
+            <div
+              data-testid="hyphen-workbench-before"
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 8,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "6px 12px",
+                  borderBottom: "1px solid var(--border-1)",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-4)",
+                }}
+              >
+                Before
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "var(--ink-3)",
+                  fontStyle: "italic",
+                }}
+              >
+                Page text before join decisions. Wired at I1.
+              </div>
+            </div>
+            <div
+              data-testid="hyphen-workbench-after"
+              style={{
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border-1)",
+                borderRadius: 8,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  padding: "6px 12px",
+                  borderBottom: "1px solid var(--border-1)",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-4)",
+                }}
+              >
+                After
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: "var(--ink-3)",
+                  fontStyle: "italic",
+                }}
+              >
+                Page text after join decisions. Wired at I1.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Overview tab
 // ---------------------------------------------------------------------------
 
@@ -427,7 +872,13 @@ function HyphenOverviewTab({
 // Tab bar
 // ---------------------------------------------------------------------------
 
-type HyphenTab = "overview" | "queue" | "joined" | "mismatch" | "settings";
+type HyphenTab =
+  | "overview"
+  | "queue"
+  | "joined"
+  | "mismatch"
+  | "workbench"
+  | "settings";
 
 function HyphenTabBar({
   active,
@@ -443,6 +894,7 @@ function HyphenTabBar({
     queue: `Queue (${counts.queue})`,
     joined: `Joined (${counts.joined})`,
     mismatch: `Mismatch (${counts.mismatch})`,
+    workbench: "Page workbench",
     settings: "Settings",
   };
 
@@ -457,30 +909,37 @@ function HyphenTabBar({
         background: "var(--bg-raised)",
       }}
     >
-      {(["overview", "queue", "joined", "mismatch", "settings"] as const).map(
-        (tab) => {
-          const isActive = active === tab;
-          return (
-            <button
-              key={tab}
-              data-testid={`hyphen-tab-${tab}`}
-              onClick={() => onChange(tab)}
-              style={{
-                padding: "9px 14px",
-                border: "none",
-                borderBottom: `2px solid ${isActive ? "var(--accent)" : "transparent"}`,
-                background: "transparent",
-                cursor: "pointer",
-                fontSize: 12.5,
-                fontWeight: isActive ? 600 : 500,
-                color: isActive ? "var(--ink-1)" : "var(--ink-3)",
-              }}
-            >
-              {labels[tab]}
-            </button>
-          );
-        },
-      )}
+      {(
+        [
+          "overview",
+          "queue",
+          "joined",
+          "mismatch",
+          "workbench",
+          "settings",
+        ] as const
+      ).map((tab) => {
+        const isActive = active === tab;
+        return (
+          <button
+            key={tab}
+            data-testid={`hyphen-tab-${tab}`}
+            onClick={() => onChange(tab)}
+            style={{
+              padding: "9px 14px",
+              border: "none",
+              borderBottom: `2px solid ${isActive ? "var(--accent)" : "transparent"}`,
+              background: "transparent",
+              cursor: "pointer",
+              fontSize: 12.5,
+              fontWeight: isActive ? 600 : 500,
+              color: isActive ? "var(--ink-1)" : "var(--ink-3)",
+            }}
+          >
+            {labels[tab]}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -714,6 +1173,14 @@ export function HyphenJoinTool({
 
       {activeTab === "overview" ? <HyphenOverviewTab totals={totals} /> : null}
 
+      {activeTab === "workbench" ? (
+        <HyphenPageWorkbenchPanel
+          pageId={snapshot.context.pageId}
+          cases={cases}
+          send={send}
+        />
+      ) : null}
+
       {activeTab === "settings" ? (
         <div
           data-testid="hyphen-settings-tab"
@@ -725,15 +1192,41 @@ export function HyphenJoinTool({
             gap: 14,
           }}
         >
-          <div>
-            <div
-              style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <div
+                style={{ fontSize: 14, fontWeight: 600, color: "var(--ink-1)" }}
+              >
+                Stage settings · Hyphen join
+              </div>
+              <div
+                style={{ marginTop: 3, fontSize: 12, color: "var(--ink-3)" }}
+              >
+                Join threshold, per-word overrides, cross-page handling. (I1)
+              </div>
+            </div>
+            <button
+              data-testid="hyphen-open-global-library"
+              onClick={() => send({ type: "OPEN_GLOBAL_LIBRARY" })}
+              style={{
+                padding: "5px 12px",
+                borderRadius: 5,
+                border: "1px solid var(--border-2)",
+                background: "var(--bg-surface)",
+                cursor: "pointer",
+                fontSize: 11.5,
+                color: "var(--ink-2)",
+                whiteSpace: "nowrap",
+              }}
             >
-              Stage settings · Hyphen join
-            </div>
-            <div style={{ marginTop: 3, fontSize: 12, color: "var(--ink-3)" }}>
-              Join threshold, per-word overrides, cross-page handling. (I1)
-            </div>
+              Edit global library
+            </button>
           </div>
           <div
             style={{
@@ -763,7 +1256,7 @@ export function HyphenJoinTool({
             gap: 12,
           }}
         >
-          {/* Status banner */}
+          {/* Status banner with global-library button */}
           <div
             style={{
               display: "flex",
@@ -785,7 +1278,22 @@ export function HyphenJoinTool({
               {counts.joined} unvalidated join
               {counts.joined === 1 ? "" : "s"}
             </span>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                data-testid="hyphen-open-global-library"
+                onClick={() => send({ type: "OPEN_GLOBAL_LIBRARY" })}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 4,
+                  border: "1px solid var(--border-2)",
+                  background: "var(--bg-surface)",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "var(--ink-3)",
+                }}
+              >
+                Edit global library
+              </button>
               <button
                 data-testid="hyphen-nav-prev"
                 onClick={() => send({ type: "PREV_CASE" })}

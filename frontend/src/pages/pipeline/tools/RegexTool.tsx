@@ -15,11 +15,16 @@
  *  - clean → "All rules applied" + Rollback
  *  - error → error with Retry
  *
+ * Surface controls wired (F5.5 fix round):
+ *  - ADD_RULE — "Add rule" button in the rules banner (canvas: regex.jsx RXMain)
+ *  - REORDER_RULE — up/down arrow buttons per rule row (canvas: "Drag to reorder" note)
+ *
  * F5 mock-only: fetchRules returns mock rules; applyRule returns an updated rule.
  * I1: real backend GET/POST .../regex/rules.
  *
  * @see src/machines/tools/regexPass.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-regex.yaml
+ * @see docs/plans/design_handoff_pgdp_app/final/regex/regex.jsx — canvas authority
  */
 
 import type { ReactNode } from "react";
@@ -141,23 +146,29 @@ function RuleStatusBadge({
 
 function RuleRow({
   rule,
+  index,
+  total,
   isRunning,
   onRun,
   onPreview,
   onToggle,
+  onReorder,
 }: {
   rule: RegexRule;
+  index: number;
+  total: number;
   isRunning: boolean;
   onRun: () => void;
   onPreview: () => void;
   onToggle: () => void;
+  onReorder: (direction: "up" | "down") => void;
 }): ReactNode {
   return (
     <div
       data-testid={`regex-rule-row-${rule.id}`}
       style={{
         display: "grid",
-        gridTemplateColumns: "24px 1fr 80px 60px 80px 120px",
+        gridTemplateColumns: "24px 1fr 80px 60px 80px 120px 52px",
         gap: 8,
         padding: "8px 12px",
         borderTop: "1px solid var(--border-1)",
@@ -295,6 +306,52 @@ function RuleRow({
             Applied
           </span>
         )}
+      </div>
+
+      {/* Reorder up/down buttons */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <button
+          data-testid={`regex-rule-move-up-${rule.id}`}
+          disabled={index === 0}
+          onClick={() => onReorder("up")}
+          title="Move rule up"
+          style={{
+            width: 22,
+            height: 18,
+            borderRadius: 3,
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-surface)",
+            cursor: index === 0 ? "not-allowed" : "pointer",
+            fontSize: 9,
+            color: index === 0 ? "var(--ink-4)" : "var(--ink-2)",
+            display: "grid",
+            placeItems: "center",
+            padding: 0,
+          }}
+        >
+          ▲
+        </button>
+        <button
+          data-testid={`regex-rule-move-down-${rule.id}`}
+          disabled={index === total - 1}
+          onClick={() => onReorder("down")}
+          title="Move rule down"
+          style={{
+            width: 22,
+            height: 18,
+            borderRadius: 3,
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-surface)",
+            cursor: index === total - 1 ? "not-allowed" : "pointer",
+            fontSize: 9,
+            color: index === total - 1 ? "var(--ink-4)" : "var(--ink-2)",
+            display: "grid",
+            placeItems: "center",
+            padding: 0,
+          }}
+        >
+          ▼
+        </button>
       </div>
     </div>
   );
@@ -768,21 +825,51 @@ export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
                 ? `${counts.review} rules need review · ${counts.pending} pending`
                 : "Loading…"}
             </span>
-            <button
-              data-testid="regex-load-preset"
-              onClick={() => send({ type: "LOAD_PRESET" })}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 5,
-                border: "1px solid var(--border-2)",
-                background: "var(--bg-surface)",
-                cursor: "pointer",
-                fontSize: 11.5,
-                color: "var(--ink-2)",
-              }}
-            >
-              Load preset
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                data-testid="regex-load-preset"
+                onClick={() => send({ type: "LOAD_PRESET" })}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 5,
+                  border: "1px solid var(--border-2)",
+                  background: "var(--bg-surface)",
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  color: "var(--ink-2)",
+                }}
+              >
+                Load preset
+              </button>
+              <button
+                data-testid="regex-add-rule"
+                onClick={() =>
+                  send({
+                    type: "ADD_RULE",
+                    fields: {
+                      name: "New rule",
+                      find: "",
+                      repl: "",
+                      flags: "g",
+                      scope: "all",
+                      enabled: true,
+                    },
+                  })
+                }
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: "var(--accent)",
+                  color: "var(--accent-ink, #fff)",
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                }}
+              >
+                Add rule
+              </button>
+            </div>
           </div>
 
           {/* Preview panel (when in previewing state) */}
@@ -914,7 +1001,7 @@ export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "24px 1fr 80px 60px 80px 120px",
+                gridTemplateColumns: "24px 1fr 80px 60px 80px 120px 52px",
                 gap: 8,
                 padding: "8px 12px",
                 borderBottom: "1px solid var(--border-1)",
@@ -931,6 +1018,7 @@ export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
               <span>Matches</span>
               <span>Scope</span>
               <span>Action</span>
+              <span>Order</span>
             </div>
             {rules.length === 0 ? (
               <div
@@ -944,10 +1032,12 @@ export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
                 No rules loaded.
               </div>
             ) : (
-              rules.map((rule) => (
+              rules.map((rule, idx) => (
                 <RuleRow
                   key={rule.id}
                   rule={rule}
+                  index={idx}
+                  total={rules.length}
                   isRunning={isRunningRule && previewRule === rule.id}
                   onRun={() => {
                     if (isIdle) {
@@ -961,6 +1051,13 @@ export function RegexTool({ stageId, runnerRef }: ToolSlotProps): ReactNode {
                   }}
                   onToggle={() =>
                     send({ type: "TOGGLE_RULE", ruleId: rule.id })
+                  }
+                  onReorder={(dir) =>
+                    send({
+                      type: "REORDER_RULE",
+                      from: idx,
+                      to: dir === "up" ? idx - 1 : idx + 1,
+                    })
                   }
                 />
               ))

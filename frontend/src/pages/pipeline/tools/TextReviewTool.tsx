@@ -16,11 +16,16 @@
  *  - Review    — item list with approve/comment actions
  *  - Settings  — requireCommentsResolved toggle (F5 minimal)
  *
+ * Surface controls wired (F5.5 fix round):
+ *  - VIEW_ON_PAGE — eye button per review queue item (canvas: text-review.jsx eye per row)
+ *  - SEND_APPROVED — "Send approved to Illustrations" button in banner
+ *
  * F5 mock-only: QUEUE_READY is sent on mount with mock data.
  * I1: real SSE actor feeds QUEUE_PUSH/QUEUE_READY; backend wired.
  *
  * @see src/machines/tools/textReviewTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-text-review.yaml
+ * @see docs/plans/design_handoff_pgdp_app/final/text_review/text-review.jsx — canvas authority
  */
 
 import type { ReactNode } from "react";
@@ -100,10 +105,12 @@ function QueueItemRow({
   item,
   onApprove,
   onComment,
+  onViewOnPage,
 }: {
   item: QueueItem;
   onApprove: () => void;
   onComment: () => void;
+  onViewOnPage: () => void;
 }): ReactNode {
   const isDiscuss = item.status === "discuss";
 
@@ -112,7 +119,7 @@ function QueueItemRow({
       data-testid={`queue-item-row-${item.id}`}
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 80px 80px 120px",
+        gridTemplateColumns: "1fr 80px 80px 150px",
         gap: 8,
         padding: "8px 12px",
         borderTop: "1px solid var(--border-1)",
@@ -190,6 +197,26 @@ function QueueItemRow({
         {item.status}
       </span>
       <div style={{ display: "flex", gap: 4 }}>
+        <button
+          data-testid={`view-on-page-item-${item.id}`}
+          onClick={onViewOnPage}
+          title="View on page"
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: "1px solid var(--border-2)",
+            background: "var(--bg-surface)",
+            color: "var(--ink-4)",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 11,
+            flexShrink: 0,
+          }}
+        >
+          ⊙
+        </button>
         {!isDiscuss ? (
           <button
             data-testid={`approve-item-${item.id}`}
@@ -844,6 +871,22 @@ export function TextReviewTool({
                 Approve low risk
               </button>
               <button
+                data-testid="text-review-send-approved"
+                onClick={() => send({ type: "SEND_APPROVED" })}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: "var(--accent)",
+                  color: "var(--accent-ink, #fff)",
+                  cursor: "pointer",
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                }}
+              >
+                Send approved to Illustrations
+              </button>
+              <button
                 data-testid="text-review-confirm-advance"
                 disabled={!gateOpen}
                 onClick={() => {
@@ -878,7 +921,7 @@ export function TextReviewTool({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 80px 80px 120px",
+                gridTemplateColumns: "1fr 80px 80px 150px",
                 gap: 8,
                 padding: "8px 12px",
                 borderBottom: "1px solid var(--border-1)",
@@ -914,6 +957,9 @@ export function TextReviewTool({
                       send({ type: "APPROVE_ITEM", itemId: item.id })
                     }
                     onComment={() => setCommentTarget(item.id)}
+                    onViewOnPage={() =>
+                      send({ type: "VIEW_ON_PAGE", itemId: item.id })
+                    }
                   />
                   {commentTarget === item.id ? (
                     <div
