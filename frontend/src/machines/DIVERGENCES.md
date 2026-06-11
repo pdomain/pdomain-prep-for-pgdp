@@ -204,7 +204,7 @@ that modifies `rows`. Do not implement it as a standalone action.
 
 ---
 
-## #10 — `PROGRESS_PUSH` is NOT wired unchanged at I1 (stageRunner) {#reconcile-todo}
+## #10 — `PROGRESS_PUSH` is NOT wired unchanged at I1 (stageRunner) {#resolved-I1}
 
 **YAML (earlier divergence #1 claim):** The original DIVERGENCES.md #1 stated
 "`PROGRESS_PUSH` events arrive from the `sseActor` wired into the machine
@@ -218,8 +218,15 @@ event with shape `{ type: "PROGRESS", value: number }`. At I1, `pipelineShell`
 `PROGRESS { value }` before forwarding to the matching `stageRunner` actor.
 The SSE event shape and the machine event shape differ by name and field.
 
-**Impact on I1:** The translator belongs in `pipelineShell`. Do not attempt to
-wire `PROGRESS_PUSH` directly into `stageRunner` — it will be silently ignored.
+**Resolved at I1:** `PipelinePage.tsx` (I1 wiring) subscribes to the project
+SSE channel via `subscribeProject` + `mapProjectEvent` and forwards `STAGE_PUSH`
+and `PROGRESS_PUSH` to `pipelineShellMachine`. The shell's `routeStagePush`
+action translates `PROGRESS_PUSH` into `PROGRESS { value }` when forwarding to
+the matching `stageRunner` actor. See `PipelinePage.tsx:subscribeProjectSse`.
+
+**STATUS_PUSH open (W3.4):** The `STATUS_PUSH` variants (snapshot, stage-status,
+page-reorder, validation-updated) are not yet forwarded at I1 — the
+`PipelineShellEvent` union does not include them. Wire at I2 per W3.4.
 
 ---
 
@@ -534,7 +541,7 @@ a run-all-stale sweep.
 
 ---
 
-## F4-8 — Project SSE subscription in component layer (PipelinePage) {#I1-resolved}
+## F4-8 — Project SSE subscription in component layer (PipelinePage)
 
 **YAML:** SSE actor is spawned inside the machine and delivers `STAGE_PUSH` /
 `PROGRESS_PUSH` events to the parent via `sendBack`.
@@ -558,14 +565,16 @@ useEffect(() => {
 }, [projectId, send]);
 ```
 
-`STATUS_PUSH` variants (snapshot, stage-status, page-reorder, validation-updated)
-are not forwarded at I1 because `PipelineShellEvent` does not yet include them.
-At I2, add `StatusPushEvent` to `PipelineShellEvent` and wire the snapshot
-variant to seed initial runner states from the on-connect snapshot.
+**Resolved (STAGE_PUSH + PROGRESS_PUSH):** Both event types are forwarded at I1.
+`routeStagePush` in `pipelineShellMachine` routes them to the matching
+`stageRunner` actor. See also DIVERGENCES.md #10 for the PROGRESS_PUSH shape
+translation.
 
-**Impact:** The machine receives real SSE events from the backend. No changes
-to the machine event routing logic — `routeStagePush` handles the forwarding
-to the matching stageRunner actor.
+**Open (STATUS_PUSH — W3.4):** `STATUS_PUSH` variants (snapshot, stage-status,
+page-reorder, validation-updated) are not forwarded because `PipelineShellEvent`
+does not yet include them. Wire at I2 per W3.4: add `StatusPushEvent` to
+`PipelineShellEvent` and wire the snapshot variant to seed initial runner states
+from the on-connect snapshot.
 
 ---
 
@@ -912,17 +921,22 @@ applying stage configuration. The ActionFunction phantom-type constraint in
 typed to its own `Context/Event` union — they cannot be spread from a shared
 `stageSettingsActions` object.
 
-**XState v5 (F5.3):** `stageSettings.ts` is implemented in the F5.1 worktree
-but is NOT present in this worktree at the time F5.3 was written. Per task
-guidance, `ZoneStepSettingsTab` uses local `useState` for `splitsOn` and
-`granularity`, with no-op handlers. This is documented here as an intentional
-divergence, not an omission.
+**XState v5 (F5.3, original claim):** This entry previously stated that
+`stageSettings.ts` was "NOT present in this worktree at the time F5.3 was
+written." That claim is now stale — `stageSettings.ts` IS present in the tree
+(rebased in from the F5.1 worktree). The file lives at
+`src/machines/tools/stageSettings.ts`.
 
-**At I1 (rebase reconcile):** When `stageSettings.ts` is rebased into the tree,
-`textZonesToolMachine` must add the 9 settings actions inline (typed to
-`TextZonesToolContext / TextZonesToolEvent`) and `ZoneStepSettingsTab` must be
-wired to read from / send to the machine via the standard `stageSettings` pattern.
-Do NOT spread `stageSettingsActions` from the F5.1 file — that breaks the phantom-type.
+**Current status:** `ZoneStepSettingsTab` still uses local `useState` for
+`splitsOn` and `granularity` with no-op handlers (the W1 settings-threading
+work is not yet done). This is an open W1.x gap, not a worktree-isolation
+artifact.
+
+**At I1 / W1:** Wire `textZonesToolMachine` to the `stageSettings` pattern —
+add the 9 settings actions inline (typed to `TextZonesToolContext /
+TextZonesToolEvent`) and connect `ZoneStepSettingsTab` to the machine.
+Do NOT spread `stageSettingsActions` from `stageSettings.ts` — that breaks
+the ActionFunction phantom-type (see F5-1 for the inlining rule).
 
 ---
 
@@ -1407,7 +1421,7 @@ This is more deterministic than event-based self-dispatch.
 
 **Impact:** At I1, the SSE channel for zip progress integrates unchanged — the
 machine already handles the exact event shapes the real server will push. The
-surface component's `useEffect` simulation is replaced by the real SSE actor.
+surface component's `useEffect` simulation has been removed (see F5.6-12).
 
 ---
 
@@ -1517,17 +1531,13 @@ If items need to be loaded from the server, a loading state should be added at I
 
 ---
 
-### F5.6-12 — `zipTool` surface auto-simulates via `useEffect`
+### F5.6-12 — `zipTool` surface auto-simulates via `useEffect` {#resolved-I1}
 
-The `ZipTool` surface component includes a `useEffect` that fires `ZIP_PROGRESS`
-and `ZIP_DONE` events with 300ms / 600ms / 900ms delays using real `setTimeout`.
-
-This simulation is in the **surface component** (not the machine), so it does not
-affect machine tests in `packTools.test.ts` (which drive events directly). The
-effect is cleaned up on unmount via `clearTimeout`.
-
-**I1 migration:** Remove the `useEffect` block and wire the real SSE actor. The
-machine's event handling is already correct.
+**RESOLVED at I1.** The `useEffect` block that fired `ZIP_PROGRESS` and
+`ZIP_DONE` events with `setTimeout` delays has been removed from `ZipTool.tsx`.
+The machine now receives real SSE events via the project subscription in
+`PipelinePage` (F4-8 pattern). Machine tests in `packTools.test.ts` continue to
+drive events directly and are unaffected by this removal.
 
 ---
 
