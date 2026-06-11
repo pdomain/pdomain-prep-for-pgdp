@@ -84,13 +84,16 @@ runs roman/arabic/letter-starts, replacing the two-range ProjectConfig mapping;
 prefix computation reads the runs model); **(b) filename format gets a
 universal 3–4 digit binding-order sequence number BEFORE the type code** —
 target shape `<seq:3-4><type><folio?>` per the design's naming.jsx parts
-{seq, type, folio} (e.g. `012f003`). **Two output naming modes** (project-level
-setting): `descriptive` = seq+type+folio (default for ≤999 pages, 3-digit seq);
-`numeric` = the bare zero-padded sequence number only (`0001`…) — offered as
-the secondary mode and recommended for huge books (>999 pages), where the
-descriptive form is not required (no need to squeeze type+folio after a
-4-digit seq). Validator accepts both modes; **(c) cover pages use type letter
-`e`** (free in the design
+{seq, type, folio} (e.g. `012f003`). **Descriptive naming runs all the way through the
+pipeline** — manifest, artifacts, workbench display, naming preview are always
+seq+type+folio. **Numeric naming is an export-time rename only**: at final
+export (build_package output), filenames switch to the bare zero-padded
+sequence (`0001`…, widening for huge books) when the numeric export option is
+selected (recommended for >999-page books). The naming manifest carries both
+(`prefix` canonical descriptive + `export_name` when numeric export is on);
+the pgdp_naming validator validates the EXPORT names (what lands in the zip);
+png↔txt pairing and sort=binding hold in either form. **(c) cover pages use
+type letter `e`** (free in the design
 code table; the seq prefix makes sort=binding order regardless of letter, so
 front AND back covers both work). compute_prefix/assign_prefixes + the naming
 manifest + pgdp_naming validator + tests all update to this format. Also:
