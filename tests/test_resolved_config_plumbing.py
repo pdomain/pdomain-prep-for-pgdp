@@ -41,7 +41,6 @@ from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
     PageStageStatus,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -86,6 +85,7 @@ async def _seed_project_and_page(
     project_id: str,
     data_root: Path,
     config_overrides: PageConfigOverrides | None = None,
+    source_bytes: bytes | None = None,
 ) -> None:
     now = datetime.now(UTC)
     await db.put_project(
@@ -99,7 +99,6 @@ async def _seed_project_and_page(
             page_count=1,
             proof_page_count=1,
             config=ProjectConfig(book_name=project_id, source_uri=""),
-            pipeline_state=PipelineState(),
             storage_prefix=f"projects/{project_id}/",
         )
     )
@@ -117,6 +116,17 @@ async def _seed_project_and_page(
             )
         ],
     )
+    if source_bytes is not None:
+        # v2 root-stage tests: write the source image into the BlobStore and set
+        # the seeded page's source_blob_hash so `grayscale` can load it. This
+        # mutates the SAME page seeded above (no duplicate idx0=0 page) so config
+        # resolution still picks up config_overrides.
+        from pdomain_prep_for_pgdp.core.page_service_helpers import update_page_extension
+        from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+        svc = build_page_service(data_root, project_id)
+        source_hash = svc.blobs.write(source_bytes)
+        update_page_extension(svc, project_id, 0, source_blob_hash=source_hash)
 
 
 # ─── Bullet 1: impl receives ResolvedPageConfig ───────────────────────────────
@@ -286,7 +296,6 @@ def _seed_b3(settings: Settings) -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="b3proj", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/b3proj/",
             )
         )
@@ -386,6 +395,19 @@ def _color_png(h: int = 40, w: int = 60) -> bytes:
     return bytes(buf.tobytes())
 
 
+def _black_gray_png(h: int = 40, w: int = 60) -> bytes:
+    """Create an all-black 2-D grayscale PNG (full-content for crop tests).
+
+    Used as a v2 ``grayscale`` artifact: an all-content image makes the
+    ``find_content_edges`` + ``crop_to_content`` components of ``crop`` a no-op,
+    isolating the ``initial_crop`` inset behavior under test.
+    """
+    img = np.zeros((h, w), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return bytes(buf.tobytes())
+
+
 # ─── Bullet 5: run_stage accepts resolved_config kwarg ───────────────────────
 
 
@@ -396,17 +418,10 @@ async def test_run_stage_accepts_resolved_config_kwarg_no_behavior_change(
     """``run_stage`` accepts ``resolved_config`` kwarg and behaves identically
     when the kwarg is absent vs. when it is ``None``."""
     project_id, page_id = "b87_kw", "0000"
-    await _seed_project_and_page(db, project_id, tmp_path)
     color_png = _color_png()
+    # v2: grayscale is the root page stage — seed the source image so it loads.
+    await _seed_project_and_page(db, project_id, tmp_path, source_bytes=color_png)
     await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="manual_deskew_pre",
-        artifact_bytes=color_png,
-    )
 
     # Pass resolved_config=None explicitly — must not error and must return clean.
     state = await run_stage(
@@ -427,11 +442,15 @@ async def test_run_stage_accepts_resolved_config_kwarg_no_behavior_change(
 async def test_initial_crop_with_configured_margins_produces_smaller_image(
     tmp_path: Path, db: SqliteDatabase
 ) -> None:
-    """When ``resolved_config.initial_crop`` contains non-zero insets, the
-    ``initial_crop`` stage shrinks the image by those margins.
+    """When ``resolved_config.initial_crop`` contains non-zero insets, the v2
+    ``crop`` stage (which folds ``initial_crop``) shrinks the image by those
+    margins.
 
-    We use a 40x60 image with ``initial_crop=(2, 2, 4, 4)`` (left=2, right=2,
-    top=4, bottom=4) so the output should be 32x56 (h=40-8, w=60-4).
+    We feed an all-content (all-black) 40x60 grayscale image so that the
+    ``find_content_edges`` + ``crop_to_content`` components of ``crop`` are a
+    no-op (content fills the frame) and only the ``initial_crop`` insets apply.
+    With ``initial_crop=(2, 2, 4, 4)`` (left=2, right=2, top=4, bottom=4) the
+    output is 32x56 (h=40-8, w=60-4).
     """
     project_id, page_id = "b87_ic", "0000"
     await _seed_project_and_page(
@@ -440,15 +459,17 @@ async def test_initial_crop_with_configured_margins_produces_smaller_image(
         tmp_path,
         config_overrides=PageConfigOverrides(initial_crop=(2, 2, 4, 4)),
     )
-    png_40x60 = _color_png(h=40, w=60)
+    # v2: crop depends on grayscale; seed an all-black (full-content) grayscale
+    # artifact so content-edge cropping is a no-op and only insets apply.
+    black_40x60 = _black_gray_png(h=40, w=60)
     await db.init_page_stages_for_page(project_id, page_id)
     await commit_stage_artifact(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="decode_source",
-        artifact_bytes=png_40x60,
+        stage_id="grayscale",
+        artifact_bytes=black_40x60,
     )
 
     state = await run_stage(
@@ -456,35 +477,36 @@ async def test_initial_crop_with_configured_margins_produces_smaller_image(
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="initial_crop",
+        stage_id="crop",
     )
 
     assert state.status == PageStageStatus.clean
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
-    artifact_path = sap(tmp_path, project_id, page_id, "initial_crop")
+    artifact_path = sap(tmp_path, project_id, page_id, "crop")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
     # initial_crop=(L=2, R=2, T=4, B=4): height = 40-4-4=32, width = 60-2-2=56
     assert arr.shape[:2] == (32, 56), (
-        f"expected (32, 56) after crop_edges with insets (2,2,4,4), got {arr.shape[:2]}"
+        f"expected (32, 56) after crop with insets (2,2,4,4), got {arr.shape[:2]}"
     )
 
 
 @pytest.mark.asyncio
 async def test_initial_crop_no_op_when_no_config(tmp_path: Path, db: SqliteDatabase) -> None:
-    """``initial_crop`` with no config overrides passes through the image unchanged."""
+    """The v2 ``crop`` stage with no ``initial_crop`` overrides passes a
+    full-content image through unchanged (insets are zero, content fills frame)."""
     project_id, page_id = "b87_ic_noop", "0000"
     await _seed_project_and_page(db, project_id, tmp_path)
-    png_40x60 = _color_png(h=40, w=60)
+    black_40x60 = _black_gray_png(h=40, w=60)
     await db.init_page_stages_for_page(project_id, page_id)
     await commit_stage_artifact(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="decode_source",
-        artifact_bytes=png_40x60,
+        stage_id="grayscale",
+        artifact_bytes=black_40x60,
     )
 
     state = await run_stage(
@@ -492,13 +514,13 @@ async def test_initial_crop_no_op_when_no_config(tmp_path: Path, db: SqliteDatab
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="initial_crop",
+        stage_id="crop",
     )
 
     assert state.status == PageStageStatus.clean
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
-    artifact_path = sap(tmp_path, project_id, page_id, "initial_crop")
+    artifact_path = sap(tmp_path, project_id, page_id, "crop")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
     assert arr.shape[:2] == (40, 60), f"expected unchanged (40, 60) with default config, got {arr.shape[:2]}"
@@ -509,79 +531,65 @@ async def test_initial_crop_no_op_when_no_config(tmp_path: Path, db: SqliteDatab
 
 @pytest.mark.asyncio
 async def test_manual_deskew_pre_rotates_when_angle_configured(tmp_path: Path, db: SqliteDatabase) -> None:
-    """When ``cfg.deskew_before_crop`` is set, the ``manual_deskew_pre`` stage
-    must call ``rotate_image`` — verified by checking the output shape differs
-    from a passthrough (rotation changes dimensions for non-square images and
-    non-zero non-90 angles, but for a 90-degree rotation height and width swap).
+    """When ``cfg.deskew_before_crop`` is set, the v2 ``grayscale`` stage (which
+    folds the pre-crop ``manual_deskew_pre`` component) must call ``rotate_image``
+    — verified via the output shape. A 90-degree rotation of a non-square image
+    swaps height and width; grayscale then yields a 2-D image of those dims.
     """
     project_id, page_id = "b87_mdp", "0000"
+    # v2: grayscale is the root page stage and folds the pre-crop rotate/flip.
+    # Use a non-square image so a 90-degree rotation changes the shape.
+    png_30x80 = _color_png(h=30, w=80)
     await _seed_project_and_page(
         db,
         project_id,
         tmp_path,
         config_overrides=PageConfigOverrides(deskew_before_crop=90.0),
+        source_bytes=png_30x80,
     )
-    # Use a non-square image so a 90-degree rotation changes the shape.
-    # manual_deskew_pre depends on initial_crop, so seed that as the parent.
-    png_30x80 = _color_png(h=30, w=80)
     await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="initial_crop",
-        artifact_bytes=png_30x80,
-    )
 
     state = await run_stage(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="manual_deskew_pre",
+        stage_id="grayscale",
     )
 
     assert state.status == PageStageStatus.clean
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
-    artifact_path = sap(tmp_path, project_id, page_id, "manual_deskew_pre")
+    artifact_path = sap(tmp_path, project_id, page_id, "grayscale")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
-    # A 90-degree rotation of a 30x80 image should produce an 80x30 image.
+    # A 90-degree rotation of a 30x80 image → 80x30; grayscale keeps those dims.
     h, w = arr.shape[:2]
     assert (h, w) == (80, 30), f"expected (80, 30) after 90-degree rotation of 30x80 image, got ({h}, {w})"
 
 
 @pytest.mark.asyncio
 async def test_manual_deskew_pre_no_op_when_no_angle(tmp_path: Path, db: SqliteDatabase) -> None:
-    """Without ``manual_deskew_angle``, the stage is a passthrough."""
+    """Without ``deskew_before_crop``, the pre-crop component of v2 ``grayscale``
+    is a passthrough — the output keeps the source dimensions."""
     project_id, page_id = "b87_mdp_noop", "0000"
-    await _seed_project_and_page(db, project_id, tmp_path)
-    # manual_deskew_pre depends on initial_crop, so seed that as the parent.
+    # v2: grayscale is the root page stage and folds the pre-crop rotate/flip.
     png_30x80 = _color_png(h=30, w=80)
+    await _seed_project_and_page(db, project_id, tmp_path, source_bytes=png_30x80)
     await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="initial_crop",
-        artifact_bytes=png_30x80,
-    )
 
     state = await run_stage(
         data_root=tmp_path,
         database=db,
         project_id=project_id,
         page_id=page_id,
-        stage_id="manual_deskew_pre",
+        stage_id="grayscale",
     )
 
     assert state.status == PageStageStatus.clean
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path as sap
 
-    artifact_path = sap(tmp_path, project_id, page_id, "manual_deskew_pre")
+    artifact_path = sap(tmp_path, project_id, page_id, "grayscale")
     arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
     assert arr is not None
     assert arr.shape[:2] == (30, 80), f"expected unchanged (30, 80) without angle config, got {arr.shape[:2]}"
@@ -630,7 +638,6 @@ def test_run_stage_route_passes_resolved_config(tmp_path: Path) -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="b87_route", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/b87_route/",
             )
         )

@@ -18,9 +18,9 @@ import numpy as np
 import pytest
 
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
 from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_stage
 from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+from tests.fixtures.seed_pages import seed_v2_page_source
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -42,23 +42,20 @@ def _checkerboard_bgr_png() -> bytes:
     return bytes(buf.tobytes())
 
 
-async def _seed_clean_parent(
+async def _seed_grayscale_source(
     db: SqliteDatabase,
     data_root: Path,
     project_id: str,
     page_id: str,
-    stage_id: str,
     payload: bytes,
 ) -> None:
+    """Seed a v2 source blob so `grayscale` (root page stage) can run.
+
+    v2 ``grayscale`` reads the page's own ``source_blob_hash`` from the
+    BlobStore — there is no page-scoped parent artifact to seed.
+    """
+    seed_v2_page_source(data_root, project_id, int(page_id), payload)
     await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=data_root,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id=stage_id,
-        artifact_bytes=payload,
-    )
 
 
 @pytest.mark.asyncio
@@ -66,7 +63,7 @@ async def test_run_stage_emits_running_and_clean_events(tmp_path: Path, db: Sqli
     """run_stage publishes stage-status events for `running` and `clean`."""
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parent(db, tmp_path, project_id, page_id, "manual_deskew_pre", payload)
+    await _seed_grayscale_source(db, tmp_path, project_id, page_id, payload)
 
     broker = StageEventBroker()
     key = stage_events_key(project_id, page_id)
@@ -102,7 +99,7 @@ async def test_run_stage_emits_stage_progress_event(tmp_path: Path, db: SqliteDa
     """run_stage emits a stage-progress event (not just stage-status)."""
     project_id, page_id = "p1", "0001"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parent(db, tmp_path, project_id, page_id, "manual_deskew_pre", payload)
+    await _seed_grayscale_source(db, tmp_path, project_id, page_id, payload)
 
     broker = StageEventBroker()
     key = stage_events_key(project_id, page_id)
@@ -137,7 +134,7 @@ async def test_run_stage_without_events_broker_is_unchanged(tmp_path: Path, db: 
     """run_stage with no stage_events broker still works (no regression)."""
     project_id, page_id = "p1", "0002"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parent(db, tmp_path, project_id, page_id, "manual_deskew_pre", payload)
+    await _seed_grayscale_source(db, tmp_path, project_id, page_id, payload)
 
     state = await run_stage(
         data_root=tmp_path,

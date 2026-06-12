@@ -33,7 +33,6 @@ import pytest
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.core.models import PageStageStatus
 from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
-    commit_stage_artifact,
     stage_artifact_path,
 )
 from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_stage
@@ -240,22 +239,18 @@ async def test_write_failure_marks_stage_failed(tmp_path: Path, db: SqliteDataba
     Mechanism: create the target path as a directory so os.replace fails at
     the OS level, then verify the on_failure callback flips the row to failed.
 
-    v2 DAG chain: grayscale → crop.  Run grayscale (v1 fallback via
-    manual_deskew_pre on disk) first, then run crop with its artifact path
-    blocked by a pre-created directory.
+    v2 DAG chain: grayscale → crop.  grayscale is the root page stage and reads
+    the page's source_blob_hash from the BlobStore, so seed a v2 source blob and
+    run grayscale first, then run crop with its artifact path blocked by a
+    pre-created directory.
     """
+    from tests.fixtures.seed_pages import seed_v2_page_source
+
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
 
+    seed_v2_page_source(tmp_path, project_id, int(page_id), payload)
     await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="manual_deskew_pre",
-        artifact_bytes=payload,
-    )
 
     executor = StageWriteExecutor(pool_size=1, queue_cap=4)
 
@@ -418,29 +413,25 @@ def test_large_artifact_dropped_after_all_consumers(tmp_path: Path) -> None:
 async def test_concurrent_run_stage_small_queue_cap_no_data_loss(tmp_path: Path, db: SqliteDatabase) -> None:
     """Concurrent run_stage calls on independent pages with queue_cap=2.
 
-    Three pages run the same stage chain (manual_deskew_pre → grayscale) with
-    a small queue cap. The executor must not drop any writes; every stage row
-    must be 'clean' and every artifact file must exist on disk when the
-    executor drains.
+    Three pages run the v2 root stage ``grayscale`` (which reads each page's
+    source_blob_hash from the BlobStore) with a small queue cap. The executor
+    must not drop any writes; every stage row must be 'clean' and every artifact
+    file must exist on disk when the executor drains.
 
     This is issue #86 acceptance bullet 5: concurrent run_stage calls on a
     page with a small queue cap complete without data loss.
     """
+    from tests.fixtures.seed_pages import seed_v2_page_source
+
     project_id = "p-concurrent"
     page_ids = ["0001", "0002", "0003"]
     parent_bytes = _checkerboard_bgr_png()
 
-    # Seed manual_deskew_pre as clean on disk for each page.
+    # v2: grayscale reads its own source_blob_hash — seed a v2 source blob and
+    # init the stage rows for each page.
     for pid in page_ids:
+        seed_v2_page_source(tmp_path, project_id, int(pid), parent_bytes)
         await db.init_page_stages_for_page(project_id, pid)
-        await commit_stage_artifact(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=pid,
-            stage_id="manual_deskew_pre",
-            artifact_bytes=parent_bytes,
-        )
 
     # Use pool_size=1, queue_cap=2 — tighter than the number of concurrent tasks
     # so back-pressure kicks in while tasks run concurrently.

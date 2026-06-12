@@ -25,7 +25,6 @@ from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -72,7 +71,6 @@ def _seed_project(settings: Settings, owner_id: str = "default") -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="proj1", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/proj1/",
             )
         )
@@ -241,14 +239,15 @@ def test_thumbnail_persisted_at_write_time(tmp_path: Path) -> None:
 
 
 def test_thumbnail_not_written_for_non_image_stage(tmp_path: Path) -> None:
-    """Text-output stages (e.g. text_postprocess) don't get a thumb.png."""
+    """Text-output stages (e.g. the v2 `regex` stage) don't get a thumb.png."""
     settings = _settings(tmp_path)
     _seed_project(settings)
-    # text_postprocess has output_type="text" — no thumbnail expected.
+    # v2 `regex` has output_type="text" — no thumbnail expected (was v1
+    # `text_postprocess`, folded into the regex/text_review chain).
     payload = b"hello world\n"
-    asyncio.run(_seed_clean_stage(settings, "proj1", "0000", "text_postprocess", payload))
+    asyncio.run(_seed_clean_stage(settings, "proj1", "0000", "regex", payload))
 
-    thumb = stage_thumbnail_path(settings.data_root, "proj1", "0000", "text_postprocess")
+    thumb = stage_thumbnail_path(settings.data_root, "proj1", "0000", "regex")
     assert not thumb.exists(), "thumb.png should not be written for text-output stages"
 
 

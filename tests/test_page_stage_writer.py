@@ -42,18 +42,25 @@ def test_stage_artifact_path_uses_canonical_layout(tmp_path: Path) -> None:
     assert p == tmp_path / "projects" / "p1" / "pages" / "0042" / "stages" / "threshold" / "output.png"
 
 
-def test_stage_artifact_path_text_postprocess_is_txt(tmp_path: Path) -> None:
-    p = stage_artifact_path(tmp_path, "p1", "0042", "text_postprocess")
+def test_stage_artifact_path_text_stage_is_txt(tmp_path: Path) -> None:
+    # v2: `regex` is a text-output page stage (was v1 `text_postprocess`).
+    p = stage_artifact_path(tmp_path, "p1", "0042", "regex")
     assert p.suffix == ".txt"
 
 
-def test_stage_artifact_path_thumbnail_is_jpg(tmp_path: Path) -> None:
-    p = stage_artifact_path(tmp_path, "p1", "0042", "thumbnail")
-    assert p.suffix == ".jpg"
+def test_jpeg_bytes_output_type_maps_to_jpg() -> None:
+    # v2 has no page stage that emits jpeg_bytes (v1 `thumbnail` was folded into
+    # the project-scoped `source` stage), but the extension mapping that any
+    # future jpeg-producing stage relies on must remain intact.
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import OUTPUT_EXT_BY_TYPE
+
+    assert OUTPUT_EXT_BY_TYPE["jpeg_bytes"] == "jpg"
 
 
-def test_stage_artifact_path_auto_detect_attrs_is_json(tmp_path: Path) -> None:
-    p = stage_artifact_path(tmp_path, "p1", "0042", "auto_detect_attrs")
+def test_stage_artifact_path_json_stage_is_json(tmp_path: Path) -> None:
+    # v2: `text_zones` is a JSON-output page stage (zone_json → .json). It
+    # exercises the same OUTPUT_EXT_BY_TYPE json branch as v1 `auto_detect_attrs`.
+    p = stage_artifact_path(tmp_path, "p1", "0042", "text_zones")
     assert p.suffix == ".json"
 
 
@@ -539,7 +546,7 @@ async def test_rollback_ioerror_is_logged_not_suppressed(
                 database=mock_db,
                 project_id="p1",
                 page_id="pg1",
-                stage_id="decode_source",
+                stage_id="grayscale",
                 artifact_bytes=b"test",
                 stage_version=1,
             )

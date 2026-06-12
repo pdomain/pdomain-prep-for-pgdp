@@ -43,7 +43,6 @@ def _make_project(project_id: str) -> Any:
     from datetime import UTC, datetime
 
     from pdomain_prep_for_pgdp.core.models import (
-        PipelineState,
         Project,
         ProjectConfig,
         ProjectStatus,
@@ -60,7 +59,6 @@ def _make_project(project_id: str) -> Any:
         page_count=1,
         proof_page_count=1,
         config=ProjectConfig(book_name=project_id, source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
 
@@ -792,7 +790,6 @@ def _build_wiring_fixtures(tmp_path: Path) -> tuple[Any, Any]:
     from pdomain_prep_for_pgdp.core.models import (
         PageProcessingStatus,
         PageRecord,
-        PipelineState,
         Project,
         ProjectConfig,
         ProjectStatus,
@@ -829,7 +826,6 @@ def _build_wiring_fixtures(tmp_path: Path) -> tuple[Any, Any]:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name=project_id, source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
                 registry_version=2,
             )

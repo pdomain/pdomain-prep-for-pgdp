@@ -26,7 +26,6 @@ from pdomain_prep_for_pgdp.cli.reindex import _parse_args, _run
 from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageStageStatus,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -53,7 +52,6 @@ def _project(project_id: str = "proj1") -> Project:
         page_count=1,
         proof_page_count=1,
         config=ProjectConfig(book_name=project_id, source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
 
@@ -228,19 +226,18 @@ async def test_reindex_heal_marks_missing_failed_and_cascades_dirty(tmp_path: Pa
 async def test_reindex_heal_cascades_descendants_dirty(tmp_path: Path) -> None:
     """Cascade: when a clean upstream row is healed, clean descendants become dirty."""
     db, data_root = await _prep_clean_state(tmp_path)
-    # Add a downstream `clean` row by committing a fake artifact for
-    # `find_content_edges` (descendant of `threshold` -> `invert` ->
-    # `find_content_edges`). For simplicity, commit `invert` (direct
-    # child of threshold).
+    # Add a downstream `clean` row by committing a fake artifact for `deskew`,
+    # the v2 direct child of `threshold` (v1 used `invert`, folded into
+    # `threshold` in v2; the next page-scoped descendant is `deskew`).
     await commit_stage_artifact(
         data_root=data_root,
         database=db,
         project_id="proj1",
         page_id="0000",
-        stage_id="invert",
-        artifact_bytes=b"inv",
+        stage_id="deskew",
+        artifact_bytes=b"dsk",
     )
-    # Now nuke threshold's file → it'll go failed; invert (descendant)
+    # Now nuke threshold's file → it'll go failed; deskew (descendant)
     # is clean, should cascade to dirty.
     threshold_path = stage_artifact_path(data_root, "proj1", "0000", "threshold")
     threshold_path.unlink()
@@ -271,11 +268,11 @@ async def test_reindex_heal_cascades_descendants_dirty(tmp_path: Path) -> None:
     db2 = SqliteDatabase(f"sqlite:///{(tmp_path / 'state.db').as_posix()}")
     await db2.initialize()
     threshold = await db2.get_page_stage("proj1", "0000", "threshold")
-    invert = await db2.get_page_stage("proj1", "0000", "invert")
+    deskew = await db2.get_page_stage("proj1", "0000", "deskew")
     assert threshold is not None
     assert threshold.status == PageStageStatus.failed
-    assert invert is not None and invert.status == PageStageStatus.dirty, (
-        f"expected invert to cascade to dirty, got {invert.status}"
+    assert deskew is not None and deskew.status == PageStageStatus.dirty, (
+        f"expected deskew to cascade to dirty, got {deskew.status}"
     )
     await db2.close()
 
@@ -323,7 +320,7 @@ async def test_reindex_after_heal_is_clean(tmp_path: Path) -> None:
 async def test_reindex_heal_quarantines_orphans(tmp_path: Path) -> None:
     """Drop a bogus file under pages/0000/stages/<known>/, --heal moves it."""
     db, data_root = await _prep_clean_state(tmp_path)
-    bogus_path = data_root / "projects" / "proj1" / "pages" / "0000" / "stages" / "auto_deskew" / "output.png"
+    bogus_path = data_root / "projects" / "proj1" / "pages" / "0000" / "stages" / "deskew" / "output.png"
     bogus_path.parent.mkdir(parents=True, exist_ok=True)
     bogus_path.write_bytes(b"junk")
     await db.close()
@@ -352,7 +349,7 @@ async def test_reindex_heal_quarantines_orphans(tmp_path: Path) -> None:
     # Original gone; quarantine populated.
     assert not bogus_path.exists()
     quar_root = data_root / "projects" / "proj1" / ".orphan-stage-artifacts"
-    quarantined = quar_root / "pages" / "0000" / "stages" / "auto_deskew" / "output.png"
+    quarantined = quar_root / "pages" / "0000" / "stages" / "deskew" / "output.png"
     assert quarantined.exists(), f"orphan should be at {quarantined}"
     assert quarantined.read_bytes() == b"junk"
     # Manifest entry exists.
@@ -361,7 +358,7 @@ async def test_reindex_heal_quarantines_orphans(tmp_path: Path) -> None:
     lines = manifest.read_text(encoding="utf-8").strip().splitlines()
     assert len(lines) == 1
     entry = json.loads(lines[0])
-    assert entry["stage_id"] == "auto_deskew"
+    assert entry["stage_id"] == "deskew"
     # Either reason is acceptable: "no-row" if init_page_stages_for_page
     # never ran for this page, "non-clean-row" if the row exists but is
     # at status not-run/dirty/failed (still an orphan since only `clean`
@@ -505,9 +502,9 @@ async def test_reindex_heal_marks_stale_version_rows_dirty(
     assert row.stage_version == 1
     await db.close()
 
-    # Bump STAGE_VERSIONS["threshold"] to 2 so the row is stale.
-    original = dict(_stage_dag_mod.STAGE_VERSIONS)
-    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, threshold=2))
+    # Bump V2_STAGE_VERSIONS["threshold"] to 2 so the row is stale.
+    original = dict(_stage_dag_mod.V2_STAGE_VERSIONS)
+    monkeypatch.setattr(_stage_dag_mod, "V2_STAGE_VERSIONS", dict(original, threshold=2))
 
     args = _parse_args(["--heal"])
     args.data_root = data_root
