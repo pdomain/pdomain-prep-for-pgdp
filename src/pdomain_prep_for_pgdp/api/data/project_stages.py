@@ -45,11 +45,12 @@ All project-stage routes enforce the registry-version 409 guard.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, Response
@@ -629,6 +630,169 @@ async def get_project_stage_artifact(
 
     content_type = _PROJECT_STAGE_CONTENT_TYPES.get(stage_id, "application/octet-stream")
     return Response(content=artifact_path.read_bytes(), media_type=content_type)
+
+
+# ─── R2 — build_package manifest ─────────────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/build_package/manifest",
+    operation_id="get_build_package_manifest",
+    responses={
+        200: {"description": "Structured { deliverable, manifest } JSON."},
+        404: {"description": "Project not found, stage not clean, or artifact ZIP missing."},
+    },
+)
+async def get_build_package_manifest(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Return structured { deliverable, manifest } JSON for the build_package stage.
+
+    R2 (I2) — resolves the DRIFT stub in buildPackageTool.ts.
+
+    Reads the output.zip artifact and extracts:
+      - deliverable: { files: TreeRow[], count: int } — the zip entry listing
+      - manifest: { project, pages, built, sha256, ... } — summary metadata
+
+    TreeRow shape: { name: str, dir?: bool, d?: int, meta?: str }
+
+    The sha256 field is the SHA-256 hash of the output.zip bytes.
+    """
+    import hashlib
+    import io as _io
+    import zipfile
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    store = _get_store(settings.data_root, project_id)
+    row = store.read(project_id, "build_package")
+    if row is None or row.status != ProjectStageStatus.clean:
+        raise HTTPException(404, "build_package stage is not clean")
+
+    zip_path = settings.data_root / "projects" / project_id / "stages" / "build_package" / "output.zip"
+    if not zip_path.exists():
+        raise HTTPException(404, "build_package artifact ZIP missing on disk")
+
+    zip_bytes = zip_path.read_bytes()
+    sha256 = hashlib.sha256(zip_bytes).hexdigest()
+
+    # Parse pgdp.json from inside the zip for manifest metadata.
+    pgdp_data: dict[str, Any] = {}
+    tree_rows: list[dict[str, Any]] = []
+    try:
+        with zipfile.ZipFile(_io.BytesIO(zip_bytes)) as zf:
+            # Build tree from zip entries.
+            tree_rows.extend({"name": info.filename, "dir": False} for info in zf.infolist())
+            # Extract pgdp.json if present.
+            if "pgdp.json" in zf.namelist():
+                pgdp_data = json.loads(zf.read("pgdp.json"))
+    except Exception:
+        log.debug("build_package manifest: corrupt ZIP for %s", project_id)
+
+    file_count = len(tree_rows)
+
+    deliverable = {
+        "files": tree_rows,
+        "count": file_count,
+    }
+    manifest = {
+        "project": pgdp_data.get("project_id", project_id),
+        "pages": pgdp_data.get("page_count", 0),
+        "canvas": pgdp_data.get("book_name", ""),
+        "built": pgdp_data.get("built_at", ""),
+        "pipeline": "v2",
+        "files": file_count,
+        "sha256": sha256,
+    }
+
+    return JSONResponse(content={"deliverable": deliverable, "manifest": manifest})
+
+
+# ─── R2 — zip manifest ───────────────────────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/zip/manifest",
+    operation_id="get_zip_manifest",
+    responses={
+        200: {"description": "Structured { archive, tree } JSON."},
+        404: {"description": "Project not found, zip stage not clean, or artifact missing."},
+    },
+)
+async def get_zip_manifest(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Return structured { archive, tree } JSON for the zip stage.
+
+    R2 (I2) — resolves the DRIFT stub in zipTool.ts.
+
+    Reads stages/zip/output.json for archive metadata (sha256, size_bytes,
+    file_count) and optionally stages/build_package/output.zip for the tree
+    listing. If the build_package zip is missing, tree is returned empty (
+    the archive metadata is still valid).
+
+    ZipArchive shape: { name, entries, bytes, ratio, sha256 }
+    TreeRow shape:    { name, dir?, d?, meta? }
+    """
+    import io as _io
+    import zipfile
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    store = _get_store(settings.data_root, project_id)
+    row = store.read(project_id, "zip")
+    if row is None or row.status != ProjectStageStatus.clean:
+        raise HTTPException(404, "zip stage is not clean")
+
+    zip_manifest_path = settings.data_root / "projects" / project_id / "stages" / "zip" / "output.json"
+    if not zip_manifest_path.exists():
+        raise HTTPException(404, "zip stage artifact missing on disk")
+
+    zip_data = json.loads(zip_manifest_path.read_text())
+
+    sha256 = zip_data.get("sha256", "")
+    size_bytes = zip_data.get("size_bytes", 0)
+    file_count = zip_data.get("file_count", 0)
+
+    # Compute ratio: size vs uncompressed (simplified — use 1.0 if unavailable).
+    ratio = 1.0
+    archive_name = f"{project_id}.zip"
+
+    # Tree: read from build_package output.zip (best-effort — may not exist).
+    tree_rows: list[dict[str, Any]] = []
+    bp_zip_path = settings.data_root / "projects" / project_id / "stages" / "build_package" / "output.zip"
+    if bp_zip_path.exists():
+        try:
+            with zipfile.ZipFile(_io.BytesIO(bp_zip_path.read_bytes())) as zf:
+                tree_rows.extend({"name": info.filename, "dir": False} for info in zf.infolist())
+        except Exception:
+            log.debug("zip manifest: corrupt build_package ZIP for %s", project_id)
+
+    archive = {
+        "name": archive_name,
+        "entries": file_count,
+        "bytes": size_bytes,
+        "ratio": ratio,
+        "sha256": sha256,
+    }
+
+    return JSONResponse(content={"archive": archive, "tree": tree_rows})
 
 
 # ─── W2.3 — submit_check/confirm ─────────────────────────────────────────────
