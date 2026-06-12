@@ -1959,6 +1959,305 @@ async def toggle_archive_item(
     return JSONResponse(content={"ok": True, "name": item_name, "keep": body.keep})
 
 
+# ─── R2 — textZonesTool zone routes ─────────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/text_zones/pages-aggregate",
+    operation_id="get_text_zones_pages_aggregate",
+    status_code=200,
+    responses={
+        200: {"description": "Zone-page aggregate: rows + totals with per-page zone counts."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_text_zones_pages_aggregate(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return per-page zone aggregate for the text_zones stage.
+
+    Derives from text_zones artifacts on the backend.  Each row carries:
+    - idx, prefix, state, pageNumber — standard page-row fields
+    - zones: int — zone count from the clean artifact (0 when no artifact)
+
+    State mapping:
+    - clean artifact present (stage row = clean) → "reviewed" (zone data available)
+    - no clean row / not_run → "clean" (hasn't been reviewed yet)
+    - dirty / running / failed → mapped from stage status
+
+    R2 — fetchZonePages seam (seam-remediation plan, textZonesTool stub).
+    """
+    import json as _json
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    all_pages = list_page_records(page_service, project_id)
+    all_stages = await db.list_page_stages_by_project(project_id)
+    stage_by_page: dict[str, PageStageState] = {
+        s.page_id: s for s in all_stages if s.stage_id == "text_zones"
+    }
+
+    rows: list[dict[str, object]] = []
+    for i, page in enumerate(all_pages):
+        page_id_key = page.prefix or str(page.idx0)
+        zero_padded = f"{page.idx0:04d}"
+        page_stage = stage_by_page.get(page_id_key) or stage_by_page.get(zero_padded)
+        stage_status = page_stage.status if page_stage else None
+
+        # Build base state — clean artifact → "reviewed" (zone data available)
+        if stage_status == PageStageStatus.clean:
+            state: str = "reviewed"
+        elif stage_status == PageStageStatus.dirty:
+            state = "flagged"
+        elif stage_status == PageStageStatus.running:
+            state = "running"
+        elif stage_status == PageStageStatus.failed:
+            state = "failed"
+        else:
+            state = "clean"
+
+        row: dict[str, object] = {
+            "idx": page_id_key,
+            "prefix": page_id_key,
+            "state": state,
+            "pageNumber": i,
+        }
+
+        # Enrich with zone count from the artifact when row is clean
+        if stage_status == PageStageStatus.clean:
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                artifact_path = stage_artifact_path(settings.data_root, project_id, zero_padded, "text_zones")
+                if artifact_path.exists():
+                    data = _json.loads(artifact_path.read_bytes())
+                    row["zones"] = len(data.get("zones", []))
+
+        rows.append(row)
+
+    # Build totals shaped like ZoneTotals
+    total = len(rows)
+    clean_count = sum(1 for r in rows if r.get("state") == "clean")
+    flagged_count = sum(1 for r in rows if r.get("state") == "flagged")
+    reviewed_count = sum(1 for r in rows if r.get("state") == "reviewed")
+    done_count = reviewed_count + clean_count  # either reviewed or not yet run = done
+    splits_count = sum(1 for r in rows if r.get("state") == "split")
+
+    totals: dict[str, int] = {
+        "total": total,
+        "clean": clean_count,
+        "flagged": flagged_count,
+        "reviewed": reviewed_count,
+        "done": done_count,
+        "splits": splits_count,
+    }
+
+    return JSONResponse(content={"rows": rows, "totals": totals})
+
+
+class _RedetectLayoutRequest(BaseModel):
+    """Optional request body for redetect — future: pass current zones as hint."""
+
+    current_zones: list[dict[str, object]] | None = None
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/text_zones/redetect",
+    operation_id="redetect_text_zones_layout",
+    status_code=200,
+    responses={
+        200: {"description": "Re-detected zone list (frontend Zone[] shape)."},
+        404: {"description": "Project or binary artifact not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def redetect_text_zones_layout(
+    project_id: str,
+    idx0: int,
+    body: _RedetectLayoutRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Re-run zone detection on a single page's binary artifact.
+
+    Reads the page's clean post_transform_crop (binary) artifact from disk and
+    runs detect_text_zones() synchronously.  Returns zones in the frontend
+    Zone[] shape (id/type/x/y/w/h normalised [0,1]/order).
+
+    Does NOT commit to the DB — the caller must call persistLayout to save.
+
+    R2 — redetectLayout seam (seam-remediation plan, textZonesTool stub).
+    """
+    import cv2  # pyright: ignore[reportMissingImports]
+    import numpy as np
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import get_page_record
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
+    from pdomain_prep_for_pgdp.core.pipeline.steps.text_zones import detect_text_zones
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = f"{idx0:04d}"
+
+    # Read the binary artifact from post_transform_crop
+    binary_path = stage_artifact_path(settings.data_root, project_id, page_id, "post_transform_crop")
+    if not binary_path.exists():
+        raise HTTPException(
+            404, "no binary artifact available for re-detection; run post_transform_crop first"
+        )
+
+    # Load as grayscale ndarray
+    raw = binary_path.read_bytes()
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    decoded = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+    if decoded is None:
+        raise HTTPException(404, "could not decode binary artifact for re-detection")
+    binary = np.asarray(decoded, dtype=np.uint8)
+
+    result = detect_text_zones(binary)
+
+    # Convert detector output → frontend Zone[] shape (normalised coords)
+    h: int = result.get("image_height", 1) or 1
+    w: int = result.get("image_width", 1) or 1
+    zones: list[dict[str, object]] = []
+    for order_i, z in enumerate(result.get("zones", []), start=1):
+        bx, by, bw, bh = z["bbox"]
+        zones.append(
+            {
+                "id": z["zone_id"],
+                "type": "body",  # detector does not classify; default to body
+                "x": bx / w,
+                "y": by / h,
+                "w": bw / w,
+                "h": bh / h,
+                "order": order_i,
+            }
+        )
+
+    return JSONResponse(content={"zones": zones})
+
+
+class _PersistLayoutRequest(BaseModel):
+    """PUT /pages/{page_id}/stages/text_zones/layout request body."""
+
+    zones: list[dict[str, object]] | None = None
+    dismissed: bool | None = None
+
+
+@router.put(
+    "/projects/{project_id}/pages/{idx0}/stages/text_zones/layout",
+    operation_id="persist_text_zones_layout",
+    status_code=200,
+    responses={
+        200: {"description": "Layout persisted; page_stage row marked clean."},
+        404: {"description": "Project or page not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def persist_text_zones_layout(
+    project_id: str,
+    idx0: int,
+    body: _PersistLayoutRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Persist a user-edited zone layout for a single page.
+
+    Dual-write contract (spec §"Dual-write contract"):
+    1. Write zone artifact JSON to disk at the canonical text_zones artifact path.
+    2. Mark the page_stage row clean with the artifact_key.
+
+    Accepts either ``zones`` (list of Zone objects) or ``dismissed`` (bool) or both.
+    Downstream: textZonesToolMachine transitions to browsing after SAVE_LAYOUT
+    and the server row is now clean, so the next aggregate fetch reflects it.
+
+    R2 — persistLayout seam (seam-remediation plan, textZonesTool stub).
+    """
+    import json as _json
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import get_page_record
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = f"{idx0:04d}"
+
+    # Build the artifact payload — carry through any existing data and overlay
+    import contextlib
+
+    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "text_zones")
+    existing: dict[str, object] = {}
+    if artifact_path.exists():
+        with contextlib.suppress(Exception):
+            existing = _json.loads(artifact_path.read_bytes())
+
+    payload: dict[str, object] = {**existing}
+    if body.zones is not None:
+        payload["zones"] = body.zones
+    if body.dismissed is not None:
+        payload["dismissed"] = body.dismissed
+
+    # Dual-write 1: write artifact to disk
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_bytes = _json.dumps(payload).encode("utf-8")
+    artifact_path.write_bytes(artifact_bytes)
+
+    # Dual-write 2: mark page_stage row clean
+    artifact_key = f"projects/{project_id}/pages/{page_id}/stages/text_zones/output.json"
+    now = _dt.now(UTC)
+    existing_row = await db.get_page_stage(project_id, page_id, "text_zones")
+    row = PageStageState(
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="text_zones",
+        status=PageStageStatus.clean,
+        last_run_at=existing_row.last_run_at if existing_row else now.timestamp(),
+        artifact_key=artifact_key,
+        config_hash=existing_row.config_hash if existing_row else None,
+        input_hash=None,
+    )
+    await db.put_page_stage(row)
+
+    return JSONResponse(content={"ok": True})
+
+
 # ─── Project-level SSE channel ────────────────────────────────────────────────
 
 

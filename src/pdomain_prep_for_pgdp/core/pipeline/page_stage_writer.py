@@ -84,6 +84,7 @@ OUTPUT_EXT_BY_TYPE: Final[dict[str, str]] = {
     "page_attrs": "json",
     "illustration_regions": "json",
     "bbox": "json",
+    "zone_json": "json",
 }
 
 # Stages whose output is a multi-file directory or otherwise compound.

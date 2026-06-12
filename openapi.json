@@ -2379,6 +2379,200 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/text_zones/pages-aggregate": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Text Zones Pages Aggregate",
+        "description": "Return per-page zone aggregate for the text_zones stage.\n\nDerives from text_zones artifacts on the backend.  Each row carries:\n- idx, prefix, state, pageNumber \u2014 standard page-row fields\n- zones: int \u2014 zone count from the clean artifact (0 when no artifact)\n\nState mapping:\n- clean artifact present (stage row = clean) \u2192 \"reviewed\" (zone data available)\n- no clean row / not_run \u2192 \"clean\" (hasn't been reviewed yet)\n- dirty / running / failed \u2192 mapped from stage status\n\nR2 \u2014 fetchZonePages seam (seam-remediation plan, textZonesTool stub).",
+        "operationId": "get_text_zones_pages_aggregate",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Zone-page aggregate: rows + totals with per-page zone counts.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_zones/redetect": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Redetect Text Zones Layout",
+        "description": "Re-run zone detection on a single page's binary artifact.\n\nReads the page's clean post_transform_crop (binary) artifact from disk and\nruns detect_text_zones() synchronously.  Returns zones in the frontend\nZone[] shape (id/type/x/y/w/h normalised [0,1]/order).\n\nDoes NOT commit to the DB \u2014 the caller must call persistLayout to save.\n\nR2 \u2014 redetectLayout seam (seam-remediation plan, textZonesTool stub).",
+        "operationId": "redetect_text_zones_layout",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_RedetectLayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-detected zone list (frontend Zone[] shape).",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project or binary artifact not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_zones/layout": {
+      "put": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Persist Text Zones Layout",
+        "description": "Persist a user-edited zone layout for a single page.\n\nDual-write contract (spec \u00a7\"Dual-write contract\"):\n1. Write zone artifact JSON to disk at the canonical text_zones artifact path.\n2. Mark the page_stage row clean with the artifact_key.\n\nAccepts either ``zones`` (list of Zone objects) or ``dismissed`` (bool) or both.\nDownstream: textZonesToolMachine transitions to browsing after SAVE_LAYOUT\nand the server row is now clean, so the next aggregate fetch reflects it.\n\nR2 \u2014 persistLayout seam (seam-remediation plan, textZonesTool stub).",
+        "operationId": "persist_text_zones_layout",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_PersistLayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Layout persisted; page_stage row marked clean.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project or page not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/events": {
       "get": {
         "tags": [
@@ -9068,6 +9262,39 @@
         "title": "_PageOrderRunsRequest",
         "description": "PUT /project-stages/page_order/runs request body.\n\n``runs`` is an ordered list of run descriptors.  Each run defines a\ncontiguous block of pages with a shared style:\n  start_idx  \u2014 0-based index into the proof range where this run begins.\n  style      \u2014 folio number style: \"roman\", \"arabic\", or \"letters\".\n  number_start \u2014 first folio number in the run (1-indexed, typically 1).\n  type_code  \u2014 section type letter: \"f\" (frontmatter) or \"p\" (bodymatter).\n\nPersisted as JSON at:\n  <data_root>/projects/<id>/stages/page_order/runs.json"
       },
+      "_PersistLayoutRequest": {
+        "properties": {
+          "zones": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zones"
+          },
+          "dismissed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed"
+          }
+        },
+        "type": "object",
+        "title": "_PersistLayoutRequest",
+        "description": "PUT /pages/{page_id}/stages/text_zones/layout request body."
+      },
       "_PipelineActionResponse": {
         "properties": {
           "project_id": {
@@ -9090,6 +9317,28 @@
           "performed_at"
         ],
         "title": "_PipelineActionResponse"
+      },
+      "_RedetectLayoutRequest": {
+        "properties": {
+          "current_zones": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Zones"
+          }
+        },
+        "type": "object",
+        "title": "_RedetectLayoutRequest",
+        "description": "Optional request body for redetect \u2014 future: pass current zones as hint."
       },
       "_StageConfirmRequest": {
         "properties": {

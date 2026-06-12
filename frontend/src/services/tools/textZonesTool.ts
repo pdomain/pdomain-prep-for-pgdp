@@ -2,15 +2,18 @@
  * textZonesTool.ts — Real TextZonesToolServices backed by the v2 API.
  *
  * Backend routes used:
- *   POST /api/data/projects/{id}/pages/{idx0}/split
+ *   GET  /api/data/projects/{id}/project-stages/text_zones/pages-aggregate → fetchZonePages
+ *   POST /api/data/projects/{id}/pages/{idx0}/stages/text_zones/redetect   → redetectLayout
+ *   PUT  /api/data/projects/{id}/pages/{idx0}/stages/text_zones/layout      → persistLayout
+ *   POST /api/data/projects/{id}/pages/{idx0}/split                         → applySplit
+ *   POST /api/data/projects/{id}/project-stages/text_zones/confirm          → confirmStage
  *
- * NOT yet implemented (I1 stubs):
- *   GET  /api/projects/:id/stages/text_zones/pages    → fetchZonePages
- *   POST /api/projects/:id/stages/text_zones/pages/:pageId/detect → redetectLayout
- *   PUT  /api/projects/:id/stages/text_zones/pages/:pageId/layout → persistLayout
- *   POST /api/projects/:id/stages/text_zones/confirm  → confirmStage
+ * ## idx0 from pageId
  *
- * DRIFT: Add these aggregation routes to project_stages.py at I2.
+ * The frontend machine identifies pages by string `pageId` (e.g. "0001").
+ * The backend redetect/persist routes expect `idx0` as an integer path segment
+ * (same as other per-page routes in pages.py).
+ * We parse the zero-padded string as an integer: parseInt(pageId, 10).
  *
  * ## SplitDraft → backend translation (DIVERGENCES F5-3-I1)
  *
@@ -43,28 +46,32 @@ import type {
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 // ---------------------------------------------------------------------------
-// fetchZonePages — stub at I1
+// fetchZonePages — real route (R2)
 // ---------------------------------------------------------------------------
 
 /**
  * Fetch zone page rows for the text_zones stage.
  *
- * DRIFT: route not implemented — returns empty response at I1.
+ * Route: GET /api/data/projects/{id}/project-stages/text_zones/pages-aggregate
+ * Returns { rows: ZonePageRow[], totals: ZoneTotals }.
  */
-function fetchZonePages(
-  _projectId: string,
+async function fetchZonePages(
+  projectId: string,
 ): Promise<{ rows: ZonePageRow[]; totals: ZoneTotals }> {
-  return Promise.resolve({
-    rows: [],
+  const result = await api.get<{ rows: ZonePageRow[]; totals: ZoneTotals }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_zones/pages-aggregate`,
+  );
+  return {
+    rows: result.rows ?? [],
     totals: {
-      total: 0,
-      clean: 0,
-      flagged: 0,
-      done: 0,
-      reviewed: 0,
-      splits: 0,
+      total: result.totals?.total ?? 0,
+      clean: result.totals?.clean ?? 0,
+      flagged: result.totals?.flagged ?? 0,
+      done: result.totals?.done ?? 0,
+      reviewed: result.totals?.reviewed ?? 0,
+      splits: result.totals?.splits ?? 0,
     },
-  });
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -136,29 +143,55 @@ async function applySplit(
 }
 
 // ---------------------------------------------------------------------------
-// redetectLayout — stub at I1
+// redetectLayout — real route (R2)
 // ---------------------------------------------------------------------------
 
-function redetectLayout(
-  _projectId: string,
-  _pageId: string,
+/**
+ * Re-run zone detection on a single page's binary artifact.
+ *
+ * Route: POST /api/data/projects/{id}/pages/{idx0}/stages/text_zones/redetect
+ * Returns { zones: Zone[] } in normalised [0,1] coordinates.
+ *
+ * pageId is expected to be a zero-padded string (e.g. "0001"); parsed to int
+ * for the route's idx0 path segment.
+ */
+async function redetectLayout(
+  projectId: string,
+  pageId: string,
   _currentDraft: Zone[] | null,
 ): Promise<{ zones: Zone[] }> {
-  // Route not yet implemented at I1.
-  return Promise.resolve({ zones: [] });
+  const idx0 = parseInt(pageId, 10);
+  const result = await api.post<{ zones: Zone[] }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/text_zones/redetect`,
+    {},
+  );
+  return { zones: result.zones ?? [] };
 }
 
 // ---------------------------------------------------------------------------
-// persistLayout — stub at I1
+// persistLayout — real route (R2)
 // ---------------------------------------------------------------------------
 
-function persistLayout(
-  _projectId: string,
-  _pageId: string,
-  _data: { zones?: Zone[]; dismissed?: boolean },
+/**
+ * Persist user-edited zones for a single page (dual-write).
+ *
+ * Route: PUT /api/data/projects/{id}/pages/{idx0}/stages/text_zones/layout
+ * Writes zone artifact to disk + marks page_stage row clean.
+ *
+ * pageId is expected to be a zero-padded string (e.g. "0001"); parsed to int
+ * for the route's idx0 path segment.
+ */
+async function persistLayout(
+  projectId: string,
+  pageId: string,
+  data: { zones?: Zone[]; dismissed?: boolean },
 ): Promise<{ ok: boolean }> {
-  // Route not yet implemented at I1.
-  return Promise.resolve({ ok: true });
+  const idx0 = parseInt(pageId, 10);
+  const result = await api.put<{ ok: boolean }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/text_zones/layout`,
+    data,
+  );
+  return { ok: result.ok ?? false };
 }
 
 // ---------------------------------------------------------------------------

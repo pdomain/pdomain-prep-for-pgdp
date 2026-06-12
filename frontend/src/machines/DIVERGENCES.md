@@ -1771,3 +1771,72 @@ re-throwing, so backend errors (404, 409) were silently swallowed and the machin
 
 **Contract:** `GET .../crop-pages` returns 404 (not 200 with empty list) when the
 project is absent — this is the invariant that makes the error path reachable.
+---
+
+## R2 — textZonesTool DRIFT stubs resolved (2026-06-12)
+
+The three `DRIFT` stubs in `frontend/src/services/tools/textZonesTool.ts` are
+now resolved. All three backend routes were implemented and the frontend
+service functions were wired to call them.
+
+### R2-1 — fetchZonePages
+
+**Previous (I1 stub):** returned `{ rows: [], totals: { ... zeros } }` unconditionally.
+
+**Resolved:** calls `GET /api/data/projects/{id}/project-stages/text_zones/pages-aggregate`.
+
+The route derives zone-page rows from:
+
+- `list_page_records` (all pages in order)
+- `list_page_stages_by_project` filtered for `stage_id="text_zones"`
+- per-page `output.json` artifact for zone count enrichment (clean rows only)
+
+State mapping: `clean` page_stage row → `"reviewed"` (zone data available);
+`not_run` → `"clean"` (not yet detected); `dirty/running/failed` as named.
+
+**Live path:** `textZonesToolMachine` enters `loading` → invokes `fetchZonePages`
+actor → `buildRealTextZonesToolServices().fetchZonePages(projectId)` → real route.
+
+### R2-2 — redetectLayout
+
+**Previous (I1 stub):** returned `{ zones: [] }` unconditionally.
+
+**Resolved:** calls `POST /api/data/projects/{id}/pages/{idx0}/stages/text_zones/redetect`.
+
+The route reads the page's `post_transform_crop` binary artifact from disk, runs
+`detect_text_zones()` synchronously, and returns zones in the normalised [0,1]
+coordinate shape that `textZonesToolMachine` expects
+(`{ id, type, x, y, w, h, order }`). Does NOT commit to DB — caller must then
+call `persistLayout` to make the detection canonical.
+
+Note: `pageId` in the machine is a zero-padded string (e.g. `"0001"`); the
+service converts it to `parseInt(pageId, 10)` for the `idx0` path segment.
+
+**Live path:** machine enters `bench.params.redetecting` → invokes `redetectLayout`
+actor → `buildRealTextZonesToolServices().redetectLayout(projectId, pageId, draft)`
+→ real route.
+
+### R2-3 — persistLayout
+
+**Previous (I1 stub):** returned `{ ok: true }` without writing anything.
+
+**Resolved:** calls `PUT /api/data/projects/{id}/pages/{idx0}/stages/text_zones/layout`.
+
+Dual-write contract (spec §"Dual-write contract"):
+
+1. Write artifact JSON to `<data_root>/projects/{id}/pages/{page_id}/stages/text_zones/output.json`
+2. Mark `page_stages` row `clean` with `artifact_key`
+
+Accepts `{ zones?, dismissed? }`. Overlays on any existing artifact so neither
+field silently erases the other.
+
+**Live path:** machine handles `SAVE_LAYOUT` in editing → fires `persistLayout`
+side-effect action → `buildRealTextZonesToolServices().persistLayout(projectId, pageId, data)`
+→ real route → dual-write.
+
+### zone_json extension mapping
+
+`zone_json` output type (used by `text_zones` stage in the v2 DAG) was missing
+from `OUTPUT_EXT_BY_TYPE` in `page_stage_writer.py`. Added `"zone_json": "json"`
+so `stage_artifact_path()` and `stage_artifact_key()` resolve correctly
+(path = `output.json`).

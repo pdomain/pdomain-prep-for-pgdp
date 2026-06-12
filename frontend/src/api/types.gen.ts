@@ -967,6 +967,95 @@ export interface paths {
         patch: operations["toggle_archive_item"];
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/text_zones/pages-aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Text Zones Pages Aggregate
+         * @description Return per-page zone aggregate for the text_zones stage.
+         *
+         *     Derives from text_zones artifacts on the backend.  Each row carries:
+         *     - idx, prefix, state, pageNumber — standard page-row fields
+         *     - zones: int — zone count from the clean artifact (0 when no artifact)
+         *
+         *     State mapping:
+         *     - clean artifact present (stage row = clean) → "reviewed" (zone data available)
+         *     - no clean row / not_run → "clean" (hasn't been reviewed yet)
+         *     - dirty / running / failed → mapped from stage status
+         *
+         *     R2 — fetchZonePages seam (seam-remediation plan, textZonesTool stub).
+         */
+        get: operations["get_text_zones_pages_aggregate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_zones/redetect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redetect Text Zones Layout
+         * @description Re-run zone detection on a single page's binary artifact.
+         *
+         *     Reads the page's clean post_transform_crop (binary) artifact from disk and
+         *     runs detect_text_zones() synchronously.  Returns zones in the frontend
+         *     Zone[] shape (id/type/x/y/w/h normalised [0,1]/order).
+         *
+         *     Does NOT commit to the DB — the caller must call persistLayout to save.
+         *
+         *     R2 — redetectLayout seam (seam-remediation plan, textZonesTool stub).
+         */
+        post: operations["redetect_text_zones_layout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_zones/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Persist Text Zones Layout
+         * @description Persist a user-edited zone layout for a single page.
+         *
+         *     Dual-write contract (spec §"Dual-write contract"):
+         *     1. Write zone artifact JSON to disk at the canonical text_zones artifact path.
+         *     2. Mark the page_stage row clean with the artifact_key.
+         *
+         *     Accepts either ``zones`` (list of Zone objects) or ``dismissed`` (bool) or both.
+         *     Downstream: textZonesToolMachine transitions to browsing after SAVE_LAYOUT
+         *     and the server row is now clean, so the next aggregate fetch reflects it.
+         *
+         *     R2 — persistLayout seam (seam-remediation plan, textZonesTool stub).
+         */
+        put: operations["persist_text_zones_layout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/events": {
         parameters: {
             query?: never;
@@ -3520,6 +3609,18 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /**
+         * _PersistLayoutRequest
+         * @description PUT /pages/{page_id}/stages/text_zones/layout request body.
+         */
+        _PersistLayoutRequest: {
+            /** Zones */
+            zones?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Dismissed */
+            dismissed?: boolean | null;
+        };
         /** _PipelineActionResponse */
         _PipelineActionResponse: {
             /** Project Id */
@@ -3528,6 +3629,16 @@ export interface components {
             action: string;
             /** Performed At */
             performed_at: string;
+        };
+        /**
+         * _RedetectLayoutRequest
+         * @description Optional request body for redetect — future: pass current zones as hint.
+         */
+        _RedetectLayoutRequest: {
+            /** Current Zones */
+            current_zones?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * _StageConfirmRequest
@@ -5223,6 +5334,151 @@ export interface operations {
                 };
             };
             /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_text_zones_pages_aggregate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Zone-page aggregate: rows + totals with per-page zone counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redetect_text_zones_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_RedetectLayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Re-detected zone list (frontend Zone[] shape). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project or binary artifact not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    persist_text_zones_layout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_PersistLayoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Layout persisted; page_stage row marked clean. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project or page not found. */
             404: {
                 headers: {
                     [name: string]: unknown;
