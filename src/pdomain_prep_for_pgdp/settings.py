@@ -134,6 +134,19 @@ class Settings(BaseSettings):
     Override: ``PGDP_OCR_PIPELINE_SLOTS``.
     """
 
+    gpu_page_slots: int | None = None
+    """Maximum concurrent pages holding a GPU working array (Phase 2 VRAM bound).
+
+    ``None`` (default): auto-sized at startup from free VRAM minus the DocTR
+    predictor residency (~2 GiB), divided by the per-page working-set estimate
+    (~4 MiB for a uint8 full-resolution array).  Floor is 1.
+
+    Set to an explicit integer to override the auto-sizing, e.g.
+    ``PGDP_GPU_PAGE_SLOTS=1`` for debugging or ``=4`` for high-VRAM machines.
+
+    Override: ``PGDP_GPU_PAGE_SLOTS``.
+    """
+
     # ── Resource limits ──────────────────────────────────────────────────────
     max_cdn_upload_bytes: int = 300 * 1024 * 1024
     """Max bytes for a single PUT /cdn/{key} upload body (default 300 MB)."""

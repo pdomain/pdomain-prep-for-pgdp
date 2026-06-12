@@ -90,7 +90,10 @@ def _load_ocr_input_image(
             if cached is not None:
                 if isinstance(cached, np.ndarray):
                     return cached
-                # Bytes in cache: decode.
+                # Bytes in cache (Phase 2: cupy arrays are not expected here for this path,
+                # but guard anyway — skip non-bytes non-ndarray entries).
+                if not isinstance(cached, bytes):
+                    continue
                 arr = np.frombuffer(cached, dtype=np.uint8)
                 img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
                 if img is not None:

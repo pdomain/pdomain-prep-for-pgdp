@@ -451,12 +451,16 @@ async def _load_parent_artifact(
                     return _decode_json_output(cached_bytes, _parent_output_type)
                 return cached_bytes
             # Bytes path (legacy): decode as before.
-            if _parent_output_type in _IMAGE_OUTPUT_TYPES:
-                return _decode_image_bytes(cached)
-            if _parent_output_type in _JSON_OUTPUT_TYPES:
-                return _decode_json_output(cached, _parent_output_type)
-            # Compound or passthrough — return raw bytes; caller handles.
-            return cached
+            # Phase 2: cupy device arrays are not expected at this point (they
+            # are kept on-device via the segment runner; non-bytes/ndarray entries
+            # fall through to the disk path).
+            if isinstance(cached, bytes):
+                if _parent_output_type in _IMAGE_OUTPUT_TYPES:
+                    return _decode_image_bytes(cached)
+                if _parent_output_type in _JSON_OUTPUT_TYPES:
+                    return _decode_json_output(cached, _parent_output_type)
+                # Compound or passthrough — return raw bytes; caller handles.
+                return cached
 
     if _parent_output_type in COMPOUND_OUTPUT_TYPES:
         # Compound-output stages write multiple files; the single-file writer

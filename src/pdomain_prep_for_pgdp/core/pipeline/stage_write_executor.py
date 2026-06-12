@@ -68,14 +68,44 @@ type _FailureCallback = Callable[[Exception], _WriteCoroutine]
 # Default memory budget: 512 MiB
 _DEFAULT_CACHE_BUDGET_BYTES = 512 * 1024 * 1024
 
+# ─── CuPy availability guard ─────────────────────────────────────────────────
+# The executor must not crash at import time on CPU-only installs.  Each
+# function that touches a device array checks _CUPY_AVAILABLE at call time.
+
+try:
+    import cupy as _cp  # pyright: ignore[reportMissingImports]
+
+    _CUPY_AVAILABLE: bool = True
+except ImportError:
+    _cp = None  # type: ignore[assignment]
+    _CUPY_AVAILABLE = False  # pyright: ignore[reportConstantRedefinition]
+
+
+def _is_device_array(arr: object) -> bool:
+    """Return True when arr is a CuPy ndarray (GPU-resident)."""
+    return _CUPY_AVAILABLE and _cp is not None and isinstance(arr, _cp.ndarray)
+
+
+def _download_device_array(arr: object) -> np.ndarray:
+    """Download a CuPy ndarray to a numpy ndarray (CPU)."""
+    assert _cp is not None, "CuPy unavailable — should not call _download_device_array"
+    return _cp.asnumpy(arr)  # type: ignore[return-value]
+
 
 def _ndarray_byte_size(arr: np.ndarray) -> int:
     """Return the memory footprint of an ndarray in bytes."""
     return int(arr.nbytes)
 
 
+def _device_array_byte_size(arr: object) -> int:
+    """Return the memory footprint of a CuPy ndarray in bytes."""
+    if _CUPY_AVAILABLE and _cp is not None and isinstance(arr, _cp.ndarray):
+        return int(arr.nbytes)  # pyright: ignore[reportAttributeAccessIssue]
+    return 0
+
+
 def _encode_ndarray_to_png(arr: np.ndarray) -> bytes:
-    """Encode an ndarray to PNG bytes (used in background write thread)."""
+    """Encode a *CPU* ndarray to PNG bytes (used in background write thread)."""
     import cv2
 
     ok, buf = cv2.imencode(".png", arr)
@@ -89,30 +119,37 @@ def _encode_ndarray_to_png(arr: np.ndarray) -> bytes:
 
 @final
 class _PendingArtifact:
-    """Artifact (bytes or ndarray) with a mutable consumer reference count.
+    """Artifact (bytes, numpy.ndarray, or cupy.ndarray) with consumer ref count.
 
     Thread-safe: ``consume()`` is called from stage runners (potentially
     concurrent) and ``exhausted`` is read under the same lock.
 
-    Phase 1: ``data`` may be either ``bytes`` or ``numpy.ndarray``.  When the
-    caller passes an ndarray, it is stored without encoding; ``consume()``
-    returns the ndarray directly so downstream stages avoid ``cv2.imdecode``.
-    The background write thread calls ``encode_for_write()`` immediately before
-    the disk write.
+    Phase 1: ``data`` may be ``bytes`` or ``numpy.ndarray``.  When the caller
+    passes an ndarray, it is stored without encoding; ``consume()`` returns the
+    ndarray directly so downstream stages avoid ``cv2.imdecode``.  The
+    background write thread calls ``encode_for_write()`` immediately before the
+    disk write.
+
+    Phase 2 extension: ``data`` may also be a ``cupy.ndarray`` (GPU-resident
+    array).  ``consume()`` returns it directly to downstream stages that run on
+    GPU.  ``encode_for_write()`` downloads to numpy first (``cupy.asnumpy``),
+    then PNG-encodes on the write thread.  Eviction (budget overflow) also
+    downloads the CuPy array before replacing it with bytes.
     """
 
     __slots__ = ("_count", "_lock", "data")
 
-    def __init__(self, data: bytes | np.ndarray, num_consumers: int) -> None:
-        self.data: bytes | np.ndarray = data
+    def __init__(self, data: bytes | np.ndarray | object, num_consumers: int) -> None:
+        self.data: bytes | np.ndarray | object = data
         self._count: int = num_consumers
         self._lock: threading.Lock = threading.Lock()
 
-    def consume(self) -> bytes | np.ndarray:
+    def consume(self) -> bytes | np.ndarray | object:
         """Decrement consumer count and return data.
 
         The caller is responsible for dropping its own reference when
-        ``exhausted`` is True after this call.
+        ``exhausted`` is True after this call.  Returns the raw data —
+        bytes, numpy ndarray, or cupy ndarray.
         """
         with self._lock:
             self._count -= 1
@@ -122,23 +159,34 @@ class _PendingArtifact:
         """Return bytes suitable for disk write.
 
         When ``data`` is already bytes, returns it unchanged (zero-copy).
-        When ``data`` is an ndarray, encodes to PNG bytes in the *caller's*
-        thread (intended for the background write thread only — never call
-        from the hot path).
+        When ``data`` is a numpy ndarray, encodes to PNG bytes.
+        When ``data`` is a cupy ndarray (Phase 2), downloads first then encodes.
+        Intended for the background write thread only.
         """
         if isinstance(self.data, (bytes, bytearray)):
             return bytes(self.data)
+        if _is_device_array(self.data):
+            # Phase 2: download GPU array before PNG-encoding.
+            cpu_arr = _download_device_array(self.data)
+            return _encode_ndarray_to_png(cpu_arr)
+        assert isinstance(self.data, np.ndarray), "data must be bytes, np.ndarray, or cupy.ndarray"
         return _encode_ndarray_to_png(self.data)
 
     @property
     def is_ndarray(self) -> bool:
-        return isinstance(self.data, np.ndarray)
+        """True for both numpy and cupy ndarrays."""
+        return isinstance(self.data, np.ndarray) or _is_device_array(self.data)
 
     @property
     def ndarray_bytes(self) -> int:
-        """Memory footprint in bytes (0 for bytes-type entries)."""
+        """Memory footprint in bytes (0 for bytes-type entries).
+
+        For cupy ndarrays, reports the GPU memory footprint.
+        """
         if isinstance(self.data, np.ndarray):
             return _ndarray_byte_size(self.data)
+        if _is_device_array(self.data):
+            return _device_array_byte_size(self.data)
         return 0
 
     @property
@@ -259,11 +307,12 @@ class StageWriteExecutor:
         """If adding ``new_entry_bytes`` would exceed budget, encode+evict oldest
         ndarray entry.  Called while holding ``_cache_lock``.
 
-        Encodes the evicted ndarray to PNG bytes (so the write thread can still
-        use them) but drops the result — the write for that entry was already
-        submitted before eviction, so we just need to free the ndarray memory.
-        In practice, eviction happens when the write queue is congested; the
-        evicted entry's write is in-flight or pending in the thread pool.
+        For numpy ndarrays: encodes to PNG bytes and replaces in-place.
+        For cupy ndarrays (Phase 2): downloads to numpy first, then encodes.
+
+        The write for the evicted entry was already submitted before eviction,
+        so the write thread still gets the encoded bytes.  We just need to free
+        the (GPU/CPU) ndarray memory.
         """
         if not self._ndarray_order:
             return
@@ -273,14 +322,17 @@ class StageWriteExecutor:
             oldest_key = self._ndarray_order.pop(0)
             pending = self._cache.get(oldest_key)
             if pending is not None and pending.is_ndarray:
-                # Replace the ndarray with its encoded bytes in-place so the
-                # background write thread (which holds no lock) still gets
-                # valid data.  We encode here (under the lock) because we need
-                # to guarantee the ndarray is freed immediately.
+                # Replace the ndarray with encoded bytes in-place so the
+                # background write thread still gets valid data.
                 try:
                     arr = pending.data
-                    assert isinstance(arr, np.ndarray), "is_ndarray guard ensures this"
-                    encoded = _encode_ndarray_to_png(arr)
+                    if _is_device_array(arr):
+                        # Phase 2: download GPU array before encoding.
+                        cpu_arr = _download_device_array(arr)
+                        encoded = _encode_ndarray_to_png(cpu_arr)
+                    else:
+                        assert isinstance(arr, np.ndarray), "is_ndarray guard: must be np.ndarray"
+                        encoded = _encode_ndarray_to_png(arr)
                     pending.data = encoded
                     used = self._current_ndarray_budget_used()
                     log.debug(
@@ -299,15 +351,16 @@ class StageWriteExecutor:
     def put_artifact(
         self,
         key: _ArtifactKey,
-        data: bytes | np.ndarray,
+        data: bytes | np.ndarray | object,
         num_consumers: int,
     ) -> None:
         """Register an in-memory artifact for downstream stage consumption.
 
-        ``data`` may be either ``bytes`` (existing path) or a ``numpy.ndarray``
-        (Phase 1: no-encode hot path). When an ndarray is supplied it is stored
-        without encoding; the background write thread encodes it just before the
-        disk write.
+        ``data`` may be ``bytes`` (existing path), a ``numpy.ndarray``
+        (Phase 1: no-encode hot path), or a ``cupy.ndarray`` (Phase 2:
+        GPU-resident array).  When an ndarray or device array is supplied it
+        is stored without encoding; the background write thread downloads (if
+        needed) and encodes it just before the disk write.
 
         ``num_consumers`` is the number of direct DAG children that will call
         :meth:`consume_artifact` for this key. When the count reaches zero the
@@ -319,22 +372,27 @@ class StageWriteExecutor:
         if num_consumers <= 0:
             return
         with self._cache_lock:
-            new_bytes = _ndarray_byte_size(data) if isinstance(data, np.ndarray) else 0
+            if isinstance(data, np.ndarray):
+                new_bytes = _ndarray_byte_size(data)
+            elif _is_device_array(data):
+                new_bytes = _device_array_byte_size(data)
+            else:
+                new_bytes = 0
             if new_bytes > 0:
                 self._evict_oldest_ndarray_if_over_budget(new_bytes)
             self._cache[key] = _PendingArtifact(data, num_consumers)
-            if isinstance(data, np.ndarray):
+            if isinstance(data, np.ndarray) or _is_device_array(data):
                 self._ndarray_order.append(key)
 
-    def consume_artifact(self, key: _ArtifactKey) -> bytes | np.ndarray | None:
-        """Return cached artifact (bytes or ndarray), decrement consumer count.
+    def consume_artifact(self, key: _ArtifactKey) -> bytes | np.ndarray | object | None:
+        """Return cached artifact (bytes, numpy ndarray, or cupy ndarray), decrement consumer count.
 
         Returns ``None`` if the key is not in the cache (either never stored,
         already evicted, or the file is on disk). Evicts the entry when the
         last consumer reads it (drop-on-last-consumer).
 
-        When an ndarray is returned the caller may use it directly without
-        decoding, saving the ``cv2.imdecode`` call on the hot path.
+        Phase 1: numpy ndarray returned directly (caller skips cv2.imdecode).
+        Phase 2: cupy ndarray returned directly (caller skips GPU upload).
         """
         with self._cache_lock:
             pending = self._cache.get(key)
@@ -355,7 +413,8 @@ class StageWriteExecutor:
         removing it from the cache (consume_artifact handles the consumer
         count; this is a read-only peek at the data for the write path).
 
-        If the entry is an ndarray, encodes it to PNG here in the write thread.
+        Phase 1: numpy ndarrays are PNG-encoded here in the write thread.
+        Phase 2: cupy ndarrays are downloaded (cupy.asnumpy) then PNG-encoded.
         Returns None if the key is not in the cache.
         """
         with self._cache_lock:
@@ -365,7 +424,11 @@ class StageWriteExecutor:
             if pending.is_ndarray:
                 self._increment_encode_count()
                 arr = pending.data
-                assert isinstance(arr, np.ndarray), "is_ndarray guard ensures this"
+                if _is_device_array(arr):
+                    # Phase 2: download GPU array first.
+                    cpu_arr = _download_device_array(arr)
+                    return _encode_ndarray_to_png(cpu_arr)
+                assert isinstance(arr, np.ndarray), "not device array, must be np.ndarray"
                 return _encode_ndarray_to_png(arr)
             raw = pending.data
             assert isinstance(raw, bytes), "not is_ndarray so data is bytes"

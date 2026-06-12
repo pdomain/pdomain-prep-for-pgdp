@@ -1304,3 +1304,328 @@ without a real implementation raise StageNotImplemented; B2-B4 will wire them.
 def get_v2_stage_impl(stage_id: str, device: str) -> StageImpl:
     """Return the v2 callable registered for ``(stage_id, device)``."""
     return V2_STAGE_IMPL[stage_id][device]
+
+
+# ─── Phase 2: GPU-resident segment execution ─────────────────────────────────
+#
+# GPU impls for the image-prep chain.  Each wraps the corresponding CuPy mirror
+# from ``pdomain_book_tools.image_processing.cupy_processing``.  They accept a
+# *numpy* ndarray (the runner converts from ndarray as needed) OR a CuPy
+# ndarray (when the segment runner keeps data on-device between stages).
+#
+# Availability: all GPU impls are import-guarded.  When CuPy is absent (the
+# default CI environment), ``_build_gpu_entries`` returns an empty dict and the
+# V2_STAGE_IMPL entries retain only the ``cpu`` key.  Every stage must run
+# identically on CPU regardless of whether the ``[gpu]`` extra is installed.
+#
+# Stage-to-mirror mapping (book-tools 0.18.3):
+#   threshold (v2: threshold+invert)  → otsu_binary_thresh/binary_thresh_gpu +
+#                                        invert_image
+#   deskew    (v2: post-crop rot + auto_deskew) → auto_deskew_gpu
+#   dewarp    (TextlineDisparityDewarp prefer_gpu=True) → GPU textline_dewarp
+#   canvas_map (morph_fill + invert + rescale_image + canvas_map) →
+#               morph_fill + invert_image + rescale_image_gpu + canvas_map_gpu
+#   denoise   → NO CuPy mirror in 0.18.3; remains CPU-only
+#   post_transform_crop → array slicing; trivially GPU-resident (in-place slice
+#                          on CuPy array; no book-tools call needed)
+#
+# GPU-capable stages (all internal steps have CuPy mirrors):
+#   threshold, deskew, dewarp, canvas_map, post_transform_crop
+#
+# NOT GPU-capable in 0.18.3:
+#   denoise (cupyx connected-components mirror not yet published)
+#
+# When the sibling agent ships a denoise CuPy mirror:
+#   - add ``_denoise_gpu`` below following the same polarity-bridge pattern
+#   - add ``"denoise"`` to ``_GPU_CAPABLE_STAGE_IDS``
+#   - add an entry to ``_build_gpu_entries``
+#   - update the plan doc as-built notes
+
+
+def _threshold_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 threshold stage (threshold + invert) on GPU.
+
+    Accepts either a numpy ndarray (uploaded from runner) or a CuPy ndarray
+    (passed from a prior GPU stage in the same segment).  Returns a CuPy array.
+
+    GPU path:
+      1. If cfg.threshold_level: binary_thresh_gpu at fixed level.
+         Else: otsu_binary_thresh (auto-threshold on GPU).
+      2. invert_image (bitwise NOT on GPU).
+
+    Polarity contract: output is text=255/bg=0 (same as _threshold_v2_cpu).
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp,
+        require_cupy,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.invert import invert_image
+    from pdomain_book_tools.image_processing.cupy_processing.threshold import (
+        binary_thresh_gpu,
+        otsu_binary_thresh,
+    )
+
+    require_cupy()
+    assert cp is not None  # narrowed: require_cupy raises if CuPy absent
+    img_cp = cp.asarray(image)
+
+    if cfg is not None and cfg.threshold_level is not None:
+        binary = binary_thresh_gpu(img_cp, level=cfg.threshold_level)
+    else:
+        binary = otsu_binary_thresh(img_cp)
+
+    return invert_image(binary)  # pyright: ignore[reportReturnType]
+
+
+def _deskew_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 deskew stage (post-crop rotation + auto_deskew) on GPU.
+
+    When skip_auto_deskew=True (default), returns the input unchanged (on GPU).
+    When skip_auto_deskew=False, runs auto_deskew_gpu.
+
+    Polarity: input text=255/bg=0; output same convention.
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp,
+        require_cupy,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.deskew import auto_deskew_gpu
+    from pdomain_book_tools.image_processing.cupy_processing.rotate import rotate_image_gpu
+
+    require_cupy()
+    assert cp is not None
+    img_cp = cp.asarray(image)
+
+    # Apply post-crop manual rotation if configured.
+    if cfg is not None and hasattr(cfg, "deskew_after_crop") and cfg.deskew_after_crop is not None:
+        img_cp = rotate_image_gpu(img_cp, angle_deg=cfg.deskew_after_crop)
+
+    # auto_deskew: honour skip flag (default True = skip).
+    if cfg is None or cfg.skip_auto_deskew:
+        return img_cp  # pyright: ignore[reportReturnType]
+
+    deskewed, _, _ = auto_deskew_gpu(img_cp, pct=0.30)
+    return deskewed  # pyright: ignore[reportReturnType]
+
+
+def _dewarp_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 dewarp stage on GPU (prefer_gpu=True path of TextlineDisparityDewarp).
+
+    Re-binarises the output (same as _dewarp_cpu) because the remap introduces
+    sub-pixel interpolation artefacts.  The threshold is applied via
+    otsu_binary_thresh on the GPU to keep data on-device.
+
+    Polarity: input text=255/bg=0; output text=255/bg=0.
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp,
+        require_cupy,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.threshold import (
+        binary_thresh_gpu,
+    )
+
+    require_cupy()
+    assert cp is not None
+
+    _ = cfg
+
+    # Download for TextlineDisparityDewarp (it uses cv2.remap internally
+    # even in prefer_gpu=True mode for the actual warp step).
+    img_np = cp.asnumpy(image) if isinstance(image, cp.ndarray) else image
+
+    TextlineDisparityDewarp = cast(
+        "type",
+        _load_attr("pdomain_book_tools.geometry_correction", "TextlineDisparityDewarp"),
+    )
+    dewarper = TextlineDisparityDewarp(prefer_gpu=True)
+    result = dewarper.estimate(img_np)
+
+    transform = result.transform  # type: ignore[attr-defined]
+    warped = transform.apply(img_np)
+
+    # Re-binarise on GPU to keep output on device.
+    warped_cp = cp.asarray(warped.astype(np.uint8))
+    return binary_thresh_gpu(warped_cp, level=127)  # pyright: ignore[reportReturnType]
+
+
+def _post_transform_crop_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 post_transform_crop on GPU — array slice (CuPy or numpy both work).
+
+    When cfg has non-zero insets, applies a slice to the GPU array.  When all
+    insets are zero (default) returns the input unchanged.  This operation is
+    trivially GPU-resident: CuPy array slicing returns a CuPy view.
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp,
+        require_cupy,
+    )
+
+    require_cupy()
+    assert cp is not None
+
+    insets = cfg.post_transform_crop_insets if cfg is not None else (0, 0, 0, 0)
+    top, bottom, left, right = insets
+    if top == 0 and bottom == 0 and left == 0 and right == 0:
+        return cp.asarray(image)  # pyright: ignore[reportReturnType]
+
+    img_cp = cp.asarray(image)
+    h, w = cast("tuple[int, int]", img_cp.shape[:2])
+    y1 = max(0, top)
+    y2 = max(y1 + 1, h - bottom)
+    x1 = max(0, left)
+    x2 = max(x1 + 1, w - right)
+    return cast("ImageArray", img_cp[y1:y2, x1:x2])
+
+
+def _canvas_map_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 canvas_map stage (morph_fill + invert + rescale + canvas_map) on GPU.
+
+    GPU version of _canvas_map_v2_cpu.  Uses CuPy mirrors for all four steps.
+    The blank-page branch (blank_proof_synth) falls through to CPU (returns np).
+
+    Polarity contract:
+      Input:  text=255/bg=0 (inverted binary from threshold stage)
+      Output: text=0/bg=255 (proofing image convention; same as CPU path)
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp,
+        require_cupy,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.canvas import (
+        map_content_onto_scaled_canvas_gpu,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.invert import invert_image
+    from pdomain_book_tools.image_processing.cupy_processing.morph import morph_fill
+    from pdomain_book_tools.image_processing.cupy_processing.rescale import rescale_image_gpu
+
+    require_cupy()
+    assert cp is not None
+
+    # Blank-page branch: fall through to CPU to avoid synthesising a
+    # blank proof on GPU (trivial white array; not worth the complexity).
+    if cfg is not None and hasattr(cfg, "page_type"):
+        from pdomain_prep_for_pgdp.core.models import PageType
+
+        if cfg.page_type in (PageType.blank, PageType.plate_b, PageType.plate_r):
+            return _canvas_map_v2_cpu(cp.asnumpy(image) if isinstance(image, cp.ndarray) else image, cfg)
+
+    from pdomain_prep_for_pgdp.core.models import AlignmentOverride
+
+    ratio = cfg.page_h_w_ratio if cfg is not None else 1.294
+    alignment_override = cfg.alignment if cfg is not None else AlignmentOverride.default
+
+    alignment_ns = cast(
+        "_AlignmentNamespace",
+        _load_attr("pdomain_book_tools.image_processing.cv2_processing", "Alignment"),
+    )
+    _align_map: dict[str, object] = {
+        AlignmentOverride.default.value: alignment_ns.DEFAULT,
+        AlignmentOverride.top.value: alignment_ns.TOP,
+        AlignmentOverride.center.value: alignment_ns.CENTER,
+        AlignmentOverride.bottom.value: alignment_ns.BOTTOM,
+    }
+    force_align = _align_map.get(alignment_override.value, alignment_ns.DEFAULT)
+
+    img_cp = cp.asarray(image)
+
+    # morph_fill (optional; default do_morph=False)
+    if cfg is not None and cfg.do_morph:
+        img_cp = morph_fill(img_cp)
+
+    # rescale: invert (text=255→0) then scale, then invert back would differ
+    # from the CPU path. Match _rescale_cpu exactly:
+    # _rescale_cpu does invert_image first (text=255→0) then rescale.
+    # The cupy invert_image (255 - x) matches cv2 bitwise_not on uint8.
+    inverted = invert_image(img_cp)
+    rescaled = rescale_image_gpu(inverted, target_short_side=1000)
+
+    # canvas_map — force_align is object (from dict lookup); ignore type mismatch.
+    from typing import Any
+    from typing import cast as _cast
+
+    _force_align_typed: Any = force_align
+    return _cast(  # pyright: ignore[reportReturnType]
+        "ImageArray",
+        map_content_onto_scaled_canvas_gpu(
+            rescaled, force_align=_force_align_typed, height_width_ratio=ratio
+        ),
+    )
+
+
+# ─── GPU capability table ─────────────────────────────────────────────────────
+#
+# A stage is GPU-capable if and only if ALL its internal micro-steps have
+# CuPy mirrors in book-tools 0.18.3.
+#
+# Stage           GPU-capable?  Reason if not
+# --------------- ------------- -------------------------------------------------
+# threshold       YES           otsu_binary_thresh + invert_image (cupy_processing)
+# invert          YES           invert_image (cupy_processing)
+# deskew          YES           auto_deskew_gpu (cupy_processing.deskew)
+# dewarp          YES           TextlineDisparityDewarp prefer_gpu=True
+# post_transform_crop YES       CuPy array slice (trivial)
+# canvas_map      YES           morph_fill + rescale_image_gpu + canvas_map_gpu
+# denoise         NO            cupyx connected-components mirror absent in 0.18.3
+# crop            NO            find_edges uses cv2 projections; no cupy mirror
+# grayscale       NO            bgr-to-gray (cupy exists but not wired here)
+# post_ocr_crop   NO            array slice only; not in image-prep hot path
+#
+# The set below drives:
+#   1. _build_gpu_entries: which stages get a ``gpu`` key in V2_STAGE_IMPL.
+#   2. segment_runner.is_gpu_capable_stage: which stages can run on-device.
+
+_GPU_CAPABLE_STAGE_IDS: frozenset[str] = frozenset(
+    {"threshold", "deskew", "dewarp", "post_transform_crop", "canvas_map"}
+)
+
+GPU_CAPABLE_STAGES: frozenset[str] = _GPU_CAPABLE_STAGE_IDS
+"""Set of v2 stage IDs that have GPU-resident implementations in book-tools 0.18.3.
+
+A stage is included only when ALL its internal micro-steps have CuPy mirrors.
+Stages absent from this set run on CPU regardless of the selected device.
+
+Import this to check whether a stage can participate in a GPU segment.
+"""
+
+_GPU_IMPL_MAP: dict[str, StageImpl] = {
+    "threshold": _threshold_v2_gpu,
+    "deskew": _deskew_v2_gpu,
+    "dewarp": _dewarp_gpu,
+    "post_transform_crop": _post_transform_crop_gpu,
+    "canvas_map": _canvas_map_v2_gpu,
+}
+
+
+def _build_gpu_entries() -> dict[str, StageImpl]:
+    """Return GPU impls keyed by stage_id, or {} when CuPy is unavailable."""
+    try:
+        from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+            cupy_available,
+        )
+
+        if not cupy_available():
+            return {}
+    except ImportError:
+        return {}
+    return dict(_GPU_IMPL_MAP)
+
+
+def register_gpu_impls() -> None:
+    """Add ``gpu`` entries to V2_STAGE_IMPL for GPU-capable stages.
+
+    Called once at module load time.  When CuPy is absent (CI default) this is
+    a no-op: all stages retain only the ``cpu`` key and every GPU-path request
+    raises ``KeyError`` (the runner must fall back to ``cpu``).
+
+    Called again after the module is loaded (this module-level call runs first,
+    then the individual stage's cpu impl is set). The function is idempotent.
+    """
+    gpu_entries = _build_gpu_entries()
+    for stage_id, impl in gpu_entries.items():
+        if stage_id in V2_STAGE_IMPL:
+            V2_STAGE_IMPL[stage_id]["gpu"] = impl
+
+
+# Register GPU impls at module load time.
+register_gpu_impls()

@@ -1,7 +1,7 @@
 ---
 repo: pdomain/pdomain-prep-for-pgdp
 spec: docs/specs/pipeline-task-model.md
-status: draft — CT review
+status: Phase 1 shipped; Phase 3 shipped; Phase 2 shipped (2026-06-12)
 ---
 
 # GPU- and Memory-Efficient Pipeline Execution Plan
@@ -68,32 +68,102 @@ changes; fully testable with existing equivalence tests.
 
 ## Phase 2 — GPU-resident segment execution
 
+**Status: shipped 2026-06-12 (branch task/gpu-phase2-segments).**
+
 Concept: a **device-resident segment runner**. Within one `run_from`/run-all
 pass over a page, consecutive stages whose impls have GPU mirrors execute on
 a CuPy array that **stays on the GPU**; transfers happen only at segment
 boundaries (a CPU-only stage, or artifact materialization).
 
-- Segment map (today): `threshold → (deskew CPU) → (denoise CPU) → dewarp →
-  post_transform_crop → canvas_map → rescale` — i.e. two GPU islands split by
-  deskew+denoise.
-- **Upstream work to widen the islands (placement: book-tools)**: CuPy mirrors
-  for `auto_deskew` (projection-profile variant is GPU-friendly; avoid Hough)
-  and `denoise_binary` (cupyx connected-components exists in
-  `cupyx.scipy.ndimage.label`). With those two, the whole binary chain
-  threshold→canvas_map is one GPU island.
-- Artifact emission from GPU: the segment runner hands the executor either
-  the device array (downloaded asynchronously in the writer thread:
-  `cupy.asnumpy` → encode → fsync) or downloads at the boundary when the
-  cache must serve a CPU consumer. Per-stage events/rows/config-hash emitted
-  exactly as today, per stage, as each stage completes on-device.
-- Dispatch selection: extend the existing impl registry from
-  `{stage: {"cpu": fn}}` to `{"cpu": fn, "gpu": fn}` with device chosen by
-  `pdomain_ops.gpu.pick_device` / `PD_GPU_BACKEND`; per-stage fallback to CPU
-  keeps behavior identical when CuPy is absent (the `[gpu]` extra stays
-  optional).
-- VRAM bound: one page's chain peaks at a handful of uint8 full-page arrays;
-  cap concurrent on-GPU pages (Phase 3) via a semaphore sized from free VRAM
-  minus the DocTR predictor's residency.
+### As-built design
+
+**New files (prep-for-pgdp):**
+
+- `core/pipeline/segment_runner.py` — `run_image_segment(image, stage_ids,
+  device, cfg)` returns `(result_array, final_device)`.  Uploads to CuPy on
+  first GPU-capable stage; downloads on CPU boundary; returns device or host
+  array.  Also: `compute_gpu_page_slots(device)` auto-sizes the VRAM semaphore
+  from `free VRAM − 2048 MiB DocTR residency ÷ 4 MiB/page`, floor 1.
+  `get_gpu_page_semaphore(gpu_page_slots)` builds the `asyncio.Semaphore`.
+
+**Modified files:**
+
+- `core/pipeline/stage_registry.py` — `V2_STAGE_IMPL` extended to
+  `{stage_id: {"cpu": fn, "gpu": fn}}` for GPU-capable stages.
+  `GPU_CAPABLE_STAGES: frozenset[str]` exported.  `register_gpu_impls()`
+  registers impls at import time, no-ops when CuPy is absent.
+- `core/pipeline/stage_write_executor.py` — `put_artifact` / `consume_artifact`
+  / encode / eviction all handle CuPy ndarrays: `cupy.asnumpy` deferred to
+  writer thread; `ndarray_bytes` reports GPU memory footprint.
+- `settings.py` — `gpu_page_slots: int | None` field added
+  (`PGDP_GPU_PAGE_SLOTS` env, None = auto-size).
+
+**Test file:** `tests/test_gpu_phase2_segments.py` — 28 tests.
+All 28 passed on the local RTX 3070 (CuPy 14.1.1, CUDA 12.x wheel).
+CPU-only run: 18 pass, 10 skip (skip-without-cupy mark; CI default is skip).
+
+### GPU-capable stage map
+
+| Stage | GPU mirrors used | Notes |
+|---|---|---|
+| `threshold` | `otsu_binary_thresh` + `binary_thresh_gpu` + `invert_image` | Exact pixel equality vs CPU |
+| `deskew` | `auto_deskew_gpu` + `rotate_image_gpu` | Within tolerance (geometric interp) |
+| `dewarp` | `TextlineDisparityDewarp(prefer_gpu=True)` | Downloads for cv2.remap, re-uploads for re-binarize |
+| `post_transform_crop` | CuPy array slice (view, zero-copy) | Exact |
+| `canvas_map` | `morph_fill_gpu` + `invert_image` + `rescale_image_gpu` + `map_content_onto_scaled_canvas_gpu` | Structurally equivalent; rescale spline vs INTER_AREA diverges ~5 gray levels |
+
+**Not GPU-capable (no mirror in book-tools 0.18.3):**
+- `denoise` — `cv2.connectedComponentsWithStats`; no CuPy mirror yet.
+
+### Segment map (book-tools 0.18.3)
+
+```
+[threshold] GPU island 1
+[deskew]    GPU island 1
+[denoise]   CPU boundary  ← breaks island (no mirror)
+[dewarp]    GPU island 2
+[post_transform_crop] GPU island 2
+[canvas_map] GPU island 2
+[rescale]   not GPU-capable (not in V2_STAGE_IMPL gpu entries)
+```
+
+Two GPU islands separated by denoise.  Whole chain becomes one GPU island
+once book-tools ships a CuPy denoise mirror (see upstream note below).
+
+### Upstream note — widening the GPU islands
+
+book-tools needs a CuPy `denoise_binary` mirror (connected-components via
+`cupyx.scipy.ndimage.label`) to merge the two islands into one.  This is
+tracked as a book-tools feature request; prep-for-pgdp will consume it via
+`make update-pdomain-deps` + bump `GPU_CAPABLE_STAGES` to include `denoise`.
+
+### Rescale divergence
+
+`rescale_image_gpu` uses `cupyx.scipy.ndimage.zoom` (cubic spline); CPU
+`rescale_image` uses `cv2.INTER_AREA`.  These produce visually equivalent
+but not pixel-identical outputs (mean diff ≤ 5 gray levels; <10% pixels
+differ by >30).  Tests assert structural equivalence, not per-pixel identity.
+
+### Remaining wiring
+
+The segment runner and updated executor are in place.  Wiring the
+`run_image_segment` call into the `run_from` / batch fan-out dispatch path
+(where `stage_runner.run_stage` is called per stage today) is a separate
+integration step; it requires the seam-W0 job handler to land first
+(LongJobRunner, cleaner async path).
+
+- **Original segment map (plan):** `threshold → (deskew CPU) → (denoise CPU) →
+  dewarp → post_transform_crop → canvas_map → rescale` — two GPU islands.
+- **Upstream work to widen the islands (book-tools):** CuPy mirrors for
+  `denoise_binary`; with it, the whole binary chain is one island.
+- Artifact emission from GPU: the segment runner hands the executor the device
+  array; `cupy.asnumpy` + encode deferred to the writer thread.  Per-stage
+  events/rows/config-hash emitted exactly as today.
+- Dispatch selection: `V2_STAGE_IMPL` `{"cpu": fn, "gpu": fn}` with device
+  chosen by `pdomain_ops.gpu.pick_device`; per-stage CPU fallback when CuPy
+  absent (`[gpu]` extra stays optional).
+- VRAM bound: page-level `asyncio.Semaphore` from `compute_gpu_page_slots`,
+  override `PGDP_GPU_PAGE_SLOTS`, floor 1.
 
 ## Phase 3 — Cross-page batching and pipelining
 
