@@ -150,11 +150,11 @@ class TestCpuOnlyBaseline:
         for stage_id in ("threshold", "deskew", "dewarp", "canvas_map"):
             assert stage_id in GPU_CAPABLE_STAGES, f"{stage_id} missing from GPU_CAPABLE_STAGES"
 
-    def test_denoise_not_in_gpu_capable_stages(self) -> None:
-        """denoise has no CuPy mirror in book-tools 0.18.3; must stay CPU-only."""
+    def test_denoise_in_gpu_capable_stages(self) -> None:
+        """denoise has a CuPy mirror in book-tools 0.19.0; must be GPU-capable."""
         from pdomain_prep_for_pgdp.core.pipeline.stage_registry import GPU_CAPABLE_STAGES
 
-        assert "denoise" not in GPU_CAPABLE_STAGES
+        assert "denoise" in GPU_CAPABLE_STAGES
 
     def test_stage_write_executor_accepts_device_fallthrough_without_cupy(self) -> None:
         """StageWriteExecutor.put_artifact with a numpy array still works (non-regression)."""
