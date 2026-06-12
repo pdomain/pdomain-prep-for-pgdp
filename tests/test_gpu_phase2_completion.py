@@ -577,14 +577,23 @@ class TestFlowLevelSegmentWiring:
             )
 
     @pytest.mark.asyncio
-    async def test_segment_runner_called_once_not_per_stage(self, tmp_path: Path) -> None:
-        """Segment runner called ONCE for a multi-stage chain (not N times for N stages)."""
+    async def test_each_stage_impl_called_exactly_once(self, tmp_path: Path) -> None:
+        """Each stage's impl executes EXACTLY ONCE across the whole chain run.
+
+        The real invariant: per-stage impl call count == 1 for every stage in
+        the chain, regardless of chain length.  Previous implementation called
+        run_image_segment (full chain) + re-ran every impl for artifact capture
+        — that was double execution, O(2N) impl calls for N stages.
+
+        This test patches each stage's impl at the V2_STAGE_IMPL level so the
+        counter fires on every impl invocation regardless of caller.
+        """
         from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
         from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_image_prep_chain_with_events
         from pdomain_prep_for_pgdp.core.pipeline.stage_write_executor import StageWriteExecutor
 
         data_root = tmp_path / "data"
-        project_id = "test-counter"
+        project_id = "test-counter-impl"
         page_id = "0000"
 
         db = await self._make_sqlite_db(data_root, project_id)
@@ -598,6 +607,87 @@ class TestFlowLevelSegmentWiring:
             )
         )
 
+        from pdomain_prep_for_pgdp.core.pipeline import stage_registry as _reg_module
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
+            V2_STAGE_IMPL,
+            default_resolved_page_config,
+        )
+
+        img = _make_gray_page()
+        cfg = default_resolved_page_config()
+        stage_ids = ["threshold", "deskew"]
+
+        # Wrap each stage's CPU impl with a counter.
+        impl_call_counts: dict[str, int] = dict.fromkeys(stage_ids, 0)
+        patched_impl: dict[str, dict[str, Any]] = {}
+
+        for sid in stage_ids:
+            original_cpu = V2_STAGE_IMPL[sid]["cpu"]
+
+            def _make_counting(stage_id: str, orig: Any) -> Any:
+                def _wrapped(*args: Any, **kwargs: Any) -> Any:
+                    impl_call_counts[stage_id] += 1
+                    return orig(*args, **kwargs)
+
+                return _wrapped
+
+            patched_impl[sid] = {**V2_STAGE_IMPL[sid], "cpu": _make_counting(sid, original_cpu)}
+
+        patched_v2 = {**V2_STAGE_IMPL, **patched_impl}
+
+        executor = StageWriteExecutor(pool_size=1, queue_cap=8)
+        try:
+            with patch.object(_reg_module, "V2_STAGE_IMPL", patched_v2):
+                await run_image_prep_chain_with_events(
+                    image=img,
+                    stage_ids=stage_ids,
+                    device="cpu",
+                    cfg=cfg,
+                    data_root=data_root,
+                    database=db,
+                    project_id=project_id,
+                    page_id=page_id,
+                    write_executor=executor,
+                    stage_events=None,
+                )
+        finally:
+            executor.shutdown()
+
+        for sid in stage_ids:
+            assert impl_call_counts[sid] == 1, (
+                f"Stage '{sid}' impl called {impl_call_counts[sid]} times; expected exactly 1. "
+                f"Double execution detected — run_image_prep_chain_with_events must NOT call "
+                f"run_image_segment AND re-run impls; it must execute each impl exactly once."
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_image_segment_not_called_by_chain_with_events(self, tmp_path: Path) -> None:
+        """run_image_segment must NOT be called inside run_image_prep_chain_with_events.
+
+        The chain helper IS the segment — it maintains the working array and
+        dispatches impls directly.  Calling run_image_segment on top would be
+        a redundant full-chain pass before the per-stage impl loop.
+        """
+        from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
+        from pdomain_prep_for_pgdp.core.pipeline.stage_runner import run_image_prep_chain_with_events
+        from pdomain_prep_for_pgdp.core.pipeline.stage_write_executor import StageWriteExecutor
+
+        data_root = tmp_path / "data"
+        project_id = "test-no-seg-call"
+        page_id = "0000"
+
+        db = await self._make_sqlite_db(data_root, project_id)
+        self._make_page_stage_png(data_root, project_id, page_id, "grayscale")
+        await db.put_page_stage(
+            PageStageState(
+                project_id=project_id,
+                page_id=page_id,
+                stage_id="grayscale",
+                status=PageStageStatus.clean,
+            )
+        )
+
+        from pdomain_prep_for_pgdp.core.pipeline import segment_runner as _sr_module
         from pdomain_prep_for_pgdp.core.pipeline.stage_registry import default_resolved_page_config
 
         img = _make_gray_page()
@@ -605,7 +695,6 @@ class TestFlowLevelSegmentWiring:
         stage_ids = ["threshold", "deskew"]
 
         segment_runner_call_count = 0
-        from pdomain_prep_for_pgdp.core.pipeline import segment_runner as _sr_module
 
         original_run = _sr_module.run_image_segment
 
@@ -637,6 +726,8 @@ class TestFlowLevelSegmentWiring:
         finally:
             executor.shutdown()
 
-        assert segment_runner_call_count == 1, (
-            f"Expected run_image_segment called once for {stage_ids}; got {segment_runner_call_count} calls"
+        assert segment_runner_call_count == 0, (
+            f"run_image_segment called {segment_runner_call_count} times from "
+            f"run_image_prep_chain_with_events; expected 0.  The chain helper "
+            f"must not delegate to run_image_segment — that causes double execution."
         )

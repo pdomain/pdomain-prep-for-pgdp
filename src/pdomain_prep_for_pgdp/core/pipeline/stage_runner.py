@@ -1759,7 +1759,7 @@ async def run_image_prep_chain_with_events(
         Maps ``stage_id → "clean"`` for each successfully completed stage.
         On failure the exception propagates (no partial success map).
     """
-    from .segment_runner import _get_stage_impl_with_fallback, _is_device_array, _to_numpy, run_image_segment
+    from .segment_runner import _get_stage_impl_with_fallback, _is_device_array, _is_gpu_device, _to_numpy
     from .stage_registry import (
         GPU_CAPABLE_STAGES,
         default_resolved_page_config,
@@ -1768,37 +1768,32 @@ async def run_image_prep_chain_with_events(
     if cfg is None:
         cfg = default_resolved_page_config()
 
-    # Design contract: call run_image_segment ONCE for the entire stage_ids
-    # chain (not once per stage).  This is the GPU segment — the working array
-    # stays on-device across all consecutive GPU-capable stages; there is only
-    # one GPU<->CPU boundary per segment invocation.
+    # Design contract: each stage's impl executes EXACTLY ONCE per chain run.
     #
-    # Per-stage artifact writes and events require intermediate arrays (one per
-    # stage).  We obtain them by running the impl dispatch inline — this is the
-    # same op as run_image_segment's internal loop, but yields intermediates.
-    # The run_image_segment call above is the authoritative GPU-segment dispatch
-    # (counted by tests); the impl loop below drives artifact capture.
+    # This function IS the segment — it maintains the working array on-device
+    # across consecutive GPU-capable stages (same logic as run_image_segment's
+    # internal loop), and simultaneously captures per-stage intermediates for
+    # artifact writes and SSE events.
     #
-    # On CPU (device="cpu") this is equivalent to running the loop twice, but
-    # the operations are deterministic and idempotent — the second pass is the
-    # per-stage artifact capture and it always agrees with the first.
+    # Do NOT call run_image_segment here.  Doing so would be a full extra pass
+    # over all N stages before the per-stage artifact loop, causing 2N impl
+    # calls — double execution and double GPU work.
+    #
+    # GPU upload happens on the first GPU-capable stage; download happens on a
+    # CPU-only stage boundary or before PNG encoding.  This mirrors the logic
+    # in segment_runner.run_image_segment exactly.
 
     _stage_ver_map = __import__(
         "pdomain_prep_for_pgdp.core.pipeline.stage_dag",
         fromlist=["STAGE_VERSIONS"],
     ).STAGE_VERSIONS
 
-    # ── Step 1: single run_image_segment call for the whole chain ─────────────
-    # This is the authoritative GPU-resident pass.  The return value is the
-    # final array; intermediate outputs are not available from this call alone.
-    # We call it first so the GPU segment accounting (test instrumentation /
-    # future VRAM semaphore) is triggered exactly once per chain invocation.
-    run_image_segment(image, stage_ids=stage_ids, device=device, cfg=cfg)
+    use_gpu = _is_gpu_device(device)
 
-    # ── Step 2: per-stage impl dispatch for artifact capture ──────────────────
-    # Re-runs each impl individually (threading the ndarray) to capture
-    # per-stage intermediate arrays for artifact writes and SSE events.
-    # This inner loop does NOT call run_image_segment (no counter increment).
+    # ── Single pass: per-stage impl dispatch + artifact capture ───────────────
+    # Each impl is called exactly once.  The working array stays on-device when
+    # consecutive GPU-capable stages run; it is downloaded at CPU-stage
+    # boundaries and before PNG encoding.
     result: dict[str, str] = {}
     current_image: object = image
 
@@ -1813,23 +1808,27 @@ async def run_image_prep_chain_with_events(
         await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "running")
 
         try:
-            # Download to numpy if previous stage left a GPU array.
-            _np_input: np.ndarray
-            if isinstance(current_image, np.ndarray):
-                _np_input = current_image
-            elif _is_device_array(current_image):
-                _np_input = _to_numpy(current_image)
-            else:
-                _np_input = np.asarray(current_image)
-
-            # Dispatch impl directly — NOT via run_image_segment.
             stage_gpu_capable = stage_id in GPU_CAPABLE_STAGES
-            if stage_gpu_capable and device != "cpu":
+
+            if use_gpu and stage_gpu_capable:
+                # GPU path: upload if not already on device.
+                if not _is_device_array(current_image):
+                    import cupy as _cp  # pyright: ignore[reportMissingImports]
+
+                    assert isinstance(current_image, np.ndarray), (
+                        f"expected ndarray before GPU upload, got {type(current_image)}"
+                    )
+                    current_image = _cp.asarray(current_image)
                 impl = _get_stage_impl_with_fallback(stage_id, "gpu")
             else:
+                # CPU path: download if currently on GPU.
+                if _is_device_array(current_image):
+                    current_image = _to_numpy(current_image)
+                if not isinstance(current_image, np.ndarray):
+                    current_image = np.asarray(current_image)
                 impl = _get_stage_impl_with_fallback(stage_id, "cpu")
 
-            stage_out_raw = impl(_np_input, cfg=cfg)
+            stage_out_raw = impl(current_image, cfg=cfg)
             current_image = stage_out_raw
 
             # Download to numpy for artifact encoding.
