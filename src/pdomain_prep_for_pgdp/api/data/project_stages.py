@@ -2981,5 +2981,3 @@ async def persist_illustration_region(
     regions[idx] = body.model_dump()
     _save_illustration_regions(settings.data_root, project_id, regions)
     return JSONResponse(content={"ok": True})
-
-

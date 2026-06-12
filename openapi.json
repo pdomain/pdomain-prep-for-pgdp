@@ -2717,6 +2717,294 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/regex/rules": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Regex Rules",
+        "description": "Return the regex rule set for a project.\n\nRules are persisted per-project at stages/regex/rules.json.\nReturns { rules, counts, snapshotId } shaped for regexPassMachine.fetchRules.\n\nR2 imagetools \u2014 regexPass DRIFT resolution.",
+        "operationId": "get_regex_rules",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule set + apply counts + snapshotId.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/regex/rules/{rule_id}/apply": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Apply Regex Rule",
+        "description": "Apply a single regex rule to project text.\n\nMarks the rule as 'applied', updates match counts against each page's\ntext artifact, persists the updated rule list, and returns the updated\nrule + fresh counts.\n\nOn first apply, saves a snapshot of the pre-apply rule set to enable ROLLBACK.\n\nR2 imagetools \u2014 regexPass DRIFT resolution.",
+        "operationId": "apply_regex_rule",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule applied; returns updated rule + counts.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project or rule not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/grayscale/detect": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Detect Grayscale Profile",
+        "description": "Detect the best grayscale conversion profile for a project.\n\nSamples up to 8 page source images and measures chromatic energy.\nHigh chromatic energy \u2192 'perceptual' (luminosity-weighted).\nLow chromatic energy \u2192 'standard' (flat channel average).\n\nReturns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.\n\nR2 imagetools \u2014 grayscaleTool DRIFT resolution.",
+        "operationId": "detect_grayscale_profile",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detected grayscale profile: {mode, why, backend}.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/illustrations/detect": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Detect Illustration Regions",
+        "description": "Detect illustration regions for a project.\n\nReturns previously-persisted regions from stages/illustrations/regions.json.\nIf no saved regions exist, seeds from page-extension illustration_regions\n(populated by the illustrations pipeline stage, seeded by the layout detector).\n\nReturns { items, counts } shaped for IllustrationsToolServices.detectRegions.\n\nR2 imagetools \u2014 illustrationsTool DRIFT resolution.",
+        "operationId": "detect_illustration_regions",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detected illustration regions + counts.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/illustrations/regions/{region_id}": {
+      "patch": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Persist Illustration Region",
+        "description": "Persist an updated illustration region.\n\nReads regions from stages/illustrations/regions.json, patches the matching\nentry, and writes back.  Returns { ok: true } on success.\n\nR2 imagetools \u2014 illustrationsTool DRIFT resolution.",
+        "operationId": "persist_illustration_region",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "region_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Region Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_IllustrationRegionPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Region updated.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project or region not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages": {
       "get": {
         "tags": [
@@ -9326,6 +9614,50 @@
           "created_at"
         ],
         "title": "_ExportResponse"
+      },
+      "_IllustrationRegionPatchRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "page": {
+            "type": "string",
+            "title": "Page"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "w": {
+            "type": "integer",
+            "title": "W"
+          },
+          "h": {
+            "type": "integer",
+            "title": "H"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "page",
+          "kind",
+          "w",
+          "h",
+          "status",
+          "note"
+        ],
+        "title": "_IllustrationRegionPatchRequest",
+        "description": "Request body for PATCH .../illustrations/regions/{region_id}."
       },
       "_PageOrderNamingRequest": {
         "properties": {

@@ -298,8 +298,6 @@ XState machines, this helper (or a version of it) belongs there.
 
 ---
 
----
-
 ## F3-1 — Poll timer uses `after:` instead of side-effect start/stop (projectDetail)
 
 **YAML:** `startPollTimer` / `stopPollTimer` actions manage a polling side-channel.
@@ -411,8 +409,6 @@ functional, or not rendered at all. Neither flow has backend support yet.
 Rendering them as dead stubs (`href="#"` / no-op `onClick`) was flagged as
 a workspace violation. They will be restored once the matching backend routes
 exist.
-
----
 
 ---
 
@@ -587,8 +583,6 @@ variants:
   the `validation` runner so it re-checks.
 
 `page-snapshot` arrives on the per-page channel and is handled separately.
-
----
 
 ---
 
@@ -838,8 +832,6 @@ No mapping layer needed at I1.
 7. `SET_FILTER` / `SET_DENSITY` style display-preference events → promote to
    machine-level `on` (not scoped to a single super-state) unless the YAML's
    scoping is genuinely load-bearing UX.
-
----
 
 ---
 
@@ -1771,6 +1763,7 @@ re-throwing, so backend errors (404, 409) were silently swallowed and the machin
 
 **Contract:** `GET .../crop-pages` returns 404 (not 200 with empty list) when the
 project is absent — this is the invariant that makes the error path reachable.
+
 ---
 
 ## R2 — textZonesTool DRIFT stubs resolved (2026-06-12)
@@ -1840,6 +1833,7 @@ side-effect action → `buildRealTextZonesToolServices().persistLayout(projectId
 from `OUTPUT_EXT_BY_TYPE` in `page_stage_writer.py`. Added `"zone_json": "json"`
 so `stage_artifact_path()` and `stage_artifact_key()` resolve correctly
 (path = `output.json`).
+
 ---
 
 ## R2 wiring (2026-06-12) — I2 DRIFT stubs resolved
@@ -1904,3 +1898,65 @@ the component.
 `frontend/src/services/tools/zipTool.ts`, `frontend/src/pages/pipeline/tools/ZipTool.tsx`.
 
 **Tests added:** `tests/test_r2_zip_manifest.py` (7 tests).
+
+---
+
+## R2 imagetools — I2 DRIFT stubs resolved (2026-06-12)
+
+The following stubs in `frontend/src/services/tools/` were marked `DRIFT: route not
+implemented at I1`. All three are now resolved with real backend routes.
+
+### R2-1 — regexPass.fetchRules / applyRule {#resolved-R2}
+
+**Previous state:** `fetchRules` returned `[]`; `applyRule` rejected immediately.
+
+**Resolution:** Two routes added to `project_stages.py`:
+
+- `GET  /api/data/projects/{id}/project-stages/regex/rules`
+  → `{ rules: RegexRule[], counts: RegexCounts, snapshotId: string | null }`
+  Rules persisted at `stages/regex/rules.json` per project.
+
+- `POST /api/data/projects/{id}/project-stages/regex/rules/{ruleId}/apply`
+  → `{ rule: RegexRule, counts: RegexCounts }`
+  Marks rule as "applied", counts matches across all page text artifacts,
+  saves a pre-apply snapshot at `stages/regex/snapshot.json` on first apply.
+
+`regexPass.ts` service now calls these routes.
+`RegexTool.tsx` was already consuming `buildRealRegexPassServices()` (wired at I1).
+
+### R2-2 — grayscaleTool.detectProfile {#resolved-R2}
+
+**Previous state:** `detectProfile` returned a hardcoded `"perceptual"` stub.
+
+**Resolution:** Route added to `project_stages.py`:
+
+- `POST /api/data/projects/{id}/project-stages/grayscale/detect`
+  → `{ mode: "perceptual" | "standard", why: string, backend: "cpu" | "gpu" }`
+  Samples up to 8 page images from `stages/{threshold,canvas_map,grayscale}/output.png`,
+  measures mean chromatic energy (Cb/Cr std-dev). Above threshold → "perceptual";
+  at or below → "standard". Falls back to "perceptual" with descriptive `why`
+  when no images are available.
+
+`grayscaleTool.ts` service now calls this route.
+`GrayscaleTool.tsx` was already consuming `buildRealGrayscaleToolServices()`.
+
+### R2-3 — illustrationsTool.detectRegions / persistRegion {#resolved-R2}
+
+**Previous state:** `detectRegions` returned `{items: [], counts: zeros}`;
+`persistRegion` was a no-op.
+
+**Resolution:** Two routes added to `project_stages.py`:
+
+- `POST  /api/data/projects/{id}/project-stages/illustrations/detect`
+  → `{ items: IllustrationRegion[], counts: IllustrationCounts }`
+  Reads from `stages/illustrations/regions.json`. If no saved file, seeds from
+  page-extension `illustration_regions` (populated by the illustrations pipeline
+  stage) and saves. Maps backend `(index, type, L, T, R, B)` to frontend
+  `{id, page, kind, w, h, status, note}`.
+
+- `PATCH /api/data/projects/{id}/project-stages/illustrations/regions/{regionId}`
+  → `{ ok: boolean }`
+  Patches a single region in `stages/illustrations/regions.json`.
+
+`illustrationsTool.ts` service now calls these routes.
+`IllustrationsTool.tsx` was already consuming `buildRealIllustrationsToolServices()`.

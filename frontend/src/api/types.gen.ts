@@ -1145,6 +1145,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/regex/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Regex Rules
+         * @description Return the regex rule set for a project.
+         *
+         *     Rules are persisted per-project at stages/regex/rules.json.
+         *     Returns { rules, counts, snapshotId } shaped for regexPassMachine.fetchRules.
+         *
+         *     R2 imagetools — regexPass DRIFT resolution.
+         */
+        get: operations["get_regex_rules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/regex/rules/{rule_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Regex Rule
+         * @description Apply a single regex rule to project text.
+         *
+         *     Marks the rule as 'applied', updates match counts against each page's
+         *     text artifact, persists the updated rule list, and returns the updated
+         *     rule + fresh counts.
+         *
+         *     On first apply, saves a snapshot of the pre-apply rule set to enable ROLLBACK.
+         *
+         *     R2 imagetools — regexPass DRIFT resolution.
+         */
+        post: operations["apply_regex_rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/grayscale/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Grayscale Profile
+         * @description Detect the best grayscale conversion profile for a project.
+         *
+         *     Samples up to 8 page source images and measures chromatic energy.
+         *     High chromatic energy → 'perceptual' (luminosity-weighted).
+         *     Low chromatic energy → 'standard' (flat channel average).
+         *
+         *     Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
+         *
+         *     R2 imagetools — grayscaleTool DRIFT resolution.
+         */
+        post: operations["detect_grayscale_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/illustrations/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Illustration Regions
+         * @description Detect illustration regions for a project.
+         *
+         *     Returns previously-persisted regions from stages/illustrations/regions.json.
+         *     If no saved regions exist, seeds from page-extension illustration_regions
+         *     (populated by the illustrations pipeline stage, seeded by the layout detector).
+         *
+         *     Returns { items, counts } shaped for IllustrationsToolServices.detectRegions.
+         *
+         *     R2 imagetools — illustrationsTool DRIFT resolution.
+         */
+        post: operations["detect_illustration_regions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/illustrations/regions/{region_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Persist Illustration Region
+         * @description Persist an updated illustration region.
+         *
+         *     Reads regions from stages/illustrations/regions.json, patches the matching
+         *     entry, and writes back.  Returns { ok: true } on success.
+         *
+         *     R2 imagetools — illustrationsTool DRIFT resolution.
+         */
+        patch: operations["persist_illustration_region"];
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages": {
         parameters: {
             query?: never;
@@ -3629,6 +3763,26 @@ export interface components {
             created_at: string;
         };
         /**
+         * _IllustrationRegionPatchRequest
+         * @description Request body for PATCH .../illustrations/regions/{region_id}.
+         */
+        _IllustrationRegionPatchRequest: {
+            /** Id */
+            id: string;
+            /** Page */
+            page: string;
+            /** Kind */
+            kind: string;
+            /** W */
+            w: number;
+            /** H */
+            h: number;
+            /** Status */
+            status: string;
+            /** Note */
+            note: string;
+        };
+        /**
          * _PageOrderNamingRequest
          * @description PUT /project-stages/page_order/naming request body.
          *
@@ -5658,6 +5812,237 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_regex_rules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rule set + apply counts + snapshotId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_regex_rule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rule applied; returns updated rule + counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project or rule not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detect_grayscale_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detected grayscale profile: {mode, why, backend}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    detect_illustration_regions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detected illustration regions + counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    persist_illustration_region: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                region_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_IllustrationRegionPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Region updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project or region not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
