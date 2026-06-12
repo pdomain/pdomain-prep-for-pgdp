@@ -482,6 +482,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/build_package/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Build Package Manifest
+         * @description Return structured { deliverable, manifest } JSON for the build_package stage.
+         *
+         *     R2 (I2) — resolves the DRIFT stub in buildPackageTool.ts.
+         *
+         *     Reads the output.zip artifact and extracts:
+         *       - deliverable: { files: TreeRow[], count: int } — the zip entry listing
+         *       - manifest: { project, pages, built, sha256, ... } — summary metadata
+         *
+         *     TreeRow shape: { name: str, dir?: bool, d?: int, meta?: str }
+         *
+         *     The sha256 field is the SHA-256 hash of the output.zip bytes.
+         */
+        get: operations["get_build_package_manifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/zip/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Zip Manifest
+         * @description Return structured { archive, tree } JSON for the zip stage.
+         *
+         *     R2 (I2) — resolves the DRIFT stub in zipTool.ts.
+         *
+         *     Reads stages/zip/output.json for archive metadata (sha256, size_bytes,
+         *     file_count) and optionally stages/build_package/output.zip for the tree
+         *     listing. If the build_package zip is missing, tree is returned empty (
+         *     the archive metadata is still valid).
+         *
+         *     ZipArchive shape: { name, entries, bytes, ratio, sha256 }
+         *     TreeRow shape:    { name, dir?, d?, meta? }
+         */
+        get: operations["get_zip_manifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/project-stages/submit_check/confirm": {
         parameters: {
             query?: never;
@@ -4435,6 +4495,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_build_package_manifest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Structured { deliverable, manifest } JSON. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found, stage not clean, or artifact ZIP missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_zip_manifest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Structured { archive, tree } JSON. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found, zip stage not clean, or artifact missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

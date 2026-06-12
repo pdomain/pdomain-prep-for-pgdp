@@ -1196,6 +1196,104 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/build_package/manifest": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Build Package Manifest",
+        "description": "Return structured { deliverable, manifest } JSON for the build_package stage.\n\nR2 (I2) \u2014 resolves the DRIFT stub in buildPackageTool.ts.\n\nReads the output.zip artifact and extracts:\n  - deliverable: { files: TreeRow[], count: int } \u2014 the zip entry listing\n  - manifest: { project, pages, built, sha256, ... } \u2014 summary metadata\n\nTreeRow shape: { name: str, dir?: bool, d?: int, meta?: str }\n\nThe sha256 field is the SHA-256 hash of the output.zip bytes.",
+        "operationId": "get_build_package_manifest",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Structured { deliverable, manifest } JSON.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found, stage not clean, or artifact ZIP missing."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/zip/manifest": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Zip Manifest",
+        "description": "Return structured { archive, tree } JSON for the zip stage.\n\nR2 (I2) \u2014 resolves the DRIFT stub in zipTool.ts.\n\nReads stages/zip/output.json for archive metadata (sha256, size_bytes,\nfile_count) and optionally stages/build_package/output.zip for the tree\nlisting. If the build_package zip is missing, tree is returned empty (\nthe archive metadata is still valid).\n\nZipArchive shape: { name, entries, bytes, ratio, sha256 }\nTreeRow shape:    { name, dir?, d?, meta? }",
+        "operationId": "get_zip_manifest",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Structured { archive, tree } JSON.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found, zip stage not clean, or artifact missing."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/submit_check/confirm": {
       "post": {
         "tags": [
