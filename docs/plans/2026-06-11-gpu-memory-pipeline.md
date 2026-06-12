@@ -108,34 +108,29 @@ CPU-only run: 18 pass, 10 skip (skip-without-cupy mark; CI default is skip).
 |---|---|---|
 | `threshold` | `otsu_binary_thresh` + `binary_thresh_gpu` + `invert_image` | Exact pixel equality vs CPU |
 | `deskew` | `auto_deskew_gpu` + `rotate_image_gpu` | Within tolerance (geometric interp) |
+| `denoise` | `denoise_binary_gpu` (cupy_processing.denoise) | Bit-exact with CPU; ships in 0.19.0 |
 | `dewarp` | `TextlineDisparityDewarp(prefer_gpu=True)` | Downloads for cv2.remap, re-uploads for re-binarize |
 | `post_transform_crop` | CuPy array slice (view, zero-copy) | Exact |
 | `canvas_map` | `morph_fill_gpu` + `invert_image` + `rescale_image_gpu` + `map_content_onto_scaled_canvas_gpu` | Structurally equivalent; rescale spline vs INTER_AREA diverges ~5 gray levels |
 
-**Not GPU-capable (no mirror in book-tools 0.18.3):**
-- `denoise` — `cv2.connectedComponentsWithStats`; no CuPy mirror yet.
+**As-built (book-tools 0.19.0): single contiguous GPU island.**
+`denoise_binary_gpu` (connected-components via cupyx.scipy.ndimage.label)
+was added in 0.19.0 and consumed via `>=0.19.0` pin bump (2026-06-12).
 
-### Segment map (book-tools 0.18.3)
+### Segment map (book-tools 0.19.0)
 
 ```
-[threshold] GPU island 1
-[deskew]    GPU island 1
-[denoise]   CPU boundary  ← breaks island (no mirror)
-[dewarp]    GPU island 2
-[post_transform_crop] GPU island 2
-[canvas_map] GPU island 2
+[threshold] GPU island (single)
+[deskew]    GPU island
+[denoise]   GPU island  ← 0.19.0 promoted; no longer breaks the island
+[dewarp]    GPU island
+[post_transform_crop] GPU island
+[canvas_map] GPU island
 [rescale]   not GPU-capable (not in V2_STAGE_IMPL gpu entries)
 ```
 
-Two GPU islands separated by denoise.  Whole chain becomes one GPU island
-once book-tools ships a CuPy denoise mirror (see upstream note below).
-
-### Upstream note — widening the GPU islands
-
-book-tools needs a CuPy `denoise_binary` mirror (connected-components via
-`cupyx.scipy.ndimage.label`) to merge the two islands into one.  This is
-tracked as a book-tools feature request; prep-for-pgdp will consume it via
-`make update-pdomain-deps` + bump `GPU_CAPABLE_STAGES` to include `denoise`.
+Single GPU island: threshold → deskew → denoise → dewarp → post_transform_crop → canvas_map.
+Pin `>=0.19.0` activates this; the 0.18.3 two-island fallback is removed.
 
 ### Rescale divergence
 

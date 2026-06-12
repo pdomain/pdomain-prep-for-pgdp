@@ -1571,7 +1571,7 @@ wheels = [
 
 [[package]]
 name = "pdomain-book-tools"
-version = "0.18.3"
+version = "0.19.0"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "deskew" },
@@ -1596,9 +1596,9 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.18.3/pdomain_book_tools-0.18.3.tar.gz", hash = "sha256:4137f39bd5c281cd0d92e5706775a58c63b78bdbc7620f62227f2ca53628d2a5" }
+sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.19.0/pdomain_book_tools-0.19.0.tar.gz", hash = "sha256:210fdb546c0ffc34b4259ab315dd4923c1dd64859144894539ab76bdbfb1e91c" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.18.3/pdomain_book_tools-0.18.3-py3-none-any.whl", hash = "sha256:1847559ff6ca89a194246d2741983259cf700552223ba6538183f7a3eef24030" },
+    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.19.0/pdomain_book_tools-0.19.0-py3-none-any.whl", hash = "sha256:c6a7346bb05215a9aec25edd4094d894e39898d8749c4e330d8955c81afb5833" },
 ]
 
 [[package]]
@@ -1691,7 +1691,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
     { name = "nvidia-nvimgcodec-cu12", marker = "extra == 'cuda'", specifier = ">=0.3" },
-    { name = "pdomain-book-tools", specifier = ">=0.18.3", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-book-tools", specifier = ">=0.19.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-ops", specifier = ">=0.11.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },

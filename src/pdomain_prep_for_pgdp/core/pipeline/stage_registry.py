@@ -1318,28 +1318,23 @@ def get_v2_stage_impl(stage_id: str, device: str) -> StageImpl:
 # V2_STAGE_IMPL entries retain only the ``cpu`` key.  Every stage must run
 # identically on CPU regardless of whether the ``[gpu]`` extra is installed.
 #
-# Stage-to-mirror mapping (book-tools 0.18.3):
+# Stage-to-mirror mapping (book-tools 0.19.0):
 #   threshold (v2: threshold+invert)  → otsu_binary_thresh/binary_thresh_gpu +
 #                                        invert_image
 #   deskew    (v2: post-crop rot + auto_deskew) → auto_deskew_gpu
 #   dewarp    (TextlineDisparityDewarp prefer_gpu=True) → GPU textline_dewarp
 #   canvas_map (morph_fill + invert + rescale_image + canvas_map) →
 #               morph_fill + invert_image + rescale_image_gpu + canvas_map_gpu
-#   denoise   → NO CuPy mirror in 0.18.3; remains CPU-only
+#   denoise   → denoise_binary_gpu (cupy_processing.denoise, ships in 0.19.0)
 #   post_transform_crop → array slicing; trivially GPU-resident (in-place slice
 #                          on CuPy array; no book-tools call needed)
 #
-# GPU-capable stages (all internal steps have CuPy mirrors):
-#   threshold, deskew, dewarp, canvas_map, post_transform_crop
+# GPU-capable stages (book-tools 0.19.0 — full single island):
+#   threshold, deskew, denoise, dewarp, post_transform_crop, canvas_map
 #
-# NOT GPU-capable in 0.18.3:
-#   denoise (cupyx connected-components mirror not yet published)
-#
-# When the sibling agent ships a denoise CuPy mirror:
-#   - add ``_denoise_gpu`` below following the same polarity-bridge pattern
-#   - add ``"denoise"`` to ``_GPU_CAPABLE_STAGE_IDS``
-#   - add an entry to ``_build_gpu_entries``
-#   - update the plan doc as-built notes
+# NOT GPU-capable:
+#   grayscale, crop, ocr, post_ocr_crop, text_zones, wordcheck, hyphen_join,
+#   page_order, validation, proof_pack, build_package, zip, submit_check, archive
 
 
 def _threshold_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
