@@ -139,13 +139,13 @@ Pin `>=0.19.0` activates this; the 0.18.3 two-island fallback is removed.
 but not pixel-identical outputs (mean diff ≤ 5 gray levels; <10% pixels
 differ by >30).  Tests assert structural equivalence, not per-pixel identity.
 
-### Remaining wiring
+### Wiring (completed in the same branch)
 
-The segment runner and updated executor are in place.  Wiring the
-`run_image_segment` call into the `run_from` / batch fan-out dispatch path
-(where `stage_runner.run_stage` is called per stage today) is a separate
-integration step; it requires the seam-W0 job handler to land first
-(LongJobRunner, cleaner async path).
+`run_image_prep_chain_with_events` executes the chain in a single pass with
+device residency (per-stage impls called exactly ONCE — a double-execution
+bug found in review was fixed in dd449d5; counter tests lock the invariant).
+Single-stage workbench re-runs stay on the per-stage `run_stage` path by
+design.
 
 - **Original segment map (plan):** `threshold → (deskew CPU) → (denoise CPU) →
   dewarp → post_transform_crop → canvas_map → rescale` — two GPU islands.
