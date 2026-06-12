@@ -224,9 +224,11 @@ and `PROGRESS_PUSH` to `pipelineShellMachine`. The shell's `routeStagePush`
 action translates `PROGRESS_PUSH` into `PROGRESS { value }` when forwarding to
 the matching `stageRunner` actor. See `PipelinePage.tsx:subscribeProjectSse`.
 
-**STATUS_PUSH open (W3.4):** The `STATUS_PUSH` variants (snapshot, stage-status,
-page-reorder, validation-updated) are not yet forwarded at I1 — the
-`PipelineShellEvent` union does not include them. Wire at I2 per W3.4.
+**STATUS_PUSH resolved (R4):** `StatusPushEvent` is in `PipelineShellEvent` and
+`PipelinePage` forwards all four variants. `routeStatusPush` routes snapshot/
+stage-status to the matching runner via `STAGE_PUSH`, and sends
+`UPSTREAM_CHANGED` to `page_order` (on page-reorder) and `validation` (on
+validation-updated). See DIVERGENCES.md §F4-8 for the full routing contract.
 
 ---
 
@@ -570,11 +572,21 @@ useEffect(() => {
 `stageRunner` actor. See also DIVERGENCES.md #10 for the PROGRESS_PUSH shape
 translation.
 
-**Open (STATUS_PUSH — W3.4):** `STATUS_PUSH` variants (snapshot, stage-status,
-page-reorder, validation-updated) are not forwarded because `PipelineShellEvent`
-does not yet include them. Wire at I2 per W3.4: add `StatusPushEvent` to
-`PipelineShellEvent` and wire the snapshot variant to seed initial runner states
-from the on-connect snapshot.
+**Resolved (STATUS_PUSH — R4):** `StatusPushEvent` is included in
+`PipelineShellEvent`. `routeStatusPush` now handles all four project-channel
+variants:
+
+- `snapshot` — seeds/reconciles every runner from `project_stages` via
+  `STAGE_PUSH { variant: "status" }`. Source stage (no runner) is silently
+  skipped. Fires on (re)connect so runners are never cold.
+- `stage-status` — routes incremental project-stage transitions to the
+  matching runner as `STAGE_PUSH { variant: "status" }`.
+- `page-reorder` — sends `UPSTREAM_CHANGED { autoRerun: false }` to the
+  `page_order` runner so it re-fetches the page ordering.
+- `validation-updated` — sends `UPSTREAM_CHANGED { autoRerun: false }` to
+  the `validation` runner so it re-checks.
+
+`page-snapshot` arrives on the per-page channel and is handled separately.
 
 ---
 

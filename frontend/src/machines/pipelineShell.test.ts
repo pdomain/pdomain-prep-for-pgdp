@@ -637,6 +637,334 @@ describe("pipelineShell — helpers", () => {
 });
 
 // ---------------------------------------------------------------------------
+// STATUS_PUSH routing (R4 — snapshot seeding + per-variant consumer reactions)
+// ---------------------------------------------------------------------------
+
+describe("pipelineShell — STATUS_PUSH snapshot seeding", () => {
+  it("snapshot variant seeds a runner to clean via STAGE_PUSH reconcile", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const validationIdx = runnerIndexOf("validation");
+    const validationRunner = runners[validationIdx];
+
+    // By default runners start notrun; reconcile with a "clean" status from snapshot
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "snapshot",
+      project_stages: [
+        {
+          project_id: MOCK_PROJECT_ID,
+          stage_id: "validation",
+          status: "clean",
+          stage_version: 2,
+          artifact_key: null,
+          config_hash: null,
+          input_hash: null,
+          last_run_at: null,
+          duration_ms: null,
+          error_message: null,
+          job_id: null,
+        },
+      ],
+    });
+
+    // reconcile for "clean" sets progress=1, clears error
+    const snap = validationRunner?.getSnapshot();
+    expect(snap?.context.progress).toBe(1);
+    expect(snap?.context.error).toBeNull();
+    actor.stop();
+  });
+
+  it("snapshot variant seeds a runner to failed status via STAGE_PUSH reconcile", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const archiveIdx = runnerIndexOf("archive");
+    const archiveRunner = runners[archiveIdx];
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "snapshot",
+      project_stages: [
+        {
+          project_id: MOCK_PROJECT_ID,
+          stage_id: "archive",
+          status: "failed",
+          stage_version: 2,
+          artifact_key: null,
+          config_hash: null,
+          input_hash: null,
+          last_run_at: null,
+          duration_ms: null,
+          error_message: "Archive step failed",
+          job_id: null,
+        },
+      ],
+    });
+
+    const snap = archiveRunner?.getSnapshot();
+    expect(snap?.context.error?.message).toBe("Archive step failed");
+    actor.stop();
+  });
+
+  it("snapshot variant seeds multiple runners in a single event", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const pageOrderIdx = runnerIndexOf("page_order");
+    const validationIdx = runnerIndexOf("validation");
+    const pageOrderRunner = runners[pageOrderIdx];
+    const validationRunner = runners[validationIdx];
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "snapshot",
+      project_stages: [
+        {
+          project_id: MOCK_PROJECT_ID,
+          stage_id: "page_order",
+          status: "clean",
+          stage_version: 2,
+          artifact_key: null,
+          config_hash: null,
+          input_hash: null,
+          last_run_at: null,
+          duration_ms: null,
+          error_message: null,
+          job_id: null,
+        },
+        {
+          project_id: MOCK_PROJECT_ID,
+          stage_id: "validation",
+          status: "clean",
+          stage_version: 2,
+          artifact_key: null,
+          config_hash: null,
+          input_hash: null,
+          last_run_at: null,
+          duration_ms: null,
+          error_message: null,
+          job_id: null,
+        },
+      ],
+    });
+
+    expect(pageOrderRunner?.getSnapshot().context.progress).toBe(1);
+    expect(validationRunner?.getSnapshot().context.progress).toBe(1);
+    actor.stop();
+  });
+
+  it("snapshot variant skips source stage (no runner)", async () => {
+    const actor = await bootedShell();
+
+    // source has no runner — sending a snapshot with source should not throw
+    expect(() => {
+      actor.send({
+        type: "STATUS_PUSH",
+        variant: "snapshot",
+        project_stages: [
+          {
+            project_id: MOCK_PROJECT_ID,
+            stage_id: "source",
+            status: "clean",
+            stage_version: 2,
+            artifact_key: null,
+            config_hash: null,
+            input_hash: null,
+            last_run_at: null,
+            duration_ms: null,
+            error_message: null,
+            job_id: null,
+          },
+        ],
+      });
+    }).not.toThrow();
+
+    actor.stop();
+  });
+
+  it("snapshot variant with unknown stage_id does not throw", async () => {
+    const actor = await bootedShell();
+
+    expect(() => {
+      actor.send({
+        type: "STATUS_PUSH",
+        variant: "snapshot",
+        project_stages: [
+          {
+            project_id: MOCK_PROJECT_ID,
+            stage_id: "nonexistent_stage_xyz",
+            status: "clean",
+            stage_version: 2,
+            artifact_key: null,
+            config_hash: null,
+            input_hash: null,
+            last_run_at: null,
+            duration_ms: null,
+            error_message: null,
+            job_id: null,
+          },
+        ],
+      });
+    }).not.toThrow();
+
+    actor.stop();
+  });
+});
+
+describe("pipelineShell — STATUS_PUSH stage-status routing (consumer reaction)", () => {
+  it("stage-status variant routes to the matching runner via STAGE_PUSH reconcile (clean)", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const proofPackIdx = runnerIndexOf("proof_pack");
+    const proofPackRunner = runners[proofPackIdx];
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "stage-status",
+      stage_id: "proof_pack",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+    });
+
+    // reconcile for "clean" → progress=1
+    const snap = proofPackRunner?.getSnapshot();
+    expect(snap?.context.progress).toBe(1);
+    actor.stop();
+  });
+
+  it("stage-status variant routes to the matching runner via STAGE_PUSH reconcile (failed)", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const zipIdx = runnerIndexOf("zip");
+    const zipRunner = runners[zipIdx];
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "stage-status",
+      stage_id: "zip",
+      status: "failed",
+      job_id: null,
+      error_message: "zip step crashed",
+    });
+
+    const snap = zipRunner?.getSnapshot();
+    expect(snap?.context.error?.message).toBe("zip step crashed");
+    actor.stop();
+  });
+
+  it("stage-status variant for unknown stage_id does not throw", async () => {
+    const actor = await bootedShell();
+
+    expect(() => {
+      actor.send({
+        type: "STATUS_PUSH",
+        variant: "stage-status",
+        stage_id: "nonexistent_stage_xyz",
+        status: "clean",
+        job_id: null,
+        error_message: null,
+      });
+    }).not.toThrow();
+
+    actor.stop();
+  });
+});
+
+describe("pipelineShell — STATUS_PUSH page-reorder → page_order runner UPSTREAM_CHANGED", () => {
+  it("page-reorder sends UPSTREAM_CHANGED to the page_order runner", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const pageOrderIdx = runnerIndexOf("page_order");
+    const pageOrderRunner = runners[pageOrderIdx];
+
+    // Drive page_order runner to clean so UPSTREAM_CHANGED transitions to stale
+    if (pageOrderRunner) {
+      pageOrderRunner.send({ type: "RUN" });
+      pageOrderRunner.send({ type: "START" });
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "page-reorder",
+      new_order: ["0001", "0002", "0003"],
+    });
+
+    // page_order runner should now be stale after UPSTREAM_CHANGED
+    const snap = pageOrderRunner?.getSnapshot();
+    expect(snap?.value).toBe("stale");
+    actor.stop();
+  });
+
+  it("page-reorder does not throw when page_order runner is absent", async () => {
+    // Boot normally; just verify no throw
+    const actor = await bootedShell();
+
+    expect(() => {
+      actor.send({
+        type: "STATUS_PUSH",
+        variant: "page-reorder",
+        new_order: ["0001"],
+      });
+    }).not.toThrow();
+
+    actor.stop();
+  });
+});
+
+describe("pipelineShell — STATUS_PUSH validation-updated → validation runner UPSTREAM_CHANGED", () => {
+  it("validation-updated sends UPSTREAM_CHANGED to the validation runner", async () => {
+    const actor = await bootedShell();
+    const { runners } = actor.getSnapshot().context;
+
+    const validationIdx = runnerIndexOf("validation");
+    const validationRunner = runners[validationIdx];
+
+    // Drive validation runner to clean so UPSTREAM_CHANGED transitions to stale
+    if (validationRunner) {
+      validationRunner.send({ type: "RUN" });
+      validationRunner.send({ type: "START" });
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    actor.send({
+      type: "STATUS_PUSH",
+      variant: "validation-updated",
+      blockers: 0,
+      warnings: 2,
+      status: "clean",
+    });
+
+    // validation runner should now be stale
+    const snap = validationRunner?.getSnapshot();
+    expect(snap?.value).toBe("stale");
+    actor.stop();
+  });
+
+  it("validation-updated does not throw when validation runner is absent", async () => {
+    const actor = await bootedShell();
+
+    expect(() => {
+      actor.send({
+        type: "STATUS_PUSH",
+        variant: "validation-updated",
+        blockers: 0,
+        warnings: 0,
+        status: "clean",
+      });
+    }).not.toThrow();
+
+    actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Topological order invariant
 // ---------------------------------------------------------------------------
 

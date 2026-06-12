@@ -41,7 +41,11 @@ import type {
   StatusPushEvent,
 } from "./lib/sseActor";
 import { computeDownstream } from "@/lib/stageDeps";
-import type { PipelineSnapshot, ProjectAutomation } from "@/types/pipeline";
+import type {
+  PipelineSnapshot,
+  ProjectAutomation,
+  PageStageStatus,
+} from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
 // Stage definitions (mirroring pipeline-template.jsx STAGE_DEFS)
@@ -603,17 +607,91 @@ export const pipelineShellMachine = setup({
     },
 
     /**
-     * W3.4 — accept STATUS_PUSH variants forwarded by PipelinePage.
+     * W3.4 / R4 — route STATUS_PUSH variants forwarded by PipelinePage.
      *
-     * stageRunners cover per-page stages only; project-scoped stage-status
-     * (validation, build_package, …) has no matching runner entry.
-     * Full reconciliation (snapshot seeding, page-reorder, validation-updated)
-     * is deferred to I2 in DIVERGENCES.md §F4-8.
+     * Four variants:
      *
-     * For now: accept the event type so TypeScript is satisfied; no routing.
+     *   "snapshot"          — on (re)connect, seed/reconcile ALL runner states
+     *                         from the project_stages array.  For each entry
+     *                         a STAGE_PUSH { variant:"status" } is sent to the
+     *                         matching stageRunner (if one exists).  Source has
+     *                         no runner and is silently skipped.
+     *
+     *   "stage-status"      — incremental project-scoped stage transition.
+     *                         Forwarded as STAGE_PUSH { variant:"status" } to
+     *                         the matching runner (same as snapshot per-entry).
+     *
+     *   "page-reorder"      — page ordering has changed; the page_order stage
+     *                         must re-fetch.  Sends UPSTREAM_CHANGED to the
+     *                         page_order runner.
+     *
+     *   "validation-updated"— validation run completed; the validation runner
+     *                         should re-check.  Sends UPSTREAM_CHANGED to the
+     *                         validation runner.
+     *
+     * "page-snapshot" arrives on the per-page channel (handled elsewhere).
+     *
+     * See DIVERGENCES.md §F4-8 (resolved at R4).
      */
-    routeStatusPush: () => {
-      // placeholder — I2 will add snapshot seeding and stage-status routing.
+    routeStatusPush: ({ context, event }) => {
+      if (event.type !== "STATUS_PUSH") return;
+
+      if (event.variant === "snapshot") {
+        // Seed / reconcile every runner mentioned in the snapshot.
+        for (const projectStage of event.project_stages) {
+          const runnerIdx = runnerIndexOf(projectStage.stage_id);
+          if (runnerIdx < 0) continue; // source or unknown — no runner
+          const runnerRef = context.runners[runnerIdx];
+          if (!runnerRef) continue;
+          runnerRef.send({
+            type: "STAGE_PUSH",
+            variant: "status",
+            stage_id: projectStage.stage_id,
+            // ProjectStageStatus ⊂ PageStageStatus (no flagged/not_applicable)
+            // — cast is safe for the values the backend can produce.
+            status: projectStage.status as PageStageStatus,
+            job_id: projectStage.job_id,
+            error_message: projectStage.error_message,
+          });
+        }
+        return;
+      }
+
+      if (event.variant === "stage-status") {
+        const runnerIdx = runnerIndexOf(event.stage_id);
+        if (runnerIdx < 0) return;
+        const runnerRef = context.runners[runnerIdx];
+        if (!runnerRef) return;
+        runnerRef.send({
+          type: "STAGE_PUSH",
+          variant: "status",
+          stage_id: event.stage_id,
+          status: event.status as PageStageStatus,
+          job_id: event.job_id,
+          error_message: event.error_message,
+        });
+        return;
+      }
+
+      if (event.variant === "page-reorder") {
+        const runnerIdx = runnerIndexOf("page_order");
+        if (runnerIdx < 0) return;
+        const runnerRef = context.runners[runnerIdx];
+        if (!runnerRef) return;
+        runnerRef.send({ type: "UPSTREAM_CHANGED", autoRerun: false });
+        return;
+      }
+
+      if (event.variant === "validation-updated") {
+        const runnerIdx = runnerIndexOf("validation");
+        if (runnerIdx < 0) return;
+        const runnerRef = context.runners[runnerIdx];
+        if (!runnerRef) return;
+        runnerRef.send({ type: "UPSTREAM_CHANGED", autoRerun: false });
+        return;
+      }
+
+      // "page-snapshot" arrives on the per-page channel — handled elsewhere.
     },
 
     /**
