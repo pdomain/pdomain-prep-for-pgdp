@@ -22,7 +22,6 @@ from pdomain_prep_for_pgdp.core.models import (
     JobStatus,
     JobType,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -45,7 +44,6 @@ def _project(project_id: str = "p1") -> Project:
         page_count=1,
         proof_page_count=1,
         config=ProjectConfig(book_name="four-men", source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
 

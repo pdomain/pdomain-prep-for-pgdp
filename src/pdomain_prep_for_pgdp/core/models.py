@@ -288,33 +288,6 @@ class PageRecord(ApiModel):
     # now enforced by PrepPageExtension (src/pdomain_prep_for_pgdp/core/prep_extension.py).
 
 
-# ─── Pipeline state ──────────────────────────────────────────────────────────
-
-
-class StepStatus(str, Enum):
-    pending = "pending"
-    running = "running"
-    complete = "complete"
-    error = "error"
-
-
-class StepState(ApiModel):
-    status: StepStatus = StepStatus.pending
-    pages_complete: list[int] = Field(default_factory=list)
-    pages_error: dict[int, str] = Field(default_factory=dict)
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    job_id: str | None = None
-
-
-# Step IDs match spec 02 (step 3 was renumbered out)
-StepId = Literal[1, 2, 4, 5, 6, 7, 8, 9, 10]
-
-
-class PipelineState(ApiModel):
-    steps: dict[int, StepState] = Field(default_factory=dict)
-
-
 # ─── Project (API wrapper) ───────────────────────────────────────────────────
 
 
@@ -337,7 +310,6 @@ class Project(ApiModel):
     page_count: int
     proof_page_count: int
     config: ProjectConfig
-    pipeline_state: PipelineState
     storage_prefix: str
     archived: bool = False
     # Disk-cost banner fields (M4 spec §Disk-cost banner).

@@ -27,7 +27,6 @@ from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStageStatus,
@@ -72,7 +71,6 @@ def _seed_project(
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name=project_id, source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
                 registry_version=registry_version,
             )

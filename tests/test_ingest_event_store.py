@@ -14,7 +14,6 @@ from pdomain_ops.pages import get_extension
 
 from pdomain_prep_for_pgdp.core.ingest import unzip_source
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -50,7 +49,6 @@ def _make_project(project_id: str) -> Project:
             proof_start_idx0=0,
             proof_end_idx0=999,
         ),
-        pipeline_state=PipelineState(),
         storage_prefix="",
     )
 

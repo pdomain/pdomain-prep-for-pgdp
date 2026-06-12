@@ -30,11 +30,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast
 
 from .models import (
-    PipelineState,
     Project,
     ProjectStatus,
-    StepState,
-    StepStatus,
 )
 
 if TYPE_CHECKING:
@@ -168,7 +165,6 @@ async def unzip_source(
             "proof_page_count": total,
             "status": ProjectStatus.ingesting,
             "updated_at": datetime.now(UTC),
-            "pipeline_state": _record_step(project.pipeline_state, step_id=0, errors=[]),
         }
     )
     await database.put_project(project)
@@ -213,6 +209,7 @@ async def generate_thumbnails(
     progress_cb: ProgressCb | None = None,
     thumbnail_workers: int | None = None,
     page_service: PageService,
+    data_root: os.PathLike[str] | None = None,
 ) -> IngestResult:
     """Walk every page without a thumbnail, generate + persist JPGs in batch.
 
@@ -246,7 +243,15 @@ async def generate_thumbnails(
     try:
         proj_agg = page_service.store.get_project(project_uuid)
     except Exception:
-        await _mark_step_complete(project, database, step_id=2)
+        # No pages in event store — advance project and mark source clean.
+        project = project.model_copy(
+            update={
+                "status": ProjectStatus.configuring,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        await database.put_project(project)
+        _write_source_stage(project.id, page_count=0, data_root=data_root)
         return IngestResult(page_count=0, errors=[])
 
     todo_evt: list[tuple[_uuid.UUID, str, bytes]] = []
@@ -276,10 +281,10 @@ async def generate_thumbnails(
             update={
                 "status": ProjectStatus.configuring,
                 "updated_at": datetime.now(UTC),
-                "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors_evt),
             }
         )
         await database.put_project(project)
+        _write_source_stage(project.id, page_count=0, data_root=data_root)
         return IngestResult(page_count=0, errors=errors_evt)
 
     updated_count = 0
@@ -316,10 +321,12 @@ async def generate_thumbnails(
         update={
             "status": ProjectStatus.configuring,
             "updated_at": datetime.now(UTC),
-            "pipeline_state": _record_step(project.pipeline_state, step_id=2, errors=errors_evt),
         }
     )
     await database.put_project(project)
+    # Dual-write: artifact + project_stages DB row for the 'source' stage.
+    # The source stage represents "pages ingested + thumbnails generated".
+    _write_source_stage(project.id, page_count=updated_count, data_root=data_root)
     return IngestResult(page_count=updated_count, errors=errors_evt)
 
 
@@ -677,23 +684,49 @@ def _make_thumbnail_bytes(src: bytes, max_image_pixels: int | None = None) -> by
     return bytes(buf.tobytes())
 
 
-# ─── pipeline-state bookkeeping ────────────────────────────────────────────
+# ─── v2 source stage bookkeeping ───────────────────────────────────────────
 
 
-def _record_step(state: PipelineState, *, step_id: int, errors: list[str]) -> PipelineState:
-    new_steps = dict(state.steps)
-    new_steps[step_id] = StepState(
-        status=StepStatus.error if errors else StepStatus.complete,
-        completed_at=datetime.now(UTC),
+def _write_source_stage(project_id: str, *, page_count: int, data_root: os.PathLike[str] | None) -> None:
+    """Dual-write the v2 'source' project-stage: artifact + DB row.
+
+    Called at the end of ``generate_thumbnails`` to mark the source stage
+    clean once ingestion (unzip + thumbnails) is complete.
+
+    ``data_root`` may be ``None`` in contexts where the caller does not have
+    access to the filesystem path (e.g. test fixtures that only exercise the
+    DB path). When ``None``, only the DB row write is skipped — the artifact
+    write requires a concrete path, so neither write happens. This is safe:
+    ``pgdp-prep reindex`` will recover the row from the on-disk artifact on
+    the next reconciliation pass.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from time import time as _time
+
+    if data_root is None:
+        return
+
+    data_root_path = _Path(data_root)
+    artifact_dir = data_root_path / "projects" / project_id / "stages" / "source"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / "output.json"
+    artifact_payload = {"page_count": page_count, "stage": "source"}
+    artifact_path.write_text(_json.dumps(artifact_payload))
+
+    artifact_key = f"projects/{project_id}/stages/source/output.json"
+
+    from pdomain_prep_for_pgdp.core.models import ProjectStageState, ProjectStageStatus
+    from pdomain_prep_for_pgdp.core.pipeline.project_stages import ProjectStageStore
+
+    db_path = data_root_path / "projects" / project_id / "project_stages.db"
+    store = ProjectStageStore(db_path)
+    store.write(
+        ProjectStageState(
+            project_id=project_id,
+            stage_id="source",
+            status=ProjectStageStatus.clean,
+            artifact_key=artifact_key,
+            last_run_at=_time(),
+        )
     )
-    return PipelineState(steps=new_steps)
-
-
-async def _mark_step_complete(project: Project, database: IDatabase, *, step_id: int) -> None:
-    project = project.model_copy(
-        update={
-            "pipeline_state": _record_step(project.pipeline_state, step_id=step_id, errors=[]),
-            "updated_at": datetime.now(UTC),
-        }
-    )
-    await database.put_project(project)

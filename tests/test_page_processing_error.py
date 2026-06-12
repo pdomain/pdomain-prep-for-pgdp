@@ -13,7 +13,6 @@ from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -53,7 +52,6 @@ def test_processing_error_round_trips(tmp_path) -> None:
             page_count=1,
             proof_page_count=1,
             config=ProjectConfig(book_name="t", source_uri=""),
-            pipeline_state=PipelineState(),
             storage_prefix="projects/pe1/",
         )
         await db.put_project(project)

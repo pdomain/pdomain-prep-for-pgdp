@@ -28,7 +28,6 @@ from pdomain_prep_for_pgdp.core.models import (
     BoundingBox,
     OcrWord,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -68,7 +67,6 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="t", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/pt1/",
             )
         )

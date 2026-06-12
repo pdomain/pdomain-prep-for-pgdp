@@ -21,7 +21,6 @@ from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pdomain_prep_for_pgdp.core.models import (
     PageOutput,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -50,7 +49,6 @@ def _project(project_id: str, title_idx0: int) -> Project:
             source_uri="",
             title_idx0=title_idx0,
         ),
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
 

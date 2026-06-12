@@ -34,7 +34,6 @@ from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
     PageStageStatus,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -80,7 +79,6 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="async_proj", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/async_proj/",
             )
         )

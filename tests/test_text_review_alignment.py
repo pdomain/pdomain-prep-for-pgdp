@@ -24,7 +24,6 @@ from pdomain_prep_for_pgdp.core.models import (
     PageOutput,
     PageProcessingStatus,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -79,7 +78,6 @@ def test_patch_text_writes_to_ocr_text_key_recorded_on_output(settings: Settings
             page_count=1,
             proof_page_count=1,
             config=ProjectConfig(book_name="t", source_uri=""),
-            pipeline_state=PipelineState(),
             storage_prefix=f"projects/{project_id}/",
         )
         await db.put_project(project)

@@ -19,7 +19,6 @@ from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -58,7 +57,6 @@ def _seed(settings: Settings, owner_id: str = "default", page_count: int = 1) ->
                 page_count=page_count,
                 proof_page_count=page_count,
                 config=ProjectConfig(book_name="t", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/sp1/",
             )
         )

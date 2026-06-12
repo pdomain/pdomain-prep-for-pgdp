@@ -20,7 +20,6 @@ from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -70,7 +69,6 @@ def _seed_three_page_project(settings: Settings, owner_id: str = "default") -> N
                     bodymatter_start_idx0=0,
                     bodymatter_end_idx0=2,
                 ),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/ro1/",
             )
         )
@@ -133,7 +131,6 @@ def _seed_two_user_projects(settings: Settings) -> None:
                     bodymatter_start_idx0=0,
                     bodymatter_end_idx0=1,
                 ),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/ro1/",
             )
         )
@@ -165,7 +162,6 @@ def _seed_two_user_projects(settings: Settings) -> None:
                     bodymatter_start_idx0=0,
                     bodymatter_end_idx0=1,
                 ),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/ro2/",
             )
         )

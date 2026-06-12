@@ -32,7 +32,6 @@ from pdomain_prep_for_pgdp.core.models import (
     JobProgress,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -77,7 +76,6 @@ async def project_p(db: SqliteDatabase) -> str:
             page_count=0,
             proof_page_count=0,
             config=ProjectConfig(book_name="t", source_uri=""),
-            pipeline_state=PipelineState(),
             storage_prefix="projects/p1/",
         )
     )

@@ -33,7 +33,6 @@ from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -77,7 +76,6 @@ def _seed_project(settings: Settings, owner_id: str = "default") -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="m2art", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/m2art/",
             )
         )

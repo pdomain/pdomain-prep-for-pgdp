@@ -6,10 +6,8 @@ Spec: `docs/specs/pipeline-task-model.md` §"SQLite schema" (Q1 locked
 Schema is normalised: composite PK `(project_id, page_id, stage_id)` with
 indexes on `(project_id, status)` and `(project_id, page_id)`. Status is
 constrained via CHECK to the spec's enum. Stage IDs are constrained via
-CHECK to the canonical stage list from `core.models.PAGE_STAGE_IDS`
-(22 stages per `STAGE_VERSIONS` in the spec — note: `docs/08-roadmap.md`
-M1 still says "16-stage registry"; that's a roadmap-vs-spec drift to be
-cleaned up in M1 §F doc realign).
+CHECK to the canonical stage list from `core.models.V2_PAGE_STAGE_IDS`
+(16 page-scoped stages per `docs/specs/stage-registry-v2.md` §2).
 
 Upserts go through `put_page_stage` (idempotent INSERT OR REPLACE). Reads
 via `get_page_stage` (single row), `list_page_stages_for_page`, and
@@ -278,7 +276,6 @@ async def test_delete_project_cascades_page_stages(db: SqliteDatabase) -> None:
     from datetime import UTC, datetime
 
     from pdomain_prep_for_pgdp.core.models import (
-        PipelineState,
         ProjectConfig,
         ProjectStatus,
     )
@@ -294,7 +291,6 @@ async def test_delete_project_cascades_page_stages(db: SqliteDatabase) -> None:
         page_count=1,
         proof_page_count=1,
         config=ProjectConfig(book_name="P1", source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix="projects/p1",
     )
     await db.put_project(proj)

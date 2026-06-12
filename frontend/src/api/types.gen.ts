@@ -3083,13 +3083,6 @@ export interface components {
          * @enum {string}
          */
         PageType: "normal" | "blank" | "plate_b" | "plate_p" | "plate_r" | "skip" | "cover";
-        /** PipelineState */
-        PipelineState: {
-            /** Steps */
-            steps: {
-                [key: string]: components["schemas"]["StepState"];
-            };
-        };
         /** Project */
         Project: {
             /** Id */
@@ -3117,7 +3110,6 @@ export interface components {
             /** Proof Page Count */
             proof_page_count: number;
             config: components["schemas"]["ProjectConfig"];
-            pipeline_state: components["schemas"]["PipelineState"];
             /** Storage Prefix */
             storage_prefix: string;
             /**
@@ -3383,28 +3375,6 @@ export interface components {
              */
             async: boolean;
         };
-        /** StepState */
-        StepState: {
-            /** @default pending */
-            status: components["schemas"]["StepStatus"];
-            /** Pages Complete */
-            pages_complete: number[];
-            /** Pages Error */
-            pages_error: {
-                [key: string]: string;
-            };
-            /** Started At */
-            started_at: string | null;
-            /** Completed At */
-            completed_at: string | null;
-            /** Job Id */
-            job_id: string | null;
-        };
-        /**
-         * StepStatus
-         * @enum {string}
-         */
-        StepStatus: "pending" | "running" | "complete" | "error";
         /** SuggestIllustrationsRequest */
         SuggestIllustrationsRequest: {
             /** Project Id */

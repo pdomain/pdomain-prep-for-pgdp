@@ -79,7 +79,6 @@ class TestW21PageStageEvents:
         from pdomain_prep_for_pgdp.core.models import (
             PageStageState,
             PageStageStatus,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -114,7 +113,6 @@ class TestW21PageStageEvents:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -223,7 +221,6 @@ class TestW21PageStageEvents:
         from pdomain_prep_for_pgdp.core.models import (
             PageStageState,
             PageStageStatus,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -259,7 +256,6 @@ class TestW21PageStageEvents:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -359,7 +355,6 @@ class TestW22W31PageReorder:
         from pdomain_prep_for_pgdp.core.models import (
             PageProcessingStatus,
             PageRecord,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -380,7 +375,6 @@ class TestW22W31PageReorder:
                     page_count=2,
                     proof_page_count=2,
                     config=ProjectConfig(book_name=project_id, source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -518,7 +512,6 @@ class TestW23SubmitCheckConfirm:
         from pdomain_prep_for_pgdp.core.models import (
             PageProcessingStatus,
             PageRecord,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStageStatus,
@@ -541,7 +534,6 @@ class TestW23SubmitCheckConfirm:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name=project_id, source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -709,7 +701,6 @@ class TestW24SettingsChangeEvents:
         from pdomain_prep_for_pgdp.core.models import (
             PageProcessingStatus,
             PageRecord,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -730,7 +721,6 @@ class TestW24SettingsChangeEvents:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name=project_id, source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -820,7 +810,6 @@ class TestW25ReindexCoverage:
         from pdomain_prep_for_pgdp.core.models import (
             PageProcessingStatus,
             PageRecord,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStageStatus,
@@ -856,7 +845,6 @@ class TestW25ReindexCoverage:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -918,7 +906,6 @@ class TestW25ReindexCoverage:
         from pdomain_prep_for_pgdp.core.models import (
             PageProcessingStatus,
             PageRecord,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -950,7 +937,6 @@ class TestW25ReindexCoverage:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -1000,7 +986,6 @@ class TestW32ValidationUpdatedSse:
             Job,
             JobStatus,
             JobType,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -1031,7 +1016,6 @@ class TestW32ValidationUpdatedSse:
                     page_count=0,
                     proof_page_count=0,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )
@@ -1110,7 +1094,6 @@ class TestW33ProjectStageProgressTicks:
             Job,
             JobStatus,
             JobType,
-            PipelineState,
             Project,
             ProjectConfig,
             ProjectStatus,
@@ -1141,7 +1124,6 @@ class TestW33ProjectStageProgressTicks:
                     page_count=0,
                     proof_page_count=0,
                     config=ProjectConfig(book_name="test", source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{project_id}/",
                     registry_version=2,
                 )

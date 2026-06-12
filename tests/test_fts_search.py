@@ -1,22 +1,27 @@
 """FTS5 full-text search — SQLite backend.
 
 Spec: docs/specs/2026-05-11-search-across-pages-design.md
-Issue: #74 — SQLite FTS5 table + text_postprocess clean-write upsert.
+Issue: #74 — SQLite FTS5 table + text_review clean-write upsert (v2).
 
 Acceptance bullets verified here:
- A. A successful text_postprocess clean write upserts the FTS5 row within
+ A. A successful text_review clean write upserts the FTS5 row within
     the same transaction (search returns results immediately after commit).
  B. Searching a term that appears only in a split child returns the child's
     page row, not the parent's.
- C. Re-running text_postprocess on a page with changed config produces
+ C. Re-running text_review on a page with changed content produces
     updated text in the FTS5 row; old text is gone.
  D. pgdp-prep reindex --heal repairs index drift without data loss.
  E. Local FTS5 score is mapped to the normalized [0.0, 1.0] range.
+
+In v2, ``text_review`` is the final attested text stage (compound output:
+``output.txt`` + ``attestation.json``). It replaces v1 ``text_postprocess``
+as the FTS trigger. Seeded via ``commit_stage_artifacts_multi``.
 """
 
 from __future__ import annotations
 
 import io
+import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -25,15 +30,25 @@ import pytest
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.cli.reindex import _parse_args, _run
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
 )
-from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import commit_stage_artifact
+from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
+    commit_stage_artifact,
+    commit_stage_artifacts_multi,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _text_review_files(text: str) -> dict[str, bytes]:
+    """Build the minimal text_review compound-output files dict."""
+    return {
+        "output.txt": text.encode("utf-8"),
+        "attestation.json": json.dumps({"attested_by": "human", "version": 1}).encode(),
+    }
 
 
 @pytest.fixture
@@ -55,22 +70,22 @@ def _project(project_id: str = "proj1") -> Project:
         page_count=1,
         proof_page_count=1,
         config=ProjectConfig(book_name=project_id, source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
 
 
 @pytest.mark.asyncio
-async def test_text_postprocess_commit_upserts_fts(tmp_path: Path, db: SqliteDatabase) -> None:
-    """After committing a text_postprocess artifact, search returns the text."""
+async def test_text_review_commit_upserts_fts(tmp_path: Path, db: SqliteDatabase) -> None:
+    """After committing a text_review artifact, search returns the text."""
     text = "The quick brown fox jumps over the lazy dog"
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0042",
-        stage_id="text_postprocess",
-        artifact_bytes=text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(text),
+        primary_filename="output.txt",
         idx0=42,
     )
     results, total = await db.search("p1", "fox")
@@ -79,16 +94,17 @@ async def test_text_postprocess_commit_upserts_fts(tmp_path: Path, db: SqliteDat
 
 
 @pytest.mark.asyncio
-async def test_text_postprocess_commit_upserts_fts_multi_word(tmp_path: Path, db: SqliteDatabase) -> None:
+async def test_text_review_commit_upserts_fts_multi_word(tmp_path: Path, db: SqliteDatabase) -> None:
     """Phrase search also finds the indexed page."""
     text = "Chapter Seven begins here with a notable passage"
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0007",
-        stage_id="text_postprocess",
-        artifact_bytes=text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(text),
+        primary_filename="output.txt",
         idx0=7,
     )
     results, total = await db.search("p1", "notable passage")
@@ -98,7 +114,7 @@ async def test_text_postprocess_commit_upserts_fts_multi_word(tmp_path: Path, db
 
 
 @pytest.mark.asyncio
-async def test_non_text_postprocess_stage_does_not_populate_fts(tmp_path: Path, db: SqliteDatabase) -> None:
+async def test_non_text_review_stage_does_not_populate_fts(tmp_path: Path, db: SqliteDatabase) -> None:
     """Committing a non-text stage (e.g. threshold) does not create FTS entries."""
     await commit_stage_artifact(
         data_root=tmp_path,
@@ -119,23 +135,25 @@ async def test_split_child_indexed_independently(tmp_path: Path, db: SqliteDatab
     child_text = "Unique term xylophone appears only on the split child"
 
     # Index parent
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0010",
-        stage_id="text_postprocess",
-        artifact_bytes=parent_text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(parent_text),
+        primary_filename="output.txt",
         idx0=10,
     )
     # Index split child (different page_id, same idx0 space)
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0010a",
-        stage_id="text_postprocess",
-        artifact_bytes=child_text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(child_text),
+        primary_filename="output.txt",
         idx0=10,
     )
 
@@ -147,18 +165,19 @@ async def test_split_child_indexed_independently(tmp_path: Path, db: SqliteDatab
 
 
 @pytest.mark.asyncio
-async def test_rerun_text_postprocess_replaces_fts_row(tmp_path: Path, db: SqliteDatabase) -> None:
-    """After re-running text_postprocess with new text, old text is gone."""
+async def test_rerun_text_review_replaces_fts_row(tmp_path: Path, db: SqliteDatabase) -> None:
+    """After re-running text_review with new text, old text is gone."""
     old_text = "oldword uniquetoken alpha"
     new_text = "freshword newtoken beta"
 
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0003",
-        stage_id="text_postprocess",
-        artifact_bytes=old_text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(old_text),
+        primary_filename="output.txt",
         idx0=3,
     )
 
@@ -166,13 +185,14 @@ async def test_rerun_text_postprocess_replaces_fts_row(tmp_path: Path, db: Sqlit
     assert any(r.page_id == "0003" for r in old_results)
 
     # Re-run with new content
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0003",
-        stage_id="text_postprocess",
-        artifact_bytes=new_text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(new_text),
+        primary_filename="output.txt",
         idx0=3,
     )
 
@@ -188,7 +208,7 @@ async def test_rerun_text_postprocess_replaces_fts_row(tmp_path: Path, db: Sqlit
 
 @pytest.mark.asyncio
 async def test_reindex_heal_repairs_missing_fts_entry(tmp_path: Path) -> None:
-    """--heal populates FTS for pages with clean text_postprocess artifacts but no FTS row."""
+    """--heal populates FTS for pages with clean text_review artifacts but no FTS row."""
     import pdomain_prep_for_pgdp.cli.reindex as _reindex_mod
     from pdomain_prep_for_pgdp.settings import Settings
 
@@ -202,15 +222,17 @@ async def test_reindex_heal_repairs_missing_fts_entry(tmp_path: Path) -> None:
     project = _project("proj1")
     await db.put_project(project)
 
-    # Commit text_postprocess artifact WITHOUT idx0 (simulating pre-FTS state)
+    # Commit text_review artifact WITHOUT idx0 (simulating pre-FTS state:
+    # the commit_stage_artifacts_multi FTS path is skipped when idx0=None).
     text = "driftword unique ancient content"
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=data_root,
         database=db,
         project_id="proj1",
         page_id="0000",
-        stage_id="text_postprocess",
-        artifact_bytes=text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(text),
+        primary_filename="output.txt",
         # No idx0 → FTS not populated
     )
 
@@ -256,13 +278,14 @@ async def test_search_score_normalized_range(tmp_path: Path, db: SqliteDatabase)
         ("0002", 2, "gamma delta epsilon zeta eta"),
     ]
     for page_id, idx0, text in texts:
-        await commit_stage_artifact(
+        await commit_stage_artifacts_multi(
             data_root=tmp_path,
             database=db,
             project_id="p1",
             page_id=page_id,
-            stage_id="text_postprocess",
-            artifact_bytes=text.encode(),
+            stage_id="text_review",
+            files=_text_review_files(text),
+            primary_filename="output.txt",
             idx0=idx0,
         )
 
@@ -276,13 +299,14 @@ async def test_search_score_normalized_range(tmp_path: Path, db: SqliteDatabase)
 async def test_search_pagination(tmp_path: Path, db: SqliteDatabase) -> None:
     """limit + offset return correct pages, total_count is accurate."""
     for i in range(5):
-        await commit_stage_artifact(
+        await commit_stage_artifacts_multi(
             data_root=tmp_path,
             database=db,
             project_id="p1",
             page_id=f"{i:04d}",
-            stage_id="text_postprocess",
-            artifact_bytes=f"keyword content page {i}".encode(),
+            stage_id="text_review",
+            files=_text_review_files(f"keyword content page {i}"),
+            primary_filename="output.txt",
             idx0=i,
         )
 
@@ -301,13 +325,14 @@ async def test_long_s_normalization(tmp_path: Path, db: SqliteDatabase) -> None:
     """Long-s (U+017F) in indexed text is found by searching with regular s."""
     long_s = chr(0x17F)
     text = f"The la{long_s}t word wa{long_s} {long_s}aid"
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0099",
-        stage_id="text_postprocess",
-        artifact_bytes=text.encode(),
+        stage_id="text_review",
+        files=_text_review_files(text),
+        primary_filename="output.txt",
         idx0=99,
     )
     # Searching with regular 's' should find the long-s text
@@ -319,22 +344,24 @@ async def test_long_s_normalization(tmp_path: Path, db: SqliteDatabase) -> None:
 @pytest.mark.asyncio
 async def test_search_is_scoped_to_project(tmp_path: Path, db: SqliteDatabase) -> None:
     """Search results are scoped to one project; other projects' text is not returned."""
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p1",
         page_id="0000",
-        stage_id="text_postprocess",
-        artifact_bytes=b"unique rareword belongs to project one",
+        stage_id="text_review",
+        files=_text_review_files("unique rareword belongs to project one"),
+        primary_filename="output.txt",
         idx0=0,
     )
-    await commit_stage_artifact(
+    await commit_stage_artifacts_multi(
         data_root=tmp_path,
         database=db,
         project_id="p2",
         page_id="0000",
-        stage_id="text_postprocess",
-        artifact_bytes=b"other rareword belongs to project two",
+        stage_id="text_review",
+        files=_text_review_files("other rareword belongs to project two"),
+        primary_filename="output.txt",
         idx0=0,
     )
     results_p1, total_p1 = await db.search("p1", "rareword")

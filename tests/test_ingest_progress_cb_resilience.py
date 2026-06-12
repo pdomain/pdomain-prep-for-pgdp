@@ -23,7 +23,6 @@ from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pdomain_prep_for_pgdp.core.ingest import generate_thumbnails, unzip_source
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -74,7 +73,6 @@ def _project() -> Project:
         page_count=0,
         proof_page_count=0,
         config=ProjectConfig(book_name="t", source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix="projects/ip1/",
     )
 

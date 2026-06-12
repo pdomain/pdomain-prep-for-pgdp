@@ -20,7 +20,6 @@ from pathlib import Path
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStageStatus,
@@ -60,7 +59,6 @@ def _seed_project(settings: Settings, project_id: str = "proj1") -> None:
                 page_count=2,
                 proof_page_count=2,
                 config=ProjectConfig(book_name=project_id, source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
                 registry_version=2,
             )

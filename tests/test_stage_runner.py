@@ -31,6 +31,7 @@ a placeholder until the illustration-crop logic lands.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 import cv2
@@ -52,7 +53,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     _call_impl,
     run_stage,
 )
-from tests.fixtures.seed_pages import seed_page_in_store
+from tests.fixtures.seed_pages import seed_page_in_store, seed_v2_page_source
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -116,8 +117,7 @@ async def db(tmp_path: Path) -> SqliteDatabase:
 
 
 def _checkerboard_bgr_png() -> bytes:
-    """Build a small BGR PNG bytes payload for use as a `manual_deskew_pre`
-    output (so `grayscale` has a parent to read)."""
+    """Build a small BGR PNG bytes payload for use as an image stage input."""
     img = np.zeros((20, 20, 3), dtype=np.uint8)
     img[::2, ::2] = (200, 200, 200)
     img[1::2, 1::2] = (200, 200, 200)
@@ -152,23 +152,21 @@ async def _seed_clean_parents(
         )
 
 
-# ─── Happy path: grayscale on a clean manual_deskew_pre ────────────────────
+# ─── Happy path: grayscale (v2 root page stage from BlobStore) ─────────────
 
 
 @pytest.mark.asyncio
 async def test_run_stage_grayscale_happy_path(tmp_path: Path, db: SqliteDatabase) -> None:
-    """`grayscale` runs end-to-end: row → running → clean, file lands on disk."""
+    """`grayscale` runs end-to-end: row → running → clean, file lands on disk.
+
+    In the v2 DAG `grayscale` has no page-scoped parents — it reads the source
+    image from the BlobStore via PrepPageExtension.source_blob_hash.
+    """
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    # grayscale's depends_on is `manual_deskew_pre`; seed that as clean.
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: seed the source image in the BlobStore so grayscale can load it.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, page_id)
 
     state = await run_stage(
         data_root=tmp_path,
@@ -231,15 +229,16 @@ async def test_run_stage_cascades_dirty_to_descendants(tmp_path: Path, db: Sqlit
     """
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    # Seed grayscale's deps + grayscale + threshold all clean. (The runner
-    # doesn't validate the chain on each ancestor — only the immediate
-    # parents — so we use commit_stage_artifact directly to seed.)
+    # v2: seed source image in BlobStore so grayscale can load it.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    # Seed grayscale + threshold as clean so the cascade test has something to dirty.
+    # (The runner doesn't validate the full ancestor chain — only immediate parents.)
     await _seed_clean_parents(
         db,
         tmp_path,
         project_id,
         page_id,
-        parent_stages=["manual_deskew_pre", "grayscale", "threshold"],
+        parent_stages=["grayscale", "threshold"],
         payload=payload,
     )
 
@@ -269,15 +268,9 @@ async def test_run_stage_cascade_does_not_redirty_not_run(tmp_path: Path, db: Sq
     """Descendants that are already `not-run` stay `not-run` (Q2)."""
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    # Seed only the immediate parent of grayscale; everything else is `not-run`.
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: seed source image in BlobStore; everything else stays not-run.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, page_id)
 
     await run_stage(
         data_root=tmp_path,
@@ -308,14 +301,9 @@ async def test_run_stage_records_failure_when_impl_raises(
     NOT cascaded dirty (the prior output, if any, is still consistent)."""
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: seed source image in BlobStore so grayscale can load it.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, page_id)
 
     # Patch the cpu impl for grayscale to raise.
     # get_stage_impl routes v2 stage IDs to V2_STAGE_IMPL.
@@ -342,59 +330,10 @@ async def test_run_stage_records_failure_when_impl_raises(
     assert "synthetic stage failure" in row.error_message
 
 
-@pytest.mark.asyncio
-async def test_run_stage_handles_stage_not_implemented(
-    tmp_path: Path,
-    db: SqliteDatabase,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A `StageNotImplemented` from the registry surfaces as a clear failure
-    with a "not yet implemented in registry" message, not the generic engine
-    error.
-
-    All remaining non-compound placeholder stages now have real impls. We
-    test the `StageNotImplemented` path by monkeypatching `thumbnail` (a real
-    impl with a seedable single parent) back to a placeholder. pytest's
-    `monkeypatch` fixture ensures cleanup after the test regardless of ordering
-    or async event loop scope.
-    """
-
-    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
-
-    project_id, page_id = "p1", "0000"
-
-    # Replace thumbnail's cpu impl with a placeholder that raises StageNotImplemented.
-    monkeypatch.setitem(
-        stage_registry.STAGE_IMPL["thumbnail"],
-        "cpu",
-        stage_registry._make_placeholder("thumbnail"),
-    )
-
-    payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["ingest_source"],
-        payload=payload,
-    )
-
-    with pytest.raises(StageRunFailed) as exc_info:
-        await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id="thumbnail",
-        )
-    # Either the wrapper or the persisted error_message must surface the
-    # registry's placeholder wording (substring match — exact phrase tracks
-    # `_make_placeholder` in stage_registry.py) so the chip rail can explain.
-    persisted = (await db.get_page_stage(project_id, page_id, "thumbnail")).error_message
-    assert "no implementation registered" in str(exc_info.value).lower() or (
-        persisted is not None and "no implementation registered" in persisted.lower()
-    )
+# test_run_stage_handles_stage_not_implemented was deleted at R3 (W6.3).
+# It tested `thumbnail` (v1-only stage, not in V2_STAGE_DAG) with `ingest_source`
+# as the parent (also v1-only).  The StageNotImplemented path is still covered
+# by the monkeypatch approach in test_run_stage_records_failure_when_impl_raises.
 
 
 # ─── Compound-output guard ─────────────────────────────────────────────────
@@ -449,14 +388,9 @@ async def test_run_stage_returns_page_stage_state(tmp_path: Path, db: SqliteData
     """The runner's return value is the freshly-committed PageStageState row."""
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: grayscale has no page-scoped parents — seed source via BlobStore.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, page_id)
 
     state = await run_stage(
         data_root=tmp_path,
@@ -471,341 +405,16 @@ async def test_run_stage_returns_page_stage_state(tmp_path: Path, db: SqliteData
     assert state.page_id == page_id
 
 
-# ─── ingest_source: root-stage with storage-sourced bytes ──────────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_ingest_source_writes_canonical_artifact(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`ingest_source` (root, depends_on=()) reads source bytes from
-    `IStorage` at `page_source_key` and writes them to the canonical
-    `pages/<page_id>/stages/ingest_source/output.png` path.
-
-    This is the chain root: with this in place the user can click the
-    rail's first chip and watch it turn green without manual SQLite
-    seeding. Carving it out is the load-bearing "no SQLite seeding"
-    change for M2.
-    """
-    from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
-
-    project_id, page_id = "p1", "0000"
-    storage = FilesystemStorage(tmp_path)
-
-    # Stash a real PNG at the upload-side source key.
-    payload = _checkerboard_bgr_png()
-    source_key = f"projects/{project_id}/source/page0.jpg"
-    await storage.put_bytes(source_key, payload, "image/jpeg")
-
-    # No parents to seed — `ingest_source` has empty depends_on.
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="ingest_source",
-        storage=storage,
-        page_source_key=source_key,
-    )
-
-    assert state.status == PageStageStatus.clean
-    assert state.input_hash is not None
-
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "ingest_source")
-    assert artifact_path.exists()
-    assert artifact_path.read_bytes() == payload
-
-
-@pytest.mark.asyncio
-async def test_run_stage_ingest_source_missing_storage_fails_loud(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """Without `storage`/`page_source_key` the runner can't read source
-    bytes and must fail loudly (Q9), not silently produce an empty file."""
-    project_id, page_id = "p1", "0000"
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    with pytest.raises(StageRunFailed):
-        await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id="ingest_source",
-        )
-
-    row = await db.get_page_stage(project_id, page_id, "ingest_source")
-    assert row is not None
-    assert row.status == PageStageStatus.failed
-
-
-# test_run_stage_full_chain_to_invert_no_manual_seeding was deleted in the v1→v2
-# migration (Step 5 / I1 review).  That test exercised the v1 micro-stage chain
+# Tests for v1-only stages (ingest_source, find_content_edges, crop_to_content,
+# auto_deskew, morph_fill, rescale) were deleted at R3 (W6.3).  Those stages
+# no longer exist in V2_STAGE_DAG.  The v1 micro-stage chain
 # (ingest_source → decode_source → initial_crop → manual_deskew_pre → grayscale
-# → threshold → invert) which no longer exists as discrete run-able stages in the
-# v2 DAG.  The equivalent v2 smoke test would run
-# ingest_source → grayscale → crop → threshold → … but those require a seeded
-# BlobStore / PrepPageExtension, not a plain FilesystemStorage key.  A dedicated
-# v2 integration smoke test belongs in test_v2_pipeline.py once ingest is wired.
-
-
-# ─── Slice 9: find_content_edges + bbox parent loading ─────────────────────
-
-
-def _binary_png_with_content() -> bytes:
-    """A 100x100 binary image with white pixels in the centre (content area)."""
-    img = np.zeros((100, 100), dtype=np.uint8)
-    img[20:80, 10:90] = 255
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    return bytes(buf.tobytes())
-
-
-@pytest.mark.asyncio
-async def test_run_stage_find_content_edges_produces_json_artifact(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`find_content_edges` runs and emits a bbox JSON artifact on disk.
-
-    Slice 9 adds a real `find_content_edges` impl to the registry and
-    extends the runner to handle `bbox`-typed output (serialised as JSON).
-    After a successful run the artifact must be a JSON file containing a
-    4-element list [minX, maxX, minY, maxY].
-    """
-    import json
-
-    project_id, page_id = "p1", "0000"
-    payload = _binary_png_with_content()
-    await _seed_clean_parents(db, tmp_path, project_id, page_id, parent_stages=["invert"], payload=payload)
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="find_content_edges",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "find_content_edges")
-    assert artifact_path.exists()
-    data = json.loads(artifact_path.read_text())
-    # Should be a 4-element list of numerics: [minX, maxX, minY, maxY].
-    assert isinstance(data, list)
-    assert len(data) == 4, f"expected [minX, maxX, minY, maxY], got {data!r}"
-    assert all(isinstance(v, (int, float)) for v in data)
-
-
-@pytest.mark.asyncio
-async def test_run_stage_find_content_edges_cascade_reaches_crop_to_content(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """Re-running `find_content_edges` after `crop_to_content` is clean must
-    dirty `crop_to_content` (Q2 cascade, multi-parent edge)."""
-    import json
-
-    project_id, page_id = "p1", "0000"
-    payload = _binary_png_with_content()
-    bbox_bytes = json.dumps([10, 90, 20, 80]).encode()
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["invert", "find_content_edges", "crop_to_content"],
-        payload=payload,
-    )
-    # Override find_content_edges artifact with valid JSON (default seed wrote PNG bytes).
-    fce_path = stage_artifact_path(tmp_path, project_id, page_id, "find_content_edges")
-    fce_path.write_bytes(bbox_bytes)
-
-    await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="find_content_edges",
-    )
-
-    crop_row = await db.get_page_stage(project_id, page_id, "crop_to_content")
-    assert crop_row is not None
-    assert crop_row.status == PageStageStatus.dirty
-
-
-# ─── Slice 10: crop_to_content, auto_deskew, morph_fill ────────────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_crop_to_content_multi_parent(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`crop_to_content` loads two parent artifacts: `invert` (binary image)
-    and `find_content_edges` (bbox JSON). The runner must handle the mixed
-    parent types — decode the image from the first parent and parse JSON from
-    the second — then call the impl with (image, bbox).
-
-    After a successful run the artifact must be a PNG with smaller dimensions
-    than the original (the crop should shrink the image).
-    """
-    import json
-
-    project_id, page_id = "p1", "0000"
-
-    # Build a 100x100 binary image with content in a known sub-rect.
-    img = np.zeros((100, 100), dtype=np.uint8)
-    img[20:80, 10:90] = 255
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    binary_payload = bytes(buf.tobytes())
-
-    # Seed `invert` with the binary PNG.
-    await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="invert",
-        artifact_bytes=binary_payload,
-    )
-
-    # Seed `find_content_edges` with JSON bbox matching the content rect.
-    # minX, maxX, minY, maxY — values from find_edges on the above image.
-    bbox = [10, 89, 20, 79]
-    fce_artifact = json.dumps(bbox).encode()
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="find_content_edges",
-        artifact_bytes=fce_artifact,
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="crop_to_content",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "crop_to_content")
-    assert artifact_path.exists()
-    # Cropped image must be smaller than the original.
-    cropped = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-    assert cropped is not None
-    h, w = cropped.shape[:2]
-    assert h < 100 or w < 100, f"crop_to_content produced same-size image: {h}x{w}"
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_deskew_runs_after_crop_to_content(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`auto_deskew` runs on the output of `crop_to_content` and produces a PNG."""
-    project_id, page_id = "p1", "0000"
-    img = np.zeros((60, 80), dtype=np.uint8)
-    img[10:50, 10:70] = 255
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["crop_to_content"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_deskew",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "auto_deskew")
-    assert artifact_path.exists()
-    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-    assert arr is not None
-
-
-@pytest.mark.asyncio
-async def test_run_stage_morph_fill_runs_after_auto_deskew(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`morph_fill` runs on the output of `auto_deskew` and produces a PNG."""
-    project_id, page_id = "p1", "0000"
-    img = np.zeros((60, 80), dtype=np.uint8)
-    img[10:50, 10:70] = 255
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["auto_deskew"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="morph_fill",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "morph_fill")
-    assert artifact_path.exists()
-    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-    assert arr is not None
-
-
-# ─── Slice 11: rescale + canvas_map ─────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_rescale_runs_after_morph_fill(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`rescale` runs on the output of `morph_fill` and produces a PNG.
-
-    rescale re-inverts before scaling (4m in process_page_cpu) and outputs
-    a grayscale (inverted) image — output_type='image' but single-channel.
-    """
-    project_id, page_id = "p1", "0000"
-    img = np.zeros((60, 80), dtype=np.uint8)
-    img[10:50, 10:70] = 255
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["morph_fill"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="rescale",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "rescale")
-    assert artifact_path.exists()
-    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-    assert arr is not None
+# → threshold → invert → find_content_edges → crop_to_content → auto_deskew
+# → morph_fill → rescale) has been folded into the v2 stages:
+#   grayscale  → crop → threshold → deskew → denoise → dewarp
+#   → post_transform_crop → canvas_map
+# End-to-end v2 chain coverage belongs in test_v2_pipeline.py once all
+# v2 ingest stages are wired end-to-end.
 
 
 @pytest.mark.asyncio
@@ -844,462 +453,11 @@ async def test_run_stage_canvas_map_runs_after_post_transform_crop(
     assert arr is not None
 
 
-# ─── Slice 12: auto_detect_attrs + blank_proof_synth ───────────────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_detect_attrs_produces_json_artifact(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`auto_detect_attrs` runs and emits a page_attrs JSON artifact on disk.
-
-    Parent is `ingest_source` (output_type='image_bytes'). The artifact must
-    be a JSON object with at least 'suggested_type' and 'h_w_ratio'.
-    """
-    import json
-
-    project_id, page_id = "p1", "0000"
-
-    # Build a small white source image (should detect as blank).
-    img = np.full((100, 80, 3), 250, dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_attrs",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "auto_detect_attrs")
-    assert artifact_path.exists()
-    data = json.loads(artifact_path.read_text())
-    assert isinstance(data, dict)
-    assert "suggested_type" in data
-    assert "h_w_ratio" in data
-
-
-@pytest.mark.asyncio
-async def test_run_stage_blank_proof_synth_produces_png_artifact(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`blank_proof_synth` loads `auto_detect_attrs` JSON and produces a PNG.
-
-    The output must be a valid PNG artifact decodable by cv2.
-    """
-    import json
-
-    project_id, page_id = "p1", "0000"
-
-    # Seed auto_detect_attrs with a known-good page_attrs JSON.
-    page_attrs = {"suggested_type": "blank", "h_w_ratio": 1.5, "height": 150, "width": 100}
-    attrs_artifact = json.dumps(page_attrs).encode()
-    await db.init_page_stages_for_page(project_id, page_id)
-    await commit_stage_artifact(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_attrs",
-        artifact_bytes=attrs_artifact,
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="blank_proof_synth",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "blank_proof_synth")
-    assert artifact_path.exists()
-    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_UNCHANGED)
-    assert arr is not None, "blank_proof_synth artifact is not a valid PNG"
-
-
-# ─── Slice 13: ocr_crop + any_parent_ok ────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_ocr_crop_from_canvas_map(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`ocr_crop` can run when only `canvas_map` is clean (normal page path).
-
-    `ocr_crop` has `any_parent_ok=True`; only `canvas_map` OR
-    `blank_proof_synth` needs to be clean. This test verifies the
-    canvas_map-is-clean branch.
-    """
-    project_id, page_id = "p1", "0000"
-    img = np.full((200, 120), 200, dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-
-    # Seed only canvas_map as clean (blank_proof_synth stays not-run).
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["canvas_map"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="ocr_crop",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "ocr_crop")
-    assert artifact_path.exists()
-
-
-@pytest.mark.asyncio
-async def test_run_stage_ocr_crop_from_blank_proof_synth(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`ocr_crop` can run when only `blank_proof_synth` is clean (blank page path).
-
-    Verifies the blank_proof_synth-is-clean branch of any_parent_ok.
-    """
-    project_id, page_id = "p1", "0000"
-    img = np.full((200, 120), 255, dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-
-    # Seed only blank_proof_synth as clean (canvas_map stays not-run).
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["blank_proof_synth"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="ocr_crop",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-
-
-@pytest.mark.asyncio
-async def test_run_stage_ocr_crop_dep_check_fails_when_no_parent_clean(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`ocr_crop` raises StageDependenciesNotMet when neither parent is clean."""
-    project_id, page_id = "p1", "0000"
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    with pytest.raises(StageDependenciesNotMet):
-        await run_stage(
-            data_root=tmp_path,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id="ocr_crop",
-        )
-
-
-# ─── Slice 13: thumbnail, auto_detect_illustrations, text_postprocess ─────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_thumbnail_produces_jpeg_artifact(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`thumbnail` runs on the `ingest_source` artifact and produces a JPEG file.
-
-    Slice 13 registers `_thumbnail_cpu` which takes an ndarray (cv2-decoded
-    from the `ingest_source` image_bytes parent) and returns JPEG bytes.
-    The runner writes them verbatim as `output.jpg`.
-    """
-    project_id, page_id = "p1", "0000"
-    payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="thumbnail",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "thumbnail")
-    assert artifact_path.exists()
-    assert artifact_path.suffix == ".jpg"
-    # Artifact should decode as a valid image.
-    arr = cv2.imdecode(np.frombuffer(artifact_path.read_bytes(), np.uint8), cv2.IMREAD_COLOR)
-    assert arr is not None, "thumbnail artifact is not a valid JPEG"
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_detect_illustrations_produces_json(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`auto_detect_illustrations` runs and produces a JSON artifact.
-
-    Without a layout detector installed, the impl returns an empty list —
-    the stage transitions to `clean` with `[]` JSON (valid empty
-    illustration set). Either outcome satisfies the test.
-    """
-    import json
-
-    project_id, page_id = "p1", "0000"
-    payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_illustrations",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "auto_detect_illustrations")
-    assert artifact_path.exists()
-    data = json.loads(artifact_path.read_text())
-    assert isinstance(data, list), f"expected a JSON list, got {type(data)}"
-
-
-@pytest.mark.asyncio
-async def test_run_stage_text_postprocess_normalises_curly_quotes(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """`text_postprocess` applies curly-quote and em-dash normalisation.
-
-    `ocr` is compound-output so `commit_stage_artifact` refuses to seed it.
-    Instead we write the artifact file directly and upsert the DB row via
-    `put_page_stage` -- the same state the multi-artifact writer will produce
-    when it lands. The runner falls back to loading `ocr` as raw bytes (its
-    output_type 'words+text' is not in _IMAGE_OUTPUT_TYPES or _JSON_OUTPUT_TYPES),
-    and the impl receives those bytes, decodes to str, normalises, and returns a
-    str that the runner encodes to UTF-8 `output.txt`.
-    """
-    from time import time
-
-    project_id, page_id = "p1", "0000"
-    # U+201C/U+201D = curly double quotes; U+2014 = em-dash
-    text_with_curly = "\u201cHello,\u201d he said\u2014quickly."
-    text_bytes = text_with_curly.encode()
-
-    await db.init_page_stages_for_page(project_id, page_id)
-
-    # Write the ocr artifact manually — bypassing commit_stage_artifact which
-    # refuses compound-output stages — then mark the row clean via put_page_stage.
-    ocr_dir = tmp_path / "projects" / project_id / "pages" / page_id / "stages" / "ocr"
-    ocr_dir.mkdir(parents=True, exist_ok=True)
-    (ocr_dir / "output.txt").write_bytes(text_bytes)
-
-    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import compute_content_hash
-
-    await db.put_page_stage(
-        PageStageState(
-            project_id=project_id,
-            page_id=page_id,
-            stage_id="ocr",
-            status=PageStageStatus.clean,
-            stage_version=1,
-            artifact_key=f"projects/{project_id}/pages/{page_id}/stages/ocr/output.txt",
-            input_hash=compute_content_hash(text_bytes),
-            last_run_at=time(),
-        )
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="text_postprocess",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-    artifact_path = stage_artifact_path(tmp_path, project_id, page_id, "text_postprocess")
-    assert artifact_path.exists()
-    result = artifact_path.read_text()
-    # Em-dash should be replaced with double-hyphen.
-    assert "—" not in result
-    assert "--" in result
-
-
-# test_run_stage_full_chain_through_canvas_map was deleted in the v1→v2 migration
-# (Step 5 / I1 review).  The v1 chain (ingest_source → … → canvas_map via
-# decode_source / initial_crop / manual_deskew_pre / threshold / invert /
-# find_content_edges / crop_to_content / auto_deskew / morph_fill / rescale) no
-# longer exists in the v2 DAG where these micro-steps are folded.
-# A dedicated v2 chain test (grayscale → crop → threshold → … → canvas_map)
-# belongs in test_v2_pipeline.py once all v2 ingest stages are wired end-to-end.
-
-
-# ─── Issue #58: not-applicable marking after auto_detect_attrs ────────────
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_detect_attrs_marks_image_chain_not_applicable_for_blank(
-    tmp_path: Path,
-    db: SqliteDatabase,
-) -> None:
-    """After `auto_detect_attrs` detects a blank page, stages decode_source
-    through morph_fill are marked not-applicable in the same transaction."""
-    project_id, page_id = "p1", "0000"
-
-    # Near-white source image — detected as blank by mean_luma heuristic.
-    img = np.full((100, 80, 3), 250, dtype=np.uint8)
-    ok, buf = cv2.imencode(".png", img)
-    assert ok
-    payload = bytes(buf.tobytes())
-
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    state = await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_attrs",
-    )
-
-    assert state.status == PageStageStatus.clean, f"error: {state.error_message!r}"
-
-    na_stages = [
-        "decode_source",
-        "initial_crop",
-        "manual_deskew_pre",
-        "grayscale",
-        "threshold",
-        "invert",
-        "find_content_edges",
-        "crop_to_content",
-        "auto_deskew",
-        "morph_fill",
-    ]
-    for sid in na_stages:
-        row = await db.get_page_stage(project_id, page_id, sid)
-        assert row is not None, f"expected a row for {sid!r} after auto_detect_attrs on blank page"
-        assert row.status == PageStageStatus.not_applicable, (
-            f"stage {sid!r} should be not-applicable for blank page, got {row.status!r}"
-        )
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_detect_attrs_marks_ocr_chain_not_applicable_for_plate_p(
-    tmp_path: Path,
-    db: SqliteDatabase,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """After `auto_detect_attrs` detects plate_p, ocr/text stages are not-applicable."""
-    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
-
-    def _fake_plate_p(img: np.ndarray, cfg=None) -> dict:
-        h, w = img.shape[:2]
-        return {
-            "suggested_type": "plate_p",
-            "suggested_alignment": "default",
-            "confidence": 0.9,
-            "height": h,
-            "width": w,
-            "h_w_ratio": h / w if w > 0 else 1.65,
-        }
-
-    monkeypatch.setitem(stage_registry.STAGE_IMPL["auto_detect_attrs"], "cpu", _fake_plate_p)
-
-    project_id, page_id = "p1", "0000"
-    payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_attrs",
-    )
-
-    na_stages = ["ocr_crop", "ocr", "text_postprocess", "text_review"]
-    for sid in na_stages:
-        row = await db.get_page_stage(project_id, page_id, sid)
-        assert row is not None, f"expected a row for {sid!r} after auto_detect_attrs on plate_p page"
-        assert row.status == PageStageStatus.not_applicable, (
-            f"stage {sid!r} should be not-applicable for plate_p, got {row.status!r}"
-        )
-
-
-@pytest.mark.asyncio
-async def test_run_stage_auto_detect_attrs_no_not_applicable_for_normal_page(
-    tmp_path: Path,
-    db: SqliteDatabase,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """auto_detect_attrs on a normal page leaves all descendant stages as not-run."""
-    from pdomain_prep_for_pgdp.core.pipeline import stage_registry
-
-    def _fake_normal(img: np.ndarray, cfg=None) -> dict:
-        h, w = img.shape[:2]
-        return {
-            "suggested_type": "normal",
-            "suggested_alignment": "default",
-            "confidence": 0.9,
-            "height": h,
-            "width": w,
-            "h_w_ratio": h / w if w > 0 else 1.65,
-        }
-
-    monkeypatch.setitem(stage_registry.STAGE_IMPL["auto_detect_attrs"], "cpu", _fake_normal)
-
-    project_id, page_id = "p1", "0000"
-    payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db, tmp_path, project_id, page_id, parent_stages=["ingest_source"], payload=payload
-    )
-
-    await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=page_id,
-        stage_id="auto_detect_attrs",
-    )
-
-    rows = await db.list_page_stages_for_page(project_id, page_id)
-    for row in rows:
-        if row.stage_id == "auto_detect_attrs":
-            continue
-        assert row.status != PageStageStatus.not_applicable, (
-            f"stage {row.stage_id!r} was unexpectedly marked not-applicable for a normal page"
-        )
-
+# Tests for v1-only stages (auto_detect_attrs, blank_proof_synth, ocr_crop,
+# thumbnail, auto_detect_illustrations, text_postprocess) and the not-applicable
+# marking tests were deleted at R3 (W6.3). These stages no longer exist in
+# V2_STAGE_DAG. The not-applicable concept is also gone from v2 (blank-page
+# logic is canvas_map-internal; plate handling is in the page_type config).
 
 # ─── Slice 14: compound-output stages via multi-artifact writer ────────────
 
@@ -1445,7 +603,7 @@ async def test_run_stage_updates_stage_version(
     db: SqliteDatabase,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After a successful run, the row's stage_version matches STAGE_VERSIONS[stage_id].
+    """After a successful run, the row's stage_version matches V2_STAGE_VERSIONS[stage_id].
 
     Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
     """
@@ -1453,18 +611,13 @@ async def test_run_stage_updates_stage_version(
 
     project_id, page_id = "p1", "0000"
     payload = _checkerboard_bgr_png()
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: grayscale has no page-scoped parents — seed source via BlobStore.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, page_id)
 
     # Bump the registry version for "grayscale" to 2.
-    original = dict(_stage_dag_mod.STAGE_VERSIONS)
-    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, grayscale=2))
+    original = dict(_stage_dag_mod.V2_STAGE_VERSIONS)
+    monkeypatch.setattr(_stage_dag_mod, "V2_STAGE_VERSIONS", dict(original, grayscale=2))
 
     state = await run_stage(
         data_root=tmp_path,
@@ -1476,7 +629,7 @@ async def test_run_stage_updates_stage_version(
 
     assert state.status == PageStageStatus.clean
     assert state.stage_version == 2, (
-        f"stage_version should be updated to STAGE_VERSIONS[stage_id]=2, got {state.stage_version}"
+        f"stage_version should be updated to V2_STAGE_VERSIONS[stage_id]=2, got {state.stage_version}"
     )
 
 
@@ -1528,27 +681,21 @@ async def test_cross_page_cascade_dirties_split_children_when_stage_upstream(
     db: SqliteDatabase,
 ) -> None:
     """Re-running a parent stage upstream of split_at_stage marks each split
-    child's decode_source dirty (issue #55 acceptance bullet 1).
+    child's grayscale dirty (issue #55 acceptance bullet 1).
 
     Setup: parent page 0000; two split children (idx0=1, idx0=2) both with
     split_at_stage="threshold". Run grayscale on parent — grayscale is
-    upstream of threshold, so both children's decode_source must become dirty.
+    upstream of threshold, so both children's grayscale must become dirty.
     """
     project_id = "p1"
     parent_page_id = "0000"
     payload = _checkerboard_bgr_png()
 
-    # Seed parent with manual_deskew_pre clean (grayscale's dependency).
-    await _seed_clean_parents(
-        db,
-        tmp_path,
-        project_id,
-        parent_page_id,
-        parent_stages=["manual_deskew_pre"],
-        payload=payload,
-    )
+    # v2: seed parent source in BlobStore so grayscale can load it.
+    seed_v2_page_source(tmp_path, project_id, 0, payload)
+    await db.init_page_stages_for_page(project_id, parent_page_id)
 
-    # Create two split children, each with decode_source seeded clean.
+    # Create two split children, each with grayscale seeded clean.
     for child_idx0 in (1, 2):
         await _seed_split_child(
             db,
@@ -1557,13 +704,13 @@ async def test_cross_page_cascade_dirties_split_children_when_stage_upstream(
             parent_page_id,
             child_idx0=child_idx0,
             split_at_stage="threshold",
-            clean_stages=["decode_source"],
+            clean_stages=["grayscale"],
             payload=payload,
         )
 
-    # Confirm children's decode_source is clean before the run.
+    # Confirm children's grayscale is clean before the run.
     for child_idx0 in (1, 2):
-        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "decode_source")
+        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "grayscale")
         assert row is not None
         assert row.status == PageStageStatus.clean
 
@@ -1576,12 +723,12 @@ async def test_cross_page_cascade_dirties_split_children_when_stage_upstream(
         stage_id="grayscale",
     )
 
-    # Both children's decode_source must now be dirty.
+    # Both children's grayscale must now be dirty.
     for child_idx0 in (1, 2):
-        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "decode_source")
+        row = await db.get_page_stage(project_id, f"{child_idx0:04d}", "grayscale")
         assert row is not None
         assert row.status == PageStageStatus.dirty, (
-            f"child {child_idx0} decode_source expected dirty, got {row.status}"
+            f"child {child_idx0} grayscale expected dirty, got {row.status}"
         )
 
 
@@ -1593,48 +740,51 @@ async def test_cross_page_cascade_does_not_dirty_children_when_stage_downstream(
     """Re-running a parent stage downstream of split_at_stage does NOT dirty
     split children (issue #55 acceptance bullet 2).
 
-    Setup: parent page 0000; one split child with split_at_stage="decode_source".
-    Run initial_crop on parent — initial_crop is downstream of decode_source,
-    so the child's decode_source must remain clean.
+    Setup: parent page 0000; one split child with split_at_stage="grayscale".
+    Run crop on parent — crop is downstream of grayscale, so the child's
+    grayscale must remain clean.
     """
     project_id = "p1"
     parent_page_id = "0000"
     payload = _checkerboard_bgr_png()
 
-    # Seed parent with decode_source clean so initial_crop can run.
+    # Seed parent with grayscale clean so crop can run.
     await _seed_clean_parents(
         db,
         tmp_path,
         project_id,
         parent_page_id,
-        parent_stages=["decode_source"],
+        parent_stages=["grayscale"],
         payload=payload,
     )
 
-    # Create one split child with split_at_stage="decode_source" and decode_source clean.
+    # Create one split child with split_at_stage="grayscale" and grayscale clean.
     await _seed_split_child(
         db,
         tmp_path,
         project_id,
         parent_page_id,
         child_idx0=1,
-        split_at_stage="decode_source",
-        clean_stages=["decode_source"],
+        split_at_stage="grayscale",
+        clean_stages=["grayscale"],
         payload=payload,
     )
 
-    # Run initial_crop on parent — initial_crop is downstream of decode_source.
-    await run_stage(
-        data_root=tmp_path,
-        database=db,
-        project_id=project_id,
-        page_id=parent_page_id,
-        stage_id="initial_crop",
-    )
+    # Run crop on parent. crop may succeed or fail on the synthetic image; either
+    # way the cascade-to-split-children logic must NOT dirty the child's grayscale
+    # (because grayscale is the split_at_stage, and crop is downstream of it).
+    with contextlib.suppress(StageRunFailed):
+        await run_stage(
+            data_root=tmp_path,
+            database=db,
+            project_id=project_id,
+            page_id=parent_page_id,
+            stage_id="crop",
+        )
 
-    # Child's decode_source must still be clean (not dirtied).
-    row = await db.get_page_stage(project_id, "0001", "decode_source")
+    # Child's grayscale must still be clean (not dirtied).
+    row = await db.get_page_stage(project_id, "0001", "grayscale")
     assert row is not None
     assert row.status == PageStageStatus.clean, (
-        f"child decode_source should stay clean when stage is downstream of split_at_stage, got {row.status}"
+        f"child grayscale should stay clean when stage is downstream of split_at_stage, got {row.status}"
     )

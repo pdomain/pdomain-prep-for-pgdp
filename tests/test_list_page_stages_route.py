@@ -25,7 +25,6 @@ from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageStageState,
     PageStageStatus,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -68,7 +67,6 @@ def _seed(settings: Settings, owner_id: str = "default") -> None:
                 page_count=2,
                 proof_page_count=2,
                 config=ProjectConfig(book_name="m1c", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/m1c/",
             )
         )
@@ -277,7 +275,7 @@ def test_stale_stage_version_served_as_dirty(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A clean row with stage_version=1 is served as dirty when STAGE_VERSIONS
+    """A clean row with stage_version=1 is served as dirty when V2_STAGE_VERSIONS
     has been bumped to 2 for that stage.
 
     Spec: docs/specs/pipeline-task-model.md §"Stage versioning (Q4 lock)".
@@ -301,9 +299,9 @@ def test_stale_stage_version_served_as_dirty(
 
     asyncio.run(_seed_clean_row())
 
-    # Bump STAGE_VERSIONS["grayscale"] to 2 so the row is stale.
-    original = dict(_stage_dag_mod.STAGE_VERSIONS)
-    monkeypatch.setattr(_stage_dag_mod, "STAGE_VERSIONS", dict(original, grayscale=2))
+    # Bump V2_STAGE_VERSIONS["grayscale"] to 2 so the row is stale.
+    original = dict(_stage_dag_mod.V2_STAGE_VERSIONS)
+    monkeypatch.setattr(_stage_dag_mod, "V2_STAGE_VERSIONS", dict(original, grayscale=2))
 
     app = build_app(settings)
     with TestClient(app) as client:
@@ -340,7 +338,6 @@ def test_page_with_complete_status_gets_not_run_stages(tmp_path: Path) -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="legacy", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/legacy/",
             )
         )
@@ -393,7 +390,6 @@ def test_page_with_processing_status_gets_not_run_stages(tmp_path: Path) -> None
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="legacy", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/legacy/",
             )
         )
@@ -443,7 +439,6 @@ def test_page_with_error_status_gets_not_run_stages(tmp_path: Path) -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="legacy", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/legacy/",
             )
         )
@@ -509,7 +504,6 @@ def test_legacy_migration_is_idempotent(tmp_path: Path) -> None:
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="legacy", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/legacy/",
             )
         )

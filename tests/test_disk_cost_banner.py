@@ -161,7 +161,6 @@ def _make_project(project_id: str) -> dict:
             "initial_crop_all": [0, 0, 0, 0],
             "ocr_crop": [0, 0, 0, 0],
         },
-        "pipeline_state": {},
         "storage_prefix": f"projects/{project_id}/",
         "archived": False,
     }

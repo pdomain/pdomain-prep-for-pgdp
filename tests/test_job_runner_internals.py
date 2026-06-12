@@ -26,7 +26,6 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -85,7 +84,6 @@ async def test_on_dispatcher_flush_marks_job_error_when_all_failed(
         page_count=2,
         proof_page_count=2,
         config=ProjectConfig(book_name="t", source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix="projects/dp1/",
     )
     await db.put_project(project)

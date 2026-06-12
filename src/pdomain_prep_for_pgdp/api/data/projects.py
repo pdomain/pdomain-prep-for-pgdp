@@ -22,7 +22,6 @@ from pdomain_prep_for_pgdp.api.dependencies import (
 )
 from pdomain_prep_for_pgdp.core.ingest import extract_zip_image_thumbnail, peek_zip_image_names
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -139,7 +138,6 @@ async def create_project(
         page_count=0,
         proof_page_count=0,
         config=config,
-        pipeline_state=PipelineState(),
         storage_prefix=f"projects/{project_id}/",
     )
     await db.put_project(project)

@@ -24,7 +24,6 @@ from pdomain_prep_for_pgdp.core.models import (
     JobProgress,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -97,7 +96,6 @@ def _seed(db_url: str, project_id: str, job_type: JobType) -> None:
                 page_count=0,
                 proof_page_count=0,
                 config=ProjectConfig(book_name=project_id, source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
             )
         )

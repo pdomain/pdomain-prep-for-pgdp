@@ -40,7 +40,6 @@ def test_new_project_row_stamped_registry_version_2(tmp_path: Path) -> None:
 
     from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
     from pdomain_prep_for_pgdp.core.models import (
-        PipelineState,
         Project,
         ProjectConfig,
         ProjectStatus,
@@ -60,7 +59,6 @@ def test_new_project_row_stamped_registry_version_2(tmp_path: Path) -> None:
             page_count=0,
             proof_page_count=0,
             config=ProjectConfig(book_name="Test Book", source_uri="test://"),
-            pipeline_state=PipelineState(),
             storage_prefix="projects/proj-v2-test",
         )
         await db.put_project(project)
@@ -78,7 +76,6 @@ def test_v1_project_access_raises_registry_version_mismatch(tmp_path: Path) -> N
 
     from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
     from pdomain_prep_for_pgdp.core.models import (
-        PipelineState,
         Project,
         ProjectConfig,
         ProjectStatus,
@@ -102,7 +99,6 @@ def test_v1_project_access_raises_registry_version_mismatch(tmp_path: Path) -> N
             page_count=0,
             proof_page_count=0,
             config=ProjectConfig(book_name="Test Book", source_uri="test://"),
-            pipeline_state=PipelineState(),
             storage_prefix="projects/proj-v1-test",
             registry_version=1,  # v1 project
         )

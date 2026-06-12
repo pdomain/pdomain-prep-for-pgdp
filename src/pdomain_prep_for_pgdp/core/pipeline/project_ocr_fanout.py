@@ -71,43 +71,43 @@ def _load_ocr_input_image(
     page_id: str,
     write_executor: StageWriteExecutor | None,
 ) -> np.ndarray:
-    """Load the post_ocr_crop (or ocr_crop) artifact for a page as an ndarray.
+    """Load the ``post_ocr_crop`` artifact for a page as an ndarray.
 
     Checks the write-executor ndarray cache first (Phase 1 passthrough), then
     falls back to disk decode.  Raises ``FileNotFoundError`` if neither source
-    is available.
+    is available. (v2: the v1 ``ocr_crop`` stage was renamed to
+    ``post_ocr_crop`` and the v1 fallback was removed with the v1 stage DAG.)
     """
     import cv2
     import numpy as np
 
     from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
 
+    parent_stage_id = "post_ocr_crop"
+
     # Try executor cache first (avoids decode entirely when upstream stages ran
     # in the same job session and put an ndarray in the cache).
-    for parent_stage_id in ("post_ocr_crop", "ocr_crop"):
-        if write_executor is not None:
-            cached = write_executor.consume_artifact((project_id, page_id, parent_stage_id))
-            if cached is not None:
-                if isinstance(cached, np.ndarray):
-                    return cached
-                # Bytes in cache (Phase 2: cupy arrays are not expected here for this path,
-                # but guard anyway — skip non-bytes non-ndarray entries).
-                if not isinstance(cached, bytes):
-                    continue
+    if write_executor is not None:
+        cached = write_executor.consume_artifact((project_id, page_id, parent_stage_id))
+        if cached is not None:
+            if isinstance(cached, np.ndarray):
+                return cached
+            # Bytes in cache (Phase 2: cupy arrays are not expected here for this
+            # path, but guard anyway — only decode bytes entries).
+            if isinstance(cached, bytes):
                 arr = np.frombuffer(cached, dtype=np.uint8)
                 img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
                 if img is not None:
                     return img
 
     # Disk fallback.
-    for parent_stage_id in ("post_ocr_crop", "ocr_crop"):
-        path = stage_artifact_path(data_root, project_id, page_id, parent_stage_id)
-        if path.exists():
-            raw = path.read_bytes()
-            arr = np.frombuffer(raw, dtype=np.uint8)
-            img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
-            if img is not None:
-                return img
+    path = stage_artifact_path(data_root, project_id, page_id, parent_stage_id)
+    if path.exists():
+        raw = path.read_bytes()
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+        if img is not None:
+            return img
 
     raise FileNotFoundError(f"page {page_id}: no clean post_ocr_crop artifact found in cache or on disk")
 
@@ -168,9 +168,9 @@ async def _commit_ocr_result(
     # Success: dual-write artifact.
     assert result.output is not None
     try:
-        from pdomain_prep_for_pgdp.core.pipeline.stage_dag import STAGE_VERSIONS
+        from pdomain_prep_for_pgdp.core.pipeline.stage_dag import V2_STAGE_VERSIONS
 
-        stage_version = STAGE_VERSIONS.get(_STAGE_ID, 1)
+        stage_version = V2_STAGE_VERSIONS.get(_STAGE_ID, 1)
         _ = await commit_stage_artifacts_multi(
             data_root=data_root,
             database=database,

@@ -23,7 +23,6 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -65,7 +64,6 @@ def _seed(settings: Settings) -> tuple[str, str]:
                     page_count=1,
                     proof_page_count=1,
                     config=ProjectConfig(book_name=pid, source_uri=""),
-                    pipeline_state=PipelineState(),
                     storage_prefix=f"projects/{pid}/",
                 )
             )

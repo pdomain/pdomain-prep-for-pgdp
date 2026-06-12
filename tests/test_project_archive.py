@@ -27,7 +27,6 @@ from fastapi.testclient import TestClient
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -61,7 +60,6 @@ def _make_project(pid: str, *, owner_id: str = "default", archived: bool = False
         "page_count": 0,
         "proof_page_count": 0,
         "config": ProjectConfig(book_name=pid, source_uri=""),
-        "pipeline_state": PipelineState(),
         "storage_prefix": f"projects/{pid}/",
     }
     if archived:
@@ -107,7 +105,6 @@ def test_project_model_back_compat_missing_archived_key() -> None:
         "page_count": 0,
         "proof_page_count": 0,
         "config": {"book_name": "old", "source_uri": ""},
-        "pipeline_state": {},
         "storage_prefix": "projects/old1/",
         # NOTE: no `archived` key
     }

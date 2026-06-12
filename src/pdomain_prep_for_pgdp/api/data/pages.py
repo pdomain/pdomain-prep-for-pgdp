@@ -860,6 +860,7 @@ async def split_page(
         bbox=body.bbox,
         split_at_stage=body.split_at_stage,
         suffixes=body.suffixes,
+        parent_source_blob_hash=parent_ext.source_blob_hash,
     )
     children_wire = []
     for ops_rec in child_records:
@@ -1053,7 +1054,7 @@ async def list_page_stages(
                 stage_id=sid,
                 status=PageStageStatus.not_run,
             )
-        current_version = _stage_dag.STAGE_VERSIONS.get(row.stage_id, 1)
+        current_version = _stage_dag.V2_STAGE_VERSIONS.get(row.stage_id, 1)
         if row.stage_version < current_version and row.status == PageStageStatus.clean:
             row = row.model_copy(update={"status": PageStageStatus.dirty})
         ordered.append(row)

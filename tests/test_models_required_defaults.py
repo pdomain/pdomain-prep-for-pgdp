@@ -17,10 +17,8 @@ from pdomain_ops.gpu import (
 from pdomain_prep_for_pgdp.core.models import (
     Job,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
-    StepState,
     SystemDefaults,
 )
 
@@ -54,28 +52,19 @@ def test_page_record_required_includes_default_factory_fields() -> None:
         assert name in req, f"{name} missing from required: {req}"
 
 
-def test_step_state_required_includes_default_factory_fields() -> None:
-    req = _required(StepState)
-    assert "pages_complete" in req
-    assert "pages_error" in req
-
-
-def test_pipeline_state_required_includes_default_factory_fields() -> None:
-    assert "steps" in _required(PipelineState)
-
-
 def test_job_required_includes_default_factory_fields() -> None:
     req = _required(Job)
     for name in ("progress", "created_at", "payload"):
         assert name in req, f"{name} missing from required: {req}"
 
 
-def test_project_required_includes_nested_default_factory_fields() -> None:
-    # Project itself doesn't use default_factory, but it nests PipelineState
-    # — its serialization must still produce schemas with the inner fields required.
+def test_project_has_no_pipeline_state_field() -> None:
+    """Project no longer has pipeline_state after R3 v1 model removal."""
     schema = Project.model_json_schema(mode="serialization")
-    pipeline_schema = schema["$defs"]["PipelineState"]
-    assert "steps" in pipeline_schema.get("required", [])
+    props = schema.get("properties", {})
+    assert "pipeline_state" not in props, (
+        "Project.pipeline_state still present in JSON schema — R3 removal not complete"
+    )
 
 
 def test_ocr_page_response_required_includes_default_factory_fields() -> None:

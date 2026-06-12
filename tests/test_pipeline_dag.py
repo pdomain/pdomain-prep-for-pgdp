@@ -7,9 +7,9 @@ Tests assert acyclicity, edge-target sanity, topological order,
 presence of scope/group/type fields, and
 `compute_v2_dirty_descendants` correctness.
 
-V1 DAG tests are removed at I1 — the v1 22-stage STAGE_DAG is retained
-in stage_dag.py for B1-B5 backward-compat but is no longer the canonical
-authority. New code uses V2_STAGE_DAG / V2_PAGE_STAGE_IDS.
+The v1 22-stage STAGE_DAG was removed at R3 (W6.3). All code now uses
+V2_STAGE_DAG / V2_PAGE_STAGE_IDS. V1 projects are blocked at the
+HTTP 409 registry-version gate.
 """
 
 from __future__ import annotations

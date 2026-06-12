@@ -13,7 +13,7 @@ Read-only by default; ``--heal`` mutates:
   path): row's status set to ``failed`` with
   ``error_message="reconcile: file missing at expected path"``.
   Downstream stages cascade to ``dirty`` per the standard dirty
-  propagation (`compute_dirty_descendants`).
+  propagation (`compute_v2_dirty_descendants`).
 - **hash mismatches** (file exists + row exists clean + hashes differ):
   row's status set to ``dirty`` so the next run rewrites. The on-disk
   file is left untouched — the user might want to inspect it.
@@ -47,15 +47,13 @@ from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     MissingFile,
     OrphanFile,
     ReconcileReport,
-    StageArtifactWriteError,
     reconcile_page,
-    stage_artifact_path,
 )
 from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
     ProjectStageStore,
     reindex_project_stages,
 )
-from pdomain_prep_for_pgdp.core.pipeline.stage_dag import compute_dirty_descendants
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import compute_v2_dirty_descendants
 from pdomain_prep_for_pgdp.settings import Settings
 
 if TYPE_CHECKING:
@@ -394,20 +392,20 @@ async def _heal_all(
             descendants_marked += await _mark_descendants_dirty(db, project.id, page_id, mismatch.stage_id)
 
     # Stale-version rows: clean rows whose stored stage_version is behind
-    # STAGE_VERSIONS are marked dirty so the next run refreshes the artifact.
+    # V2_STAGE_VERSIONS are marked dirty so the next run refreshes the artifact.
     stale_marked = 0
     for project, page_id, _report in reports:
         rows = await db.list_page_stages_for_page(project.id, page_id)
         for row in rows:
             if row.status != PageStageStatus.clean:
                 continue
-            current_ver = _stage_dag.STAGE_VERSIONS.get(row.stage_id, 1)
+            current_ver = _stage_dag.V2_STAGE_VERSIONS.get(row.stage_id, 1)
             if row.stage_version < current_ver:
                 updated = row.model_copy(
                     update={
                         "status": PageStageStatus.dirty,
                         "error_message": (
-                            f"reconcile: stage_version {row.stage_version} < STAGE_VERSIONS={current_ver}"
+                            f"reconcile: stage_version {row.stage_version} < V2_STAGE_VERSIONS={current_ver}"
                         ),
                         "last_run_at": time.time(),
                     }
@@ -494,7 +492,7 @@ async def _mark_descendants_dirty(
     and `not-applicable` rows keep their status. `not-run` stays `not-run`.
     Returns the number of rows actually transitioned.
     """
-    descendants = compute_dirty_descendants(stage_id)
+    descendants = compute_v2_dirty_descendants(stage_id)
     transitioned = 0
     for desc_id in descendants:
         current = await db.get_page_stage(project_id, page_id, desc_id)
@@ -530,11 +528,15 @@ async def _rebuild_fts_drift(
     data_root: Path,
     reports: list[tuple[Project, str, ReconcileReport]],
 ) -> int:
-    """Rebuild missing FTS entries for clean text_postprocess pages; return count."""
+    """Rebuild missing FTS entries for clean text_review pages; return count.
+
+    In v2, the final attested text lives in the text_review stage (compound
+    output: output.txt + attestation.json). The FTS artifact is output.txt.
+    """
     rebuilt = 0
     for project, page_id, _report in reports:
-        # Check if this page has a clean text_postprocess stage row.
-        tp_row = await db.get_page_stage(project.id, page_id, "text_postprocess")
+        # Check if this page has a clean text_review stage row.
+        tp_row = await db.get_page_stage(project.id, page_id, "text_review")
         if tp_row is None or tp_row.status != PageStageStatus.clean:
             continue
 
@@ -543,11 +545,11 @@ async def _rebuild_fts_drift(
         if already_indexed:
             continue
 
-        # Read the text artifact from disk and upsert.
-        try:
-            artifact_path = stage_artifact_path(data_root, project.id, page_id, "text_postprocess")
-        except StageArtifactWriteError:
-            continue
+        # text_review is compound-output: artifact lives in the stage directory
+        # as output.txt (not via stage_artifact_path which is for single-file stages).
+        artifact_path = (
+            data_root / "projects" / project.id / "pages" / page_id / "stages" / "text_review" / "output.txt"
+        )
         if not artifact_path.exists():
             continue
 

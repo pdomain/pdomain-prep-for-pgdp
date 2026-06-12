@@ -21,7 +21,6 @@ from pathlib import Path
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -68,7 +67,6 @@ def _seed_project(
                     source_uri="",
                     author=author,
                 ),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
                 registry_version=registry_version,
             )

@@ -25,7 +25,6 @@ from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageSplit,
     PageType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -66,7 +65,6 @@ def _seed(settings: Settings) -> None:
                 page_count=5,
                 proof_page_count=5,
                 config=ProjectConfig(book_name="t", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/pf1/",
             )
         )

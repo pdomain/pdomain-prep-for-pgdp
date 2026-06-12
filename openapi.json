@@ -8193,22 +8193,6 @@
         ],
         "title": "PageType"
       },
-      "PipelineState": {
-        "properties": {
-          "steps": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/StepState"
-            },
-            "type": "object",
-            "title": "Steps"
-          }
-        },
-        "type": "object",
-        "required": [
-          "steps"
-        ],
-        "title": "PipelineState"
-      },
       "Project": {
         "properties": {
           "id": {
@@ -8248,9 +8232,6 @@
           "config": {
             "$ref": "#/components/schemas/ProjectConfig"
           },
-          "pipeline_state": {
-            "$ref": "#/components/schemas/PipelineState"
-          },
           "storage_prefix": {
             "type": "string",
             "title": "Storage Prefix"
@@ -8287,7 +8268,6 @@
           "page_count",
           "proof_page_count",
           "config",
-          "pipeline_state",
           "storage_prefix",
           "archived",
           "stage_artifacts_bytes",
@@ -8770,83 +8750,6 @@
         "type": "object",
         "title": "StageRunRequest",
         "description": "Request body for POST .../stages/{stage_id}/run (page and project).\n\napi-v2-deltas.md \u00a73."
-      },
-      "StepState": {
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/StepStatus",
-            "default": "pending"
-          },
-          "pages_complete": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Pages Complete"
-          },
-          "pages_error": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Pages Error"
-          },
-          "started_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Started At"
-          },
-          "completed_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completed At"
-          },
-          "job_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "pages_complete",
-          "pages_error",
-          "started_at",
-          "completed_at",
-          "job_id"
-        ],
-        "title": "StepState"
-      },
-      "StepStatus": {
-        "type": "string",
-        "enum": [
-          "pending",
-          "running",
-          "complete",
-          "error"
-        ],
-        "title": "StepStatus"
       },
       "SuggestIllustrationsRequest": {
         "properties": {

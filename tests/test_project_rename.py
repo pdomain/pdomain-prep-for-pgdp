@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
 from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -53,7 +52,6 @@ def _seed(settings: Settings) -> None:
                 page_count=0,
                 proof_page_count=0,
                 config=ProjectConfig(book_name="old-name", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/rename1/",
             )
         )

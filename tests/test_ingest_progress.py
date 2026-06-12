@@ -25,7 +25,6 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -76,7 +75,6 @@ async def test_unzip_emits_per_page_progress_events(
         page_count=0,
         proof_page_count=0,
         config=ProjectConfig(book_name="t", source_uri=""),
-        pipeline_state=PipelineState(),
         storage_prefix="projects/ip1/",
     )
     await db.put_project(project)

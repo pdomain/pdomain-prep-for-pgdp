@@ -415,6 +415,7 @@ async def _handle_thumbnails(runner: InProcessJobRunner, job: Job) -> None:
         database=runner.db,
         progress_cb=_report,
         page_service=_ps_thumb,
+        data_root=runner._data_root,
     )
     _ = await runner.update_progress(
         job,

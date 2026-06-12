@@ -28,7 +28,6 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -66,7 +65,6 @@ def _seed_project_and_job(settings: Settings, status: JobStatus) -> str:
                 page_count=2,
                 proof_page_count=2,
                 config=ProjectConfig(book_name="t", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/r1/",
             )
         )
@@ -108,7 +106,6 @@ def _seed_run_page_stage_job(
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name="t", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
             )
         )

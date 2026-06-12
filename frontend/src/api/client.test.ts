@@ -48,7 +48,6 @@ describe("api.post against /api/data/projects (msw)", () => {
             archived: false,
             stage_artifacts_bytes: 0,
             source_zip_bytes: 0,
-            pipeline_state: { steps: {} },
             registry_version: 2,
             config: {
               book_name: "Belloc — The Four Men",
@@ -123,7 +122,6 @@ describe("api.post against /api/data/projects (msw)", () => {
               archived: false,
               stage_artifacts_bytes: 0,
               source_zip_bytes: 0,
-              pipeline_state: { steps: {} },
               registry_version: 2,
               config: {
                 book_name: "x",

@@ -23,7 +23,6 @@ from pdomain_prep_for_pgdp.bootstrap import build_app
 from pdomain_prep_for_pgdp.core.models import (
     PageProcessingStatus,
     PageRecord,
-    PipelineState,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -67,7 +66,6 @@ def _seed_project(settings, project_id: str = "proj1", registry_version: int = 2
                 page_count=1,
                 proof_page_count=1,
                 config=ProjectConfig(book_name=project_id, source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix=f"projects/{project_id}/",
                 registry_version=registry_version,
             )
@@ -313,7 +311,6 @@ def test_source_stage_settings_no_page_required(tmp_path):
 
     from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
     from pdomain_prep_for_pgdp.core.models import (
-        PipelineState,
         Project,
         ProjectConfig,
         ProjectStatus,
@@ -334,7 +331,6 @@ def test_source_stage_settings_no_page_required(tmp_path):
                 page_count=0,
                 proof_page_count=0,
                 config=ProjectConfig(book_name="no-page-proj", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/proj-nopage/",
                 registry_version=2,
             )

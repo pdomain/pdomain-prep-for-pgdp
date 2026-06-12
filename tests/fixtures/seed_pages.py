@@ -131,3 +131,47 @@ def seed_page_in_store(
     Use this wherever tests previously called ``await db.put_page(page)``.
     """
     seed_pages_in_store(settings_or_root, project_id, [page], project_name=project_name)
+
+
+def seed_v2_page_source(
+    data_root: Path,
+    project_id: str,
+    idx0: int,
+    image_bytes: bytes,
+) -> None:
+    """Seed a page's source image into the BlobStore for v2 root-stage tests.
+
+    This is the v2 equivalent of seeding a `manual_deskew_pre` artifact for
+    `grayscale`: instead of writing to the page_stages artifact directory, we
+    write the source image into the BlobStore and create a PrepPageExtension
+    with the ``source_blob_hash`` set, exactly as `unzip_source` does in
+    production.
+
+    After calling this, ``run_stage(..., stage_id="grayscale")`` will find the
+    source bytes via the BlobStore path and execute correctly.
+    """
+    svc = build_page_service(data_root, project_id)
+    proj_uuid = _to_uuid(project_id)
+
+    # Load existing project aggregate or create a new one.
+    try:
+        proj_agg = svc.store.get_project(proj_uuid)
+    except Exception:
+        proj_record = ProjectRecord(project_id=proj_uuid, name="Test")
+        proj_agg = ProjectAggregate(record=proj_record)
+
+    source_hash = svc.blobs.write(image_bytes)
+    page_uuid = uuid.uuid4()
+    ops_record = OpsPageRecord(page_id=page_uuid, page_index=idx0, source="raw")
+    ext = PrepPageExtension(
+        project_id=project_id,
+        idx0=idx0,
+        prefix="",
+        source_stem=f"img{idx0:04d}",
+        source_blob_hash=source_hash,
+    )
+    set_extension(ops_record, "prep", ext)
+    page_agg = PageAggregate(record=ops_record)
+    svc.store.save_page(page_agg)
+    proj_agg.add_page(page_id=page_uuid, page_index=idx0)
+    svc.store.save_project(proj_agg)

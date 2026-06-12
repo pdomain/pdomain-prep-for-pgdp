@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from pdomain_prep_for_pgdp.core.models import PageStageState, PageStageStatus
 
-from .stage_dag import STAGE_DAG, get_stage, get_v2_stage
+from .stage_dag import V2_STAGE_DAG, get_v2_stage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -230,16 +230,10 @@ def write_artifact_file_sync(
 def _ext_for_stage(stage_id: str) -> str:
     """Resolve the canonical file extension for `stage_id`'s output, or raise.
 
-    Tries the v1 STAGE_DAG first, then falls back to the v2 DAG so that
-    v2-only stages (wordcheck, hyphen_join, …) are also covered.
-
-    Raises ``StageArtifactWriteError`` for compound-output stages and
-    ``KeyError`` for unknown stage_ids.
+    Looks up the stage in the v2 DAG. Raises ``StageArtifactWriteError``
+    for compound-output stages and ``KeyError`` for unknown stage_ids.
     """
-    try:
-        stage_output_type = get_stage(stage_id).output_type
-    except KeyError:
-        stage_output_type = get_v2_stage(stage_id).output_type
+    stage_output_type = get_v2_stage(stage_id).output_type
 
     if stage_output_type in COMPOUND_OUTPUT_TYPES:
         raise StageArtifactWriteError(
@@ -300,10 +294,7 @@ def _write_thumbnail(
     Silently skips non-image stages and swallows I/O errors so a thumbnail
     failure never blocks the primary write path.
     """
-    try:
-        stage_output_type = get_stage(stage_id).output_type
-    except KeyError:
-        stage_output_type = get_v2_stage(stage_id).output_type
+    stage_output_type = get_v2_stage(stage_id).output_type
     thumb_bytes = make_stage_thumbnail_bytes(artifact_bytes, stage_output_type)
     if thumb_bytes is None:
         return
@@ -451,21 +442,9 @@ async def commit_stage_artifact(
         with contextlib.suppress(OSError):
             prior_snapshot.unlink()
 
-    # FTS index upsert for text_postprocess (spec §"Index update path").
-    # Requires idx0 to be passed by the caller; skipped silently when absent
-    # (e.g. older call sites not yet updated). The reindex --heal path
-    # back-fills missing entries.
-    if stage_id == "text_postprocess" and idx0 is not None:
-        try:
-            ocr_text = artifact_bytes.decode("utf-8", errors="replace")
-            await database.upsert_page_text(project_id, page_id, idx0, ocr_text)
-        except Exception:
-            log.warning(
-                "FTS index upsert failed for %s/%s (non-fatal; reindex --heal can repair)",
-                project_id,
-                page_id,
-                exc_info=True,
-            )
+    # FTS index upsert: v1 text_postprocess trigger removed at R3 (W6.3).
+    # v2 equivalent (text_review) is compound-output and triggers FTS from
+    # commit_stage_artifacts_multi. This path is a no-op for all v2 stages.
 
     # Best-effort thumbnail write (not part of the dual-write contract).
     _write_thumbnail(data_root, project_id, page_id, stage_id, artifact_bytes)
@@ -488,6 +467,7 @@ async def commit_stage_artifacts_multi(
     stage_version: int = 1,
     config_hash: str | None = None,
     job_id: str | None = None,
+    idx0: int | None = None,
 ) -> PageStageState:
     """Atomically commit a set of stage output files + DB row.
 
@@ -670,6 +650,21 @@ async def commit_stage_artifacts_multi(
             with contextlib.suppress(OSError):
                 snap.unlink()
 
+    # FTS index upsert for text_review (v2 final attested text stage).
+    # Mirrors commit_stage_artifact's FTS path. Requires idx0; skipped
+    # silently when absent. reindex --heal back-fills missing entries.
+    if stage_id == "text_review" and "output.txt" in files and idx0 is not None:
+        try:
+            ocr_text = files["output.txt"].decode("utf-8", errors="replace")
+            await database.upsert_page_text(project_id, page_id, idx0, ocr_text)
+        except Exception:
+            log.warning(
+                "FTS index upsert failed for %s/%s (non-fatal; reindex --heal can repair)",
+                project_id,
+                page_id,
+                exc_info=True,
+            )
+
     return state
 
 
@@ -803,10 +798,15 @@ async def reconcile_page(
         try:
             expected = stage_artifact_path(data_root, project_id, page_id, stage_id)
         except StageArtifactWriteError:
-            # Compound stages aren't yet writable through this writer; if a
-            # row claims clean for one, treat it as a "missing" report at
-            # the stage-dir level.
-            expected = page_root / stage_id / "output"
+            # Compound stages use a dedicated multi-file writer. Resolve the
+            # primary file using COMPOUND_PRIMARY_FILENAME so the missing-file
+            # check works correctly (e.g. text_review → output.txt).
+            try:
+                output_type = get_v2_stage(stage_id).output_type
+                primary_name = COMPOUND_PRIMARY_FILENAME.get(output_type, "output")
+            except KeyError:
+                primary_name = "output"
+            expected = page_root / stage_id / primary_name
         if not expected.exists():
             missing.append(
                 MissingFile(
@@ -844,7 +844,7 @@ async def reconcile_page(
             )
 
     # Pass 2: on-disk files that don't have a matching clean row.
-    known_stage_ids = {s.id for s in STAGE_DAG}
+    known_stage_ids = {s.id for s in V2_STAGE_DAG}
     for stage_id, path in on_disk.items():
         if stage_id not in known_stage_ids:
             # File under an unknown stage_id is always an orphan.

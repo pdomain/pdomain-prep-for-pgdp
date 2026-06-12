@@ -150,7 +150,7 @@ def test_search_cross_user_isolation(tmp_path) -> None:
     from datetime import UTC, datetime
 
     from pdomain_prep_for_pgdp.bootstrap import build_app
-    from pdomain_prep_for_pgdp.core.models import PipelineState, Project, ProjectConfig, ProjectStatus
+    from pdomain_prep_for_pgdp.core.models import Project, ProjectConfig, ProjectStatus
     from pdomain_prep_for_pgdp.settings import Settings
 
     settings = Settings(
@@ -182,7 +182,6 @@ def test_search_cross_user_isolation(tmp_path) -> None:
                 page_count=0,
                 proof_page_count=0,
                 config=ProjectConfig(book_name="other book", source_uri=""),
-                pipeline_state=PipelineState(),
                 storage_prefix="projects/proj-other/",
             )
         )
