@@ -1553,10 +1553,65 @@ def _canvas_map_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray
     )
 
 
+def _denoise_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """v2 denoise stage on GPU (book-tools 0.19.0+: denoise_binary_gpu).
+
+    Polarity bridge: the v2 pipeline carries text=255/bg=0 (from threshold).
+    ``denoise_binary_gpu`` expects text=0/bg=255 (same as the CPU counterpart).
+    This impl:
+      1. Passes ``skip_denoise`` check — returns input unchanged if True.
+      2. Uploads to CuPy if not already a device array.
+      3. Inverts to text=0/bg=255 (CuPy bitwise_not).
+      4. Calls ``denoise_binary_gpu`` with ``min_component_area`` and
+         ``median_kernel_size`` from resolved config (W1 settings).
+      5. Inverts back to text=255/bg=0.
+
+    Bit-exact with ``_denoise_cpu`` on binary images: connected-component
+    filtering is deterministic (no floating-point arithmetic).
+
+    Availability guard: falls back to CPU if CuPy is absent at import time.
+    """
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        cp as _cp,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (
+        require_cupy,
+    )
+    from pdomain_book_tools.image_processing.cupy_processing.denoise import (  # pyright: ignore[reportMissingImports]
+        denoise_binary_gpu,
+    )
+
+    require_cupy()
+    assert _cp is not None  # narrowed: require_cupy() raises if CuPy absent
+
+    # Skip if explicitly configured
+    if cfg is not None and cfg.skip_denoise:
+        return image  # pyright: ignore[reportReturnType]
+
+    # Resolve tunable params from cfg (W1.2 — same as CPU counterpart)
+    min_area = cfg.denoise_min_component_area if cfg is not None else 6
+    med_kernel = cfg.denoise_median_kernel_size if cfg is not None else 0
+
+    # Ensure input is on GPU
+    img_cp = _cp.asarray(image) if not isinstance(image, _cp.ndarray) else image
+
+    # Bridge: text=255/bg=0 → text=0/bg=255 for denoise_binary_gpu
+    inverted = _cp.bitwise_not(img_cp)
+
+    cleaned_inv = denoise_binary_gpu(
+        inverted,  # pyright: ignore[reportArgumentType]
+        min_component_area=min_area,
+        median_kernel_size=med_kernel,
+    )
+
+    # Bridge back: text=0/bg=255 → text=255/bg=0
+    return _cp.bitwise_not(cleaned_inv)  # pyright: ignore[reportReturnType]
+
+
 # ─── GPU capability table ─────────────────────────────────────────────────────
 #
 # A stage is GPU-capable if and only if ALL its internal micro-steps have
-# CuPy mirrors in book-tools 0.18.3.
+# CuPy mirrors in book-tools 0.19.0.
 #
 # Stage           GPU-capable?  Reason if not
 # --------------- ------------- -------------------------------------------------
@@ -1566,24 +1621,31 @@ def _canvas_map_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray
 # dewarp          YES           TextlineDisparityDewarp prefer_gpu=True
 # post_transform_crop YES       CuPy array slice (trivial)
 # canvas_map      YES           morph_fill + rescale_image_gpu + canvas_map_gpu
-# denoise         NO            cupyx connected-components mirror absent in 0.18.3
+# denoise         YES           denoise_binary_gpu (cupy_processing.denoise) — book-tools 0.19.0
 # crop            NO            find_edges uses cv2 projections; no cupy mirror
 # grayscale       NO            bgr-to-gray (cupy exists but not wired here)
 # post_ocr_crop   NO            array slice only; not in image-prep hot path
+#
+# With denoise GPU-capable, the image-prep chain is a SINGLE GPU island:
+#   threshold → deskew → denoise → dewarp → post_transform_crop → canvas_map
 #
 # The set below drives:
 #   1. _build_gpu_entries: which stages get a ``gpu`` key in V2_STAGE_IMPL.
 #   2. segment_runner.is_gpu_capable_stage: which stages can run on-device.
 
 _GPU_CAPABLE_STAGE_IDS: frozenset[str] = frozenset(
-    {"threshold", "deskew", "dewarp", "post_transform_crop", "canvas_map"}
+    {"threshold", "deskew", "dewarp", "post_transform_crop", "canvas_map", "denoise"}
 )
 
 GPU_CAPABLE_STAGES: frozenset[str] = _GPU_CAPABLE_STAGE_IDS
-"""Set of v2 stage IDs that have GPU-resident implementations in book-tools 0.18.3.
+"""Set of v2 stage IDs that have GPU-resident implementations in book-tools 0.19.0.
 
 A stage is included only when ALL its internal micro-steps have CuPy mirrors.
 Stages absent from this set run on CPU regardless of the selected device.
+
+With book-tools 0.19.0 (``denoise_binary_gpu`` shipped), the entire
+image-prep chain is a single GPU island:
+  threshold -> deskew -> denoise -> dewarp -> post_transform_crop -> canvas_map
 
 Import this to check whether a stage can participate in a GPU segment.
 """
@@ -1594,6 +1656,7 @@ _GPU_IMPL_MAP: dict[str, StageImpl] = {
     "dewarp": _dewarp_gpu,
     "post_transform_crop": _post_transform_crop_gpu,
     "canvas_map": _canvas_map_v2_gpu,
+    "denoise": _denoise_v2_gpu,
 }
 
 
