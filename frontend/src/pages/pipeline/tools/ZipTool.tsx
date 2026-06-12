@@ -12,7 +12,7 @@
  */
 
 import type { ReactNode } from "react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import { zipToolMachine, type ZipArchive } from "@/machines/tools/zipTool";
@@ -20,7 +20,11 @@ import type { TreeRow } from "@/machines/tools/proofPackTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
-import { buildRealZipToolServices } from "@/services/tools/zipTool";
+import {
+  buildRealZipToolServices,
+  fetchZipManifest,
+} from "@/services/tools/zipTool";
+import { subscribeProject } from "@/services/sse";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -222,6 +226,33 @@ export function ZipTool({
   });
 
   const [tab, setTab] = useState("overview");
+
+  // Wire SSE: translate project-stage-status { stage_id: "zip", status: "clean" }
+  // → fetch manifest → ZIP_DONE { archive, tree }.
+  // On "failed" → ZIP_FAILED.
+  useEffect(() => {
+    const unsubscribe = subscribeProject(projectId, (event) => {
+      if (event.type !== "project-stage-status") return;
+      if (event.stage_id !== "zip") return;
+      if (event.status === "clean") {
+        void fetchZipManifest(projectId).then((result) => {
+          if (result !== null) {
+            send({
+              type: "ZIP_DONE",
+              archive: result.archive,
+              tree: result.tree,
+            });
+          }
+        });
+      } else if (event.status === "failed") {
+        send({
+          type: "ZIP_FAILED",
+          error: new Error(event.error_message ?? "zip stage failed"),
+        });
+      }
+    });
+    return unsubscribe;
+  }, [projectId, send]);
 
   const ctx = snapshot.context;
   const isCompressing = snapshot.matches("compressing");

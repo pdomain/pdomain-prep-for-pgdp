@@ -1840,3 +1840,67 @@ side-effect action → `buildRealTextZonesToolServices().persistLayout(projectId
 from `OUTPUT_EXT_BY_TYPE` in `page_stage_writer.py`. Added `"zone_json": "json"`
 so `stage_artifact_path()` and `stage_artifact_key()` resolve correctly
 (path = `output.json`).
+---
+
+## R2 wiring (2026-06-12) — I2 DRIFT stubs resolved
+
+### R2-1 — buildPackageTool: structured manifest via dedicated route {#resolved-I2}
+
+**DRIFT stub (I2):** `buildPackageTool.ts` service returned a scaffold
+`{ deliverable: { files: [], count: 0 }, manifest: { ... empty ... } }` because
+the `build_package` artifact route returned raw ZIP bytes, not structured JSON.
+
+**Resolution (R2):** A dedicated manifest route was added to the backend:
+
+```
+GET /api/data/projects/{id}/project-stages/build_package/manifest
+    → { deliverable: { files: TreeRow[], count }, manifest: { project, pages, canvas, built, pipeline, files, sha256 } }
+```
+
+The route reads `stages/build_package/output.zip`, extracts the embedded `pgdp.json`,
+derives `BuildManifest` summary, and returns the full tree listing as `BuildDeliverable`.
+Returns 404 when the stage is not clean or the artifact ZIP is missing.
+
+`buildArtifacts` in `services/tools/buildPackageTool.ts` now:
+
+1. POSTs `/project-stages/build_package/run` (fire-and-forget).
+2. Polls `GET .../build_package/manifest` until 200 (same pattern as `proofPackTool`).
+
+**Files changed:** `src/pdomain_prep_for_pgdp/api/data/project_stages.py`,
+`frontend/src/services/tools/buildPackageTool.ts`.
+
+**Tests added:** `tests/test_r2_build_package_manifest.py` (6 tests).
+
+---
+
+### R2-2 — zipTool: SSE-driven ZIP_DONE via project-stage-status events {#resolved-I2}
+
+**DRIFT stub (I2):** `zipTool.ts` had no `fetchManifest` helper. `ZipTool.tsx`
+never subscribed to the project SSE channel — the machine started in `compressing`
+and waited for `ZIP_DONE` events that never arrived in production.
+
+**Resolution (R2):** A dedicated manifest route was added to the backend:
+
+```
+GET /api/data/projects/{id}/project-stages/zip/manifest
+    → { archive: { name, entries, bytes, ratio, sha256 }, tree: TreeRow[] }
+```
+
+The route reads `stages/zip/output.json` for archive metadata and
+`stages/build_package/output.zip` for the entry listing. Returns 404 when the
+zip stage is not clean or output.json is missing. Tree is empty (not 404) when
+the build_package ZIP is missing.
+
+`ZipTool.tsx` now subscribes via `subscribeProject()` in a `useEffect`:
+
+- On `{ type: "project-stage-status", stage_id: "zip", status: "clean" }`:
+  fetches `GET .../zip/manifest` and sends `ZIP_DONE { archive, tree }` to the machine.
+- On `status: "failed"`: sends `ZIP_FAILED { error }` to the machine.
+
+`services/tools/zipTool.ts` exports `fetchZipManifest(projectId)` for use by
+the component.
+
+**Files changed:** `src/pdomain_prep_for_pgdp/api/data/project_stages.py`,
+`frontend/src/services/tools/zipTool.ts`, `frontend/src/pages/pipeline/tools/ZipTool.tsx`.
+
+**Tests added:** `tests/test_r2_zip_manifest.py` (7 tests).
