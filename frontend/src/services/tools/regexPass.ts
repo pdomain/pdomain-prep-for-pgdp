@@ -1,12 +1,16 @@
 /**
  * regexPass.ts — Real RegexPassServices backed by the v2 API.
  *
- * DRIFT: Neither GET rules nor POST apply route exists at I1.
- * Stubbed; add to project_stages.py at I2.
+ * Routes (R2 imagetools — DRIFT resolved):
+ *   GET  /api/data/projects/{id}/project-stages/regex/rules
+ *          → { rules, counts, snapshotId }
+ *   POST /api/data/projects/{id}/project-stages/regex/rules/{ruleId}/apply
+ *          → { rule, counts }
  *
  * @see frontend/src/machines/tools/regexPass.ts — RegexPassServices
  */
 
+import { api } from "@/api/client";
 import type {
   RegexPassServices,
   RegexRule,
@@ -15,34 +19,40 @@ import type {
 // W5.2 — include real stageSettings methods (save-as-default / revert / reset)
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
+function regexBase(projectId: string): string {
+  return `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/regex`;
+}
+
 /**
  * Fetch regex rules and counts.
  *
- * DRIFT: route not implemented at I1 — returns empty rules list.
+ * GET /api/data/projects/{id}/project-stages/regex/rules
+ * → { rules, counts, snapshotId }
  */
-function fetchRules(_projectId: string): Promise<{
+async function fetchRules(projectId: string): Promise<{
   rules: RegexRule[];
   counts: RegexCounts;
   snapshotId: string | null;
 }> {
-  return Promise.resolve({
-    rules: [],
-    counts: { rules: 0, applied: 0, review: 0, pending: 0, matches: 0 },
-    snapshotId: null,
-  });
+  return api.get<{
+    rules: RegexRule[];
+    counts: RegexCounts;
+    snapshotId: string | null;
+  }>(`${regexBase(projectId)}/rules`);
 }
 
 /**
  * Apply a single regex rule.
  *
- * DRIFT: route not implemented at I1.
+ * POST /api/data/projects/{id}/project-stages/regex/rules/{ruleId}/apply
+ * → { rule, counts }
  */
-function applyRule(
-  _projectId: string,
-  _ruleId: string,
+async function applyRule(
+  projectId: string,
+  ruleId: string,
 ): Promise<{ rule: RegexRule; counts: RegexCounts }> {
-  return Promise.reject(
-    new Error("RegexPass.applyRule not yet implemented at I1"),
+  return api.post<{ rule: RegexRule; counts: RegexCounts }>(
+    `${regexBase(projectId)}/rules/${encodeURIComponent(ruleId)}/apply`,
   );
 }
 

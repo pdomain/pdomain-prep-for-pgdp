@@ -1,16 +1,14 @@
 /**
  * grayscaleTool.ts — Real GrayscaleToolServices backed by the v2 API.
  *
- * NOTE: POST /api/projects/:id/stages/grayscale/detect does not exist at I1.
- * The stage settings GET returns config that includes the detected profile.
- * At I1 we stub detectProfile — real detection is I2.
- *
- * DRIFT: Add POST /api/data/projects/{id}/pages/0000/stages/grayscale/detect
- * to pages.py at I2.
+ * Routes (R2 imagetools — DRIFT resolved):
+ *   POST /api/data/projects/{id}/project-stages/grayscale/detect
+ *          → { mode, why, backend }
  *
  * @see frontend/src/machines/tools/grayscaleTool.ts — GrayscaleToolServices
  */
 
+import { api } from "@/api/client";
 import type {
   GrayscaleToolServices,
   GrayscaleMode,
@@ -20,24 +18,24 @@ import type {
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
 /**
- * Detect grayscale profile.
+ * Detect grayscale profile by sampling page images.
  *
- * DRIFT: route not implemented at I1 — returns a default profile.
+ * POST /api/data/projects/{id}/project-stages/grayscale/detect
+ * → { mode, why, backend }
+ *
+ * Backend heuristic: samples up to 8 page images, measures chromatic energy.
+ * Returns "perceptual" for colour-biased sources, "standard" for B&W line art.
  */
-function detectProfile(
-  _projectId: string,
+async function detectProfile(
+  projectId: string,
 ): Promise<{ mode: GrayscaleMode; why: string; backend: GrayscaleBackend }> {
-  // No backend route yet — return sensible default.
-  const result: {
+  return api.post<{
     mode: GrayscaleMode;
     why: string;
     backend: GrayscaleBackend;
-  } = {
-    mode: "perceptual",
-    why: "Default (I1 stub — real detection at I2)",
-    backend: "cpu",
-  };
-  return Promise.resolve(result);
+  }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/grayscale/detect`,
+  );
 }
 
 // ---------------------------------------------------------------------------

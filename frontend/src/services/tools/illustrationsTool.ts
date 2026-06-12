@@ -1,47 +1,57 @@
 /**
  * illustrationsTool.ts — Real IllustrationsToolServices backed by the v2 API.
  *
- * All routes are stubbed at I1. The backend runs the illustrations stage
- * via the project-stage run route but has no separate aggregation endpoints.
- *
- * DRIFT: Add POST /api/data/projects/{id}/stages/illustrations/detect
- * and PATCH /api/data/projects/{id}/stages/illustrations/regions/{id}
- * to project_stages.py at I2.
+ * Routes (R2 imagetools — DRIFT resolved):
+ *   POST  /api/data/projects/{id}/project-stages/illustrations/detect
+ *           → { items: IllustrationRegion[], counts: IllustrationCounts }
+ *   PATCH /api/data/projects/{id}/project-stages/illustrations/regions/{regionId}
+ *           → { ok: boolean }
  *
  * @see frontend/src/machines/tools/illustrationsTool.ts — IllustrationsToolServices
  */
 
+import { api } from "@/api/client";
 import type {
   IllustrationsToolServices,
   IllustrationRegion,
   IllustrationCounts,
 } from "@/machines/tools/illustrationsTool";
 
+function illustrationsBase(projectId: string): string {
+  return `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/illustrations`;
+}
+
 /**
  * Detect illustration regions.
  *
- * DRIFT: route not implemented at I1 — returns empty result.
+ * POST /api/data/projects/{id}/project-stages/illustrations/detect
+ * → { items, counts }
+ *
+ * Returns previously-saved regions seeded from page-extension data.
+ * Future: triggers real layout-detector run on source images.
  */
-function detectRegions(
-  _projectId: string,
+async function detectRegions(
+  projectId: string,
 ): Promise<{ items: IllustrationRegion[]; counts: IllustrationCounts }> {
-  return Promise.resolve({
-    items: [],
-    counts: { detected: 0, extracted: 0, review: 0, flagged: 0 },
-  });
+  return api.post<{ items: IllustrationRegion[]; counts: IllustrationCounts }>(
+    `${illustrationsBase(projectId)}/detect`,
+  );
 }
 
 /**
  * Persist an updated illustration region.
  *
- * DRIFT: route not implemented at I1 — no-op.
+ * PATCH /api/data/projects/{id}/project-stages/illustrations/regions/{regionId}
+ * → { ok: boolean }
  */
-function persistRegion(
-  _projectId: string,
-  _region: IllustrationRegion,
+async function persistRegion(
+  projectId: string,
+  region: IllustrationRegion,
 ): Promise<void> {
-  // No-op at I1.
-  return Promise.resolve();
+  await api.patch<{ ok: boolean }>(
+    `${illustrationsBase(projectId)}/regions/${encodeURIComponent(region.id)}`,
+    region,
+  );
 }
 
 // ---------------------------------------------------------------------------
