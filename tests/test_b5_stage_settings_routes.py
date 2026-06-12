@@ -263,3 +263,128 @@ def test_put_stage_settings_422_v1_stage_id(tmp_path):
             json={},
         )
     assert r.status_code == 422
+
+
+# ─── Project-scoped stage settings (source) ──────────────────────────────────
+
+
+# Use "source" as the canonical project-scoped stage for settings tests.
+_SOURCE_STAGE_ID = "source"
+
+
+def test_get_source_stage_settings_returns_dict(tmp_path):
+    """GET .../stages/source/settings returns a dict (no page required)."""
+    settings = _settings(tmp_path)
+    _seed_project(settings, "proj1")
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.get(f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings")
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body, dict)
+
+
+def test_source_stage_save_as_default_and_get_roundtrip(tmp_path):
+    """POST .../source/settings/save-as-default persists; GET returns saved value."""
+    settings = _settings(tmp_path)
+    _seed_project(settings, "proj1")
+    app = build_app(settings)
+    saved = {"thumbQuality": "High", "workers": 6}
+    with TestClient(app) as client:
+        r_save = client.post(
+            f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings/save-as-default",
+            json=saved,
+        )
+        assert r_save.status_code == 200
+        # Effective settings must reflect the saved default.
+        r_get = client.get(f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings")
+    assert r_get.status_code == 200
+    body = r_get.json()
+    assert body.get("thumbQuality") == "High"
+    assert body.get("workers") == 6
+
+
+def test_source_stage_settings_no_page_required(tmp_path):
+    """source settings routes work even when no page records exist in the project."""
+    settings = _settings(tmp_path)
+    # Seed a project without seeding any pages.
+    import asyncio
+    from datetime import UTC, datetime
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.core.models import (
+        PipelineState,
+        Project,
+        ProjectConfig,
+        ProjectStatus,
+    )
+
+    async def seed_project_only() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        now = datetime.now(UTC)
+        await db.put_project(
+            Project(
+                id="proj-nopage",
+                owner_id="default",
+                name="no-page-proj",
+                created_at=now,
+                updated_at=now,
+                status=ProjectStatus.processing,
+                page_count=0,
+                proof_page_count=0,
+                config=ProjectConfig(book_name="no-page-proj", source_uri=""),
+                pipeline_state=PipelineState(),
+                storage_prefix="projects/proj-nopage/",
+                registry_version=2,
+            )
+        )
+        await db.close()
+
+    asyncio.run(seed_project_only())
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # GET should succeed even with no pages (idx0 is ignored for project stages).
+        r = client.get(f"/api/data/projects/proj-nopage/pages/0/stages/{_SOURCE_STAGE_ID}/settings")
+    assert r.status_code == 200
+    assert isinstance(r.json(), dict)
+
+
+def test_source_stage_settings_revert(tmp_path):
+    """POST .../source/settings/revert removes the override."""
+    settings = _settings(tmp_path)
+    _seed_project(settings, "proj1")
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # Save a default, then put an override.
+        client.post(
+            f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings/save-as-default",
+            json={"thumbQuality": "Standard"},
+        )
+        client.put(
+            f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings",
+            json={"thumbQuality": "High"},
+        )
+        # Revert removes the override; should fall back to saved default.
+        r_revert = client.post(f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings/revert")
+    assert r_revert.status_code == 200
+    body = r_revert.json()
+    # After revert, override is gone; saved default is "Standard".
+    assert body.get("thumbQuality") == "Standard"
+
+
+def test_source_stage_settings_reset(tmp_path):
+    """POST .../source/settings/reset removes both override and saved default."""
+    settings = _settings(tmp_path)
+    _seed_project(settings, "proj1")
+    app = build_app(settings)
+    with TestClient(app) as client:
+        client.post(
+            f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings/save-as-default",
+            json={"workers": 8},
+        )
+        r_reset = client.post(f"/api/data/projects/proj1/pages/0/stages/{_SOURCE_STAGE_ID}/settings/reset")
+    assert r_reset.status_code == 200
+    body = r_reset.json()
+    # After reset, no custom value remains.
+    assert body.get("workers") is None

@@ -28,6 +28,7 @@ from pdomain_prep_for_pgdp.api.dependencies import (
 )
 from pdomain_prep_for_pgdp.core.models import (
     V2_PAGE_STAGE_IDS,
+    V2_PROJECT_STAGE_IDS,
     AlignmentOverride,
     IllustrationRegion,
     Job,
@@ -1501,14 +1502,16 @@ async def get_page_stage_settings(
     settings: SettingsDep,
     page_service: PageServiceDep,
 ):
-    """Return effective settings for a page-scoped stage.
+    """Return effective settings for a page-scoped or project-scoped stage.
 
     Resolution: override > saved default > registry default.
+    Project-scoped stages (e.g. "source") use the same store keyed by
+    (projectId, stageId); idx0 is ignored for those stages.
     Spec: docs/specs/api-v2-deltas.md §1.8.
     """
     from fastapi.responses import JSONResponse
 
-    if stage_id not in V2_PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1518,9 +1521,11 @@ async def get_page_stage_settings(
     if (rv := _check_registry_page(project)) is not None:
         return rv
 
-    page = get_page_record(page_service, project_id, idx0)
-    if page is None:
-        raise HTTPException(404, "page not found")
+    # Page existence check only required for page-scoped stages.
+    if stage_id in V2_PAGE_STAGE_IDS:
+        page = get_page_record(page_service, project_id, idx0)
+        if page is None:
+            raise HTTPException(404, "page not found")
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
@@ -1547,11 +1552,12 @@ async def put_page_stage_settings(
 
     The override is used for the next run (not saved as "my default").
     Appends a SettingsChange event.
+    Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
     Spec: docs/specs/api-v2-deltas.md §1.8.
     """
     from fastapi.responses import JSONResponse
 
-    if stage_id not in V2_PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1561,9 +1567,10 @@ async def put_page_stage_settings(
     if (rv := _check_registry_page(project)) is not None:
         return rv
 
-    page = get_page_record(page_service, project_id, idx0)
-    if page is None:
-        raise HTTPException(404, "page not found")
+    if stage_id in V2_PAGE_STAGE_IDS:
+        page = get_page_record(page_service, project_id, idx0)
+        if page is None:
+            raise HTTPException(404, "page not found")
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
@@ -1603,11 +1610,12 @@ async def save_page_stage_settings_as_default(
     """Save the body as the project-level default for this stage's settings.
 
     Appends a SettingsChange event.
+    Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
     Spec: docs/specs/api-v2-deltas.md §1.8.
     """
     from fastapi.responses import JSONResponse
 
-    if stage_id not in V2_PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1617,9 +1625,10 @@ async def save_page_stage_settings_as_default(
     if (rv := _check_registry_page(project)) is not None:
         return rv
 
-    page = get_page_record(page_service, project_id, idx0)
-    if page is None:
-        raise HTTPException(404, "page not found")
+    if stage_id in V2_PAGE_STAGE_IDS:
+        page = get_page_record(page_service, project_id, idx0)
+        if page is None:
+            raise HTTPException(404, "page not found")
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
@@ -1658,11 +1667,12 @@ async def revert_page_stage_settings(
     """Revert the override for this stage, falling back to default or registry.
 
     Appends a SettingsChange event.
+    Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
     Spec: docs/specs/api-v2-deltas.md §1.8.
     """
     from fastapi.responses import JSONResponse
 
-    if stage_id not in V2_PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1672,9 +1682,10 @@ async def revert_page_stage_settings(
     if (rv := _check_registry_page(project)) is not None:
         return rv
 
-    page = get_page_record(page_service, project_id, idx0)
-    if page is None:
-        raise HTTPException(404, "page not found")
+    if stage_id in V2_PAGE_STAGE_IDS:
+        page = get_page_record(page_service, project_id, idx0)
+        if page is None:
+            raise HTTPException(404, "page not found")
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)
@@ -1712,11 +1723,12 @@ async def reset_page_stage_settings(
     """Reset both override and saved default, reverting to registry default.
 
     Appends a SettingsChange event.
+    Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
     Spec: docs/specs/api-v2-deltas.md §1.8.
     """
     from fastapi.responses import JSONResponse
 
-    if stage_id not in V2_PAGE_STAGE_IDS:
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
 
     project = await db.get_project(project_id)
@@ -1726,9 +1738,10 @@ async def reset_page_stage_settings(
     if (rv := _check_registry_page(project)) is not None:
         return rv
 
-    page = get_page_record(page_service, project_id, idx0)
-    if page is None:
-        raise HTTPException(404, "page not found")
+    if stage_id in V2_PAGE_STAGE_IDS:
+        page = get_page_record(page_service, project_id, idx0)
+        if page is None:
+            raise HTTPException(404, "page not found")
 
     store = _stage_settings_store(settings, project_id)
     registry_default = _stage_registry_default(stage_id)

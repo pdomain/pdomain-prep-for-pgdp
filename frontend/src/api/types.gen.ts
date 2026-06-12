@@ -1260,9 +1260,11 @@ export interface paths {
         };
         /**
          * Get Page Stage Settings
-         * @description Return effective settings for a page-scoped stage.
+         * @description Return effective settings for a page-scoped or project-scoped stage.
          *
          *     Resolution: override > saved default > registry default.
+         *     Project-scoped stages (e.g. "source") use the same store keyed by
+         *     (projectId, stageId); idx0 is ignored for those stages.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          */
         get: operations["get_page_stage_settings"];
@@ -1272,6 +1274,7 @@ export interface paths {
          *
          *     The override is used for the next run (not saved as "my default").
          *     Appends a SettingsChange event.
+         *     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          */
         put: operations["put_page_stage_settings"];
@@ -1296,6 +1299,7 @@ export interface paths {
          * @description Save the body as the project-level default for this stage's settings.
          *
          *     Appends a SettingsChange event.
+         *     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          */
         post: operations["save_page_stage_settings_as_default"];
@@ -1319,6 +1323,7 @@ export interface paths {
          * @description Revert the override for this stage, falling back to default or registry.
          *
          *     Appends a SettingsChange event.
+         *     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          */
         post: operations["revert_page_stage_settings"];
@@ -1342,6 +1347,7 @@ export interface paths {
          * @description Reset both override and saved default, reverting to registry default.
          *
          *     Appends a SettingsChange event.
+         *     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          */
         post: operations["reset_page_stage_settings"];

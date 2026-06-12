@@ -3356,7 +3356,7 @@
           "pages"
         ],
         "summary": "Get Page Stage Settings",
-        "description": "Return effective settings for a page-scoped stage.\n\nResolution: override > saved default > registry default.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Return effective settings for a page-scoped or project-scoped stage.\n\nResolution: override > saved default > registry default.\nProject-scoped stages (e.g. \"source\") use the same store keyed by\n(projectId, stageId); idx0 is ignored for those stages.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
         "operationId": "get_page_stage_settings",
         "security": [
           {
@@ -3418,7 +3418,7 @@
           "pages"
         ],
         "summary": "Put Page Stage Settings",
-        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
         "operationId": "put_page_stage_settings",
         "security": [
           {
@@ -3494,7 +3494,7 @@
           "pages"
         ],
         "summary": "Save Page Stage Settings As Default",
-        "description": "Save the body as the project-level default for this stage's settings.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Save the body as the project-level default for this stage's settings.\n\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
         "operationId": "save_page_stage_settings_as_default",
         "security": [
           {
@@ -3570,7 +3570,7 @@
           "pages"
         ],
         "summary": "Revert Page Stage Settings",
-        "description": "Revert the override for this stage, falling back to default or registry.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Revert the override for this stage, falling back to default or registry.\n\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
         "operationId": "revert_page_stage_settings",
         "security": [
           {
@@ -3634,7 +3634,7 @@
           "pages"
         ],
         "summary": "Reset Page Stage Settings",
-        "description": "Reset both override and saved default, reverting to registry default.\n\nAppends a SettingsChange event.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Reset both override and saved default, reverting to registry default.\n\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
         "operationId": "reset_page_stage_settings",
         "security": [
           {
