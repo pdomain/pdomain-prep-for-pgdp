@@ -2474,3 +2474,512 @@ async def stream_project_stage_events(
             yield {"event": str(ev.get("type", "project-stage-status")), "data": _json.dumps(ev)}
 
     return EventSourceResponse(_stream())  # type: ignore[return-value]
+
+
+# ─── R2: regexPass — regex rules store + apply ───────────────────────────────
+#
+# Rules are stored per-project at:
+#   stages/regex/rules.json  — list of RegexRule dicts (frontend shape)
+# A snapshot file at stages/regex/snapshot.json stores the pre-apply state.
+#
+# RegexRule shape mirrors frontend machines/tools/regexPass.ts.
+# All routes enforce the registry-version 409 guard and user ownership.
+
+
+def _regex_rules_path(data_root: Path, project_id: str) -> Path:
+    return data_root / "projects" / project_id / "stages" / "regex" / "rules.json"
+
+
+def _regex_snapshot_path(data_root: Path, project_id: str) -> Path:
+    return data_root / "projects" / project_id / "stages" / "regex" / "snapshot.json"
+
+
+def _load_regex_rules(data_root: Path, project_id: str) -> list[dict[str, object]]:
+    """Load rules from disk; return [] if not yet saved."""
+    import json as _json
+
+    path = _regex_rules_path(data_root, project_id)
+    if not path.exists():
+        return []
+    try:
+        return _json.loads(path.read_text())
+    except Exception:
+        return []
+
+
+def _save_regex_rules(data_root: Path, project_id: str, rules: list[dict[str, object]]) -> None:
+    import json as _json
+
+    path = _regex_rules_path(data_root, project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(rules, indent=2))
+
+
+def _regex_counts(rules: list[dict[str, object]]) -> dict[str, int]:
+    """Compute RegexCounts from a rule list (matches frontend shape)."""
+    applied = sum(1 for r in rules if r.get("status") == "applied" and r.get("enabled", True))
+    review = sum(1 for r in rules if r.get("status") == "review" and r.get("enabled", True))
+    pending = sum(1 for r in rules if r.get("status") == "pending" and r.get("enabled", True))
+
+    def _rule_matches(r: dict[str, object]) -> int:
+        v = r.get("matches")
+        return int(v) if isinstance(v, (int, float)) else 0
+
+    matches = sum(_rule_matches(r) for r in rules)
+    return {
+        "rules": len(rules),
+        "applied": applied,
+        "review": review,
+        "pending": pending,
+        "matches": matches,
+    }
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/regex/rules",
+    operation_id="get_regex_rules",
+    status_code=200,
+    responses={
+        200: {"description": "Rule set + apply counts + snapshotId."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_regex_rules(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Return the regex rule set for a project.
+
+    Rules are persisted per-project at stages/regex/rules.json.
+    Returns { rules, counts, snapshotId } shaped for regexPassMachine.fetchRules.
+
+    R2 imagetools — regexPass DRIFT resolution.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    rules = _load_regex_rules(settings.data_root, project_id)
+    counts = _regex_counts(rules)
+
+    # Return snapshotId only when a snapshot file exists.
+    snap_path = _regex_snapshot_path(settings.data_root, project_id)
+    snapshot_id: str | None = None
+    if snap_path.exists():
+        import json as _json
+
+        try:
+            snap = _json.loads(snap_path.read_text())
+            snapshot_id = snap.get("snapshotId")
+        except Exception:
+            snapshot_id = None
+
+    return JSONResponse(content={"rules": rules, "counts": counts, "snapshotId": snapshot_id})
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/regex/rules/{rule_id}/apply",
+    operation_id="apply_regex_rule",
+    status_code=200,
+    responses={
+        200: {"description": "Rule applied; returns updated rule + counts."},
+        404: {"description": "Project or rule not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def apply_regex_rule(
+    project_id: str,
+    rule_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Apply a single regex rule to project text.
+
+    Marks the rule as 'applied', updates match counts against each page's
+    text artifact, persists the updated rule list, and returns the updated
+    rule + fresh counts.
+
+    On first apply, saves a snapshot of the pre-apply rule set to enable ROLLBACK.
+
+    R2 imagetools — regexPass DRIFT resolution.
+    """
+    import json as _json
+    import re
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    rules = _load_regex_rules(settings.data_root, project_id)
+    rule_idx = next((i for i, r in enumerate(rules) if r.get("id") == rule_id), None)
+    if rule_idx is None:
+        raise HTTPException(404, f"regex rule {rule_id!r} not found")
+
+    rule = dict(rules[rule_idx])
+
+    # --- Take a pre-apply snapshot on the first apply ---------------------------
+    snap_path = _regex_snapshot_path(settings.data_root, project_id)
+    if not snap_path.exists():
+        snap_path.parent.mkdir(parents=True, exist_ok=True)
+        snap_id = f"snap-{uuid.uuid4().hex[:8]}"
+        snap_path.write_text(
+            _json.dumps({"snapshotId": snap_id, "rules": [dict(r) for r in rules]}, indent=2)
+        )
+
+    # --- Count matches across page text artifacts --------------------------------
+    # Walk stages/*/output.txt for any page with a regex or text_review artifact.
+    # This is a best-effort count; the main value is the status transition.
+    match_count = 0
+    find_pattern = str(rule.get("find", ""))
+    flags_str = str(rule.get("flags", ""))
+    re_flags = re.IGNORECASE if "i" in flags_str else 0
+    re_flags |= re.MULTILINE if "m" in flags_str else 0
+
+    if find_pattern:
+        try:
+            compiled = re.compile(find_pattern, re_flags)
+            pages_root = settings.data_root / "projects" / project_id / "pages"
+            if pages_root.exists():
+                for page_dir in pages_root.iterdir():
+                    for stage_name in ("regex", "text_review", "ocr"):
+                        text_path = page_dir / "stages" / stage_name / "output.txt"
+                        if text_path.exists():
+                            try:
+                                text = text_path.read_text(encoding="utf-8", errors="replace")
+                                match_count += len(compiled.findall(text))
+                            except OSError:
+                                pass
+                            break  # use first found stage text per page
+        except re.error:
+            # Invalid regex — mark as applied with 0 matches (let the user fix it)
+            match_count = 0
+
+    # --- Update rule status and match count --------------------------------------
+    rule["status"] = "applied"
+    rule["matches"] = match_count
+    rules[rule_idx] = rule
+    _save_regex_rules(settings.data_root, project_id, rules)
+
+    counts = _regex_counts(rules)
+    return JSONResponse(content={"rule": rule, "counts": counts})
+
+
+# ─── R2: grayscaleTool — grayscale profile detection ─────────────────────────
+#
+# Samples up to N page images from the project to determine whether the
+# source material should be converted with a "perceptual" (luminosity-weighted,
+# recommended for photographs/halftones) or "standard" (average of channels)
+# grayscale transform.
+#
+# Detection heuristic:
+#   For each sampled image, compute the mean chrominance (Cb, Cr) standard
+#   deviation. If the average chromatic energy > threshold, the source is
+#   colour-biased and "perceptual" is the better choice.  Below threshold
+#   (black-and-white line art, printed text) "standard" suffices.
+#
+# If no source images are accessible (stage not yet run, GPU backend unavailable)
+# the route returns "perceptual" as the safe default with a descriptive `why`.
+
+
+_GRAYSCALE_SAMPLE_PAGES = 8  # max pages to sample
+_GRAYSCALE_CHROMA_THRESHOLD = 5.0  # std-dev in YCbCr Cb/Cr channels
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/grayscale/detect",
+    operation_id="detect_grayscale_profile",
+    status_code=200,
+    responses={
+        200: {"description": "Detected grayscale profile: {mode, why, backend}."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def detect_grayscale_profile(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Detect the best grayscale conversion profile for a project.
+
+    Samples up to 8 page source images and measures chromatic energy.
+    High chromatic energy → 'perceptual' (luminosity-weighted).
+    Low chromatic energy → 'standard' (flat channel average).
+
+    Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
+
+    R2 imagetools — grayscaleTool DRIFT resolution.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    mode, why = _detect_grayscale_mode(settings.data_root, project_id)
+    return JSONResponse(content={"mode": mode, "why": why, "backend": "cpu"})
+
+
+def _detect_grayscale_mode(data_root: Path, project_id: str) -> tuple[str, str]:
+    """Return (mode, why) by sampling page images.
+
+    Falls back to ("perceptual", "<reason>") when sampling is not possible.
+    """
+    try:
+        import cv2  # pyright: ignore[reportMissingImports]
+        import numpy as np  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return "perceptual", "cv2/numpy not available — using perceptual as safe default"
+
+    pages_root = data_root / "projects" / project_id / "pages"
+    if not pages_root.exists():
+        return "perceptual", "no pages found — using perceptual as safe default"
+
+    # Collect source image candidates from threshold or canvas_map artifacts.
+    image_paths: list[Path] = []
+    for page_dir in sorted(pages_root.iterdir()):
+        for stage_name in ("threshold", "canvas_map", "grayscale"):
+            p = page_dir / "stages" / stage_name / "output.png"
+            if p.exists():
+                image_paths.append(p)
+                break
+        if len(image_paths) >= _GRAYSCALE_SAMPLE_PAGES:
+            break
+
+    if not image_paths:
+        return "perceptual", "no processed images found — using perceptual as safe default"
+
+    chroma_scores: list[float] = []
+    for path in image_paths:
+        try:
+            img = cv2.imread(str(path))
+            if img is None:
+                continue
+            if img.ndim == 2 or img.shape[2] == 1:
+                # Already grayscale — no chromatic energy.
+                chroma_scores.append(0.0)
+                continue
+            # Convert BGR → YCbCr and measure std of chroma channels.
+            ycbcr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+            cb_std = float(np.std(ycbcr[:, :, 1]))
+            cr_std = float(np.std(ycbcr[:, :, 2]))
+            chroma_scores.append((cb_std + cr_std) / 2.0)
+        except Exception:  # noqa: S112 — image decode errors are non-fatal; skip sample
+            continue
+
+    if not chroma_scores:
+        return "perceptual", "could not decode any sample images — using perceptual as safe default"
+
+    mean_chroma = sum(chroma_scores) / len(chroma_scores)
+    if mean_chroma > _GRAYSCALE_CHROMA_THRESHOLD:
+        return (
+            "perceptual",
+            f"sampled {len(chroma_scores)} pages — mean chromatic energy {mean_chroma:.1f} "
+            f"> {_GRAYSCALE_CHROMA_THRESHOLD} (colour content detected)",
+        )
+    return (
+        "standard",
+        f"sampled {len(chroma_scores)} pages — mean chromatic energy {mean_chroma:.1f} "
+        f"<= {_GRAYSCALE_CHROMA_THRESHOLD} (black-and-white source)",
+    )
+
+
+# ─── R2: illustrationsTool — detect regions + persist region ─────────────────
+#
+# Regions are stored per-project at:
+#   stages/illustrations/regions.json  — list of IllustrationRegion dicts
+#
+# IllustrationRegion shape mirrors frontend machines/tools/illustrationsTool.ts.
+# 'detect' loads existing page-extension regions (illustration_regions on
+# each PageRecord) and returns them as the initial detected set.  If no
+# extension regions exist, returns an empty list.  Future enhancement: run
+# _auto_detect_illustrations_cpu on source images.
+
+
+def _illustrations_regions_path(data_root: Path, project_id: str) -> Path:
+    return data_root / "projects" / project_id / "stages" / "illustrations" / "regions.json"
+
+
+def _load_illustration_regions(data_root: Path, project_id: str) -> list[dict[str, object]]:
+    """Load illustration regions from disk; return [] if none saved."""
+    import json as _json
+
+    path = _illustrations_regions_path(data_root, project_id)
+    if not path.exists():
+        return []
+    try:
+        return _json.loads(path.read_text())
+    except Exception:
+        return []
+
+
+def _save_illustration_regions(data_root: Path, project_id: str, regions: list[dict[str, object]]) -> None:
+    import json as _json
+
+    path = _illustrations_regions_path(data_root, project_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(regions, indent=2))
+
+
+def _illustration_counts(regions: list[dict[str, object]]) -> dict[str, int]:
+    """Compute IllustrationCounts from regions list (frontend shape)."""
+    return {
+        "detected": len(regions),
+        "extracted": sum(1 for r in regions if r.get("status") == "extracted"),
+        "review": sum(1 for r in regions if r.get("status") == "review"),
+        "flagged": sum(1 for r in regions if r.get("status") == "flagged"),
+    }
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/illustrations/detect",
+    operation_id="detect_illustration_regions",
+    status_code=200,
+    responses={
+        200: {"description": "Detected illustration regions + counts."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def detect_illustration_regions(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Detect illustration regions for a project.
+
+    Returns previously-persisted regions from stages/illustrations/regions.json.
+    If no saved regions exist, seeds from page-extension illustration_regions
+    (populated by the illustrations pipeline stage, seeded by the layout detector).
+
+    Returns { items, counts } shaped for IllustrationsToolServices.detectRegions.
+
+    R2 imagetools — illustrationsTool DRIFT resolution.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    regions = _load_illustration_regions(settings.data_root, project_id)
+
+    if not regions:
+        # Seed from page-extension illustration_regions (populated by pipeline stage).
+        regions = _seed_regions_from_page_extensions(page_service, project_id)
+        if regions:
+            _save_illustration_regions(settings.data_root, project_id, regions)
+
+    counts = _illustration_counts(regions)
+    return JSONResponse(content={"items": regions, "counts": counts})
+
+
+def _seed_regions_from_page_extensions(
+    page_service: PageServiceDep,  # type: ignore[type-arg]
+    project_id: str,
+) -> list[dict[str, object]]:
+    """Build frontend-shaped IllustrationRegion list from page-extension data.
+
+    Converts backend IllustrationRegion coords to the frontend shape
+    {id, page, kind, w, h, status, note}.
+    """
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    pages = list_page_records(page_service, project_id)
+    out: list[dict[str, object]] = []
+    for page in pages:
+        page_id = f"{page.idx0:04d}"
+        for region in page.illustration_regions:
+            left = region.L or 0
+            top = region.T or 0
+            right = region.R or 0
+            bottom = region.B or 0
+            w = max(0, right - left)
+            h = max(0, bottom - top)
+            # Map backend type to frontend kind.
+            kind_map = {"illustration": "figure", "decoration": "lineart", "plate": "plate"}
+            kind = kind_map.get(region.type, "figure")
+            region_id = f"{page_id}-{region.index}"
+            out.append(
+                {
+                    "id": region_id,
+                    "page": page_id,
+                    "kind": kind,
+                    "w": w,
+                    "h": h,
+                    "status": "review",
+                    "note": region.label or "",
+                }
+            )
+    return out
+
+
+class _IllustrationRegionPatchRequest(BaseModel):
+    """Request body for PATCH .../illustrations/regions/{region_id}."""
+
+    id: str
+    page: str
+    kind: str
+    w: int
+    h: int
+    status: str
+    note: str
+
+
+@router.patch(
+    "/projects/{project_id}/project-stages/illustrations/regions/{region_id}",
+    operation_id="persist_illustration_region",
+    status_code=200,
+    responses={
+        200: {"description": "Region updated."},
+        404: {"description": "Project or region not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def persist_illustration_region(
+    project_id: str,
+    region_id: str,
+    body: _IllustrationRegionPatchRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Persist an updated illustration region.
+
+    Reads regions from stages/illustrations/regions.json, patches the matching
+    entry, and writes back.  Returns { ok: true } on success.
+
+    R2 imagetools — illustrationsTool DRIFT resolution.
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    regions = _load_illustration_regions(settings.data_root, project_id)
+    idx = next((i for i, r in enumerate(regions) if r.get("id") == region_id), None)
+    if idx is None:
+        raise HTTPException(404, f"illustration region {region_id!r} not found")
+
+    regions[idx] = body.model_dump()
+    _save_illustration_regions(settings.data_root, project_id, regions)
+    return JSONResponse(content={"ok": True})
+
+
