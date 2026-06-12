@@ -760,6 +760,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/ocr/tokens/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ocr Page Tokens
+         * @description Return low-confidence OCR tokens for one page.
+         *
+         *     Reads the words.json blob for the page (co-located with the OCR text key).
+         *     Filters to words where ``confidence < 0.5`` and ``deleted == False``.
+         *
+         *     Returns ``{ tokens: [{id, word, suggest, conf}] }``.
+         *
+         *     R2 — I2 DRIFT (seam-remediation plan). Resolves ocrTool.fetchPageTokens stub.
+         */
+        get: operations["get_ocr_page_tokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/hyphen_join/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Hyphen Candidates
+         * @description Scan all pages for end-of-line hyphen candidates.
+         *
+         *     Runs ``detect_candidates`` (from the ``hyphen_join`` pipeline step) over
+         *     every page's OCR text artifact and aggregates the results into a flat
+         *     ``{ cases: HyphenCase[], totals: HyphenTotals }`` response.
+         *
+         *     HyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``
+         *     HyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,
+         *                            mismatch, unvalidated}``
+         *
+         *     R2 — I2 DRIFT (seam-remediation plan). Resolves hyphenJoin.scanHyphenation stub.
+         */
+        post: operations["scan_hyphen_candidates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/crop-pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Crop Pages
+         * @description Return CropPageRow[] for all pages at a given stage.
+         *
+         *     Returns ``{ pages: CropPageRow[] }`` where each row has:
+         *       ``pageId, n, thumbUrl, flags, bbox, skewDeg``
+         *
+         *     Unlike ``GET .../project-stages/{stage_id}/pages`` (which returns the
+         *     PageRow state-machine shape used by imageStageReview), this endpoint
+         *     returns the crop-grid shape consumed by pagesGridMachine / PagesGridTool.
+         *
+         *     R2 — I2 DRIFT (seam-remediation plan). Resolves pagesGrid.fetchPages stub.
+         *     Also fixes the silent-catch error in the previous aggregate: this route
+         *     returns 404 on missing project (not 200 with empty list) so the machine's
+         *     loadError state is reachable.
+         */
+        get: operations["get_stage_crop_pages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/project-stages/wordcheck/accept-dict": {
         parameters: {
             query?: never;
@@ -4742,6 +4831,143 @@ export interface operations {
         };
         responses: {
             /** @description Batched rerun queued; updated page rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ocr_page_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Low-confidence OCR tokens for one page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_hyphen_candidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project-level hyphen scan: cases and totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stage_crop_pages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CropPageRow aggregate for the stage. */
             200: {
                 headers: {
                     [name: string]: unknown;

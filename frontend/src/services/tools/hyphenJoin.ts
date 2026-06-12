@@ -1,19 +1,16 @@
 /**
  * hyphenJoin.ts — Real HyphenJoinServices backed by the v2 API.
  *
- * Backend routes that exist at I1:
+ * Backend routes:
+ *   POST /api/data/projects/{id}/project-stages/hyphen_join/scan
+ *     (R2 — I2 DRIFT resolved: project-level hyphen scan)
  *   GET  /api/data/projects/{id}/pages/{idx0}/stages/hyphen-join/candidates
  *   POST /api/data/projects/{id}/pages/{idx0}/stages/hyphen-join/decisions
- *
- * The machine expects a project-level scan → { cases, totals }.
- * At I1 we aggregate from the page-level candidates route.
- *
- * DRIFT: Add POST /api/data/projects/{id}/stages/hyphen_join/scan
- * (project-level aggregate) to project_stages.py at I2.
  *
  * @see frontend/src/machines/tools/hyphenJoin.ts — HyphenJoinServices
  */
 
+import { api } from "@/api/client";
 import type {
   HyphenJoinServices,
   HyphenCase,
@@ -23,25 +20,17 @@ import type {
 /**
  * Scan hyphenation candidates across all pages.
  *
- * DRIFT: project-level scan route not implemented at I1.
- * Returns empty cases.
+ * Route: POST /api/data/projects/{id}/project-stages/hyphen_join/scan
+ * R2 — I2 DRIFT resolved (seam-remediation plan).
  */
-function scanHyphenation(
-  _projectId: string,
+async function scanHyphenation(
+  projectId: string,
 ): Promise<{ cases: HyphenCase[]; totals: HyphenTotals }> {
-  return Promise.resolve({
-    cases: [],
-    totals: {
-      total: 0,
-      joined: 0,
-      validated: 0,
-      undecided: 0,
-      flagged: 0,
-      crosspage: 0,
-      mismatch: 0,
-      unvalidated: 0,
-    },
-  });
+  const data = await api.post<{ cases: HyphenCase[]; totals: HyphenTotals }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/hyphen_join/scan`,
+    {},
+  );
+  return data;
 }
 
 // ---------------------------------------------------------------------------

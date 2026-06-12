@@ -2,15 +2,13 @@
  * pagesGrid.ts — Real PagesGridServices backed by the v2 API.
  *
  * Backend routes:
- *   GET  /api/data/projects/{id}/pages (list pages)
- *   GET  /api/data/projects/{id}/pages/{idx0}/stages/{stageId}/thumbnail
+ *   GET  /api/data/projects/{id}/project-stages/{stageId}/crop-pages
+ *     (R2 — I2 DRIFT resolved: dedicated CropPageRow aggregate)
  *   PATCH /api/data/projects/{id}/pages/{idx0}  (update page metadata)
  *
- * PagesGridServices expects aggregated crop rows per stage, but the backend
- * has per-page routes. At I1 we aggregate manually.
- *
- * DRIFT: Add GET /api/data/projects/{id}/stages/{stageId}/pages → CropPageRow[]
- * to project_stages.py at I2.
+ * Error contract: fetchPages MUST throw on non-2xx so the machine reaches
+ * the `loadError` state and renders the error banner. The previous
+ * `catch { return [] }` silently hid errors from the consumer.
  *
  * @see frontend/src/machines/tools/pagesGrid.ts — PagesGridServices
  */
@@ -21,42 +19,42 @@ import type {
   CropPageRow,
 } from "@/machines/tools/pagesGrid";
 
-interface BackendPage {
-  idx0: string;
-  n?: number;
-  stages?: Record<string, { status: string; flags?: string[] }>;
+interface BackendCropPage {
+  pageId: string;
+  n: number;
+  thumbUrl: string;
+  flags: string[];
   bbox?: [number, number, number, number] | null;
-  skew_deg?: number | null;
+  skewDeg?: number | null;
 }
 
 /**
  * Fetch all pages for a stage, returning CropPageRow[].
  *
- * Derives thumbnail URL from the page thumbnail endpoint.
+ * Route: GET /api/data/projects/{id}/project-stages/{stageId}/crop-pages
+ * R2 — I2 DRIFT resolved (seam-remediation plan).
+ *
+ * NOTE: errors are NOT caught here. The machine's `loading.onError`
+ * transitions to `loadError` — the UI renders a retry banner. Swallowing
+ * the error with `return []` would silently show an empty grid on 404/409.
  */
 async function fetchPages(
   projectId: string,
   stageId: string,
 ): Promise<CropPageRow[]> {
-  try {
-    const pages = await api.get<BackendPage[]>(
-      `/api/data/projects/${encodeURIComponent(projectId)}/pages`,
-    );
-    return pages.map((p, i): CropPageRow => {
-      const stage = p.stages?.[stageId];
-      const thumbUrl = `/api/data/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(p.idx0)}/stages/${encodeURIComponent(stageId)}/thumbnail`;
-      return {
-        pageId: p.idx0,
-        n: p.n ?? i,
-        thumbUrl,
-        flags: stage?.flags ?? [],
-        bbox: p.bbox ?? null,
-        skewDeg: p.skew_deg ?? null,
-      };
-    });
-  } catch {
-    return [];
-  }
+  const data = await api.get<{ pages: BackendCropPage[] }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/crop-pages`,
+  );
+  return data.pages.map(
+    (p): CropPageRow => ({
+      pageId: p.pageId,
+      n: p.n,
+      thumbUrl: p.thumbUrl,
+      flags: p.flags,
+      bbox: p.bbox ?? null,
+      skewDeg: p.skewDeg ?? null,
+    }),
+  );
 }
 
 /**
@@ -70,7 +68,10 @@ async function savePage(
   draft: CropPageRow,
 ): Promise<CropPageRow> {
   try {
-    const result = await api.patch<BackendPage>(
+    const result = await api.patch<{
+      bbox?: [number, number, number, number] | null;
+      skew_deg?: number | null;
+    }>(
       `/api/data/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(draft.pageId)}`,
       {
         bbox: draft.bbox ?? null,

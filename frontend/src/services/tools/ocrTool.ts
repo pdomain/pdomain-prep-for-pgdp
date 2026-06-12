@@ -2,12 +2,9 @@
  * ocrTool.ts — Real OcrToolServices backed by the v2 API.
  *
  * Backend routes:
- *   GET  /api/data/projects/{id}/pages/{idx0}/stages/wordcheck/flags
- *     (nearest route — at I1 we derive low-score tokens from wordcheck flags)
+ *   GET  /api/data/projects/{id}/project-stages/ocr/tokens/{page_id}
+ *     (R2 — I2 DRIFT resolved: low-confidence tokens from words.json)
  *   POST /api/data/projects/{id}/project-stages/ocr/confirm  (W4 Group 1)
- *
- * Remaining stubs (W4 Group 3):
- *   GET  /api/data/projects/{id}/project-stages/ocr/pages  → fetchPageTokens
  *
  * @see frontend/src/machines/tools/ocrTool.ts — OcrToolServices
  */
@@ -20,14 +17,17 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 /**
  * Fetch low-score OCR tokens for a page.
  *
- * DRIFT: GET /api/data/projects/{id}/project-stages/ocr/pages not yet
- * implemented (W4 Group 3). Returns empty token list.
+ * Route: GET /api/data/projects/{id}/project-stages/ocr/tokens/{page_id}
+ * R2 — I2 DRIFT resolved (seam-remediation plan).
  */
-function fetchPageTokens(
-  _projectId: string,
-  _pageId: string,
+async function fetchPageTokens(
+  projectId: string,
+  pageId: string,
 ): Promise<{ tokens: OcrToken[] }> {
-  return Promise.resolve({ tokens: [] });
+  const data = await api.get<{ tokens: OcrToken[] }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/ocr/tokens/${encodeURIComponent(pageId)}`,
+  );
+  return data;
 }
 
 /**

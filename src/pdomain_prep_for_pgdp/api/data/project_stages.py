@@ -35,6 +35,11 @@ W4 Group 4 — persistence routes:
 
 W4 Group 5 — structured artifacts (served via existing artifact route).
 
+R2 — I2 DRIFT aggregate routes (seam-remediation plan):
+  GET  /projects/{id}/project-stages/ocr/tokens/{page_id}  low-confidence tokens
+  POST /projects/{id}/project-stages/hyphen_join/scan       project-level hyphen scan
+  GET  /projects/{id}/project-stages/{stage_id}/crop-pages  CropPageRow aggregate
+
 All project-stage routes enforce the registry-version 409 guard.
 """
 
@@ -55,6 +60,7 @@ from pdomain_prep_for_pgdp.api.dependencies import (
     PageServiceDep,
     SettingsDep,
     StageEventsDep,
+    StorageDep,
     UserDep,
 )
 from pdomain_prep_for_pgdp.core.models import (
@@ -1433,6 +1439,290 @@ async def rerun_project_stage_pages(
         )
 
     return JSONResponse(content={"rows": updated_rows})
+
+
+# ─── R2 — I2 DRIFT aggregate routes ──────────────────────────────────────────
+#
+# These resolve the three DRIFT stubs in frontend/src/services/tools/:
+#   ocrTool.fetchPageTokens  → GET .../ocr/tokens/{page_id}
+#   hyphenJoin.scanHyphenation → POST .../hyphen_join/scan
+#   pagesGrid.fetchPages       → GET .../crop-pages
+#
+# Seam-remediation plan §R2.
+
+# Threshold below which an OcrWord is classified as a low-confidence token.
+_OCR_LOW_CONF_THRESHOLD: float = 0.5
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/ocr/tokens/{page_id}",
+    operation_id="get_ocr_page_tokens",
+    status_code=200,
+    responses={
+        200: {"description": "Low-confidence OCR tokens for one page."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_ocr_page_tokens(
+    project_id: str,
+    page_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    storage: StorageDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return low-confidence OCR tokens for one page.
+
+    Reads the words.json blob for the page (co-located with the OCR text key).
+    Filters to words where ``confidence < 0.5`` and ``deleted == False``.
+
+    Returns ``{ tokens: [{id, word, suggest, conf}] }``.
+
+    R2 — I2 DRIFT (seam-remediation plan). Resolves ocrTool.fetchPageTokens stub.
+    """
+    from pdomain_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    # Find the text key for this page from the event store.
+    all_pages = list_page_records(page_service, project_id)
+    matched_page = next((p for p in all_pages if (p.prefix or f"{p.idx0:04d}") == page_id), None)
+
+    text_key: str | None = None
+    if matched_page is not None:
+        # Prefer the recorded ocr_text_key from the page output record.
+        for output in matched_page.outputs:
+            if (output.split_suffix or "") == "" and output.ocr_text_key:
+                text_key = output.ocr_text_key
+                break
+        if text_key is None:
+            # Derive synthesised path from page record fields.
+            prefix = matched_page.prefix or f"{matched_page.idx0:04d}"
+            stem_prefix = f"{matched_page.source_stem}_{prefix}" if matched_page.source_stem else prefix
+            text_key = f"projects/{project_id}/ocr_text/{stem_prefix}.txt"
+
+    if text_key is None:
+        # Unknown page_id — return empty tokens (not an error; page may not
+        # have been OCR'd yet).
+        return JSONResponse(content={"tokens": []})
+
+    words_key = words_key_for(text_key)
+    if not await storage.exists(words_key):
+        # Words blob not yet written (page not OCR'd yet).
+        return JSONResponse(content={"tokens": []})
+
+    try:
+        raw = await storage.get_bytes(words_key)
+        words = load_words_from_storage(raw)
+    except Exception:
+        log.exception("get_ocr_page_tokens: failed to load words blob %s", words_key)
+        return JSONResponse(content={"tokens": []})
+
+    tokens = [
+        {
+            "id": w.id,
+            "word": w.text,
+            "suggest": "",  # suggestion model is I3 work
+            "conf": w.confidence,
+        }
+        for w in words
+        if not w.deleted and w.confidence < _OCR_LOW_CONF_THRESHOLD
+    ]
+
+    return JSONResponse(content={"tokens": tokens})
+
+
+@router.post(
+    "/projects/{project_id}/project-stages/hyphen_join/scan",
+    operation_id="scan_hyphen_candidates",
+    status_code=200,
+    responses={
+        200: {"description": "Project-level hyphen scan: cases and totals."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def scan_hyphen_candidates(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    storage: StorageDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Scan all pages for end-of-line hyphen candidates.
+
+    Runs ``detect_candidates`` (from the ``hyphen_join`` pipeline step) over
+    every page's OCR text artifact and aggregates the results into a flat
+    ``{ cases: HyphenCase[], totals: HyphenTotals }`` response.
+
+    HyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``
+    HyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,
+                           mismatch, unvalidated}``
+
+    R2 — I2 DRIFT (seam-remediation plan). Resolves hyphenJoin.scanHyphenation stub.
+    """
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import detect_candidates
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    all_pages = list_page_records(page_service, project_id)
+
+    all_cases: list[dict[str, object]] = []
+
+    for page in all_pages:
+        page_id = page.prefix or f"{page.idx0:04d}"
+
+        # Build the text key for the main (non-split) output.
+        text_key: str | None = None
+        for output in page.outputs:
+            if (output.split_suffix or "") == "" and output.ocr_text_key:
+                text_key = output.ocr_text_key
+                break
+        if text_key is None:
+            prefix = page.prefix or f"{page.idx0:04d}"
+            stem_prefix = f"{page.source_stem}_{prefix}" if page.source_stem else prefix
+            text_key = f"projects/{project_id}/ocr_text/{stem_prefix}.txt"
+
+        # Skip pages that have no OCR artifact yet.
+        if not await storage.exists(text_key):
+            continue
+
+        try:
+            text_bytes = await storage.get_bytes(text_key)
+            text = text_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            log.warning("scan_hyphen_candidates: failed to read %s", text_key)
+            continue
+
+        candidates = detect_candidates(text)
+        # All scan-detected candidates are regular EOL hyphens ("auto"), not
+        # cross-page or manual — those are detected at render time separately.
+        all_cases.extend(
+            {
+                "id": cand["candidate_id"],
+                "prefix": cand["prefix"],
+                "suffix": cand["suffix"],
+                "pageId": page_id,
+                "offset": cand["offset"],
+                "matchText": cand["match_text"],
+                "status": "undecided",
+                "kind": "auto",
+            }
+            for cand in candidates
+        )
+
+    totals = {
+        "total": len(all_cases),
+        "joined": 0,
+        "validated": 0,
+        "undecided": len(all_cases),  # all freshly detected cases are undecided
+        "flagged": 0,
+        "crosspage": 0,
+        "mismatch": 0,
+        "unvalidated": 0,
+    }
+
+    return JSONResponse(content={"cases": all_cases, "totals": totals})
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/{stage_id}/crop-pages",
+    operation_id="get_stage_crop_pages",
+    status_code=200,
+    responses={
+        200: {"description": "CropPageRow aggregate for the stage."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_stage_crop_pages(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return CropPageRow[] for all pages at a given stage.
+
+    Returns ``{ pages: CropPageRow[] }`` where each row has:
+      ``pageId, n, thumbUrl, flags, bbox, skewDeg``
+
+    Unlike ``GET .../project-stages/{stage_id}/pages`` (which returns the
+    PageRow state-machine shape used by imageStageReview), this endpoint
+    returns the crop-grid shape consumed by pagesGridMachine / PagesGridTool.
+
+    R2 — I2 DRIFT (seam-remediation plan). Resolves pagesGrid.fetchPages stub.
+    Also fixes the silent-catch error in the previous aggregate: this route
+    returns 404 on missing project (not 200 with empty list) so the machine's
+    loadError state is reachable.
+    """
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry(project)) is not None:
+        return rv
+
+    all_pages = list_page_records(page_service, project_id)
+    all_stages = await db.list_page_stages_by_project(project_id)
+    stage_by_page: dict[str, PageStageState] = {s.page_id: s for s in all_stages if s.stage_id == stage_id}
+
+    rows: list[dict[str, object]] = []
+    for i, page in enumerate(all_pages):
+        page_id = page.prefix or f"{page.idx0:04d}"
+
+        # Find the stage row using both the prefix and zero-padded idx0.
+        page_stage = stage_by_page.get(page_id)
+        if page_stage is None:
+            page_stage = stage_by_page.get(f"{page.idx0:04d}")
+
+        # Build flags list from stage status.
+        flags: list[str] = []
+        if page_stage is not None:
+            if page_stage.status == PageStageStatus.failed:
+                flags.append("error")
+            elif page_stage.status == PageStageStatus.dirty:
+                flags.append("stale")
+
+        # Thumbnail URL — points to the per-page stage thumbnail endpoint.
+        thumb_url = f"/api/data/projects/{project_id}/pages/{page_id}/stages/{stage_id}/thumbnail"
+
+        row: dict[str, object] = {
+            "pageId": page_id,
+            "n": i,
+            "thumbUrl": thumb_url,
+            "flags": flags,
+        }
+
+        # Include bbox and skewDeg from the page record if present.
+        # These are populated after the crop stage writes its outputs.
+        outputs_bbox: tuple[int, int, int, int] | None = None
+        if page.source_crop_bbox is not None:
+            outputs_bbox = page.source_crop_bbox
+        row["bbox"] = list(outputs_bbox) if outputs_bbox is not None else None
+        row["skewDeg"] = None  # Populated by a future geometry stage
+
+        rows.append(row)
+
+    return JSONResponse(content={"pages": rows})
 
 
 class _WordcheckAcceptRequest(BaseModel):

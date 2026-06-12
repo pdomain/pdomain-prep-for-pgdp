@@ -1713,3 +1713,61 @@ workspace entry and settled entry.
 
 **Files changed:** `pageOrderTool.ts`, `pageOrderTool.test.ts`,
 `PageOrderTool.tsx`.
+
+---
+
+## R2 — I2 DRIFT service stubs resolved (2026-06-12)
+
+Three stubs in `frontend/src/services/tools/` that previously returned empty
+data have been resolved by adding real backend routes and wiring the services.
+
+### R2.1 — `ocrTool.fetchPageTokens` {#resolved-R2}
+
+**Previous state:** `fetchPageTokens` returned `Promise.resolve({ tokens: [] })` with
+a `DRIFT` comment noting `GET .../ocr/tokens/{page_id}` was not implemented.
+
+**Resolution:** Backend route `GET /api/data/projects/{id}/project-stages/ocr/tokens/{page_id}`
+added to `project_stages.py` (`operation_id=get_ocr_page_tokens`). Reads the words.json
+blob for the page, filters to words where `confidence < 0.5` and `deleted == false`,
+returns `{ tokens: [{id, word, suggest, conf}] }`. `suggest` is an empty string at R2
+(suggestion model is I3 work). Service in `ocrTool.ts` now calls the real route.
+
+---
+
+### R2.2 — `hyphenJoin.scanHyphenation` {#resolved-R2}
+
+**Previous state:** `scanHyphenation` returned empty cases with a `DRIFT` comment
+noting `POST .../hyphen_join/scan` was not implemented.
+
+**Resolution:** Backend route `POST /api/data/projects/{id}/project-stages/hyphen_join/scan`
+added to `project_stages.py` (`operation_id=scan_hyphen_candidates`). Reads all
+page OCR text artifacts via storage, runs `detect_candidates()` (from
+`core/pipeline/steps/hyphen_join.py`) over each page, aggregates into
+`{ cases: HyphenCase[], totals: HyphenTotals }`. Service in `hyphenJoin.ts` now calls
+the real route.
+
+**Note on cross-page candidates:** The route detects intra-page EOL hyphens only.
+Cross-page candidates (last word of page N / first word of page N+1) are a separate
+detection pass not yet implemented — all cases from this route have `kind: "auto"`.
+
+---
+
+### R2.3 — `pagesGrid.fetchPages` (silent-error fix) {#resolved-R2}
+
+**Previous state:** `fetchPages` called `GET .../pages` and manually assembled rows
+with a `DRIFT` comment; critically, the `catch` block returned `[]` instead of
+re-throwing, so backend errors (404, 409) were silently swallowed and the machine's
+`loadError` state was never reachable from the UI.
+
+**Resolution:**
+
+1. New backend route `GET /api/data/projects/{id}/project-stages/{stage_id}/crop-pages`
+   (`operation_id=get_stage_crop_pages`) returns `{ pages: CropPageRow[] }` directly
+   from the backend — no client-side aggregation needed.
+2. Service `fetchPages` in `pagesGrid.ts` calls the new route and does **not** catch
+   errors. Network/HTTP errors propagate to the machine's `loading.onError` which
+   transitions to `loadError`, rendering the error banner + retry button in
+   `PagesGridTool.tsx`.
+
+**Contract:** `GET .../crop-pages` returns 404 (not 200 with empty list) when the
+project is absent — this is the invariant that makes the error path reachable.

@@ -1886,6 +1886,180 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/ocr/tokens/{page_id}": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Ocr Page Tokens",
+        "description": "Return low-confidence OCR tokens for one page.\n\nReads the words.json blob for the page (co-located with the OCR text key).\nFilters to words where ``confidence < 0.5`` and ``deleted == False``.\n\nReturns ``{ tokens: [{id, word, suggest, conf}] }``.\n\nR2 \u2014 I2 DRIFT (seam-remediation plan). Resolves ocrTool.fetchPageTokens stub.",
+        "operationId": "get_ocr_page_tokens",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "page_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Page Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Low-confidence OCR tokens for one page.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/hyphen_join/scan": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Scan Hyphen Candidates",
+        "description": "Scan all pages for end-of-line hyphen candidates.\n\nRuns ``detect_candidates`` (from the ``hyphen_join`` pipeline step) over\nevery page's OCR text artifact and aggregates the results into a flat\n``{ cases: HyphenCase[], totals: HyphenTotals }`` response.\n\nHyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``\nHyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,\n                       mismatch, unvalidated}``\n\nR2 \u2014 I2 DRIFT (seam-remediation plan). Resolves hyphenJoin.scanHyphenation stub.",
+        "operationId": "scan_hyphen_candidates",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project-level hyphen scan: cases and totals.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/{stage_id}/crop-pages": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Stage Crop Pages",
+        "description": "Return CropPageRow[] for all pages at a given stage.\n\nReturns ``{ pages: CropPageRow[] }`` where each row has:\n  ``pageId, n, thumbUrl, flags, bbox, skewDeg``\n\nUnlike ``GET .../project-stages/{stage_id}/pages`` (which returns the\nPageRow state-machine shape used by imageStageReview), this endpoint\nreturns the crop-grid shape consumed by pagesGridMachine / PagesGridTool.\n\nR2 \u2014 I2 DRIFT (seam-remediation plan). Resolves pagesGrid.fetchPages stub.\nAlso fixes the silent-catch error in the previous aggregate: this route\nreturns 404 on missing project (not 200 with empty list) so the machine's\nloadError state is reachable.",
+        "operationId": "get_stage_crop_pages",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CropPageRow aggregate for the stage.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/wordcheck/accept-dict": {
       "post": {
         "tags": [
