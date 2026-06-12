@@ -565,31 +565,25 @@ def test_submit_check_manual_attestation(live_server: LiveServer, page: Page) ->
 
 
 def test_source_tool_settings_save_as_default(live_server: LiveServer, page: Page) -> None:
-    """Source tool settings tab renders and the settings panel is accessible.
+    """Full round-trip: change a source setting → save-as-default → reload → persisted.
 
-    BUG FOUND (W5.2 gap): SourceToolSettings uses local React state for all
-    settings (thumbQuality, workers, autoConfirm) — none of these feed the
-    XState stageSettings machine. The ``settings-save-btn`` only appears when
-    ``settingsState === "modified"`` (i.e. ``_settingsDraft`` is non-null), but
-    ``_settingsDraft`` is never updated from the form fields. The full
-    save-as-default → reload → persisted flow cannot be exercised until the
-    settings form is wired to the machine (W5.2 in the seam-remediation plan).
+    W5.2 fix: SourceToolSettings now wires onChange → CHANGE_SETTING machine event so
+    ``_settingsDraft`` populates and ``settings-save-btn`` renders when the form is
+    modified.  This test exercises the complete UI path:
 
-    This test verifies what IS testable:
     1. Navigate to source stage.
-    2. The SourceTool renders (not a placeholder — tests the PipelinePage fix).
+    2. SourceTool renders (PipelinePage fix: source gets a ToolComponent, not a placeholder).
     3. Click the "Stage settings" tab.
-    4. The settings panel renders (banner + settings rows visible).
-    5. The auto-confirm toggle is present and interactive (local state flip works).
-    6. The settings API is functional — GET returns defaults, PUT saves overrides.
-
-    The full save-as-default + persistence assertion is covered by the API-level
-    test ``test_stage_settings_save_as_default_api`` (unit test) which calls the
-    route directly. This e2e test tracks the UI rendering only.
-
-    TODO (W5.2): when SourceToolSettings wires onChange → PUT_SETTING machine
-    event, update this test to: click toggle → wait for settings-save-btn →
-    click → reload → assert toggle reflects saved value.
+    4. Settings panel renders (banner in default state + settings rows visible).
+    5. Click the "High" thumb-quality button → CHANGE_SETTING fires → machine enters
+       modified state → settings-save-btn appears.
+    6. Click "Save as project default" → POST .../save-as-default round-trip.
+    7. Reload the page (navigate back to the same stage URL).
+    8. Click "Stage settings" tab again.
+    9. The settings GET API returns the saved thumbQuality="High" value (verified via
+       the API directly after reload, as the banner reflects a fresh load from the
+       project-default store, which is what persistence means here).
+    10. No JS errors throughout.
     """
     errors: list[str] = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
@@ -608,32 +602,61 @@ def test_source_tool_settings_save_as_default(live_server: LiveServer, page: Pag
     expect(settings_tab).to_be_visible(timeout=5_000)
     settings_tab.click()
 
-    # Settings panel renders
-    expect(page.locator('[data-testid="settings-banner"]')).to_be_visible(timeout=5_000)
+    # Settings panel renders in default state
+    settings_banner = page.locator('[data-testid="settings-banner"]')
+    expect(settings_banner).to_be_visible(timeout=5_000)
+    assert settings_banner.get_attribute("data-settings-state") == "default", (
+        "Expected settings to start in default state"
+    )
 
     # Settings rows are present
     expect(page.locator('[data-testid="setting-row-thumb-quality"]')).to_be_visible(timeout=3_000)
     expect(page.locator('[data-testid="setting-row-auto-confirm"]')).to_be_visible(timeout=3_000)
 
-    # Auto-confirm toggle is present and interactive (local React state)
-    auto_confirm_toggle = page.locator('[data-testid="auto-confirm-toggle"]')
-    expect(auto_confirm_toggle).to_be_visible(timeout=3_000)
-    original_checked = auto_confirm_toggle.is_checked()
-    auto_confirm_toggle.click()
-    # Local state flips immediately (no machine event needed for local-only toggle)
-    page.wait_for_timeout(200)
-    new_checked = auto_confirm_toggle.is_checked()
-    assert new_checked != original_checked, "Toggle did not flip local state — check Toggle2 component wiring"
+    # --- W5.2 core fix: clicking a setting now fires CHANGE_SETTING to the machine ---
+    # Click "High" quality button — this calls onChangeSetting("thumbQuality", "High")
+    # which sends CHANGE_SETTING to the sourceToolMachine, populating _settingsDraft.
+    high_btn = page.locator('[data-testid="thumb-quality-high"]')
+    expect(high_btn).to_be_visible(timeout=3_000)
+    high_btn.click()
 
-    assert errors == [], f"Page errors in settings panel: {errors}"
+    # The machine should now be in modified state — settings-save-btn must appear.
+    # Wait up to 5 s for the CHANGE_SETTING event to propagate through XState + React.
+    save_btn = page.locator('[data-testid="settings-save-btn"]')
+    expect(save_btn).to_be_visible(timeout=5_000)
+    assert not save_btn.is_disabled(), "Save button should be enabled once a setting is modified"
 
-    # The settings panel must still be visible after the toggle flip
-    expect(page.locator('[data-testid="settings-banner"]')).to_be_visible(timeout=3_000)
+    assert errors == [], f"JS errors before clicking save: {errors}"
 
-    # Navigate away and back to verify no crash on re-entry
-    page.goto(live_server.base_url, wait_until="networkidle")
-    expect(page.locator('[data-testid="projects-page"]')).to_be_visible(timeout=10_000)
-    assert errors == [], f"Page errors after navigating away: {errors}"
+    # --- Click save-as-default ---
+    save_btn.click()
+
+    # After saving, the machine transitions back to default (or briefly to saving then default).
+    # Wait for the save-btn to disappear (back to default state).
+    expect(save_btn).not_to_be_visible(timeout=5_000)
+
+    assert errors == [], f"JS errors after save-as-default: {errors}"
+
+    # --- Reload: navigate back to the same stage URL ---
+    _navigate_to_stage(page, live_server.base_url, project_id, "source")
+    assert errors == [], f"Errors on reload: {errors}"
+
+    # --- Verify persistence via the API ---
+    # The save-as-default route writes to StageSettingsStore keyed by (projectId, stageId).
+    # GET .../pages/0000/stages/source/settings should reflect thumbQuality="High".
+    settings_resp = httpx.get(
+        f"{live_server.base_url}/api/data/projects/{project_id}/pages/0000/stages/source/settings",
+        timeout=10,
+    )
+    assert settings_resp.status_code == 200, (
+        f"GET source settings after save-as-default failed: {settings_resp.status_code} {settings_resp.text}"
+    )
+    saved_settings = settings_resp.json()
+    assert saved_settings.get("thumbQuality") == "High", (
+        f"thumbQuality was not persisted as 'High' after save-as-default; got: {saved_settings}"
+    )
+
+    assert errors == [], f"Page errors on final reload: {errors}"
 
 
 # ── Additional test 7: run-all-stale click effect ─────────────────────────────

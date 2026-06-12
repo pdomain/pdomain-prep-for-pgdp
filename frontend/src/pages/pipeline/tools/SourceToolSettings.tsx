@@ -47,6 +47,7 @@ export function SourceStepSettings({
   onSaveAsDefault,
   onRevert,
   onResetToDefault,
+  onChangeSetting,
 }: {
   settingsState:
     | "default"
@@ -62,10 +63,28 @@ export function SourceStepSettings({
   onSaveAsDefault: () => void;
   onRevert: () => void;
   onResetToDefault: () => void;
+  /**
+   * Called when the user changes a setting value.
+   * Sends CHANGE_SETTING to the sourceTool machine so _settingsDraft populates
+   * and the settings-save-btn becomes reachable.
+   *
+   * @param key   The setting key (e.g. "thumbQuality", "workers", "autoConfirm")
+   * @param value The new value
+   */
+  onChangeSetting: (key: string, value: unknown) => void;
 }): ReactNode {
-  const [thumbQuality, setThumbQuality] = useState<string>("Standard");
-  const [workers, setWorkers] = useState(4);
-  const [autoConfirm, setAutoConfirm] = useState(false);
+  // Local state for optimistic UI — reflects draft or machine context.
+  // Initial values derived from draft (if the machine already has a draft from
+  // a prior change) so the UI stays consistent across re-renders.
+  const [thumbQuality, setThumbQuality] = useState<string>(
+    (draft?.["thumbQuality"] as string | undefined) ?? "Standard",
+  );
+  const [workers, setWorkers] = useState<number>(
+    (draft?.["workers"] as number | undefined) ?? 4,
+  );
+  const [autoConfirm, setAutoConfirm] = useState<boolean>(
+    (draft?.["autoConfirm"] as boolean | undefined) ?? false,
+  );
 
   const nChanges = countDraftChanges(draft);
 
@@ -266,7 +285,10 @@ export function SourceStepSettings({
                     key={v}
                     type="button"
                     data-testid={`thumb-quality-${v.toLowerCase()}`}
-                    onClick={() => setThumbQuality(v)}
+                    onClick={() => {
+                      setThumbQuality(v);
+                      onChangeSetting("thumbQuality", v);
+                    }}
                     style={{
                       padding: "4px 12px",
                       borderRadius: 5,
@@ -302,7 +324,10 @@ export function SourceStepSettings({
             <div style={{ minWidth: 240 }}>
               <SettingSlider
                 value={workers}
-                onChange={setWorkers}
+                onChange={(v) => {
+                  setWorkers(v);
+                  onChangeSetting("workers", v);
+                }}
                 min={1}
                 max={8}
                 step={1}
@@ -354,7 +379,10 @@ export function SourceStepSettings({
           >
             <Toggle2
               checked={autoConfirm}
-              onChange={setAutoConfirm}
+              onChange={(v) => {
+                setAutoConfirm(v);
+                onChangeSetting("autoConfirm", v);
+              }}
               data-testid="auto-confirm-toggle"
             />
           </SetRow>

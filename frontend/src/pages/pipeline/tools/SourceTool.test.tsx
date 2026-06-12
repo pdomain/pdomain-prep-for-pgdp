@@ -638,6 +638,7 @@ describe("SourceStepSettings — default artboard", () => {
     onSaveAsDefault: vi.fn(),
     onRevert: vi.fn(),
     onResetToDefault: vi.fn(),
+    onChangeSetting: vi.fn(),
   };
 
   it("renders settings-banner container", () => {
@@ -679,6 +680,66 @@ describe("SourceStepSettings — default artboard", () => {
 });
 
 // ---------------------------------------------------------------------------
+// SourceStepSettings — onChangeSetting wiring (R1 fix)
+// ---------------------------------------------------------------------------
+
+describe("SourceStepSettings — onChangeSetting wiring", () => {
+  it("clicking a thumb quality button calls onChangeSetting with key='thumbQuality'", () => {
+    const onChangeSetting = vi.fn();
+    render(
+      <SourceStepSettings
+        settingsState="default"
+        draft={null}
+        presetId={null}
+        onSaveAsDefault={vi.fn()}
+        onRevert={vi.fn()}
+        onResetToDefault={vi.fn()}
+        onChangeSetting={onChangeSetting}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("thumb-quality-high"));
+    expect(onChangeSetting).toHaveBeenCalledWith("thumbQuality", "High");
+  });
+
+  it("clicking Standard quality calls onChangeSetting('thumbQuality', 'Standard')", () => {
+    const onChangeSetting = vi.fn();
+    render(
+      <SourceStepSettings
+        settingsState="default"
+        draft={null}
+        presetId={null}
+        onSaveAsDefault={vi.fn()}
+        onRevert={vi.fn()}
+        onResetToDefault={vi.fn()}
+        onChangeSetting={onChangeSetting}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("thumb-quality-standard"));
+    expect(onChangeSetting).toHaveBeenCalledWith("thumbQuality", "Standard");
+  });
+
+  it("toggling auto-confirm calls onChangeSetting with key='autoConfirm'", () => {
+    const onChangeSetting = vi.fn();
+    render(
+      <SourceStepSettings
+        settingsState="default"
+        draft={null}
+        presetId={null}
+        onSaveAsDefault={vi.fn()}
+        onRevert={vi.fn()}
+        onResetToDefault={vi.fn()}
+        onChangeSetting={onChangeSetting}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("auto-confirm-toggle"));
+    expect(onChangeSetting).toHaveBeenCalledWith(
+      "autoConfirm",
+      expect.any(Boolean),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Artboard: SourceStepSettings — modified state
 // ---------------------------------------------------------------------------
 
@@ -690,6 +751,7 @@ describe("SourceStepSettings — modified artboard", () => {
     onSaveAsDefault: vi.fn(),
     onRevert: vi.fn(),
     onResetToDefault: vi.fn(),
+    onChangeSetting: vi.fn(),
   };
 
   it("renders settings-banner in modified state", () => {
@@ -745,6 +807,7 @@ describe("SourceStepSettings — preset artboard", () => {
     onSaveAsDefault: vi.fn(),
     onRevert: vi.fn(),
     onResetToDefault: vi.fn(),
+    onChangeSetting: vi.fn(),
   };
 
   it("renders settings-banner in preset state", () => {

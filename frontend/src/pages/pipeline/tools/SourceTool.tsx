@@ -247,6 +247,9 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
             onSaveAsDefault={() => send({ type: "SAVE_AS_DEFAULT" })}
             onRevert={() => send({ type: "REVERT" })}
             onResetToDefault={() => send({ type: "RESET_TO_DEFAULT" })}
+            onChangeSetting={(key, value) =>
+              send({ type: "CHANGE_SETTING", patch: { [key]: value } })
+            }
           />
         );
 
