@@ -41,7 +41,10 @@ import {
 // This import does NOT introduce a circular dependency — source.ts is the
 // machine definition; sourceTool.ts is the service adapter (injected via
 // SourceToolServices). The const is a plain mapping Record, not a service call.
-import { FILE_STATE_TO_PAGE_TYPE } from "@/services/tools/sourceTool";
+import {
+  FILE_STATE_TO_PAGE_TYPE,
+  FILE_STATE_TO_PAGE_ROLE,
+} from "@/services/tools/sourceTool";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -166,15 +169,18 @@ export interface SourceToolServices extends StageSettingsServices {
   ): Promise<{ pages: number }>;
 
   /**
-   * PATCH /api/data/projects/{id}/pages/{idx0} { page_type }
+   * PATCH /api/data/projects/{id}/pages/{idx0} { page_type, page_role }
    * Persist a role change for multiple pages (fire-and-forget).
    * clearIgnore=true also sends { ignore: false } to un-remove skipped pages.
+   * pageRole is written atomically with pageType — "back"/"duplicate" to set
+   * the sub-role, null to clear it when assigning a non-sub-role type.
    */
   markSelectedPages(
     projectId: string,
     idxList: number[],
     pageType: string,
     clearIgnore?: boolean,
+    pageRole?: string | null,
   ): Promise<void>;
 
   /**
@@ -557,19 +563,25 @@ export const sourceToolMachine = setup({
         const files = context.files.map((f) =>
           context.selected.includes(f.idx) ? { ...f, state: event.state } : f,
         );
-        // Fire-and-forget persistence: map FileState → PageType and PATCH each page.
+        // Fire-and-forget persistence: map FileState → PageType + PageRole and PATCH each page.
         const pageType = FILE_STATE_TO_PAGE_TYPE[event.state];
         if (pageType !== null && pageType !== undefined) {
           // clearIgnore=true when any selected page is currently skipped
           const hasSkipped = context.files.some(
             (f) => context.selected.includes(f.idx) && f.state === "skipped",
           );
+          // Derive page_role from the fileState (back→"back", duplicate→"duplicate",
+          // others→null to clear any prior sub-role). FILE_STATE_TO_PAGE_ROLE has
+          // entries only for back/duplicate/page/cover/blank — all return null except
+          // back and duplicate.
+          const pageRole = FILE_STATE_TO_PAGE_ROLE[event.state] ?? null;
           void context.services
             .markSelectedPages(
               context.projectId,
               context.selected,
               pageType,
               hasSkipped,
+              pageRole,
             )
             .catch((err: unknown) => {
               console.error("[source] markSelected PATCH failed", err);
@@ -603,12 +615,15 @@ export const sourceToolMachine = setup({
         if (pageType !== null && pageType !== undefined) {
           const wasSkipped =
             context.files.find((f) => f.idx === event.idx)?.state === "skipped";
+          // Derive page_role from the fileState so back/duplicate survive reload.
+          const pageRole = FILE_STATE_TO_PAGE_ROLE[event.role] ?? null;
           void context.services
             .markSelectedPages(
               context.projectId,
               [event.idx],
               pageType,
               wasSkipped,
+              pageRole,
             )
             .catch((err: unknown) => {
               console.error("[source] assignRole PATCH failed", err);

@@ -7856,6 +7856,17 @@
             "$ref": "#/components/schemas/PageType",
             "default": "normal"
           },
+          "page_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Role"
+          },
           "alignment": {
             "$ref": "#/components/schemas/AlignmentOverride",
             "default": "default"
@@ -8052,6 +8063,7 @@
           "ignore",
           "manual_ignore",
           "page_type",
+          "page_role",
           "alignment",
           "config_overrides",
           "splits",
@@ -9346,6 +9358,17 @@
                 "type": "null"
               }
             ]
+          },
+          "page_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Role"
           },
           "alignment": {
             "anyOf": [

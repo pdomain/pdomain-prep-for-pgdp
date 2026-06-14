@@ -32,8 +32,9 @@ import {
   markSelectedPages,
   setPageIgnore,
   FILE_STATE_TO_PAGE_TYPE,
+  FILE_STATE_TO_PAGE_ROLE,
 } from "@/services/tools/sourceTool";
-import { fetchAllSourcePages } from "./useSourcePages";
+import { resolveFileState, fetchAllSourcePages } from "./useSourcePages";
 import { server } from "@/test/server";
 import { createMockStageSettingsServer } from "@/machines/tools/stageSettings";
 
@@ -194,6 +195,7 @@ describe("MARK_AS persistence", () => {
       [0, 2],
       "normal",
       false, // clearIgnore=false (no selected pages were skipped)
+      null, // pageRole=null (page→normal clears any prior sub-role)
     );
     actor.stop();
   });
@@ -215,6 +217,7 @@ describe("MARK_AS persistence", () => {
       [1],
       "normal",
       true, // clearIgnore=true because the page was skipped
+      null, // pageRole=null (page→normal clears any prior sub-role)
     );
     actor.stop();
   });
@@ -274,6 +277,7 @@ describe("SET_ROLE persistence", () => {
       [1],
       "cover",
       false, // clearIgnore=false (page was "ready", not "skipped")
+      null, // pageRole=null (cover has no sub-role)
     );
     actor.stop();
   });
@@ -294,6 +298,7 @@ describe("SET_ROLE persistence", () => {
       [2],
       "blank",
       true, // clearIgnore=true
+      null, // pageRole=null (blank has no sub-role)
     );
     actor.stop();
   });
@@ -623,5 +628,121 @@ describe("markSelectedPages service", () => {
   it("does NOT include ignore field when clearIgnore=false (default)", async () => {
     await markSelectedPages(PROJECT_ID, [0], "normal", false);
     expect(receivedBodies[0]).not.toHaveProperty("ignore");
+  });
+
+  it("sends { page_type: skip, page_role: back } for back role", async () => {
+    await markSelectedPages(PROJECT_ID, [0], "skip", false, "back");
+    expect(receivedBodies[0]).toMatchObject({
+      page_type: "skip",
+      page_role: "back",
+    });
+  });
+
+  it("sends { page_type: skip, page_role: duplicate } for duplicate role", async () => {
+    await markSelectedPages(PROJECT_ID, [0], "skip", false, "duplicate");
+    expect(receivedBodies[0]).toMatchObject({
+      page_type: "skip",
+      page_role: "duplicate",
+    });
+  });
+
+  it("sends { page_type: normal, page_role: null } when pageRole=null (clears sub-role)", async () => {
+    await markSelectedPages(PROJECT_ID, [0], "normal", false, null);
+    expect(receivedBodies[0]).toMatchObject({
+      page_type: "normal",
+      page_role: null,
+    });
+  });
+
+  it("does NOT include page_role field when pageRole is omitted (legacy path)", async () => {
+    await markSelectedPages(PROJECT_ID, [0], "normal");
+    expect(receivedBodies[0]).not.toHaveProperty("page_role");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 9 — FILE_STATE_TO_PAGE_ROLE correctness
+// ---------------------------------------------------------------------------
+
+describe("FILE_STATE_TO_PAGE_ROLE mapping", () => {
+  it("maps back → 'back' (distinct sub-role label)", () => {
+    expect(FILE_STATE_TO_PAGE_ROLE["back"]).toBe("back");
+  });
+
+  it("maps duplicate → 'duplicate' (distinct sub-role label)", () => {
+    expect(FILE_STATE_TO_PAGE_ROLE["duplicate"]).toBe("duplicate");
+  });
+
+  it("maps page → null (clears any prior sub-role)", () => {
+    expect(FILE_STATE_TO_PAGE_ROLE["page"]).toBeNull();
+  });
+
+  it("maps cover → null", () => {
+    expect(FILE_STATE_TO_PAGE_ROLE["cover"]).toBeNull();
+  });
+
+  it("maps blank → null", () => {
+    expect(FILE_STATE_TO_PAGE_ROLE["blank"]).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 10 — resolveFileState round-trip: back/duplicate survive reload
+// ---------------------------------------------------------------------------
+
+describe("resolveFileState: back/duplicate distinct from plain skip", () => {
+  it("page_role=back → 'back' (even though page_type=skip)", () => {
+    expect(resolveFileState(false, "skip", "back")).toBe("back");
+  });
+
+  it("page_role=duplicate → 'duplicate' (even though page_type=skip)", () => {
+    expect(resolveFileState(false, "skip", "duplicate")).toBe("duplicate");
+  });
+
+  it("page_role=null, page_type=skip → 'skipped' (plain skip, no sub-role)", () => {
+    expect(resolveFileState(false, "skip", null)).toBe("skipped");
+  });
+
+  it("page_role=undefined, page_type=skip → 'skipped' (no sub-role field)", () => {
+    expect(resolveFileState(false, "skip")).toBe("skipped");
+  });
+
+  it("ignore=true always → 'skipped' regardless of page_role", () => {
+    expect(resolveFileState(true, "skip", "back")).toBe("skipped");
+    expect(resolveFileState(true, "skip", "duplicate")).toBe("skipped");
+    expect(resolveFileState(true, "normal", "back")).toBe("skipped");
+  });
+
+  it("page_role=back survives a MARK_AS → reload cycle", async () => {
+    // Machine dispatches: MARK_AS back → page_type=skip, page_role=back
+    // On reload, server returns page_type=skip, page_role=back → resolves to "back"
+    const pageType = FILE_STATE_TO_PAGE_TYPE["back"]; // "skip"
+    const pageRole = FILE_STATE_TO_PAGE_ROLE["back"]; // "back"
+    expect(pageType).toBe("skip");
+    expect(pageRole).toBe("back");
+    // Reload round-trip
+    const reloaded = resolveFileState(false, pageType!, pageRole ?? undefined);
+    expect(reloaded).toBe("back");
+  });
+
+  it("page_role=duplicate survives a MARK_AS → reload cycle", async () => {
+    const pageType = FILE_STATE_TO_PAGE_TYPE["duplicate"]; // "skip"
+    const pageRole = FILE_STATE_TO_PAGE_ROLE["duplicate"]; // "duplicate"
+    expect(pageType).toBe("skip");
+    expect(pageRole).toBe("duplicate");
+    // Reload round-trip
+    const reloaded = resolveFileState(false, pageType!, pageRole ?? undefined);
+    expect(reloaded).toBe("duplicate");
+  });
+
+  it("marking 'page' clears a prior back role on reload", () => {
+    // After marking page, page_type=normal, page_role=null
+    const pageType = FILE_STATE_TO_PAGE_TYPE["page"]; // "normal"
+    const pageRole = FILE_STATE_TO_PAGE_ROLE["page"]; // null
+    expect(pageType).toBe("normal");
+    expect(pageRole).toBeNull();
+    // Reload with null role → "page"
+    const reloaded = resolveFileState(false, pageType!, pageRole ?? undefined);
+    expect(reloaded).toBe("page");
   });
 });

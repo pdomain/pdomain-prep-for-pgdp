@@ -100,6 +100,16 @@ class ListPagesResponse(BaseModel):
 
 class UpdatePageRequest(BaseModel):
     page_type: PageType | None = None
+    page_role: str | None = None
+    """Optional sub-role label ("back" or "duplicate").
+
+    Stored independently of page_type so the Source/Files role chip
+    survives reload. When page_role is set to "back" or "duplicate",
+    page_type must also be set to PageType.skip for packaging correctness.
+    Set to None (or omit) to clear a previously set role.
+
+    The sentinel value ``""`` (empty string) is treated as None (clear role).
+    """
     alignment: AlignmentOverride | None = None
     config_overrides: PageConfigOverrides | None = None
     splits: list[PageSplit] | None = None
@@ -267,6 +277,7 @@ def _ext_to_page_record(ext: PrepPageExtension) -> PageRecord:
         ignore=ext.ignore,
         manual_ignore=ext.manual_ignore,
         page_type=ext.page_type,
+        page_role=ext.page_role,
         alignment=ext.alignment,
         config_overrides=ext.config_overrides,
         splits=ext.splits,
@@ -450,11 +461,15 @@ async def update_page(
     updated_fields = body.model_fields_set
     old_overrides = cast(dict[str, object], page.config_overrides.model_dump())
     previous_page_type = page.page_type
+    previous_page_role = page.page_role
     previous_ignore = page.ignore
     if "config_overrides" in updated_fields and body.config_overrides is not None:
         page.config_overrides = body.config_overrides
     if "page_type" in updated_fields:
         page.page_type = body.page_type or page.page_type
+    if "page_role" in updated_fields:
+        # Normalise empty string → None (clear sentinel).
+        page.page_role = body.page_role or None
     if "alignment" in updated_fields:
         page.alignment = body.alignment or page.alignment
     if "splits" in updated_fields and body.splits is not None:
@@ -474,6 +489,7 @@ async def update_page(
     update_kwargs: dict[str, Any] = {
         "config_overrides": page.config_overrides,
         "page_type": page.page_type,
+        "page_role": page.page_role,
         "alignment": page.alignment,
         "splits": page.splits,
         "illustration_regions": page.illustration_regions,
@@ -513,6 +529,14 @@ async def update_page(
                 page_id=page_id_str,
                 previous_type=previous_page_type.value,
                 new_type=page.page_type.value,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if "page_role" in updated_fields and page.page_role != previous_page_role:
+            _agg.record_page_role_set(
+                page_id=page_id_str,
+                previous_role=previous_page_role,
+                new_role=page.page_role,
                 actor_id=user.user_id,
             )
             _events_to_append = True

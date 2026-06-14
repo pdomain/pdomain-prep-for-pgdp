@@ -60,6 +60,23 @@ export const FILE_STATE_TO_PAGE_TYPE: Record<string, string | null> = {
   // "ready", "pending", "inserted", "skipped" have no PageType mapping
 };
 
+/**
+ * Maps source-tool FileState roles to backend page_role values.
+ *
+ * "back" and "duplicate" both write page_type="skip" (excluded from package)
+ * but each also writes page_role with the distinct label so the UI chip
+ * survives reload. All other roles write page_role=null (clear/no sub-role).
+ *
+ * Roles not in FILE_STATE_TO_PAGE_TYPE have no entry here either.
+ */
+export const FILE_STATE_TO_PAGE_ROLE: Record<string, string | null> = {
+  page: null,
+  cover: null,
+  back: "back",
+  blank: null,
+  duplicate: "duplicate",
+};
+
 // ---------------------------------------------------------------------------
 // PATCH page role (bulk)
 // ---------------------------------------------------------------------------
@@ -70,6 +87,11 @@ export const FILE_STATE_TO_PAGE_TYPE: Record<string, string | null> = {
  * Fire-and-forget per page: call errors are logged but do not surface to the
  * machine. The machine's in-memory state is already updated; this write is
  * durable persistence so changes survive reload.
+ *
+ * For "back" and "duplicate" roles, also sends page_role so the distinct
+ * label survives reload (both map to page_type="skip" for packaging, but
+ * page_role="back"/"duplicate" preserves the UI chip on GET).
+ * For all other roles, sends page_role=null to clear any prior sub-role.
  *
  * @param projectId  The project UUID.
  * @param idxList    List of idx0 values to update.
@@ -83,9 +105,24 @@ export async function markSelectedPages(
   idxList: number[],
   pageType: string,
   clearIgnore = false,
+  pageRole?: string | null,
 ): Promise<void> {
+  // Always send page_role to either set or clear it. This ensures that:
+  //   back      → page_type="skip", page_role="back"
+  //   duplicate → page_type="skip", page_role="duplicate"
+  //   page/cover/blank → page_type=<type>, page_role=null (clears any prior sub-role)
+  //
+  // The caller (source.ts markSelected/assignRole) derives pageRole from
+  // FILE_STATE_TO_PAGE_ROLE[fileState] before calling this function.
+  // pageRole is undefined only when called from legacy paths that don't yet
+  // pass the role — in that case we omit page_role from the body to avoid
+  // unexpected clears of existing sub-roles.
   const body: Record<string, unknown> = { page_type: pageType };
   if (clearIgnore) body["ignore"] = false;
+  // Only include page_role when explicitly provided (undefined = legacy path,
+  // null/string = intentional set-or-clear). This way role-aware callers
+  // always write the role atomically with the type.
+  if (pageRole !== undefined) body["page_role"] = pageRole;
   await Promise.all(
     idxList.map(async (idx0) => {
       try {
@@ -138,6 +175,7 @@ interface InsertPageResponse {
     source_stem: string;
     ignore: boolean;
     page_type: string;
+    page_role: string | null;
     thumbnail_key: string | null;
   };
   pages: {
@@ -145,6 +183,7 @@ interface InsertPageResponse {
     source_stem: string;
     ignore: boolean;
     page_type: string;
+    page_role: string | null;
     thumbnail_key: string | null;
   }[];
 }
@@ -226,8 +265,12 @@ export function buildRealSourceToolServices(): SourceToolServices {
           idx: p.idx0,
           stem: p.source_stem,
           // Use the same resolveFileState logic as the load path so existing
-          // page roles survive the post-insert refresh.
-          state: resolveFileState(p.ignore, p.page_type),
+          // page roles (including back/duplicate) survive the post-insert refresh.
+          state: resolveFileState(
+            p.ignore,
+            p.page_type,
+            p.page_role ?? undefined,
+          ),
         })),
       };
     },

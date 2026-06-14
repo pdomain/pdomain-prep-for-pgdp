@@ -234,6 +234,18 @@ class PageRecord(ApiModel):
     """
 
     page_type: PageType = PageType.normal
+    page_role: str | None = None
+    """Optional sub-role label that survives reload independently of page_type.
+
+    Used by the Source/Files tool to distinguish ``back`` and ``duplicate``
+    roles. Both map to ``page_type=skip`` for packaging purposes (excluded
+    from the submission zip), but the distinct label is preserved here so
+    the UI role chip can show ``back`` vs ``duplicate`` after a reload.
+
+    Set to ``"back"`` or ``"duplicate"`` when the user assigns those roles;
+    ``None`` for all other page types (normal, blank, cover, plate_*).
+    """
+
     alignment: AlignmentOverride = AlignmentOverride.default
 
     config_overrides: PageConfigOverrides = Field(default_factory=PageConfigOverrides)

@@ -26,12 +26,14 @@
  *
  * ## State mapping
  * Priority: `ignore=true` always → `"skipped"` (manual soft-remove wins).
- * Otherwise, `page_type` is reverse-mapped to `FileState`:
+ * Otherwise, `page_role` is checked first (wins for "back"/"duplicate"):
+ *   page_role="back"      → "back"
+ *   page_role="duplicate" → "duplicate"
+ * Then `page_type` is reverse-mapped to `FileState`:
  *   normal  → "page"
  *   cover   → "cover"
  *   blank   → "blank"
- *   skip    → "skipped"  (backend limitation: back + duplicate both write
- *                         "skip"; they cannot be distinguished on reload)
+ *   skip    → "skipped"  (plain skip with no sub-role)
  *   other   → "ready"    (safe default for unknown/future types)
  *
  * @see frontend/src/api/types.gen.ts — PageRecord schema
@@ -61,6 +63,12 @@ interface BackendPage {
   /** true when the user has excluded this page */
   ignore: boolean;
   page_type: string;
+  /**
+   * Optional sub-role label from PageRecord.page_role.
+   * "back" or "duplicate" when set; null/undefined otherwise.
+   * Takes precedence over page_type in resolveFileState when present.
+   */
+  page_role?: string | null;
 }
 
 export interface ListPagesResponse {
@@ -70,7 +78,7 @@ export interface ListPagesResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Reverse PageType → FileState map
+// Reverse PageType / page_role → FileState map
 // ---------------------------------------------------------------------------
 
 /**
@@ -83,15 +91,16 @@ export interface ListPagesResponse {
  *   normal → "page"     (body page)
  *   cover  → "cover"    (front cover / endpapers)
  *   blank  → "blank"    (blank scan)
- *   skip   → "skipped"  (excluded role; back AND duplicate both write "skip" —
- *                        backend has no back/duplicate enum values, so they
- *                        collapse to "skipped" on reload; this is intentional
- *                        and documented here as a known backend limitation)
+ *   skip   → "skipped"  (plain excluded page — no sub-role set)
  *
  * Unknown/future types fall through to "ready" (safe default).
  *
- * Priority over this map: if ignore=true, the page is always "skipped"
- * regardless of page_type (ignore is a manual soft-remove that wins).
+ * Priority:
+ *   1. ignore=true → always "skipped" (manual soft-remove wins all)
+ *   2. page_role="back"      → "back"      (durable sub-role)
+ *   3. page_role="duplicate" → "duplicate" (durable sub-role)
+ *   4. PAGE_TYPE_TO_FILE_STATE[page_type]  (normal, blank, cover, skip)
+ *   5. "ready"               (safe default)
  */
 const PAGE_TYPE_TO_FILE_STATE: Record<string, FileState> = {
   normal: "page",
@@ -101,10 +110,23 @@ const PAGE_TYPE_TO_FILE_STATE: Record<string, FileState> = {
 };
 
 /**
+ * Valid page_role sub-labels that map back to a distinct FileState.
+ * Both roles persist as page_type="skip" on the backend, but are
+ * distinguished by page_role so the UI chip survives reload.
+ */
+const PAGE_ROLE_TO_FILE_STATE: Record<string, FileState> = {
+  back: "back",
+  duplicate: "duplicate",
+};
+
+/**
  * Resolve a loaded page's FileState from its persisted fields.
  *
- * Rule: ignore=true always wins → "skipped".
- * Otherwise: use PAGE_TYPE_TO_FILE_STATE, fall back to "ready".
+ * Rule:
+ *   1. ignore=true → "skipped" (always wins)
+ *   2. page_role ("back"/"duplicate") → "back"/"duplicate" (durable sub-role)
+ *   3. PAGE_TYPE_TO_FILE_STATE[page_type] → "page"/"cover"/"blank"/"skipped"
+ *   4. "ready" (safe default)
  *
  * Exported so that other load paths (e.g. the insert-page refresh in
  * sourceTool.ts) can apply the same mapping and stay in sync.
@@ -112,8 +134,13 @@ const PAGE_TYPE_TO_FILE_STATE: Record<string, FileState> = {
 export function resolveFileState(
   ignore: boolean,
   page_type: string,
+  page_role?: string | null,
 ): FileState {
   if (ignore) return "skipped";
+  if (page_role != null && page_role !== "") {
+    const roleState = PAGE_ROLE_TO_FILE_STATE[page_role];
+    if (roleState !== undefined) return roleState;
+  }
   return PAGE_TYPE_TO_FILE_STATE[page_type] ?? "ready";
 }
 
@@ -163,12 +190,12 @@ export async function fetchAllSourcePages(
       const row: FileRow = {
         idx: p.idx0,
         stem: p.source_stem,
-        // Resolve state from persisted fields: ignore wins, then page_type reverse-map.
-        // ignore=true → "skipped" regardless of page_type (manual soft-remove).
-        // page_type: normal→page, cover→cover, blank→blank, skip→skipped (back+
-        // duplicate collapse to skip on reload — backend limitation; see
-        // PAGE_TYPE_TO_FILE_STATE comment). Unknown types → "ready".
-        state: resolveFileState(p.ignore, p.page_type),
+        // Resolve state from persisted fields.
+        // Priority: ignore=true → "skipped" (manual soft-remove wins);
+        // then page_role ("back"/"duplicate") → distinct role chip;
+        // then page_type reverse-map (normal→page, cover, blank, skip→skipped).
+        // Unknown types → "ready".
+        state: resolveFileState(p.ignore, p.page_type, p.page_role),
         // Use the ingest-thumbnail route — works at Source time before any
         // pipeline stage runs. Falls back to FakePaperThumb on 404 (still generating).
         thumbnailKey: ingestThumbUrl(projectId, p.idx0),

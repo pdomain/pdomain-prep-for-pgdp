@@ -57,6 +57,15 @@ class PrepPageExtension(ApiModel):
 
     # ── Page classification ─────────────────────────────────────────────
     page_type: PageType = PageType.normal
+    page_role: str | None = None
+    """Optional sub-role label for Source/Files distinct persistence.
+
+    Stores "back" or "duplicate" when the user assigns those roles so the
+    UI chip survives reload. Both map to page_type=skip for packaging but
+    differ here so the frontend can distinguish them. None for all other
+    page types (normal, blank, cover, plate_*).
+    """
+
     alignment: AlignmentOverride = AlignmentOverride.default
     config_overrides: PageConfigOverrides = Field(default_factory=PageConfigOverrides)
 

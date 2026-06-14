@@ -3087,6 +3087,8 @@ export interface components {
             manual_ignore: boolean;
             /** @default normal */
             page_type: components["schemas"]["PageType"];
+            /** Page Role */
+            page_role: string | null;
             /** @default default */
             alignment: components["schemas"]["AlignmentOverride"];
             config_overrides: components["schemas"]["PageConfigOverrides-Output"];
@@ -3730,6 +3732,8 @@ export interface components {
         /** UpdatePageRequest */
         UpdatePageRequest: {
             page_type?: components["schemas"]["PageType"] | null;
+            /** Page Role */
+            page_role?: string | null;
             alignment?: components["schemas"]["AlignmentOverride"] | null;
             config_overrides?: components["schemas"]["PageConfigOverrides-Input"] | null;
             /** Splits */

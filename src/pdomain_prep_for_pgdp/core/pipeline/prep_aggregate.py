@@ -208,6 +208,25 @@ class PrepProjectAggregate(Aggregate):
         by this operation — ignore is orthogonal to type classification.
         """
 
+    @event("PageRoleSet")
+    def record_page_role_set(
+        self,
+        page_id: str,
+        previous_role: str | None,
+        new_role: str | None,
+        actor_id: str,
+    ) -> None:
+        """Record setting the page_role sub-label (e.g. "back", "duplicate", or None).
+
+        page_role is distinct from page_type: both "back" and "duplicate" map
+        to page_type="skip" for packaging, but page_role preserves the user's
+        distinct label so the Source/Files UI chip survives reload.
+
+        Recorded alongside any PageTypeChanged event in the same handler
+        invocation (dual-write contract: one handler call, two events).
+        ``new_role=None`` clears the role (page becomes a plain skip or normal).
+        """
+
     @event("PageInserted")
     def record_page_inserted(
         self,

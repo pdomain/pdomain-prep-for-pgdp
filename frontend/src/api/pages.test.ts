@@ -42,6 +42,7 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
     ignore: false,
     manual_ignore: false,
     page_type: "normal",
+    page_role: null,
     alignment: "default",
     config_overrides: {
       initial_crop: null,

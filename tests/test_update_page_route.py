@@ -158,3 +158,108 @@ def test_patch_other_users_project_404(tmp_path: Path) -> None:
     with TestClient(app) as client:
         r = client.patch("/api/data/projects/up1/pages/0", json={"alignment": "center"})
         assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# page_role round-trip tests — back/duplicate survive reload distinctly
+# ---------------------------------------------------------------------------
+
+
+def test_patch_page_role_back_persists_and_reloads(tmp_path: Path) -> None:
+    """PATCH { page_type: skip, page_role: back } → GET → page_role="back"."""
+    settings = _settings(tmp_path)
+    _seed(settings)
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "skip"
+        assert body["page_role"] == "back"
+
+        # Round-trip: GET must return the same page_role so the UI chip reappears.
+        r2 = client.get("/api/data/projects/up1/pages/0")
+        assert r2.status_code == 200, r2.text
+        body2 = r2.json()
+        assert body2["page_type"] == "skip"
+        assert body2["page_role"] == "back"
+
+
+def test_patch_page_role_duplicate_persists_and_reloads(tmp_path: Path) -> None:
+    """PATCH { page_type: skip, page_role: duplicate } → GET → page_role="duplicate"."""
+    settings = _settings(tmp_path)
+    _seed(settings)
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "skip", "page_role": "duplicate"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "skip"
+        assert body["page_role"] == "duplicate"
+
+        r2 = client.get("/api/data/projects/up1/pages/0")
+        assert r2.status_code == 200, r2.text
+        body2 = r2.json()
+        assert body2["page_type"] == "skip"
+        assert body2["page_role"] == "duplicate"
+
+
+def test_patch_page_role_back_distinct_from_duplicate(tmp_path: Path) -> None:
+    """back and duplicate both have page_type=skip but different page_role values."""
+    settings = _settings(tmp_path)
+    _seed(settings)
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # Mark as back
+        r = client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        assert r.json()["page_role"] == "back"
+        assert r.json()["page_type"] == "skip"
+
+        # Re-mark as duplicate — role must change
+        r2 = client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "skip", "page_role": "duplicate"},
+        )
+        assert r2.json()["page_role"] == "duplicate"
+        assert r2.json()["page_type"] == "skip"
+
+        # Verify distinction on GET
+        r3 = client.get("/api/data/projects/up1/pages/0")
+        assert r3.json()["page_role"] == "duplicate"
+        assert r3.json()["page_type"] == "skip"
+
+
+def test_patch_page_role_cleared_to_null_when_reassigned_as_page(tmp_path: Path) -> None:
+    """Assigning page_type=normal + page_role=null clears a prior back/duplicate sub-role."""
+    settings = _settings(tmp_path)
+    _seed(settings)
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # First, mark as back
+        client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        # Then, clear to normal (page_role=null clears the sub-role)
+        r = client.patch(
+            "/api/data/projects/up1/pages/0",
+            json={"page_type": "normal", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "normal"
+        assert body["page_role"] is None
+
+        # Verify on GET
+        r2 = client.get("/api/data/projects/up1/pages/0")
+        assert r2.json()["page_type"] == "normal"
+        assert r2.json()["page_role"] is None
