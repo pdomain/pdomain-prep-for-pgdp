@@ -20,6 +20,13 @@ import type { RequestHandler } from "msw";
 export const handlers: RequestHandler[] = [
   http.get("/api/jobs", () => HttpResponse.json([])),
 
+  // hifi-source: useSourcePages — pages list (empty default so SourceTool
+  // exits the loading state and renders the Files tab content in tests
+  // that do not need real page data).
+  http.get("/api/data/projects/:projectId/pages", () =>
+    HttpResponse.json({ pages: [], next_cursor: null }),
+  ),
+
   // R2: grayscaleTool — detectProfile
   http.post(
     "/api/data/projects/:projectId/project-stages/grayscale/detect",

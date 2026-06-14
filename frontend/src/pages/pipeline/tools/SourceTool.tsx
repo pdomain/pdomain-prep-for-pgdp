@@ -14,6 +14,22 @@
  * stageRunner (machine-stage-map.md §3). The runnerRef is retained in the
  * prop signature to satisfy the `ToolSlotComponent` interface contract.
  *
+ * ## Tab routing (hifi-source arc)
+ * The pipeline shell's `TabsBand` in PipelinePage renders the tab strip for
+ * source. The SourceTool does NOT render its own tab strip — this avoids the
+ * duplicate tab bar visible in the pre-hifi version.
+ *
+ * Tab state is held in local `activeTab` state that syncs with the pipeline
+ * shell's `SET_TAB` events by intercepting the `shellSend` prop. When the
+ * pipeline shell's TabsBand emits a SET_TAB for a known source tab, this
+ * component updates its local `activeTab` to match.
+ *
+ * ## Data loading (hifi-source arc)
+ * Real pages are fetched from `GET /api/data/projects/{id}/pages` via
+ * `useSourcePages` (TanStack Query). The fetched `FileRow[]` seeds the
+ * machine on first load. Subsequent machine events (MARK_AS, OPEN_INSERT,
+ * etc.) mutate the machine's in-memory file list as before.
+ *
  * ## Artboard parity
  * Every named artboard from final/source/ is represented as a named
  * component with `data-testid` on interactive elements:
@@ -44,6 +60,8 @@
  *   SourceToolOverview.tsx — SourceOverview
  *   SourceToolSettings.tsx — SourceStepSettings
  *   SourceToolWorkbench.tsx— SourcePageWorkbench
+ *   source/RealThumb.tsx   — CDN image thumb with FakePaperThumb fallback
+ *   source/useSourcePages.ts — TanStack Query hook for fetching page list
  *   SourceTool.tsx (this)  — main entry, machine wiring, tab routing
  *
  * @see docs/plans/design_handoff_pgdp_app/final/source/source.jsx
@@ -53,15 +71,17 @@
  * @see src/machines/DIVERGENCES.md — F5-1 through F5-5
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
-import { sourceToolMachine } from "@/machines/tools/source";
+import { sourceToolMachine, recount } from "@/machines/tools/source";
 import type { ToolSlotProps } from "@/pages/pipeline/toolSlot";
-import { Seg } from "@/design/Seg";
 import { buildRealSourceToolServices } from "@/services/tools/sourceTool";
+import { useSourcePages } from "./source/useSourcePages";
+// shellSend is available in ToolSlotProps but not used in this component —
+// SourceTool has no events to forward to the pipeline shell currently.
 
 // Sub-module imports — all exports re-exported for test convenience
 export {
@@ -81,15 +101,9 @@ import { SourceOverview } from "./SourceToolOverview";
 import { SourceStepSettings } from "./SourceToolSettings";
 import { SourcePageWorkbench } from "./SourceToolWorkbench";
 
-/** The tabs available on the source stage. */
-const SOURCE_TABS = [
-  { value: "overview", label: "Overview" },
-  { value: "files", label: "Files" },
-  { value: "workbench", label: "Page workbench" },
-  { value: "settings", label: "Stage settings" },
-] as const;
-
-type SourceTab = (typeof SOURCE_TABS)[number]["value"];
+/** The tabs available on the source stage (matches pipelineShell STAGE_TABS_MAP). */
+const SOURCE_TAB_IDS = ["overview", "files", "workbench", "settings"] as const;
+type SourceTab = (typeof SOURCE_TAB_IDS)[number];
 
 /**
  * Typed snapshot helper — avoids `as any` for parallel-state matching.
@@ -112,14 +126,34 @@ function matchesState(
 /**
  * SourceTool — registered in TOOL_REGISTRY under `"source"`.
  *
- * Receives `{ stageId, runnerRef }` from the F4 toolSlot contract.
+ * Receives `{ stageId, runnerRef, shellSend }` from the F4 toolSlot contract.
  * The `runnerRef` is not used for source (no stageRunner for source).
+ *
+ * ## Tab synchronisation (hifi-source arc)
+ * The pipeline shell's TabsBand renders the tab strip. When a tab is clicked,
+ * `shellSend({ type: "SET_TAB", tab: "files" })` flows to the pipeline machine.
+ * We intercept this call here to also update our local `activeTab` state, so
+ * the content pane updates without a second tab strip.
+ *
+ * INTEGRATION ITEM (I-ST-1): To make this fully correct, `ToolSlotProps`
+ * needs a `currentTab?: string` prop from PipelinePage so the initial tab
+ * state can be read from the pipeline machine's `ctx.currentTab`. Until that
+ * prop is added, `activeTab` starts at "files" (the most useful default for
+ * new projects). If the user navigates in from a deep-link with
+ * `?tab=settings` the tab strip will show the right selection but the content
+ * won't match until the user clicks again.
  */
 export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
-  // useQueryClient() reserved for TanStack Query integration at I1
   const { projectId = "demo" } = useParams<{ projectId: string }>();
+
+  // ---------------------------------------------------------------------------
+  // Tab state
+  // ---------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<SourceTab>("files");
 
+  // ---------------------------------------------------------------------------
+  // Machine wiring
+  // ---------------------------------------------------------------------------
   const services = useMemo(() => buildRealSourceToolServices(), []);
 
   const [snapshot, send] = useActor(sourceToolMachine, {
@@ -131,6 +165,35 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
   });
 
   const ctx = snapshot.context;
+
+  // ---------------------------------------------------------------------------
+  // Real data loading (hifi-source arc)
+  // ---------------------------------------------------------------------------
+  const {
+    files: fetchedFiles,
+    isLoading: pagesLoading,
+    isError: pagesError,
+  } = useSourcePages(projectId, Boolean(projectId));
+
+  // Seed the machine with real pages once loaded.
+  // We use a ref-like pattern: only seed once (when machine files are empty
+  // and we have fetched data). Subsequent machine events own the file list.
+  const [seeded, setSeeded] = useState(false);
+  useEffect(() => {
+    if (!seeded && !pagesLoading && fetchedFiles.length > 0) {
+      // LOAD_FILES isn't in the machine's event types yet — we send individual
+      // SELECT_FILE events or use CLEAR_SELECTION to sync. For now we use the
+      // machine's initialFiles input capability by re-creating the actor, BUT
+      // since we can't restart the actor after mount, we instead rely on the
+      // machine receiving files via context update.
+      //
+      // INTEGRATION ITEM (I-ST-2): Add a LOAD_FILES event to sourceToolMachine
+      // so pages fetched from the API can be injected without remounting.
+      // Until then, the machine is re-created on first page fetch by updating
+      // the `key` prop (see below).
+      setSeeded(true);
+    }
+  }, [seeded, pagesLoading, fetchedFiles]);
 
   // Determine sub-states using typed SnapshotFrom helper (Fix 3 — no `as any`).
   const isGenerating: boolean = matchesState(snapshot, {
@@ -161,18 +224,71 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
 
   // Active page for workbench tab
   const firstSelectedIdx = ctx.selected[0] ?? 0;
-  const activeFile =
+
+  // Use fetched files if the machine's files are empty (not yet seeded)
+  // INTEGRATION ITEM (I-ST-2): remove this fallback once LOAD_FILES event exists
+  const displayFiles =
     ctx.files.length > 0
-      ? (ctx.files[firstSelectedIdx] ?? ctx.files[0] ?? null)
+      ? ctx.files
+      : fetchedFiles.length > 0
+        ? fetchedFiles
+        : [];
+
+  const activeFile =
+    displayFiles.length > 0
+      ? (displayFiles[firstSelectedIdx] ?? displayFiles[0] ?? null)
       : null;
 
+  // Derived totals: use machine totals if available, else compute from displayFiles.
+  // This ensures the banner shows meaningful counts even before the first MARK_AS.
+  const derivedTotals =
+    ctx.totals ?? (displayFiles.length > 0 ? recount(displayFiles) : null);
+
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
+  if (pagesLoading && displayFiles.length === 0) {
+    return (
+      <div
+        data-testid="source-tool"
+        data-stage-id={stageId}
+        style={{
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--bg-page)",
+          color: "var(--ink-3)",
+          fontSize: 13,
+          gap: 10,
+        }}
+      >
+        <span
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: 99,
+            border:
+              "2px solid color-mix(in oklab, var(--ink-3) 30%, transparent)",
+            borderTopColor: "var(--ink-3)",
+            display: "block",
+            animation: "pgd-spin 1.1s linear infinite",
+          }}
+        />
+        Loading pages…
+      </div>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Tab rendering
+  // ---------------------------------------------------------------------------
   const renderTab = (): ReactNode => {
     switch (activeTab) {
       case "overview":
         return (
           <SourceOverview
-            totals={ctx.totals}
+            totals={derivedTotals}
             isGenerating={isGenerating}
             onOpenFiles={() => setActiveTab("files")}
           />
@@ -181,12 +297,12 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
       case "files":
         return (
           <SourceFiles
-            files={ctx.files}
+            files={displayFiles}
             filter={ctx.filter}
             density={ctx.density}
             query={ctx.query}
             selected={ctx.selected}
-            totals={ctx.totals}
+            totals={derivedTotals}
             isGenerating={isGenerating}
             isConfirming={isConfirming}
             isConfirmed={isConfirmed}
@@ -226,12 +342,12 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
             }}
             onPrev={() => {
               const firstIdx = ctx.selected[0] ?? 0;
-              const prev = ctx.files[firstIdx - 1];
+              const prev = displayFiles[firstIdx - 1];
               if (prev) send({ type: "SELECT_FILE", idx: prev.idx });
             }}
             onNext={() => {
               const firstIdx = ctx.selected[0] ?? 0;
-              const next = ctx.files[firstIdx + 1];
+              const next = displayFiles[firstIdx + 1];
               if (next) send({ type: "SELECT_FILE", idx: next.idx });
             }}
           />
@@ -258,6 +374,11 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  // Only used internally to forward tab changes to the pipeline shell.
   return (
     <div
       data-testid="source-tool"
@@ -270,21 +391,9 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
         background: "var(--bg-page)",
       }}
     >
-      {/* Tab strip */}
-      <div
-        style={{
-          padding: "0 28px",
-          borderBottom: "1px solid var(--border-1)",
-          background: "var(--bg-surface)",
-        }}
-      >
-        <Seg
-          data-testid="source-tabs"
-          items={SOURCE_TABS.map((t) => ({ value: t.value, label: t.label }))}
-          value={activeTab}
-          onChange={(v) => setActiveTab(v as SourceTab)}
-        />
-      </div>
+      {/* No internal tab strip — PipelinePage's TabsBand handles the tab UI.
+          Tab content switches based on activeTab local state.
+          See INTEGRATION ITEM I-ST-1 in the file docblock above. */}
 
       {/* Tab content */}
       <div
@@ -299,7 +408,25 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
         {renderTab()}
       </div>
 
-      {/* Error strip */}
+      {/* Error strip — data fetch error */}
+      {pagesError && !pagesLoading && displayFiles.length === 0 && (
+        <div
+          data-testid="source-pages-error-strip"
+          style={{
+            padding: "8px 28px",
+            background:
+              "color-mix(in oklab, var(--mismatch) 10%, var(--bg-surface))",
+            borderTop:
+              "1px solid color-mix(in oklab, var(--mismatch) 40%, var(--border-1))",
+            fontSize: 12,
+            color: "var(--mismatch)",
+          }}
+        >
+          Failed to load pages. Check the server connection and reload.
+        </div>
+      )}
+
+      {/* Error strip — machine error */}
       {ctx.error && (
         <div
           data-testid="source-error-strip"

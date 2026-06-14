@@ -26,6 +26,7 @@ import type {
   InsertDraft,
   FileTotals,
 } from "@/machines/tools/source";
+import { RealThumb } from "./source/RealThumb";
 
 // ---------------------------------------------------------------------------
 // Helpers (used only within this module)
@@ -217,67 +218,6 @@ function InsertedThumb({
   );
 }
 
-/** Fake thumb for a scanned page (no actual image). */
-function FakeThumb({
-  tone = "light",
-  kind,
-  width,
-  height,
-}: {
-  tone?: "light" | "mid" | "dark";
-  kind?: string;
-  width: number;
-  height: number;
-}): ReactNode {
-  const paper =
-    tone === "dark"
-      ? "oklch(0.72 0.02 80)"
-      : tone === "mid"
-        ? "oklch(0.86 0.02 80)"
-        : "oklch(0.95 0.012 85)";
-  return (
-    <div
-      style={{
-        width,
-        height,
-        borderRadius: 3,
-        background: paper,
-        boxShadow: "inset 0 0 0 1px rgba(40,30,20,0.15)",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {kind !== "blank" && (
-        <div
-          style={{
-            position: "absolute",
-            inset: "14% 12% 14% 12%",
-            backgroundImage: `repeating-linear-gradient(to bottom, oklch(0.34 0.02 60) 0 1.5px, transparent 1.5px 7px)`,
-            opacity: 0.7,
-          }}
-        />
-      )}
-      {kind === "blank" && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            color: "var(--ink-4)",
-            fontSize: 10,
-            fontFamily: "var(--mono-font)",
-            letterSpacing: ".08em",
-            textTransform: "uppercase",
-          }}
-        >
-          blank
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Tag chip shown on marked files. */
 function TagChip({ state }: { state: FileState }): ReactNode {
   const color = STATE_DOT_COLOR[state];
@@ -373,9 +313,11 @@ export function ThumbCard({
         ) : isInserted ? (
           <InsertedThumb width={dims.w - 8} height={dims.h - 36} />
         ) : (
-          <FakeThumb
+          <RealThumb
+            {...(file.thumbnailKey ? { thumbnailKey: file.thumbnailKey } : {})}
+            alt={file.stem}
             tone={file.tone ?? "light"}
-            {...(file.state === "blank" ? { kind: "blank" } : {})}
+            kind={file.state === "blank" ? "blank" : "page"}
             width={dims.w - 8}
             height={dims.h - 36}
           />

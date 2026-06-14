@@ -63,6 +63,17 @@ export interface FileRow {
   note?: string;
   tone?: "light" | "mid" | "dark";
   hue?: number;
+  /**
+   * CDN storage key for the pre-generated thumbnail.
+   * When set, `RealThumb` serves `/cdn/<thumbnailKey>`.
+   * When absent/undefined, `FakePaperThumb` is used as a fallback.
+   *
+   * Not set on inserted/pending pages or when the backend hasn't generated
+   * a thumbnail yet.
+   *
+   * @see frontend/src/pages/pipeline/tools/source/RealThumb.tsx
+   */
+  thumbnailKey?: string;
 }
 
 export interface FileTotals {
@@ -188,7 +199,8 @@ export type SourceToolEvent =
 // Helpers
 // ---------------------------------------------------------------------------
 
-function recount(files: FileRow[]): FileTotals {
+/** Exported so SourceTool can derive totals from display-files. */
+export function recount(files: FileRow[]): FileTotals {
   const marked = {
     page: 0,
     cover: 0,

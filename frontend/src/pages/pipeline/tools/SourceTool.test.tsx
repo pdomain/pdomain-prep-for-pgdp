@@ -13,12 +13,13 @@
  *   - SourceOverview — loading, with totals, isGenerating
  *   - SourceStepSettings — default, modified, preset banner states
  *   - SourcePageWorkbench — no file, with file (role segment, apply, prev, next)
- *   - SourceTool (integrated) — renders source-tool, source-tabs, tab switch
+ *   - SourceTool (integrated) — renders source-tool, file-grid after load, settings artboard
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   InsertDivider,
@@ -119,10 +120,18 @@ function makeSourceFilesProps(
   };
 }
 
-/** Wrap in a minimal QueryClientProvider (SourceTool needs one via useQueryClient). */
+/**
+ * Wrap in a minimal QueryClientProvider + MemoryRouter.
+ * MemoryRouter is required because SourceTool calls useParams.
+ * QueryClientProvider is required for useSourcePages (TanStack Query).
+ */
 function wrapQC(ui: ReactNode): ReactNode {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
+  return (
+    <MemoryRouter initialEntries={["/pipeline/proj-test/source"]}>
+      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+    </MemoryRouter>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1176,6 +1185,12 @@ describe("SourcePageWorkbench — Src-WB3 cover page role", () => {
 // ---------------------------------------------------------------------------
 // Artboard: SourceTool (integrated)
 // ---------------------------------------------------------------------------
+//
+// NOTE (hifi-source arc): SourceTool no longer renders its own tab strip.
+// The tab strip lives in PipelinePage's TabsBand. The integrated tests
+// below verify the source-tool container and the default Files tab content
+// after the useSourcePages query resolves. Tab-switching integration is
+// covered by PipelinePage.test.tsx.
 
 describe("SourceTool integrated", () => {
   it("renders source-tool container", () => {
@@ -1183,32 +1198,36 @@ describe("SourceTool integrated", () => {
     expect(screen.getByTestId("source-tool")).toBeDefined();
   });
 
-  it("renders source-tabs", () => {
+  it("starts on Files tab by default — renders file-grid after pages load", async () => {
     render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
-    expect(screen.getByTestId("source-tabs")).toBeDefined();
+    // Wait for the useSourcePages query to resolve (MSW default: empty list).
+    // Once loading completes, the Files tab content renders.
+    await waitFor(() => expect(screen.getByTestId("file-grid")).toBeDefined());
   });
 
-  it("starts on Files tab by default — renders file-grid", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
-    expect(screen.getByTestId("file-grid")).toBeDefined();
+  it("settings-banner is rendered by SourceStepSettings when settings tab is active", () => {
+    // Tab switching is driven externally (PipelinePage's TabsBand).
+    // Verify the settings artboard itself is correct by testing SourceStepSettings directly.
+    render(
+      <SourceStepSettings
+        settingsState="default"
+        draft={null}
+        presetId={null}
+        onSaveAsDefault={vi.fn()}
+        onRevert={vi.fn()}
+        onResetToDefault={vi.fn()}
+        onChangeSetting={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("settings-banner")).toBeDefined();
   });
 
-  it("switches to Settings tab and shows settings-banner", () => {
+  it("does not show source-error-strip when no error", async () => {
     render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
-    // Find the settings tab in the Seg component and click it
-    const tabs = screen.getByTestId("source-tabs");
-    const settingsBtn = Array.from(
-      tabs.querySelectorAll("button, [role='tab'], [data-value]"),
-    ).find((el) => el.textContent?.includes("Stage settings"));
-    if (settingsBtn) {
-      fireEvent.click(settingsBtn);
-      expect(screen.getByTestId("settings-banner")).toBeDefined();
-    }
-    // If we can't find the button via query, the test is still valid — the testid contract is confirmed
-  });
-
-  it("does not show source-error-strip when no error", () => {
-    render(wrapQC(<SourceTool stageId="source" runnerRef={null} />));
+    // Wait for loading to finish, then verify no error strip.
+    await waitFor(() =>
+      expect(screen.queryByTestId("source-tool")).toBeDefined(),
+    );
     expect(screen.queryByTestId("source-error-strip")).toBeNull();
   });
 });
