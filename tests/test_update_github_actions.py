@@ -107,3 +107,70 @@ def test_update_uv_version_refs_updates_quoted_setup_uv_with_inline_comment(tmp_
 
     assert update_github_actions.update_uv_version_refs(workflow, version="0.11.16")
     assert 'version: "0.11.16"' in workflow.read_text(encoding="utf-8")
+
+
+def _make_fake_runner(uv_version: str = "0.11.99") -> object:
+    """Return a fake GhRunner that simulates latest_release and latest_uv_version responses."""
+    import json
+    import subprocess
+
+    sha_a = "a" * 40
+
+    _responses: dict[str, dict[str, object]] = {}
+    for action in update_github_actions.MANAGED_ACTIONS:
+        release_key = f"repos/{action}/releases/latest"
+        _responses[release_key] = {"tag_name": "v99.0.0"}
+        tag_ref_key = f"repos/{action}/git/ref/tags/v99.0.0"
+        _responses[tag_ref_key] = {"object": {"type": "commit", "sha": sha_a}}
+    _responses["repos/astral-sh/uv/releases/latest"] = {"tag_name": f"v{uv_version}"}
+
+    def fake_runner(command: list[str]) -> subprocess.CompletedProcess[str]:
+        endpoint = command[-1]
+        payload = _responses.get(endpoint, {})
+        return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
+
+    return fake_runner
+
+
+def test_update_github_actions_does_not_modify_pyproject(tmp_path: Path) -> None:
+    """update_github_actions must not touch pyproject.toml under any circumstances.
+
+    The >=0.11.16 required-version floor is a deliberate contributor floor and
+    must not auto-track the latest uv release.  Pinning to latest would cause
+    the dep-refresh job to self-poison: it writes a bare version (read as ==)
+    that the already-running older uv then fails to satisfy.
+    """
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    sha = "c" * 40
+    (workflows / "ci.yml").write_text(
+        f"jobs:\n"
+        f"  ci:\n"
+        f"    steps:\n"
+        f'      - uses: "actions/checkout@{sha}"\n'
+        f"        with:\n"
+        f'          version: "0.11.16"\n',
+        encoding="utf-8",
+    )
+
+    pyproject = tmp_path / "pyproject.toml"
+    original_content = '[tool.uv]\nrequired-version = ">=0.11.16"\n'
+    pyproject.write_text(original_content, encoding="utf-8")
+
+    fake_runner = _make_fake_runner(uv_version="0.11.99")
+
+    changed = update_github_actions.update_github_actions(
+        workflow_dir=workflows,
+        runner=fake_runner,
+    )
+
+    # pyproject.toml must NOT be in the changed paths list
+    changed_names = [p.name for p in changed]
+    assert "pyproject.toml" not in changed_names, (
+        f"update_github_actions must not modify pyproject.toml, but it returned {changed}"
+    )
+
+    # pyproject.toml content must be unchanged on disk
+    assert pyproject.read_text(encoding="utf-8") == original_content, (
+        "pyproject.toml was modified on disk even though it must not be touched"
+    )
