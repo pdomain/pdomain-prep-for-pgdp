@@ -241,13 +241,11 @@ export function ProjectsPage({
   services?: ProjectsPageServices;
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
 
   // Build services from real v2 API if not injected (production path).
   const resolvedServices = useMemo<ProjectsPageServices>(() => {
     if (services) return services;
-    void queryClient; // available for cache invalidation at I2
     return {
       rail: buildRealRailListServices(),
       detail: buildRealProjectDetailServices(),
@@ -255,7 +253,7 @@ export function ProjectsPage({
       activity: buildRealRecentActivityServices(),
       attributes: buildRealAttributesPanelServices(),
     };
-  }, [services, queryClient]);
+  }, [services]);
 
   const [detailSnap, detailSend] = useActor(projectDetailMachine, {
     input: {
@@ -264,6 +262,9 @@ export function ProjectsPage({
         void navigate(`/projects/${projectId}`);
       },
       onOpenActivityLog: (projectId) => {
+        // Target route /projects/:id/activity is not yet built in App.tsx;
+        // the "View all activity" and "Open activity log" buttons are disabled
+        // so this callback is not reachable from the UI today.
         void navigate(`/projects/${projectId}/activity`);
       },
       onRespawnActivity: (_projectId) => {
@@ -1422,7 +1423,8 @@ function ManageTabPanel({
             label="Save a copy…"
             desc="Download the archived zip to a different location. The original archive remains here."
             meta={`${project.size} · choose destination`}
-            onAction={() => manageSend({ type: "SAVE_COPY" })}
+            comingSoon
+            onAction={() => {}} // no-op until export artifact route exists
           />
           <ManageRow
             id="delete"

@@ -161,9 +161,12 @@ function formatDateAbsTime(iso: string): string {
 }
 
 /**
- * Map backend status to approximate currentStage in the 23-stage pipeline.
+ * Map backend status to approximate currentStage in the 24-stage pipeline.
  * This is a coarse approximation from status only — the precise stage would
  * require a separate /pipeline call (N+1). See: docs/specs/stage-registry-v2.md
+ *
+ * Page stages (indices 0-15): grayscale…text_review
+ * Project stages (indices 16-23): source…archive
  */
 function approximateCurrentStage(status: BackendProject["status"]): number {
   switch (status) {
@@ -172,13 +175,13 @@ function approximateCurrentStage(status: BackendProject["status"]): number {
     case "configuring":
       return 0; // project configured, no page stages run yet
     case "processing":
-      return 6; // mid page-stage processing (denoise/dewarp range)
+      return 6; // mid page-stage processing (denoise/dewarp range, index 6)
     case "reviewing":
-      return 14; // text_review stage (stage index 14 in 0-based 16 page stages)
+      return 15; // text_review stage (index 15, the last page stage)
     case "packaging":
-      return 19; // validation/proof_pack range (project stages)
+      return 19; // proof_pack range (project stage index 19)
     case "complete":
-      return 22; // zip/submit_check done
+      return 22; // zip done (project stage index 22)
     default:
       return 0;
   }

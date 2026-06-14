@@ -17,9 +17,21 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectRecord, ManageActionResult } from "@/mocks/types";
+import type {
+  ProjectRecord,
+  ManageActionResult,
+  AttributeRecord,
+} from "@/mocks/types";
 import type { ManageActionsServices } from "@/machines/projects/manageActions";
 import { ProjectsPage, type ProjectsPageServices } from "./ProjectsPage";
+
+// Shared empty-attributes fixture — matches the real AttributeRecord shape.
+const EMPTY_ATTRIBUTES: AttributeRecord = {
+  bib: {},
+  pgdp: {},
+  fmt: {},
+  comments: "",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -85,18 +97,8 @@ function makeServices(
       }),
     },
     attributes: {
-      fetchAttributes: vi.fn().mockResolvedValue({
-        title: "",
-        author: "",
-        language: "",
-        charsuites: [],
-      }),
-      saveAttributes: vi.fn().mockResolvedValue({
-        title: "",
-        author: "",
-        language: "",
-        charsuites: [],
-      }),
+      fetchAttributes: vi.fn().mockResolvedValue(EMPTY_ATTRIBUTES),
+      saveAttributes: vi.fn().mockResolvedValue(EMPTY_ATTRIBUTES),
     },
   };
 }
