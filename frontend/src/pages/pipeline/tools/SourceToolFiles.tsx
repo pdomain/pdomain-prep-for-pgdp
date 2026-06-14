@@ -72,13 +72,13 @@ const STATE_DOT_COLOR: Record<string, string> = {
 };
 
 const STATE_LABEL: Record<string, string> = {
-  page: "page",
-  cover: "cover",
-  back: "back",
-  blank: "blank",
-  duplicate: "dup",
-  inserted: "insert",
-  skipped: "skipped",
+  page: "Page",
+  cover: "Cover",
+  back: "Back",
+  blank: "Blank",
+  duplicate: "Duplicate",
+  inserted: "Insert",
+  skipped: "Skipped/Removed",
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -231,6 +231,7 @@ function TagChip({ state }: { state: FileState }): ReactNode {
   if (!color || !label) return null;
   return (
     <span
+      data-testid={`role-chip-${state}`}
       style={{
         display: "inline-flex",
         alignItems: "center",

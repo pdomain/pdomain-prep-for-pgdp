@@ -33,6 +33,7 @@ import {
   SourcePageWorkbench,
   SourceTool,
 } from "./SourceTool";
+import { ThumbCard } from "./SourceToolFiles";
 import type {
   FileRow,
   FileTotals,
@@ -1230,5 +1231,92 @@ describe("SourceTool integrated", () => {
       expect(screen.queryByTestId("source-tool")).toBeDefined(),
     );
     expect(screen.queryByTestId("source-error-strip")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Role chip label rendering (distinct label per FileState)
+// ---------------------------------------------------------------------------
+
+describe("ThumbCard — role chip labels per FileState", () => {
+  const noop = vi.fn();
+  const densities = ["M"] as const;
+
+  /**
+   * Renders a ThumbCard with the given state and checks:
+   *   1. The role chip is present (data-testid="role-chip-<state>")
+   *   2. Its text content is the expected human-readable label
+   */
+  function renderCard(state: FileState) {
+    const file = makeFile({ idx: 0, stem: "img001", state });
+    render(
+      <ThumbCard
+        file={file}
+        density={densities[0]}
+        selected={false}
+        onClick={noop}
+      />,
+    );
+  }
+
+  it("cover state renders chip with text 'Cover'", () => {
+    renderCard("cover");
+    const chip = screen.getByTestId("role-chip-cover");
+    expect(chip.textContent).toContain("Cover");
+  });
+
+  it("back state renders chip with text 'Back'", () => {
+    renderCard("back");
+    const chip = screen.getByTestId("role-chip-back");
+    expect(chip.textContent).toContain("Back");
+  });
+
+  it("blank state renders chip with text 'Blank'", () => {
+    renderCard("blank");
+    const chip = screen.getByTestId("role-chip-blank");
+    expect(chip.textContent).toContain("Blank");
+  });
+
+  it("duplicate state renders chip with text 'Duplicate'", () => {
+    renderCard("duplicate");
+    const chip = screen.getByTestId("role-chip-duplicate");
+    expect(chip.textContent).toContain("Duplicate");
+  });
+
+  it("skipped state renders chip with text 'Skipped/Removed'", () => {
+    renderCard("skipped");
+    const chip = screen.getByTestId("role-chip-skipped");
+    expect(chip.textContent).toContain("Skipped/Removed");
+  });
+
+  it("page state renders chip with text 'Page'", () => {
+    renderCard("page");
+    const chip = screen.getByTestId("role-chip-page");
+    expect(chip.textContent).toContain("Page");
+  });
+
+  it("ready state does NOT render a role chip", () => {
+    renderCard("ready");
+    expect(screen.queryByTestId(/^role-chip-/)).toBeNull();
+  });
+
+  it("cover chip label is NOT 'skipped' or 'Skipped/Removed'", () => {
+    renderCard("cover");
+    const chip = screen.getByTestId("role-chip-cover");
+    expect(chip.textContent).not.toContain("Skipped");
+    expect(chip.textContent).not.toContain("skipped");
+  });
+
+  it("back chip label is NOT 'skipped' or 'Skipped/Removed'", () => {
+    renderCard("back");
+    const chip = screen.getByTestId("role-chip-back");
+    expect(chip.textContent).not.toContain("Skipped");
+    expect(chip.textContent).not.toContain("skipped");
+  });
+
+  it("duplicate chip label is NOT 'dup' (old abbreviated label)", () => {
+    renderCard("duplicate");
+    const chip = screen.getByTestId("role-chip-duplicate");
+    expect(chip.textContent).toBe("Duplicate");
   });
 });
