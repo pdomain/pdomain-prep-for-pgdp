@@ -471,7 +471,7 @@ function AdvancedParamsFull({
 export function GrayscaleSettingsTab({
   backend,
   draft,
-  detected: _detected,
+  detected,
   onSetMode,
   onPatch,
   onRedetect,
@@ -547,17 +547,23 @@ export function GrayscaleSettingsTab({
                   lineHeight: 1.5,
                 }}
               >
-                Picked{" "}
-                <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>
-                  perceptual
-                </span>{" "}
-                from a sample of 8 pages ·{" "}
-                <span
-                  className="mono"
-                  style={{ color: "var(--ink-2)", fontSize: 11 }}
-                >
-                  newsprint · low contrast · low DPI
-                </span>
+                {detected != null ? (
+                  <>
+                    Picked{" "}
+                    <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>
+                      {detected.mode}
+                    </span>{" "}
+                    ·{" "}
+                    <span
+                      className="mono"
+                      style={{ color: "var(--ink-2)", fontSize: 11 }}
+                    >
+                      {detected.why}
+                    </span>
+                  </>
+                ) : (
+                  "Run auto-detect to see the recommendation."
+                )}
               </div>
             </div>
           </div>

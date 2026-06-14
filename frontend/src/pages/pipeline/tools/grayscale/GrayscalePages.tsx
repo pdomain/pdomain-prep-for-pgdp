@@ -252,7 +252,7 @@ export function GrayscalePagesTab({
                 gap: 14,
               }}
             >
-              {filtered.map((page, i) => {
+              {filtered.map((page) => {
                 const pageIdx = pages.indexOf(page);
                 const active = pageIdx === cursor;
                 return (
@@ -278,7 +278,7 @@ export function GrayscalePagesTab({
                       page={page}
                       active={active}
                       projectId={projectId}
-                      idx0={i}
+                      idx0={page.idx0}
                     />
                     <div
                       style={{

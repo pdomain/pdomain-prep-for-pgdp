@@ -459,8 +459,8 @@ function StageControlsDrawer({
   draft,
   detected,
   settingsState,
-  onSetMode: _onSetMode,
-  onPatch: _onPatch,
+  onSetMode,
+  onPatch,
   onRevert,
   onSaveDefault,
   onRedetect,
@@ -718,60 +718,35 @@ function StageControlsDrawer({
           </div>
         )}
 
-        {/* Wave 2 — mode + params (disabled until perceptual primitive ships) */}
-        <div style={{ position: "relative" }}>
-          <div style={{ pointerEvents: "none", opacity: 0.45 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 700,
-                  letterSpacing: ".08em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-4)",
-                }}
-              >
-                Grayscale mode
-              </div>
-              <ModeRowCompact
-                kind="standard"
-                selected={currentMode === "standard"}
-                backend={backend}
-                onClick={() => {}}
-              />
-              <ModeRowCompact
-                kind="perceptual"
-                selected={currentMode === "perceptual"}
-                backend={backend}
-                onClick={() => {}}
-              />
-            </div>
-            {currentMode === "perceptual" && (
-              <AdvancedParamsStacked draft={draft} onPatch={() => {}} />
-            )}
-          </div>
+        {/* Grayscale mode chooser + advanced params — fully wired (Wave-2) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div
             style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background:
-                "color-mix(in oklab, var(--bg-surface) 70%, transparent)",
-              borderRadius: 7,
-              flexDirection: "column",
-              gap: 6,
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: ".08em",
+              textTransform: "uppercase",
+              color: "var(--ink-4)",
             }}
           >
-            <Icon name="wrench" size={14} color="var(--ink-3)" />
-            <span
-              style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}
-            >
-              Mode tuning coming soon
-            </span>
+            Grayscale mode
           </div>
+          <ModeRowCompact
+            kind="standard"
+            selected={currentMode === "standard"}
+            backend={backend}
+            onClick={() => onSetMode("standard")}
+          />
+          <ModeRowCompact
+            kind="perceptual"
+            selected={currentMode === "perceptual"}
+            backend={backend}
+            onClick={() => onSetMode("perceptual")}
+          />
         </div>
+        {currentMode === "perceptual" && (
+          <AdvancedParamsStacked draft={draft} onPatch={onPatch} />
+        )}
 
         {/* Cached note */}
         <div

@@ -33,7 +33,7 @@
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
@@ -46,6 +46,8 @@ import {
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
+import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
+import type { GrayscalePage } from "@/machines/tools/grayscaleTool";
 import type { GrayscaleTab } from "./grayscale/types";
 import { GrayscaleTabBar } from "./grayscale/GrayscaleTabBar";
 import { GrayscaleOverviewTab } from "./grayscale/GrayscaleOverview";
@@ -138,6 +140,7 @@ function GrayscaleError({
 export function GrayscaleTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
+  pageCount,
   _testServices,
 }: ToolSlotProps & { _testServices?: GrayscaleToolServices }) {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
@@ -213,6 +216,30 @@ export function GrayscaleTool({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [activeTab, send]);
+
+  // SSE bridge: subscribe to project-wide page-stage channel for PAGE_PUSH events.
+  // Must be before early returns (rules-of-hooks).
+  const detectedRef = useRef(ctx.detected);
+  useEffect(() => {
+    detectedRef.current = ctx.detected;
+  });
+  const totalPages = pageCount ?? ctx.pages.length;
+
+  useEffect(() => {
+    if (!projectId || projectId === "demo") return;
+    const unsub = subscribePageChannelForTool({
+      projectId,
+      stageId: "grayscale",
+      totalPages,
+      getPageMode: () => detectedRef.current?.mode ?? "perceptual",
+      onPagePush: (page) =>
+        send({
+          type: "PAGE_PUSH",
+          page: page as unknown as GrayscalePage & { _total?: number },
+        }),
+    });
+    return unsub;
+  }, [projectId, totalPages, send]);
 
   // ── Error state ──────────────────────────────────────────────────────────
   if (topState === "error") {

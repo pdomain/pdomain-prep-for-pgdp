@@ -456,7 +456,10 @@ export const grayscaleToolMachine = setup({
             RESET: { target: "idle", actions: ["clearDraft"] },
             APPLY_RUN: {
               target: "#grayscaleTool.converting",
-              actions: ["commitDraft", "requestRun", "emitStaleDownstream"],
+              // requestRun must run BEFORE commitDraft so it sees the live draft.
+              // commitDraft clears draft (draft → null); if requestRun ran after,
+              // context.draft would already be null and runStage would receive {}.
+              actions: ["requestRun", "commitDraft", "emitStaleDownstream"],
             },
           },
         },

@@ -376,3 +376,97 @@ describe("grayscaleTool — isLastPage sentinel", () => {
     actor.stop();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 7: run-body carries draft params (Wave-2)
+// ---------------------------------------------------------------------------
+
+describe("grayscaleTool — APPLY_RUN sends draft params to runStage", () => {
+  async function getDoneActor(overrides: Partial<GrayscaleToolServices> = {}) {
+    const services = makeServices(overrides);
+    const actor = createActor(grayscaleToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+    actor.send({
+      type: "PAGE_PUSH",
+      page: {
+        id: "p001",
+        idx0: 0,
+        mode: "perceptual",
+        _total: 1,
+      } as GrayscalePage & {
+        _total: number;
+      },
+    });
+    await waitForState(actor, (s) => s.matches({ done: "idle" }));
+    return { actor, services };
+  }
+
+  it("APPLY_RUN from tuned passes draft mode to runStage", async () => {
+    const runStage = vi.fn().mockResolvedValue(undefined);
+    const { actor } = await getDoneActor({ runStage });
+
+    actor.send({ type: "SET_MODE", mode: "standard" });
+    expect(actor.getSnapshot().matches({ done: "tuned" })).toBe(true);
+
+    actor.send({ type: "APPLY_RUN" });
+
+    // runStage should have been called with the draft that includes mode
+    expect(runStage).toHaveBeenCalledWith(
+      "proj-1",
+      "grayscale",
+      expect.objectContaining({ mode: "standard" }),
+    );
+    actor.stop();
+  });
+
+  it("APPLY_RUN from tuned passes draft params (gamma, samplerRadius) to runStage", async () => {
+    const runStage = vi.fn().mockResolvedValue(undefined);
+    const { actor } = await getDoneActor({ runStage });
+
+    actor.send({ type: "SET_PARAM", patch: { gamma: 1.3, samplerRadius: 7 } });
+    expect(actor.getSnapshot().matches({ done: "tuned" })).toBe(true);
+
+    actor.send({ type: "APPLY_RUN" });
+
+    expect(runStage).toHaveBeenCalledWith(
+      "proj-1",
+      "grayscale",
+      expect.objectContaining({ gamma: 1.3, samplerRadius: 7 }),
+    );
+    actor.stop();
+  });
+
+  it("multi-page SSE sequence PAGE_PUSH×N with last _total=N advances to done", async () => {
+    const actor = createActor(grayscaleToolMachine, { input: makeInput() });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    // Simulate 3 pages arriving; last one carries _total sentinel
+    actor.send({ type: "PAGE_PUSH", page: makePage({ id: "p001" }) });
+    actor.send({
+      type: "PAGE_PUSH",
+      page: makePage({ id: "p002", mode: "standard" }),
+    });
+    expect(actor.getSnapshot().matches("converting")).toBe(true);
+
+    actor.send({
+      type: "PAGE_PUSH",
+      page: {
+        id: "p003",
+        idx0: 2,
+        mode: "perceptual",
+        _total: 3,
+      } as GrayscalePage & {
+        _total: number;
+      },
+    });
+
+    const snap = actor.getSnapshot();
+    expect(snap.matches("done")).toBe(true);
+    expect(snap.context.pages).toHaveLength(3);
+    actor.stop();
+  });
+});
