@@ -3322,6 +3322,123 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/thumbnail": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Ingest Thumbnail",
+        "description": "Serve the page's ingest-time thumbnail from the BlobStore.\n\nAvailable immediately after the source/thumbnail ingest stage runs \u2014\nno pipeline stage needs to have completed.  This is the authoritative\nthumbnail for the Source view and the Files panel before any processing\nstage has produced a stage artifact.\n\nReads ``PrepPageExtension.thumbnail_blob_hash`` and fetches the\ncorresponding blob from the project's BlobStore (the same store that\n``generate_thumbnails`` writes to during ingest).\n\nReturns 404 when:\n- The project or page does not exist, or belongs to another user.\n- The page's ``thumbnail_blob_hash`` is not yet set (ingest still running).",
+        "operationId": "get_page_ingest_thumbnail",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ingest thumbnail JPEG bytes for the page.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            }
+          },
+          "404": {
+            "description": "Project/page not found, cross-user access, or no thumbnail yet (ingest thumbnails are generated after the source stage runs)."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/insert": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Insert Page",
+        "description": "Insert a new blank page into the project at the given position.\n\nSemantics:\n- The new page has ``page_type=normal``, no source image, no thumbnail,\n  ``ignore=False``, ``source_stem=\"inserted\"`` and an empty prefix\n  (prefix is recomputed by the prefix-assignment stage).\n- All existing pages at and after ``at_idx0`` have their ``idx0``\n  incremented by 1.\n- The project's ``page_count`` is incremented by 1.\n- A ``PageInserted`` event is appended to the ``PrepProjectAggregate``.\n\nRequest body: exactly one of ``after_idx0`` (int) or ``at_idx0`` (int)\nmust be provided (not both, not neither).\n- ``after_idx0=N``: inserts the new page after existing page N\n  (new page gets ``idx0=N+1``).\n- ``at_idx0=N``: inserts at position N, shifting N and above up by 1.\n\nThe two forms are equivalent: ``at_idx0 = after_idx0 + 1``.\n\nReturns the newly inserted ``PageRecord`` plus the updated full page list.\n\nThis operation is tracked in the event log and can be undone by a future\n``DELETE /api/data/projects/{id}/pages/{idx0}`` (when implemented).",
+        "operationId": "insert_page",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsertPageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsertPageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages/{idx0}/text": {
       "patch": {
         "tags": [
@@ -6697,6 +6814,56 @@
         ],
         "title": "IngestRequest"
       },
+      "InsertPageRequest": {
+        "properties": {
+          "after_idx0": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Idx0"
+          },
+          "at_idx0": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Idx0"
+          }
+        },
+        "type": "object",
+        "title": "InsertPageRequest",
+        "description": "Insert a new blank page into the project.\n\nExactly one of ``after_idx0`` or ``at_idx0`` must be provided.\n``after_idx0=N`` inserts after page N (new page gets idx0=N+1).\n``at_idx0=N`` inserts at position N, shifting existing pages N+ down.\nThe two forms are equivalent: ``at_idx0 = after_idx0 + 1``."
+      },
+      "InsertPageResponse": {
+        "properties": {
+          "inserted_page": {
+            "$ref": "#/components/schemas/PageRecord"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/PageRecord"
+            },
+            "type": "array",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inserted_page",
+          "pages"
+        ],
+        "title": "InsertPageResponse",
+        "description": "Response after inserting a blank page.\n\n``inserted_page``: the new blank PageRecord.\n``pages``: all pages in the project, sorted by idx0, with updated indices."
+      },
       "Job": {
         "properties": {
           "id": {
@@ -9175,6 +9342,17 @@
               }
             ],
             "title": "Illustration Regions"
+          },
+          "ignore": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ignore"
           }
         },
         "type": "object",

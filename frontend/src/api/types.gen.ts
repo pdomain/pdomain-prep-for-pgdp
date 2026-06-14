@@ -1338,6 +1338,81 @@ export interface paths {
         patch: operations["reorder_pages"];
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Ingest Thumbnail
+         * @description Serve the page's ingest-time thumbnail from the BlobStore.
+         *
+         *     Available immediately after the source/thumbnail ingest stage runs —
+         *     no pipeline stage needs to have completed.  This is the authoritative
+         *     thumbnail for the Source view and the Files panel before any processing
+         *     stage has produced a stage artifact.
+         *
+         *     Reads ``PrepPageExtension.thumbnail_blob_hash`` and fetches the
+         *     corresponding blob from the project's BlobStore (the same store that
+         *     ``generate_thumbnails`` writes to during ingest).
+         *
+         *     Returns 404 when:
+         *     - The project or page does not exist, or belongs to another user.
+         *     - The page's ``thumbnail_blob_hash`` is not yet set (ingest still running).
+         */
+        get: operations["get_page_ingest_thumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/insert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Insert Page
+         * @description Insert a new blank page into the project at the given position.
+         *
+         *     Semantics:
+         *     - The new page has ``page_type=normal``, no source image, no thumbnail,
+         *       ``ignore=False``, ``source_stem="inserted"`` and an empty prefix
+         *       (prefix is recomputed by the prefix-assignment stage).
+         *     - All existing pages at and after ``at_idx0`` have their ``idx0``
+         *       incremented by 1.
+         *     - The project's ``page_count`` is incremented by 1.
+         *     - A ``PageInserted`` event is appended to the ``PrepProjectAggregate``.
+         *
+         *     Request body: exactly one of ``after_idx0`` (int) or ``at_idx0`` (int)
+         *     must be provided (not both, not neither).
+         *     - ``after_idx0=N``: inserts the new page after existing page N
+         *       (new page gets ``idx0=N+1``).
+         *     - ``at_idx0=N``: inserts at position N, shifting N and above up by 1.
+         *
+         *     The two forms are equivalent: ``at_idx0 = after_idx0 + 1``.
+         *
+         *     Returns the newly inserted ``PageRecord`` plus the updated full page list.
+         *
+         *     This operation is tracked in the event log and can be undone by a future
+         *     ``DELETE /api/data/projects/{id}/pages/{idx0}`` (when implemented).
+         */
+        post: operations["insert_page"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages/{idx0}/text": {
         parameters: {
             query?: never;
@@ -2648,6 +2723,33 @@ export interface components {
              */
             source_type: "zip" | "s3_folder" | "local_folder";
         };
+        /**
+         * InsertPageRequest
+         * @description Insert a new blank page into the project.
+         *
+         *     Exactly one of ``after_idx0`` or ``at_idx0`` must be provided.
+         *     ``after_idx0=N`` inserts after page N (new page gets idx0=N+1).
+         *     ``at_idx0=N`` inserts at position N, shifting existing pages N+ down.
+         *     The two forms are equivalent: ``at_idx0 = after_idx0 + 1``.
+         */
+        InsertPageRequest: {
+            /** After Idx0 */
+            after_idx0?: number | null;
+            /** At Idx0 */
+            at_idx0?: number | null;
+        };
+        /**
+         * InsertPageResponse
+         * @description Response after inserting a blank page.
+         *
+         *     ``inserted_page``: the new blank PageRecord.
+         *     ``pages``: all pages in the project, sorted by idx0, with updated indices.
+         */
+        InsertPageResponse: {
+            inserted_page: components["schemas"]["PageRecord"];
+            /** Pages */
+            pages: components["schemas"]["PageRecord"][];
+        };
         /** Job */
         Job: {
             /** Id */
@@ -3581,6 +3683,8 @@ export interface components {
             splits?: components["schemas"]["PageSplit-Input"][] | null;
             /** Illustration Regions */
             illustration_regions?: components["schemas"]["IllustrationRegion-Input"][] | null;
+            /** Ignore */
+            ignore?: boolean | null;
         };
         /** UpdatePageTextRequest */
         UpdatePageTextRequest: {
@@ -6153,6 +6257,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReorderPagesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_ingest_thumbnail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ingest thumbnail JPEG bytes for the page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Project/page not found, cross-user access, or no thumbnail yet (ingest thumbnails are generated after the source stage runs). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_page: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InsertPageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InsertPageResponse"];
                 };
             };
             /** @description Validation Error */

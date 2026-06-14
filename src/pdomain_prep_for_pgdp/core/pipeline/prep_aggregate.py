@@ -181,6 +181,46 @@ class PrepProjectAggregate(Aggregate):
     ) -> None:
         """Record text_zones APPLY_SPLIT creating sibling pages."""
 
+    # ── Page mutations (hi-fi Source/Files slice) ────────────────────────────
+
+    @event("PageTypeChanged")
+    def record_page_type_changed(
+        self,
+        page_id: str,
+        previous_type: str,
+        new_type: str,
+        actor_id: str,
+    ) -> None:
+        """Record a page_type change (normal/blank/plate_b/plate_p/plate_r/skip/cover)."""
+
+    @event("PageIgnoreSet")
+    def record_page_ignore_set(
+        self,
+        page_id: str,
+        ignore: bool,
+        actor_id: str,
+    ) -> None:
+        """Record setting or clearing the ignore (soft-exclude) flag for a page.
+
+        Tracked so the change is reversible and appears in project history.
+        ``ignore=True`` means the page is excluded from the output package;
+        ``ignore=False`` restores it.  The `page_type` field is not changed
+        by this operation — ignore is orthogonal to type classification.
+        """
+
+    @event("PageInserted")
+    def record_page_inserted(
+        self,
+        at_idx0: int,
+        new_page_id: str,
+        actor_id: str,
+    ) -> None:
+        """Record insertion of a new blank page at a given position.
+
+        ``at_idx0`` is the final idx0 of the inserted page after shifting.
+        Reversible via the event log (reindex can replay this event).
+        """
+
 
 class PrepApplication(Application[UUID]):
     """Eventsourcing application that persists PrepProjectAggregate events.

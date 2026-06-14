@@ -104,6 +104,31 @@ class UpdatePageRequest(BaseModel):
     config_overrides: PageConfigOverrides | None = None
     splits: list[PageSplit] | None = None
     illustration_regions: list[IllustrationRegion] | None = None
+    ignore: bool | None = None
+
+
+class InsertPageRequest(BaseModel):
+    """Insert a new blank page into the project.
+
+    Exactly one of ``after_idx0`` or ``at_idx0`` must be provided.
+    ``after_idx0=N`` inserts after page N (new page gets idx0=N+1).
+    ``at_idx0=N`` inserts at position N, shifting existing pages N+ down.
+    The two forms are equivalent: ``at_idx0 = after_idx0 + 1``.
+    """
+
+    after_idx0: int | None = None
+    at_idx0: int | None = None
+
+
+class InsertPageResponse(BaseModel):
+    """Response after inserting a blank page.
+
+    ``inserted_page``: the new blank PageRecord.
+    ``pages``: all pages in the project, sorted by idx0, with updated indices.
+    """
+
+    inserted_page: PageRecord
+    pages: list[PageRecord]
 
 
 class UpdatePageTextRequest(BaseModel):
@@ -413,6 +438,7 @@ async def update_page(
     user: UserDep,
     db: DatabaseDep,
     page_service: PageServiceDep,
+    settings: SettingsDep,
 ) -> PageRecord:
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -422,6 +448,8 @@ async def update_page(
         raise HTTPException(404, "page not found")
     updated_fields = body.model_fields_set
     old_overrides = cast(dict[str, object], page.config_overrides.model_dump())
+    previous_page_type = page.page_type
+    previous_ignore = page.ignore
     if "config_overrides" in updated_fields and body.config_overrides is not None:
         page.config_overrides = body.config_overrides
     if "page_type" in updated_fields:
@@ -432,6 +460,8 @@ async def update_page(
         page.splits = body.splits
     if "illustration_regions" in updated_fields and body.illustration_regions is not None:
         page.illustration_regions = body.illustration_regions
+    if "ignore" in updated_fields and body.ignore is not None:
+        page.ignore = body.ignore
     updated = update_page_extension(
         page_service,
         project_id,
@@ -441,6 +471,7 @@ async def update_page(
         alignment=page.alignment,
         splits=page.splits,
         illustration_regions=page.illustration_regions,
+        ignore=page.ignore,
     )
     if updated is not None:
         page = updated
@@ -450,15 +481,264 @@ async def update_page(
     new_overrides = cast(dict[str, object], page.config_overrides.model_dump())
     changed_fields = {field for field, value in new_overrides.items() if value != old_overrides.get(field)}
     if changed_fields:
-        page_id = f"{idx0:04d}"
+        page_id_str = f"{idx0:04d}"
         await cascade_dirty_for_config_change(
             database=db,
             project_id=project_id,
-            page_id=page_id,
+            page_id=page_id_str,
             changed_fields=changed_fields,
         )
 
+    # Append events to PrepProjectAggregate for mutations that affect history.
+    page_id_str = f"{idx0:04d}"
+    _agg_app, _agg = _load_prep_aggregate(settings, project_id)
+    if _agg is not None:
+        _events_to_append = False
+        if "page_type" in updated_fields and page.page_type != previous_page_type:
+            _agg.record_page_type_changed(
+                page_id=page_id_str,
+                previous_type=previous_page_type.value,
+                new_type=page.page_type.value,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if "ignore" in updated_fields and body.ignore is not None and body.ignore != previous_ignore:
+            _agg.record_page_ignore_set(
+                page_id=page_id_str,
+                ignore=body.ignore,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if _events_to_append and _agg_app is not None:
+            try:
+                _agg_app.save(_agg)
+            except Exception as _e_save:
+                log.warning("update_page aggregate persist failed (non-fatal): %s", _e_save)
+
     return page
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/thumbnail",
+    operation_id="get_page_ingest_thumbnail",
+    responses={
+        200: {
+            "content": {"image/jpeg": {}},
+            "description": "Ingest thumbnail JPEG bytes for the page.",
+        },
+        404: {
+            "description": (
+                "Project/page not found, cross-user access, or no thumbnail yet "
+                "(ingest thumbnails are generated after the source stage runs)."
+            ),
+        },
+    },
+)
+async def get_page_ingest_thumbnail(
+    project_id: str,
+    idx0: int,
+    user: UserDep,
+    db: DatabaseDep,
+    page_service: PageServiceDep,
+) -> Response:
+    """Serve the page's ingest-time thumbnail from the BlobStore.
+
+    Available immediately after the source/thumbnail ingest stage runs —
+    no pipeline stage needs to have completed.  This is the authoritative
+    thumbnail for the Source view and the Files panel before any processing
+    stage has produced a stage artifact.
+
+    Reads ``PrepPageExtension.thumbnail_blob_hash`` and fetches the
+    corresponding blob from the project's BlobStore (the same store that
+    ``generate_thumbnails`` writes to during ingest).
+
+    Returns 404 when:
+    - The project or page does not exist, or belongs to another user.
+    - The page's ``thumbnail_blob_hash`` is not yet set (ingest still running).
+    """
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    # Fetch the PrepPageExtension directly so we can read thumbnail_blob_hash.
+    from pdomain_ops.pages import get_extension as _ops_get_ext
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import _to_uuid as _pid_to_uuid
+
+    proj_uuid = _pid_to_uuid(project_id)
+    try:
+        proj_agg = page_service.store.get_project(proj_uuid)
+    except Exception as exc:
+        raise HTTPException(404, "page not found") from exc
+
+    thumb_hash: str | None = None
+    for pid in proj_agg.record.page_ids:
+        try:
+            page_agg = page_service.store.get_page(pid)
+        except Exception:
+            continue
+        ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None and ext.idx0 == idx0:
+            thumb_hash = ext.thumbnail_blob_hash
+            break
+    else:
+        raise HTTPException(404, "page not found")
+
+    if thumb_hash is None:
+        raise HTTPException(404, "thumbnail not yet available for this page")
+
+    try:
+        blob_bytes = page_service.blobs.read(thumb_hash)
+    except Exception as exc:
+        raise HTTPException(404, "thumbnail blob not found") from exc
+
+    return Response(content=blob_bytes, media_type="image/jpeg")
+
+
+@router.post(
+    "/projects/{project_id}/pages/insert",
+    response_model=InsertPageResponse,
+    operation_id="insert_page",
+)
+async def insert_page(
+    project_id: str,
+    body: InsertPageRequest,
+    user: UserDep,
+    db: DatabaseDep,
+    page_service: PageServiceDep,
+    settings: SettingsDep,
+) -> InsertPageResponse:
+    """Insert a new blank page into the project at the given position.
+
+    Semantics:
+    - The new page has ``page_type=normal``, no source image, no thumbnail,
+      ``ignore=False``, ``source_stem="inserted"`` and an empty prefix
+      (prefix is recomputed by the prefix-assignment stage).
+    - All existing pages at and after ``at_idx0`` have their ``idx0``
+      incremented by 1.
+    - The project's ``page_count`` is incremented by 1.
+    - A ``PageInserted`` event is appended to the ``PrepProjectAggregate``.
+
+    Request body: exactly one of ``after_idx0`` (int) or ``at_idx0`` (int)
+    must be provided (not both, not neither).
+    - ``after_idx0=N``: inserts the new page after existing page N
+      (new page gets ``idx0=N+1``).
+    - ``at_idx0=N``: inserts at position N, shifting N and above up by 1.
+
+    The two forms are equivalent: ``at_idx0 = after_idx0 + 1``.
+
+    Returns the newly inserted ``PageRecord`` plus the updated full page list.
+
+    This operation is tracked in the event log and can be undone by a future
+    ``DELETE /api/data/projects/{id}/pages/{idx0}`` (when implemented).
+    """
+    # Validate: exactly one of after_idx0 / at_idx0 must be set.
+    if body.after_idx0 is None and body.at_idx0 is None:
+        raise HTTPException(422, "exactly one of after_idx0 or at_idx0 must be provided")
+    if body.after_idx0 is not None and body.at_idx0 is not None:
+        raise HTTPException(422, "provide only one of after_idx0 or at_idx0, not both")
+
+    # Normalise to at_idx0. Both branches are non-None by here (validated above).
+    insert_at: int = body.at_idx0 if body.at_idx0 is not None else cast(int, body.after_idx0) + 1
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    # Validate insert position: 0 … page_count (inclusive — can append at end).
+    if insert_at < 0 or insert_at > project.page_count:
+        raise HTTPException(
+            422,
+            f"at_idx0 {insert_at} out of range [0, {project.page_count}]",
+        )
+
+    from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
+    from pdomain_ops.pages import PageRecord as OpsPageRecord
+    from pdomain_ops.pages import ProjectRecord, set_extension
+    from pdomain_ops.pages import get_extension as _ops_get_ext
+
+    from pdomain_prep_for_pgdp.core.page_service_helpers import _get_proj_page_ids
+    from pdomain_prep_for_pgdp.core.page_service_helpers import _to_uuid as _pid_to_uuid
+
+    proj_uuid = _pid_to_uuid(project_id)
+
+    # Load all existing pages and shift those at >= insert_at.
+    page_uuid_ids = _get_proj_page_ids(page_service, project_id)
+    shifted_pages: list[tuple[PageAggregate, PrepPageExtension]] = []
+    for pid in page_uuid_ids:
+        try:
+            page_agg = page_service.store.get_page(pid)  # type: ignore[arg-type]
+        except Exception:
+            continue
+        ext = _ops_get_ext(page_agg.record, "prep", PrepPageExtension)
+        if ext is not None and ext.idx0 >= insert_at:
+            shifted_pages.append((page_agg, ext))
+
+    # Shift existing pages up (highest idx0 first to avoid collisions).
+    shifted_pages.sort(key=lambda pair: pair[1].idx0, reverse=True)
+    for shift_agg, shift_ext in shifted_pages:
+        new_ext = shift_ext.model_copy(update={"idx0": shift_ext.idx0 + 1})
+        shift_agg.set_extension("prep", new_ext)  # type: ignore[attr-defined]
+        page_service.store.save_page(shift_agg)  # type: ignore[arg-type]
+
+    # Create the new blank page.
+    import uuid as _uuid_mod
+
+    new_page_uuid = _uuid_mod.uuid4()
+    new_ops_record = OpsPageRecord(page_id=new_page_uuid, page_index=insert_at, source="raw")
+    new_ext = PrepPageExtension(
+        project_id=project_id,
+        idx0=insert_at,
+        prefix="",
+        source_stem="inserted",
+        ignore=False,
+        page_type=PageType.normal,
+    )
+    set_extension(new_ops_record, "prep", new_ext)
+    new_page_agg = PageAggregate(record=new_ops_record)
+    page_service.store.save_page(new_page_agg)
+
+    # Add new page to the project aggregate.
+    try:
+        proj_agg = page_service.store.get_project(proj_uuid)
+    except Exception:
+        proj_record = ProjectRecord(project_id=proj_uuid, name=project.name)
+        proj_agg = ProjectAggregate(record=proj_record)
+    proj_agg.add_page(page_id=new_page_uuid, page_index=insert_at)
+    page_service.store.save_project(proj_agg)
+
+    # Update project page_count in the DB.
+    from datetime import UTC, datetime
+
+    updated_project = project.model_copy(
+        update={
+            "page_count": project.page_count + 1,
+            "proof_page_count": project.proof_page_count + 1,
+            "updated_at": datetime.now(UTC),
+        }
+    )
+    await db.put_project(updated_project)
+
+    # Append PageInserted event to PrepProjectAggregate.
+    _agg_app, _agg = _load_prep_aggregate(settings, project_id)
+    if _agg is not None:
+        _agg.record_page_inserted(
+            at_idx0=insert_at,
+            new_page_id=str(new_page_uuid),
+            actor_id=user.user_id,
+        )
+        if _agg_app is not None:
+            try:
+                _agg_app.save(_agg)
+            except Exception as _e_save:
+                log.warning("insert_page aggregate persist failed (non-fatal): %s", _e_save)
+
+    # Build the response.
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records as _list_page_records
+
+    all_pages = _list_page_records(page_service, project_id)
+    inserted_page = _ext_to_page_record(new_ext)
+    return InsertPageResponse(inserted_page=inserted_page, pages=all_pages)
 
 
 @router.patch(
