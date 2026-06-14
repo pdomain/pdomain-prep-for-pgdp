@@ -7801,6 +7801,11 @@
             "title": "Ignore",
             "default": false
           },
+          "manual_ignore": {
+            "type": "boolean",
+            "title": "Manual Ignore",
+            "default": false
+          },
           "page_type": {
             "$ref": "#/components/schemas/PageType",
             "default": "normal"
@@ -7999,6 +8004,7 @@
           "prefix",
           "source_stem",
           "ignore",
+          "manual_ignore",
           "page_type",
           "alignment",
           "config_overrides",

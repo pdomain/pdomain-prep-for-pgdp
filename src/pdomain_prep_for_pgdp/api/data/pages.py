@@ -265,6 +265,7 @@ def _ext_to_page_record(ext: PrepPageExtension) -> PageRecord:
         prefix=ext.prefix,
         source_stem=ext.source_stem,
         ignore=ext.ignore,
+        manual_ignore=ext.manual_ignore,
         page_type=ext.page_type,
         alignment=ext.alignment,
         config_overrides=ext.config_overrides,
@@ -460,18 +461,31 @@ async def update_page(
         page.splits = body.splits
     if "illustration_regions" in updated_fields and body.illustration_regions is not None:
         page.illustration_regions = body.illustration_regions
+    # When the user patches `ignore`, we record it as `manual_ignore` so that
+    # assign_prefixes can preserve the user intent across config edits.
+    # The effective `ignore` field on PageRecord = derived_ignore OR manual_ignore;
+    # here we set effective=body.ignore and manual_ignore=body.ignore so that
+    # derived-already-true pages (out-of-range/skip) read back correctly on the
+    # next assign_prefixes run.
+    new_manual_ignore: bool | None = None
     if "ignore" in updated_fields and body.ignore is not None:
         page.ignore = body.ignore
+        new_manual_ignore = body.ignore
+    update_kwargs: dict[str, Any] = {
+        "config_overrides": page.config_overrides,
+        "page_type": page.page_type,
+        "alignment": page.alignment,
+        "splits": page.splits,
+        "illustration_regions": page.illustration_regions,
+        "ignore": page.ignore,
+    }
+    if new_manual_ignore is not None:
+        update_kwargs["manual_ignore"] = new_manual_ignore
     updated = update_page_extension(
         page_service,
         project_id,
         idx0,
-        config_overrides=page.config_overrides,
-        page_type=page.page_type,
-        alignment=page.alignment,
-        splits=page.splits,
-        illustration_regions=page.illustration_regions,
-        ignore=page.ignore,
+        **update_kwargs,
     )
     if updated is not None:
         page = updated
@@ -707,6 +721,38 @@ async def insert_page(
     proj_agg.add_page(page_id=new_page_uuid, page_index=insert_at)
     page_service.store.save_project(proj_agg)
 
+    # Bump affected config range bounds so pages shifted past a range boundary
+    # are still considered in-range, and recompute prefixes for all pages.
+    # This mirrors what reorder_pages does inline with compute_prefix.
+    # Known follow-ups NOT implemented here (parity-consistent with reorder_pages):
+    #   - Shifting page_stages rows for the inserted page.
+    #   - Atomicity / versioning of the insert + range-bump as a single transaction.
+    old_cfg = project.config
+    # Any range end >= insert_at must be shifted by 1 to remain consistent.
+    new_cfg = old_cfg.model_copy(
+        update={
+            "proof_end_idx0": old_cfg.proof_end_idx0 + 1
+            if old_cfg.proof_end_idx0 >= insert_at
+            else old_cfg.proof_end_idx0,
+            "frontmatter_end_idx0": old_cfg.frontmatter_end_idx0 + 1
+            if old_cfg.frontmatter_end_idx0 >= insert_at
+            else old_cfg.frontmatter_end_idx0,
+            "bodymatter_end_idx0": old_cfg.bodymatter_end_idx0 + 1
+            if old_cfg.bodymatter_end_idx0 >= insert_at
+            else old_cfg.bodymatter_end_idx0,
+            # Start bounds shift too if they are at or after insert_at.
+            "proof_start_idx0": old_cfg.proof_start_idx0 + 1
+            if old_cfg.proof_start_idx0 >= insert_at
+            else old_cfg.proof_start_idx0,
+            "frontmatter_start_idx0": old_cfg.frontmatter_start_idx0 + 1
+            if old_cfg.frontmatter_start_idx0 >= insert_at
+            else old_cfg.frontmatter_start_idx0,
+            "bodymatter_start_idx0": old_cfg.bodymatter_start_idx0 + 1
+            if old_cfg.bodymatter_start_idx0 >= insert_at
+            else old_cfg.bodymatter_start_idx0,
+        }
+    )
+
     # Update project page_count in the DB.
     from datetime import UTC, datetime
 
@@ -714,10 +760,21 @@ async def insert_page(
         update={
             "page_count": project.page_count + 1,
             "proof_page_count": project.proof_page_count + 1,
+            "config": new_cfg,
             "updated_at": datetime.now(UTC),
         }
     )
     await db.put_project(updated_project)
+
+    # Recompute prefixes for all pages now that idx0s and config bounds are final.
+    # This ensures the shifted tail pages show consistent prefixes immediately
+    # (without this, their prefix would lag until an explicit config edit).
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes as _assign_prefixes
+
+    try:
+        await _assign_prefixes(project=updated_project, page_service=page_service)
+    except Exception as _e_prefix:
+        log.warning("insert_page prefix recompute failed (non-fatal): %s", _e_prefix)
 
     # Append PageInserted event to PrepProjectAggregate.
     _agg_app, _agg = _load_prep_aggregate(settings, project_id)

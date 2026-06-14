@@ -223,6 +223,15 @@ class PageRecord(ApiModel):
     prefix: str
     source_stem: str
     ignore: bool = False
+    """Effective exclusion flag: derived_ignore OR manual_ignore."""
+
+    manual_ignore: bool = False
+    """User-set soft-exclude flag, independent of range/type derivation.
+
+    Surfaced on the wire so the frontend can show a toggle that reflects
+    whether the user explicitly removed this page, as opposed to it being
+    automatically excluded by range or page_type==skip.
+    """
 
     page_type: PageType = PageType.normal
     alignment: AlignmentOverride = AlignmentOverride.default

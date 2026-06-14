@@ -40,6 +40,20 @@ class PrepPageExtension(ApiModel):
     prefix: str
     source_stem: str
     ignore: bool = False
+    """Effective exclusion flag: True when derived_ignore OR manual_ignore.
+
+    ``derived_ignore`` is set by ``assign_prefixes`` (out-of-range or
+    page_type==skip). ``manual_ignore`` is set by the user via
+    PATCH /pages/{idx0} {"ignore": true}.  Callers that need to
+    distinguish the source should read ``manual_ignore`` directly.
+    """
+
+    manual_ignore: bool = False
+    """User-set soft-exclude flag.  Preserved by ``assign_prefixes`` even
+    when derived exclusion does not apply (e.g. an in-range normal page
+    that the user manually removed).  The effective ``ignore`` value equals
+    ``derived_ignore OR manual_ignore``.
+    """
 
     # ── Page classification ─────────────────────────────────────────────
     page_type: PageType = PageType.normal

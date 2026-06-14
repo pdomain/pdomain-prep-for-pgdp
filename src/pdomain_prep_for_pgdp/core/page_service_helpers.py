@@ -41,6 +41,7 @@ def _ext_to_page_record(ext: PrepPageExtension) -> PageRecord:
         prefix=ext.prefix,
         source_stem=ext.source_stem,
         ignore=ext.ignore,
+        manual_ignore=ext.manual_ignore,
         page_type=ext.page_type,
         alignment=ext.alignment,
         config_overrides=ext.config_overrides,
@@ -180,6 +181,7 @@ def put_page_records(service: PageService, pages: list[PageRecord]) -> None:
             prefix=rec.prefix,
             source_stem=ext.source_stem,
             ignore=rec.ignore,
+            manual_ignore=ext.manual_ignore,  # preserve manual flag; callers that want to mutate it use update_page_extension
             page_type=rec.page_type,
             alignment=rec.alignment,
             config_overrides=rec.config_overrides,

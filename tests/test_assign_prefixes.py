@@ -212,3 +212,56 @@ async def test_assign_prefixes_is_idempotent(db: SqliteDatabase, tmp_path: Path)
     await assign_prefixes(project=project, page_service=svc)
     second = {p.idx0: p.prefix for p in list_page_records(svc, project.id)}
     assert first == second
+
+
+@pytest.mark.asyncio
+async def test_assign_prefixes_preserves_manual_ignore(db: SqliteDatabase, tmp_path: Path) -> None:
+    """manual_ignore on an in-range normal page survives a config edit that re-runs assign_prefixes.
+
+    Regression test for: assign_prefixes previously clobbered manual soft-excludes
+    because it computed new_ignore = out_of_range OR page_type==skip and always wrote
+    it, discarding any user-set flag.
+    """
+    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+
+    project = _project(
+        proof_start_idx0=0,
+        proof_end_idx0=3,
+        frontmatter_start_idx0=0,
+        frontmatter_end_idx0=0,
+        bodymatter_start_idx0=1,
+        bodymatter_end_idx0=3,
+    )
+    await db.put_project(project)
+    settings = _settings(tmp_path)
+    pages = [_page(project.id, i) for i in range(4)]
+    seed_pages_in_store(settings, project.id, pages)
+    svc = build_page_service(settings.data_root, project.id)
+
+    # Run assign_prefixes once to establish clean state.
+    await assign_prefixes(project=project, page_service=svc)
+
+    # Manually set manual_ignore=True on page idx0=1 (in-range normal page).
+    from pdomain_prep_for_pgdp.core.page_service_helpers import update_page_extension
+
+    updated = update_page_extension(svc, project.id, 1, manual_ignore=True, ignore=True)
+    assert updated is not None
+    assert updated.ignore is True
+    assert updated.manual_ignore is True
+
+    # Simulate a config edit triggering assign_prefixes again (ranges unchanged here,
+    # but the key invariant is that manual_ignore must survive regardless).
+    await assign_prefixes(project=project, page_service=svc)
+
+    result = list_page_records(svc, project.id)
+    by_idx = {p.idx0: p for p in result}
+
+    # Page idx0=1 is in-range and normal → derived_ignore=False.
+    # But manual_ignore=True was set → effective ignore MUST still be True.
+    assert by_idx[1].ignore is True, "manual_ignore on an in-range normal page must survive assign_prefixes"
+    assert by_idx[1].manual_ignore is True, "manual_ignore field must be preserved by assign_prefixes"
+
+    # Other in-range pages must remain unignored (no manual override).
+    assert by_idx[0].ignore is False
+    assert by_idx[2].ignore is False
+    assert by_idx[3].ignore is False

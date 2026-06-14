@@ -3032,6 +3032,11 @@ export interface components {
              * @default false
              */
             ignore: boolean;
+            /**
+             * Manual Ignore
+             * @default false
+             */
+            manual_ignore: boolean;
             /** @default normal */
             page_type: components["schemas"]["PageType"];
             /** @default default */

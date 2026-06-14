@@ -40,6 +40,7 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
     prefix: "f001",
     source_stem: "scan_0001",
     ignore: false,
+    manual_ignore: false,
     page_type: "normal",
     alignment: "default",
     config_overrides: {

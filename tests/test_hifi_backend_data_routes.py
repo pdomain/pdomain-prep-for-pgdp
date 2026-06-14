@@ -656,3 +656,51 @@ def test_insert_page_list_shows_all(tmp_path: Path) -> None:
         assert body["total"] == 3
         idxs = sorted(p["idx0"] for p in body["pages"])
         assert idxs == [0, 1, 2]
+
+
+def test_insert_page_prefixes_consistent_after_insert(tmp_path: Path) -> None:
+    """After insert, GET /pages shows non-empty prefixes on all in-range pages.
+
+    Regression test for: insert_page previously left the new page with prefix=""
+    and didn't recompute the shifted tail pages, so they could show stale prefixes.
+    """
+    settings = _settings(tmp_path)
+    project_id = "ins12"
+
+    # Seed two pages with pre-assigned prefixes so assign_prefixes can verify
+    # the shifted tail page is still in-range and gets a fresh prefix.
+    pages = [
+        PageRecord(project_id=project_id, idx0=0, prefix="000f001", source_stem="img0001"),
+        PageRecord(project_id=project_id, idx0=1, prefix="001p001", source_stem="img0002"),
+    ]
+    _seed_project(settings, project_id, pages)
+    app = build_app(settings)
+
+    with TestClient(app) as client:
+        # Insert at position 1 (shifts existing page 1 → idx0=2).
+        r = client.post(
+            f"/api/data/projects/{project_id}/pages/insert",
+            json={"at_idx0": 1},
+        )
+        assert r.status_code == 200, r.text
+
+        # Fetch all pages and verify prefix consistency.
+        r2 = client.get(f"/api/data/projects/{project_id}/pages?limit=100")
+        assert r2.status_code == 200
+        body = r2.json()
+        assert body["total"] == 3
+
+        by_idx = {p["idx0"]: p for p in body["pages"]}
+
+        # The newly inserted page at idx0=1 should have a non-empty prefix
+        # (assign_prefixes recomputes it from the updated config ranges).
+        assert by_idx[1]["prefix"] != "", (
+            "inserted page prefix must be recomputed after insert, not left empty"
+        )
+
+        # The shifted page (was idx0=1, now idx0=2) must also have a valid prefix.
+        assert by_idx[2]["prefix"] != "", "shifted tail page prefix must be recomputed after insert"
+
+        # No page should be ignore=True — all three are in-range normal pages.
+        for page in body["pages"]:
+            assert page["ignore"] is False, f"page idx0={page['idx0']} should not be ignored after insert"

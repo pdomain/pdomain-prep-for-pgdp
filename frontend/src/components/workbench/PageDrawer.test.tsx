@@ -42,6 +42,7 @@ const basePage: PageRecord = {
   prefix: "0005",
   source_stem: "scan_0005",
   ignore: false,
+  manual_ignore: false,
   page_type: "normal",
   alignment: "default",
   config_overrides: nullOverrides,
