@@ -105,6 +105,14 @@ STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
     "crop": {
         "white_space_additional": None,
     },
+    # grayscale (Wave-2): conversion mode + sampler tuning
+    "grayscale": {
+        "mode": "perceptual",
+        "sampler_radius": 3,
+        "gamma": 1.1,
+        "output_range_min": 12,
+        "output_range_max": 248,
+    },
 }
 
 # ── Settings key → ResolvedPageConfig field mapping ───────────────────────────
@@ -116,6 +124,12 @@ STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
 _SETTINGS_KEY_TO_FIELD: dict[str, str] = {
     "min_component_area": "denoise_min_component_area",
     "median_kernel_size": "denoise_median_kernel_size",
+    # grayscale (Wave-2) — keys differ from ResolvedPageConfig field names
+    "mode": "grayscale_mode",
+    "sampler_radius": "grayscale_sampler_radius",
+    "gamma": "grayscale_gamma",
+    "output_range_min": "grayscale_output_range_min",
+    "output_range_max": "grayscale_output_range_max",
     # The remaining keys match their ResolvedPageConfig field names directly.
 }
 

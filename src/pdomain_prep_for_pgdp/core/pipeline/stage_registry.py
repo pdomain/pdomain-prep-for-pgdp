@@ -158,11 +158,42 @@ def _make_placeholder(stage_id: str) -> StageImpl:
 def _grayscale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Convert a 3-channel BGR ndarray to a 2-D grayscale ndarray.
 
-    Wraps ``pdomain_book_tools.image_processing.cv2_processing.cv2_convert_to_grayscale``
-    so the CPU image-processing path stays consistent with the monolithic
-    process_page chain.
+    When ``cfg`` carries Wave-2 grayscale stage-settings fields, calls
+    ``to_grayscale(img, mode=, sampler_radius=, gamma=, output_range=)``
+    from ``pdomain_book_tools.image_processing.cv2_processing``.
+    Falls back to the legacy ``cv2_convert_to_grayscale`` when the new API
+    is unavailable (forward-compat with older book-tools).
     """
-    _ = cfg
+    try:
+        to_grayscale = _load_attr("pdomain_book_tools.image_processing.cv2_processing", "to_grayscale")
+    except AttributeError:
+        to_grayscale = None
+
+    if to_grayscale is not None:
+        mode = "perceptual"
+        sampler_radius = 3
+        gamma = 1.1
+        output_range: tuple[int, int] = (12, 248)
+        if cfg is not None:
+            mode = getattr(cfg, "grayscale_mode", mode)
+            sampler_radius = getattr(cfg, "grayscale_sampler_radius", sampler_radius)
+            gamma = getattr(cfg, "grayscale_gamma", gamma)
+            output_range = (
+                getattr(cfg, "grayscale_output_range_min", output_range[0]),
+                getattr(cfg, "grayscale_output_range_max", output_range[1]),
+            )
+        to_grayscale_fn = cast(
+            "Callable[..., ImageArray]",
+            to_grayscale,
+        )
+        return to_grayscale_fn(
+            image,
+            mode=mode,
+            sampler_radius=sampler_radius,
+            gamma=gamma,
+            output_range=output_range,
+        )
+    # Fallback: legacy fast path (book-tools < 0.20.0)
     cv2_convert_to_grayscale = cast(
         "Callable[[ImageArray], ImageArray]",
         _load_attr("pdomain_book_tools.image_processing.cv2_processing", "cv2_convert_to_grayscale"),
