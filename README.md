@@ -68,8 +68,9 @@ make run        # auto-detects GPU; CUDA host -> cuda:0, else CPU
 make run-cpu    # forces PGDP_GPU_BACKEND=cpu (debugging / weak GPU / CUDA OOM)
 ```
 
-Both targets build the SPA bundle into `src/pdomain_prep_for_pgdp/static/`
-first, then launch `pgdp-prep` as a single FastAPI process at
+Both targets rebuild the SPA bundle into `src/pdomain_prep_for_pgdp/static/`
+if missing or stale (any frontend source newer than the built bundle), then
+launch `pgdp-prep` as a single FastAPI process at
 <http://127.0.0.1:8765> (next free port if 8765 is taken). Watch the
 startup log for `local backend on cuda:0` vs `local backend on cpu`
 to confirm which device the OCR pipeline picked up.

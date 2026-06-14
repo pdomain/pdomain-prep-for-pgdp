@@ -376,12 +376,28 @@ upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
 	@echo "warning: 'upgrade-deps-local' is deprecated; use 'local-upgrade-deps'"
 	@$(MAKE) --no-print-directory local-upgrade-deps
 
+# SPA_BUNDLE is the built index.html; SPA_SRCS lists the frontend source
+# inputs whose mtime, if newer than the bundle, means a rebuild is needed.
+# Only paths that actually exist in frontend/ are listed (a stray path would
+# make `find` print a warning and the guard would misfire).
+SPA_BUNDLE := src/pdomain_prep_for_pgdp/static/index.html
+SPA_SRCS := frontend/src frontend/index.html frontend/package.json \
+        frontend/vite.config.ts frontend/tailwind.config.ts \
+        frontend/postcss.config.js frontend/tsconfig.json
+
 # ---------------------------------------------------------------------------
 # `make run` — canonical local-mode entry point.
 #
-# Builds the SPA bundle into src/pdomain_prep_for_pgdp/static/ first (so the
-# single FastAPI process serves the React app at `/`), then launches
-# `pgdp-prep`. The actual URL is printed by the launcher (defaults to
+# Rebuilds the SPA bundle into src/pdomain_prep_for_pgdp/static/ if missing
+# OR if any frontend source is newer than the built bundle (mtime-based, via
+# `find -newer`). Repeated `make run` with no source changes skips the
+# npm-install + vite-build cost entirely. An edit to frontend/src (etc.) is
+# picked up automatically instead of silently serving a stale bundle.
+# Caveat: a fresh `git checkout`/clone doesn't preserve mtimes, so the first
+# `make run` after a clone may rebuild once even if nothing changed.
+# `make frontend-build` remains the explicit force-rebuild path.
+#
+# The actual URL is printed by the launcher (defaults to
 # http://127.0.0.1:8765 or the next free port — see L1 fallback in
 # `__main__.py`).
 #
@@ -392,7 +408,13 @@ upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
 #
 # Pass extra args via ARGS, e.g. `make run ARGS="--port 9000"`.
 # ---------------------------------------------------------------------------
-run: frontend-build ## Build the SPA + launch pgdp-prep (port auto-selected, printed on startup)
+run: ## Build SPA if missing or stale, then launch pgdp-prep (port auto-selected, printed on startup)
+	@if [ ! -f $(SPA_BUNDLE) ] || [ -n "$$(find $(SPA_SRCS) -newer $(SPA_BUNDLE) 2>/dev/null)" ]; then \
+		echo "SPA bundle stale or missing; running frontend-build first..."; \
+		$(MAKE) --no-print-directory frontend-build; \
+	else \
+		echo "SPA bundle up to date."; \
+	fi
 	uv run pgdp-prep $(ARGS)
 
 # ---------------------------------------------------------------------------
@@ -401,7 +423,13 @@ run: frontend-build ## Build the SPA + launch pgdp-prep (port auto-selected, pri
 # Use when a GPU is present but you want to skip CUDA paths: debugging,
 # weak GPU, or working around CUDA OOM on a smaller card.
 # ---------------------------------------------------------------------------
-run-cpu: frontend-build ## Build SPA + launch pgdp-prep with PGDP_GPU_BACKEND=cpu (port auto-selected)
+run-cpu: ## Build SPA if missing or stale, then launch pgdp-prep with PGDP_GPU_BACKEND=cpu (port auto-selected)
+	@if [ ! -f $(SPA_BUNDLE) ] || [ -n "$$(find $(SPA_SRCS) -newer $(SPA_BUNDLE) 2>/dev/null)" ]; then \
+		echo "SPA bundle stale or missing; running frontend-build first..."; \
+		$(MAKE) --no-print-directory frontend-build; \
+	else \
+		echo "SPA bundle up to date."; \
+	fi
 	PGDP_GPU_BACKEND=cpu uv run pgdp-prep $(ARGS)
 
 run-local: ## DEPRECATED: use local-run

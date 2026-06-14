@@ -35,7 +35,7 @@ as historical context.
 make ci AI=1        # full CI — always run before committing
 make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e`
 make e2e AI=1       # Playwright e2e suite (separate uv group)
-make run            # builds SPA bundle, then launches pgdp-prep at http://127.0.0.1:8765
+make run            # rebuilds SPA if missing or stale, then launches pgdp-prep at http://127.0.0.1:8765
 make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
 
 # local-dev workflow (spec #362) — reference implementation; see ../docs/process/local-dev.md
