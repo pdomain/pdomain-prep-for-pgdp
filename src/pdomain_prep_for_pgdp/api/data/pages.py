@@ -1892,11 +1892,50 @@ async def put_page_stage_settings(
     Appends a SettingsChange event.
     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
     Spec: docs/specs/api-v2-deltas.md §1.8.
+
+    Validates grayscale-specific constraints to prevent to_grayscale ValueError:
+      - output_range_min < output_range_max, both in [0, 255]
+      - sampler_radius >= 0
+      - gamma > 0
     """
     from fastapi.responses import JSONResponse
 
     if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
         raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    # Validate grayscale settings to prevent ValueError inside to_grayscale.
+    if stage_id == "grayscale":
+        _errors: list[str] = []
+        _range_min = body.get("output_range_min")
+        _range_max = body.get("output_range_max")
+        if _range_min is not None and not isinstance(_range_min, (int, float)):
+            _errors.append("output_range_min must be a number")
+        elif _range_min is not None and not (0 <= float(_range_min) <= 255):
+            _errors.append("output_range_min must be in [0, 255]")
+        if _range_max is not None and not isinstance(_range_max, (int, float)):
+            _errors.append("output_range_max must be a number")
+        elif _range_max is not None and not (0 <= float(_range_max) <= 255):
+            _errors.append("output_range_max must be in [0, 255]")
+        if (
+            _range_min is not None
+            and _range_max is not None
+            and isinstance(_range_min, (int, float))
+            and isinstance(_range_max, (int, float))
+            and float(_range_min) >= float(_range_max)
+        ):
+            _errors.append("output_range_min must be less than output_range_max")
+        _sampler_radius = body.get("sampler_radius")
+        if _sampler_radius is not None and not isinstance(_sampler_radius, (int, float)):
+            _errors.append("sampler_radius must be a number")
+        elif _sampler_radius is not None and float(_sampler_radius) < 0:
+            _errors.append("sampler_radius must be >= 0")
+        _gamma = body.get("gamma")
+        if _gamma is not None and not isinstance(_gamma, (int, float)):
+            _errors.append("gamma must be a number")
+        elif _gamma is not None and float(_gamma) <= 0:
+            _errors.append("gamma must be > 0")
+        if _errors:
+            raise HTTPException(422, f"invalid grayscale settings: {'; '.join(_errors)}")
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:

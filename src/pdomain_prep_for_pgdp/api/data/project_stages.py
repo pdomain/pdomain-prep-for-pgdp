@@ -2761,16 +2761,24 @@ async def detect_grayscale_profile(
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
+    page_service: PageServiceDep,
 ) -> JSONResponse:
     """Detect the best grayscale conversion profile for a project.
 
-    Samples up to 8 page source images and measures chromatic energy.
+    Samples up to 8 page COLOR SOURCE images from the BlobStore and measures
+    chromatic energy via the YCbCr heuristic.
     High chromatic energy → 'perceptual' (luminosity-weighted).
     Low chromatic energy → 'standard' (flat channel average).
 
+    Source images are read from PrepPageExtension.source_blob_hash — the original
+    color scan bytes ingested before any grayscale conversion. This ensures the
+    chroma heuristic sees real color data and not already-converted grayscale/binary
+    artifacts.
+
     Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
 
-    R2 imagetools — grayscaleTool DRIFT resolution.
+    R2 imagetools — grayscaleTool DRIFT resolution. Fix: sample color source not
+    grayscale artifacts (Issue 4 — chroma heuristic was always 0 on gray/binary).
     """
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -2779,14 +2787,113 @@ async def detect_grayscale_profile(
     if (rv := _check_registry(project)) is not None:
         return rv
 
-    mode, why = _detect_grayscale_mode(settings.data_root, project_id)
+    mode, why = _detect_grayscale_mode_from_blobs(project_id, page_service)
     return JSONResponse(content={"mode": mode, "why": why, "backend": "cpu"})
 
 
-def _detect_grayscale_mode(data_root: Path, project_id: str) -> tuple[str, str]:
-    """Return (mode, why) by sampling page images.
+def _detect_grayscale_mode_from_blobs(
+    project_id: str,
+    page_service: Any,
+) -> tuple[str, str]:
+    """Return (mode, why) by sampling COLOR SOURCE images from the BlobStore.
+
+    Reads PrepPageExtension.source_blob_hash for each page and decodes the raw
+    source bytes (original color scan) via cv2. This avoids the Issue-4 bug where
+    sampling threshold/canvas_map/grayscale artifacts — which are already
+    single-channel — always produced chroma_std ≈ 0 → always returned "standard".
 
     Falls back to ("perceptual", "<reason>") when sampling is not possible.
+    """
+    try:
+        import cv2  # pyright: ignore[reportMissingImports]
+        import numpy as np  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return "perceptual", "cv2/numpy not available — using perceptual as safe default"
+
+    # Load source blobs via PrepPageExtension from the event store.
+    try:
+        import uuid as _uuid
+
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension as _PrepExt
+    except ImportError as _ie:
+        return "perceptual", f"prep extension unavailable ({_ie}) — using perceptual as safe default"
+
+    # Get page UUIDs for this project from the event store.
+    try:
+
+        def _to_uuid_local(s: str) -> _uuid.UUID:
+            try:
+                return _uuid.UUID(s)
+            except (ValueError, AttributeError):
+                return _uuid.uuid5(_uuid.NAMESPACE_OID, s)
+
+        proj_agg = page_service.store.get_project(_to_uuid_local(project_id))
+        page_uuids = list(proj_agg.record.page_ids)
+    except Exception as _e:
+        return "perceptual", f"could not list pages ({_e}) — using perceptual as safe default"
+
+    if not page_uuids:
+        return "perceptual", "no pages found — using perceptual as safe default"
+
+    source_blob_hashes: list[str] = []
+    for page_uuid in page_uuids[:_GRAYSCALE_SAMPLE_PAGES]:
+        try:
+            page_agg = page_service.store.get_page(page_uuid)
+            ext = _ops_get_ext(page_agg.record, "prep", _PrepExt)
+            if ext is not None and ext.source_blob_hash:
+                source_blob_hashes.append(ext.source_blob_hash)
+        except Exception:  # noqa: S112 — page-load errors are non-fatal; skip sample
+            continue
+
+    if not source_blob_hashes:
+        return "perceptual", "no source blobs available — using perceptual as safe default"
+
+    chroma_scores: list[float] = []
+    for blob_hash in source_blob_hashes:
+        try:
+            raw_bytes = page_service.blobs.read(blob_hash)
+            arr = np.frombuffer(raw_bytes, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            if img.ndim == 2 or img.shape[2] == 1:
+                # Already grayscale source — no chromatic energy (rare; possible for B&W scans).
+                chroma_scores.append(0.0)
+                continue
+            # Convert BGR → YCbCr and measure std of chroma channels.
+            ycbcr = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+            cb_std = float(np.std(ycbcr[:, :, 1]))
+            cr_std = float(np.std(ycbcr[:, :, 2]))
+            chroma_scores.append((cb_std + cr_std) / 2.0)
+        except Exception:  # noqa: S112 — blob decode errors are non-fatal; skip sample
+            continue
+
+    if not chroma_scores:
+        return "perceptual", "could not decode any source images — using perceptual as safe default"
+
+    mean_chroma = sum(chroma_scores) / len(chroma_scores)
+    if mean_chroma > _GRAYSCALE_CHROMA_THRESHOLD:
+        return (
+            "perceptual",
+            f"sampled {len(chroma_scores)} source pages — mean chromatic energy {mean_chroma:.1f} "
+            f"> {_GRAYSCALE_CHROMA_THRESHOLD} (colour content detected)",
+        )
+    return (
+        "standard",
+        f"sampled {len(chroma_scores)} source pages — mean chromatic energy {mean_chroma:.1f} "
+        f"<= {_GRAYSCALE_CHROMA_THRESHOLD} (black-and-white source)",
+    )
+
+
+def _detect_grayscale_mode(data_root: Path, project_id: str) -> tuple[str, str]:
+    """Legacy path: return (mode, why) by sampling on-disk page artifacts.
+
+    Kept for backward-compat but no longer called by detect_grayscale_profile
+    (which now uses _detect_grayscale_mode_from_blobs). This function suffers
+    from Issue 4: it samples threshold/canvas_map/grayscale artifacts which are
+    already single-channel → chroma ≈ 0 → always returns "standard".
     """
     try:
         import cv2  # pyright: ignore[reportMissingImports]

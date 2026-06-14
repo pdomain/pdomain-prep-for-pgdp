@@ -1247,13 +1247,20 @@ export interface paths {
          * Detect Grayscale Profile
          * @description Detect the best grayscale conversion profile for a project.
          *
-         *     Samples up to 8 page source images and measures chromatic energy.
+         *     Samples up to 8 page COLOR SOURCE images from the BlobStore and measures
+         *     chromatic energy via the YCbCr heuristic.
          *     High chromatic energy → 'perceptual' (luminosity-weighted).
          *     Low chromatic energy → 'standard' (flat channel average).
          *
+         *     Source images are read from PrepPageExtension.source_blob_hash — the original
+         *     color scan bytes ingested before any grayscale conversion. This ensures the
+         *     chroma heuristic sees real color data and not already-converted grayscale/binary
+         *     artifacts.
+         *
          *     Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
          *
-         *     R2 imagetools — grayscaleTool DRIFT resolution.
+         *     R2 imagetools — grayscaleTool DRIFT resolution. Fix: sample color source not
+         *     grayscale artifacts (Issue 4 — chroma heuristic was always 0 on gray/binary).
          */
         post: operations["detect_grayscale_profile"];
         delete?: never;
@@ -1759,6 +1766,11 @@ export interface paths {
          *     Appends a SettingsChange event.
          *     Project-scoped stages (e.g. "source") are accepted; idx0 is ignored.
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
+         *
+         *     Validates grayscale-specific constraints to prevent to_grayscale ValueError:
+         *       - output_range_min < output_range_max, both in [0, 255]
+         *       - sampler_radius >= 0
+         *       - gamma > 0
          */
         put: operations["put_page_stage_settings"];
         post?: never;

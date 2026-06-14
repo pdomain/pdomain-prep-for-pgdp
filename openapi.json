@@ -2882,7 +2882,7 @@
           "project-stages"
         ],
         "summary": "Detect Grayscale Profile",
-        "description": "Detect the best grayscale conversion profile for a project.\n\nSamples up to 8 page source images and measures chromatic energy.\nHigh chromatic energy \u2192 'perceptual' (luminosity-weighted).\nLow chromatic energy \u2192 'standard' (flat channel average).\n\nReturns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.\n\nR2 imagetools \u2014 grayscaleTool DRIFT resolution.",
+        "description": "Detect the best grayscale conversion profile for a project.\n\nSamples up to 8 page COLOR SOURCE images from the BlobStore and measures\nchromatic energy via the YCbCr heuristic.\nHigh chromatic energy \u2192 'perceptual' (luminosity-weighted).\nLow chromatic energy \u2192 'standard' (flat channel average).\n\nSource images are read from PrepPageExtension.source_blob_hash \u2014 the original\ncolor scan bytes ingested before any grayscale conversion. This ensures the\nchroma heuristic sees real color data and not already-converted grayscale/binary\nartifacts.\n\nReturns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.\n\nR2 imagetools \u2014 grayscaleTool DRIFT resolution. Fix: sample color source not\ngrayscale artifacts (Issue 4 \u2014 chroma heuristic was always 0 on gray/binary).",
         "operationId": "detect_grayscale_profile",
         "security": [
           {
@@ -4335,7 +4335,7 @@
           "pages"
         ],
         "summary": "Put Page Stage Settings",
-        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.",
+        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.\n\nValidates grayscale-specific constraints to prevent to_grayscale ValueError:\n  - output_range_min < output_range_max, both in [0, 255]\n  - sampler_radius >= 0\n  - gamma > 0",
         "operationId": "put_page_stage_settings",
         "security": [
           {

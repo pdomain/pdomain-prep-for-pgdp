@@ -247,6 +247,17 @@ STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
     "post_ocr_crop": frozenset({"ocr_crop", "rotated_standard"}),
     "ocr_crop": frozenset({"rotated_standard"}),
     "ocr": frozenset({"use_ocr_bbox_edge"}),
+    # grayscale (Wave-2): stage-settings fields that affect to_grayscale output.
+    # A settings change on any of these → config hash differs → dirty cascade.
+    "grayscale": frozenset(
+        {
+            "grayscale_mode",
+            "grayscale_sampler_radius",
+            "grayscale_gamma",
+            "grayscale_output_range_min",
+            "grayscale_output_range_max",
+        }
+    ),
 }
 
 
