@@ -1571,7 +1571,7 @@ wheels = [
 
 [[package]]
 name = "pdomain-book-tools"
-version = "0.19.0"
+version = "0.20.0"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "deskew" },
@@ -1596,9 +1596,9 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.19.0/pdomain_book_tools-0.19.0.tar.gz", hash = "sha256:210fdb546c0ffc34b4259ab315dd4923c1dd64859144894539ab76bdbfb1e91c" }
+sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.20.0/pdomain_book_tools-0.20.0.tar.gz", hash = "sha256:f9d4262fa3701b14ecf292f172b69ad889cf2a0a32d5c48d41013bb320d85393" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.19.0/pdomain_book_tools-0.19.0-py3-none-any.whl", hash = "sha256:c6a7346bb05215a9aec25edd4094d894e39898d8749c4e330d8955c81afb5833" },
+    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.20.0/pdomain_book_tools-0.20.0-py3-none-any.whl", hash = "sha256:bde7367d796c7cb4c247b87480f5fc4d1dfecda9179044b3c8a6ddffe1064a0f" },
 ]
 
 [[package]]
