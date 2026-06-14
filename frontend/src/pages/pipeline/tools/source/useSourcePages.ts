@@ -2,28 +2,25 @@
  * useSourcePages — TanStack Query hook to load the page list for the
  * Source stage tool.
  *
- * Fetches `GET /api/data/projects/{projectId}/pages?limit=<n>` and maps
- * the `PageRecord` response into `FileRow[]` so `SourceFiles` can render
- * real thumbnails.
+ * Fetches `GET /api/data/projects/{projectId}/pages?limit=<n>` with
+ * cursor-based pagination and maps the `PageRecord` response into
+ * `FileRow[]` so `SourceFiles` can render real thumbnails.
  *
  * ## Thumbnail URL
- * `PageRecord.thumbnail_key` is served at `/cdn/<thumbnail_key>`. The
- * `RealThumb` component handles the URL construction and fallback.
+ * `PageRecord.thumbnail_key` is always null (ingest_source is not a v2
+ * page stage). Real thumbnails are served at
+ * `/api/data/projects/{id}/pages/{idx0}/stages/grayscale/thumbnail`
+ * when the grayscale stage is clean. The `stageThumbUrl` helper builds
+ * this URL; `RealThumb` handles the URL and falls back to `FakePaperThumb`
+ * on 404.
  *
  * ## Pagination
- * The backend supports `?limit=&cursor=` pagination. For the current local
- * use-case (< 1000 pages per project) we fetch all pages in one shot by
- * passing `limit=1000`. A future upgrade can add infinite-scroll via
- * `useInfiniteQuery`.
+ * The backend caps `limit` at 500. For projects >500 pages we follow the
+ * `next_cursor` in a loop so all pages load.
  *
  * ## State mapping
- * The backend `PageRecord` doesn't carry the Source-stage "role" state
- * (`cover`, `page`, `blank`, etc.) directly — those are set by the user in
- * this tool. Until the backend persists them:
- *  - `ignore: true`  → `"ready"` (user has marked it but we don't know role)
- *  - else            → `"ready"` (unmarked)
- *
- * Real state persistence is deferred (OPEN QUESTION Q-ST-1).
+ * `ignore: true` maps to FileState `"skipped"` (reversible via PATCH).
+ * All other pages map to `"ready"`.
  *
  * @see frontend/src/api/types.gen.ts — PageRecord schema
  * @see frontend/src/pages/pipeline/tools/source/RealThumb.tsx
@@ -34,21 +31,49 @@ import { api } from "@/api/client";
 import type { FileRow } from "@/machines/tools/source";
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum pages per request (backend cap). */
+const PAGE_LIMIT = 500;
+
+// ---------------------------------------------------------------------------
 // Backend shape (from OpenAPI types.gen)
 // ---------------------------------------------------------------------------
 
 interface BackendPage {
   idx0: number;
   source_stem: string;
+  /** Always null — ingest_source is not a v2 page stage. */
   thumbnail_key: string | null;
   /** true when the user has excluded this page */
   ignore: boolean;
   page_type: string;
 }
 
-interface ListPagesResponse {
+export interface ListPagesResponse {
   pages: BackendPage[];
   next_cursor: string | null;
+  total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail URL helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the per-page stage thumbnail URL.
+ * Uses the grayscale stage (first v2 stage with a thumbnail in the local
+ * pipeline) as the source image for the Source tool grid.
+ *
+ * Returns null when projectId or idx0 is not available.
+ */
+export function stageThumbUrl(
+  projectId: string,
+  idx0: number,
+  stageId = "grayscale",
+): string {
+  return `/api/data/projects/${encodeURIComponent(projectId)}/pages/${String(idx0)}/stages/${encodeURIComponent(stageId)}/thumbnail`;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,26 +81,38 @@ interface ListPagesResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch all pages for a project.
- * Returns up to 1000 pages in one shot.
+ * Fetch all pages for a project via cursor-based pagination.
+ * Follows next_cursor until all pages are loaded.
  */
-async function fetchSourcePages(projectId: string): Promise<FileRow[]> {
-  const data = await api.get<ListPagesResponse>(
-    `/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=1000`,
-  );
-  return data.pages.map((p): FileRow => {
-    const row: FileRow = {
-      idx: p.idx0,
-      stem: p.source_stem,
-      // "ready" = no role assigned yet. The machine can override via MARK_AS.
-      state: "ready",
-    };
-    // Only set thumbnailKey when a real key exists (exactOptionalPropertyTypes).
-    if (p.thumbnail_key) {
-      row.thumbnailKey = p.thumbnail_key;
+export async function fetchAllSourcePages(
+  projectId: string,
+): Promise<FileRow[]> {
+  const rows: FileRow[] = [];
+  let cursor: string | null = null;
+
+  do {
+    const url: string = cursor
+      ? `/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=${String(PAGE_LIMIT)}&cursor=${encodeURIComponent(cursor)}`
+      : `/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=${String(PAGE_LIMIT)}`;
+
+    const data: ListPagesResponse = await api.get<ListPagesResponse>(url);
+
+    for (const p of data.pages) {
+      const row: FileRow = {
+        idx: p.idx0,
+        stem: p.source_stem,
+        // ignore=true → "skipped" so the machine can filter+restore
+        state: p.ignore ? "skipped" : "ready",
+        // Wire real stage thumbnail URL instead of the always-null thumbnail_key
+        thumbnailKey: stageThumbUrl(projectId, p.idx0),
+      };
+      rows.push(row);
     }
-    return row;
-  });
+
+    cursor = data.next_cursor;
+  } while (cursor !== null);
+
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +142,7 @@ export function useSourcePages(
 ): UseSourcePagesResult {
   const query = useQuery({
     queryKey: ["sourcePages", projectId],
-    queryFn: () => fetchSourcePages(projectId),
+    queryFn: () => fetchAllSourcePages(projectId),
     enabled: enabled && Boolean(projectId),
     staleTime: 30_000,
     refetchOnWindowFocus: false,

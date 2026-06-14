@@ -71,7 +71,7 @@
  * @see src/machines/DIVERGENCES.md — F5-1 through F5-5
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
@@ -176,24 +176,12 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
   } = useSourcePages(projectId, Boolean(projectId));
 
   // Seed the machine with real pages once loaded.
-  // We use a ref-like pattern: only seed once (when machine files are empty
-  // and we have fetched data). Subsequent machine events own the file list.
-  const [seeded, setSeeded] = useState(false);
+  // LOAD_FILES is idempotent: only applies when ctx.files is empty.
   useEffect(() => {
-    if (!seeded && !pagesLoading && fetchedFiles.length > 0) {
-      // LOAD_FILES isn't in the machine's event types yet — we send individual
-      // SELECT_FILE events or use CLEAR_SELECTION to sync. For now we use the
-      // machine's initialFiles input capability by re-creating the actor, BUT
-      // since we can't restart the actor after mount, we instead rely on the
-      // machine receiving files via context update.
-      //
-      // INTEGRATION ITEM (I-ST-2): Add a LOAD_FILES event to sourceToolMachine
-      // so pages fetched from the API can be injected without remounting.
-      // Until then, the machine is re-created on first page fetch by updating
-      // the `key` prop (see below).
-      setSeeded(true);
+    if (!pagesLoading && fetchedFiles.length > 0 && ctx.files.length === 0) {
+      send({ type: "LOAD_FILES", files: fetchedFiles });
     }
-  }, [seeded, pagesLoading, fetchedFiles]);
+  }, [pagesLoading, fetchedFiles, ctx.files.length, send]);
 
   // Determine sub-states using typed SnapshotFrom helper (Fix 3 — no `as any`).
   const isGenerating: boolean = matchesState(snapshot, {
@@ -225,19 +213,43 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
   // Active page for workbench tab
   const firstSelectedIdx = ctx.selected[0] ?? 0;
 
-  // Use fetched files if the machine's files are empty (not yet seeded)
-  // INTEGRATION ITEM (I-ST-2): remove this fallback once LOAD_FILES event exists
-  const displayFiles =
-    ctx.files.length > 0
-      ? ctx.files
-      : fetchedFiles.length > 0
-        ? fetchedFiles
-        : [];
+  // Files come from the machine (seeded via LOAD_FILES on first fetch).
+  const displayFiles = ctx.files;
 
   const activeFile =
     displayFiles.length > 0
       ? (displayFiles[firstSelectedIdx] ?? displayFiles[0] ?? null)
       : null;
+
+  // ---------------------------------------------------------------------------
+  // Search bar keyboard shortcut ("/")
+  // ---------------------------------------------------------------------------
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent): void {
+      // Open search on "/" unless already in an input/textarea
+      if (
+        e.key === "/" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setActiveTab("files");
+      }
+      // Escape clears query and blurs search
+      if (
+        e.key === "Escape" &&
+        document.activeElement === searchInputRef.current
+      ) {
+        send({ type: "SET_QUERY", value: "" });
+        searchInputRef.current?.blur();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [send]);
 
   // Derived totals: use machine totals if available, else compute from displayFiles.
   // This ensures the banner shows meaningful counts even before the first MARK_AS.
@@ -307,12 +319,17 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
             isConfirming={isConfirming}
             isConfirmed={isConfirmed}
             insertDraft={ctx.insertDraft}
+            searchInputRef={searchInputRef}
             onSelectFile={(idx) => send({ type: "SELECT_FILE", idx })}
+            onRangeSelect={(anchorIdx, endIdx) =>
+              send({ type: "SELECT_RANGE", anchorIdx, endIdx })
+            }
             onClearSelection={() => send({ type: "CLEAR_SELECTION" })}
             onMark={(state) => send({ type: "MARK_AS", state })}
             onRemove={() => send({ type: "REMOVE_FILES" })}
             onFilterChange={(value) => send({ type: "SET_FILTER", value })}
             onDensityChange={(value) => send({ type: "SET_DENSITY", value })}
+            onQueryChange={(value) => send({ type: "SET_QUERY", value })}
             onInsertOpen={(anchorStem) =>
               send({
                 type: "OPEN_INSERT",

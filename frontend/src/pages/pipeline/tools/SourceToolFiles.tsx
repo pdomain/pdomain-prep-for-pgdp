@@ -16,8 +16,8 @@
  * @see src/pages/pipeline/tools/SourceTool.tsx — main entry point
  */
 
-import { useState } from "react";
-import type { ReactNode } from "react";
+import { useState, useRef } from "react";
+import type { ReactNode, RefObject, KeyboardEvent } from "react";
 import type {
   FileRow,
   FileState,
@@ -59,11 +59,12 @@ export function applySearch(files: FileRow[], query: string): FileRow[] {
 // Tone → CSS token mapping
 const STATE_DOT_COLOR: Record<string, string> = {
   page: "var(--exact)",
-  cover: "var(--gt, #84cc16)",
-  back: "var(--gt, #84cc16)",
+  cover: "var(--gt)",
+  back: "var(--gt)",
   blank: "var(--ink-3)",
   duplicate: "var(--mismatch)",
   inserted: "var(--accent)",
+  skipped: "var(--ink-4)",
 };
 
 const STATE_LABEL: Record<string, string> = {
@@ -73,6 +74,7 @@ const STATE_LABEL: Record<string, string> = {
   blank: "blank",
   duplicate: "dup",
   inserted: "insert",
+  skipped: "skipped",
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -264,6 +266,7 @@ export function ThumbCard({
   selected,
   hoveredForInsert,
   onClick,
+  onRangeClick,
 }: {
   file: FileRow;
   density: FileDensity;
@@ -271,6 +274,8 @@ export function ThumbCard({
   /** Whether the gap AFTER this card is currently hovered (shows InsertDivider). */
   hoveredForInsert?: boolean;
   onClick: () => void;
+  /** Called with this card's idx when user shift+clicks for range select. */
+  onRangeClick?: (idx: number) => void;
 }): ReactNode {
   const dims =
     density === "S"
@@ -284,10 +289,24 @@ export function ThumbCard({
   const showTag = !isPending && file.state !== "ready";
 
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
+      role="checkbox"
+      aria-checked={selected}
+      tabIndex={0}
       data-testid={`thumb-card-${file.idx}`}
-      onClick={onClick}
+      onClick={(e) => {
+        if (e.shiftKey && onRangeClick) {
+          onRangeClick(file.idx);
+        } else {
+          onClick();
+        }
+      }}
+      onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         position: "relative",
         width: dims.w,
@@ -299,6 +318,7 @@ export function ThumbCard({
         border: `1.5px solid ${selected ? "var(--accent)" : "transparent"}`,
         cursor: "pointer",
         transition: "border-color .12s, background .12s",
+        outline: "none",
       }}
     >
       <div
@@ -653,15 +673,21 @@ export function FileToolbar({
   filter,
   density,
   totals,
+  query,
+  searchInputRef,
   onFilterChange,
   onDensityChange,
+  onQueryChange,
   onInsertOpen,
 }: {
   filter: FileFilter;
   density: FileDensity;
   totals: FileTotals | null;
+  query?: string;
+  searchInputRef?: RefObject<HTMLInputElement | null>;
   onFilterChange: (f: FileFilter) => void;
   onDensityChange: (d: FileDensity) => void;
+  onQueryChange?: (q: string) => void;
   onInsertOpen: () => void;
 }): ReactNode {
   const m = totals?.marked ?? {
@@ -741,6 +767,38 @@ export function FileToolbar({
           );
         })}
       </div>
+
+      {/* Search input — wired to SET_QUERY; "/" shortcut focuses via searchInputRef */}
+      {onQueryChange && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            ref={searchInputRef}
+            data-testid="source-search-input"
+            type="text"
+            value={query ?? ""}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Search files…"
+            aria-label="Search files"
+            style={{
+              height: 28,
+              width: 160,
+              padding: "0 8px 0 28px",
+              borderRadius: 6,
+              border: "1px solid var(--border-2)",
+              background: "var(--bg-page)",
+              fontSize: 12,
+              color: "var(--ink-1)",
+              fontFamily: "inherit",
+              boxSizing: "border-box",
+              backgroundImage:
+                "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E\")",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "8px center",
+              backgroundSize: "14px",
+            }}
+          />
+        </div>
+      )}
 
       {/* Insert button */}
       <div
@@ -839,8 +897,8 @@ export function FileToolbar({
 
 const BULK_MARK_OPTIONS: { id: FileState; name: string; dot: string }[] = [
   { id: "page", name: "Page", dot: "var(--exact)" },
-  { id: "cover", name: "Cover", dot: "var(--gt, #84cc16)" },
-  { id: "back", name: "Back", dot: "var(--gt, #84cc16)" },
+  { id: "cover", name: "Cover", dot: "var(--gt)" },
+  { id: "back", name: "Back", dot: "var(--gt)" },
   { id: "blank", name: "Blank", dot: "var(--ink-3)" },
   { id: "duplicate", name: "Duplicate", dot: "var(--mismatch)" },
 ];
@@ -1288,12 +1346,15 @@ export function SourceFiles({
   isConfirming,
   isConfirmed,
   insertDraft,
+  searchInputRef,
   onSelectFile,
+  onRangeSelect,
   onClearSelection,
   onMark,
   onRemove,
   onFilterChange,
   onDensityChange,
+  onQueryChange,
   onInsertOpen,
   onInsertPatch,
   onInsertConfirm,
@@ -1310,12 +1371,16 @@ export function SourceFiles({
   isConfirming: boolean;
   isConfirmed: boolean;
   insertDraft: InsertDraft | null;
+  searchInputRef?: RefObject<HTMLInputElement | null>;
   onSelectFile: (idx: number) => void;
+  /** Called when user shift+clicks a card — dispatch SELECT_RANGE with anchor=last selected. */
+  onRangeSelect?: (anchorIdx: number, endIdx: number) => void;
   onClearSelection: () => void;
   onMark: (state: FileState) => void;
   onRemove: () => void;
   onFilterChange: (f: FileFilter) => void;
   onDensityChange: (d: FileDensity) => void;
+  onQueryChange?: (q: string) => void;
   onInsertOpen: (anchorStem?: string) => void;
   onInsertPatch: (patch: Partial<InsertDraft>) => void;
   onInsertConfirm: () => void;
@@ -1325,6 +1390,8 @@ export function SourceFiles({
   const [hoveredDividerIdx, setHoveredDividerIdx] = useState<number | null>(
     null,
   );
+  // Track last-selected idx for shift+click range anchor
+  const lastSelectedRef = useRef<number | null>(null);
 
   const displayFiles = applySearch(applyFilter(files, filter), query);
   const hasSelection = selected.length > 0;
@@ -1405,8 +1472,11 @@ export function SourceFiles({
         filter={filter}
         density={density}
         totals={totals}
+        query={query}
+        {...(searchInputRef !== undefined && { searchInputRef })}
         onFilterChange={onFilterChange}
         onDensityChange={onDensityChange}
+        {...(onQueryChange !== undefined && { onQueryChange })}
         onInsertOpen={onInsertOpen}
       />
 
@@ -1438,7 +1508,17 @@ export function SourceFiles({
               file={file}
               density={density}
               selected={selected.includes(file.idx)}
-              onClick={() => onSelectFile(file.idx)}
+              onClick={() => {
+                lastSelectedRef.current = file.idx;
+                onSelectFile(file.idx);
+              }}
+              {...(onRangeSelect !== undefined && {
+                onRangeClick: (endIdx: number) => {
+                  const anchorIdx = lastSelectedRef.current ?? endIdx;
+                  lastSelectedRef.current = endIdx;
+                  onRangeSelect(anchorIdx, endIdx);
+                },
+              })}
             />
             {/* InsertDivider between cards (Src-D) — visible on hover */}
             {i < displayFiles.length - 1 && (

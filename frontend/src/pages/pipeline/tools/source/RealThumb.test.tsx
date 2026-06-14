@@ -1,9 +1,9 @@
 /**
- * RealThumb tests — covers CDN image rendering and FakePaperThumb fallback.
+ * RealThumb tests — covers stage-thumbnail image rendering and FakePaperThumb fallback.
  *
  * Tests:
  *   1. When thumbnailKey is null/undefined → FakePaperThumb (no img element)
- *   2. When thumbnailKey is set → img element with /cdn/<key> src
+ *   2. When thumbnailKey is set → img element with the URL as-is (full path from stageThumbUrl)
  *   3. Correct dimensions applied
  *   4. onError replaces image with paper background
  *   5. blank kind shows "blank" text label in FakePaperThumb
@@ -32,9 +32,13 @@ describe("RealThumb", () => {
   });
 
   it("renders an img element when thumbnailKey is provided", () => {
+    // thumbnailKey is now a full URL path (from stageThumbUrl) — used as-is,
+    // no /cdn/ prefix is added by RealThumb.
+    const thumbUrl =
+      "/api/data/projects/abc123/pages/0/stages/grayscale/thumbnail";
     const { container } = render(
       <RealThumb
-        thumbnailKey="projects/abc123/thumbs/page_001.jpg"
+        thumbnailKey={thumbUrl}
         width={120}
         height={156}
         alt="page 1 thumbnail"
@@ -42,9 +46,7 @@ describe("RealThumb", () => {
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
-    expect(img?.getAttribute("src")).toBe(
-      "/cdn/projects/abc123/thumbs/page_001.jpg",
-    );
+    expect(img?.getAttribute("src")).toBe(thumbUrl);
     expect(img?.getAttribute("alt")).toBe("page 1 thumbnail");
   });
 

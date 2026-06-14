@@ -50,7 +50,8 @@ export type FileState =
   | "back" // back matter
   | "blank" // blank scan
   | "duplicate" // duplicate file
-  | "inserted"; // synthetic inserted page
+  | "inserted" // synthetic inserted page
+  | "skipped"; // ignored via PATCH (reversible)
 
 export type InsertKind = "missing" | "blank" | "errata" | "manual";
 
@@ -64,14 +65,14 @@ export interface FileRow {
   tone?: "light" | "mid" | "dark";
   hue?: number;
   /**
-   * CDN storage key for the pre-generated thumbnail.
-   * When set, `RealThumb` serves `/cdn/<thumbnailKey>`.
-   * When absent/undefined, `FakePaperThumb` is used as a fallback.
+   * Stage thumbnail URL built by `stageThumbUrl` in useSourcePages.
+   * When set, `RealThumb` renders the img directly via this URL.
+   * Falls back to `FakePaperThumb` on 404 (stage not clean yet).
    *
-   * Not set on inserted/pending pages or when the backend hasn't generated
-   * a thumbnail yet.
+   * Not set on inserted/pending pages.
    *
    * @see frontend/src/pages/pipeline/tools/source/RealThumb.tsx
+   * @see frontend/src/pages/pipeline/tools/source/useSourcePages.ts
    */
   thumbnailKey?: string;
 }
@@ -177,7 +178,13 @@ export type FilesRegionEvent =
   | { type: "CONFIRM_INSERT" }
   | { type: "CANCEL_INSERT" }
   | { type: "SET_ROLE"; idx: number; role: FileState }
-  | { type: "CONFIRM_SELECTION" };
+  | { type: "CONFIRM_SELECTION" }
+  /**
+   * Seed the machine with the pages fetched from the API.
+   * Dispatched by SourceTool on first successful useSourcePages fetch.
+   * Only applies when the machine's file list is empty (idempotent).
+   */
+  | { type: "LOAD_FILES"; files: FileRow[] };
 
 /** Events from the thumbnails region. */
 export type ThumbnailsRegionEvent =
@@ -384,6 +391,24 @@ export const sourceToolMachine = setup({
     }),
 
     // ---- files region actions -----------------------------------------------
+
+    /**
+     * LOAD_FILES — seeds the machine's file list from the API fetch.
+     * Only replaces when ctx.files is empty so user edits are never overwritten.
+     */
+    loadFiles: assign(
+      ({
+        context,
+        event,
+      }: {
+        context: SourceToolContext;
+        event: SourceToolEvent;
+      }) => {
+        if (event.type !== "LOAD_FILES" || context.files.length > 0) return {};
+        const files = event.files;
+        return { files, totals: recount(files) };
+      },
+    ),
 
     /**
      * YAML: assignFilter — reads event.value directly.
@@ -830,6 +855,8 @@ export const sourceToolMachine = setup({
           target: ".confirming",
           guard: "canConfirm",
         },
+        // Seed files from the API fetch (no-op if files already loaded).
+        LOAD_FILES: { actions: ["loadFiles"] },
       },
     },
 

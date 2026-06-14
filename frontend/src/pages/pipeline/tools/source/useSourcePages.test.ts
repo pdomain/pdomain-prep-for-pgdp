@@ -6,11 +6,17 @@
  *
  * Tests:
  *   1. Returns FileRow[] mapped from BackendPage records
- *   2. thumbnailKey is carried through from backend
- *   3. All pages mapped to state="ready" (no role assignment yet)
+ *   2. thumbnailKey is the stage-thumbnail API URL (not the raw thumbnail_key)
+ *   3. Ignored pages map to state="skipped"; non-ignored map to state="ready"
  *   4. isLoading=true before fetch completes
  *   5. isError=true on non-2xx response
  *   6. Returns empty array when enabled=false
+ *
+ * ## Contract changes (Wave-1)
+ * - `thumbnail_key` from the backend is always null (ingest_source is not a
+ *   v2 page stage). `thumbnailKey` in `FileRow` is now set to the stage-
+ *   thumbnail API URL built by `stageThumbUrl()`, regardless of `thumbnail_key`.
+ * - `ignore: true` → `state: "skipped"` (was `"ready"` in the old contract).
  */
 
 import { renderHook, waitFor } from "@testing-library/react";
@@ -83,15 +89,16 @@ describe("useSourcePages", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.files).toHaveLength(3);
+    // thumbnailKey is now the stage-thumbnail API URL, not the raw backend key
     expect(result.current.files[0]).toMatchObject({
       idx: 0,
       stem: "survivals_0000",
       state: "ready",
-      thumbnailKey: "projects/abc/thumbs/0000.jpg",
+      thumbnailKey: `/api/data/projects/${PROJECT_ID}/pages/0/stages/grayscale/thumbnail`,
     });
   });
 
-  it("carries thumbnailKey from backend page records", async () => {
+  it("thumbnailKey is the stage-thumbnail API URL (not raw thumbnail_key)", async () => {
     const { result } = renderHook(() => useSourcePages(PROJECT_ID), {
       wrapper: makeWrapper(),
     });
@@ -101,22 +108,31 @@ describe("useSourcePages", () => {
     const f0 = result.current.files[0];
     const f1 = result.current.files[1];
     const f2 = result.current.files[2];
-    expect(f0?.thumbnailKey).toBe("projects/abc/thumbs/0000.jpg");
-    // null thumbnail_key → thumbnailKey not set (undefined)
-    expect(f1?.thumbnailKey).toBeUndefined();
-    expect(f2?.thumbnailKey).toBe("projects/abc/thumbs/0002.jpg");
+    // All pages get a stage-thumbnail URL regardless of the backend thumbnail_key field
+    // (thumbnail_key is always null for ingest_source; the real thumb is via the stage route)
+    expect(f0?.thumbnailKey).toBe(
+      `/api/data/projects/${PROJECT_ID}/pages/0/stages/grayscale/thumbnail`,
+    );
+    expect(f1?.thumbnailKey).toBe(
+      `/api/data/projects/${PROJECT_ID}/pages/1/stages/grayscale/thumbnail`,
+    );
+    expect(f2?.thumbnailKey).toBe(
+      `/api/data/projects/${PROJECT_ID}/pages/2/stages/grayscale/thumbnail`,
+    );
   });
 
-  it("maps all pages to state=ready initially", async () => {
+  it("maps ignore=true to state=skipped, ignore=false to state=ready", async () => {
     const { result } = renderHook(() => useSourcePages(PROJECT_ID), {
       wrapper: makeWrapper(),
     });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    for (const file of result.current.files) {
-      expect(file.state).toBe("ready");
-    }
+    // pages[0] and pages[1] have ignore=false → "ready"
+    expect(result.current.files[0]?.state).toBe("ready");
+    expect(result.current.files[1]?.state).toBe("ready");
+    // pages[2] has ignore=true → "skipped"
+    expect(result.current.files[2]?.state).toBe("skipped");
   });
 
   it("returns empty array when enabled=false", async () => {

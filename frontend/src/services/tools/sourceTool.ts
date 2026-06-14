@@ -16,6 +16,63 @@ import { api } from "@/api/client";
 import type { SourceToolServices } from "@/machines/tools/source";
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
 
+// ---------------------------------------------------------------------------
+// PageType mapping from FileState
+// ---------------------------------------------------------------------------
+
+/** Maps source-tool role states to backend PageType values. */
+const FILE_STATE_TO_PAGE_TYPE: Record<string, string | null> = {
+  page: "normal",
+  cover: "front_matter",
+  back: "back_matter",
+  blank: "blank",
+  duplicate: "duplicate",
+  // "ready", "pending", "inserted", "skipped" have no PageType mapping
+};
+
+// ---------------------------------------------------------------------------
+// PATCH page role
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist a role change for a single page via PATCH /api/data/projects/{id}/pages/{idx0}.
+ * Fire-and-forget: call errors are logged but do not surface to the machine.
+ * The machine's in-memory state is already updated; this write is durable persistence.
+ */
+export async function patchPageRole(
+  projectId: string,
+  idx0: number,
+  pageType: string,
+): Promise<void> {
+  await api.patch<unknown>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${String(idx0)}`,
+    { page_type: pageType },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PATCH page ignore
+// ---------------------------------------------------------------------------
+
+/**
+ * Set ignore=true on a page (reversible soft-remove) via PATCH.
+ * This is the "Remove from project" action — event-logged, not hard-deleted.
+ */
+export async function patchPageIgnore(
+  projectId: string,
+  idx0: number,
+  ignore: boolean,
+): Promise<void> {
+  await api.patch<unknown>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${String(idx0)}`,
+    { page_type: ignore ? "excluded" : "normal" },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// confirmSelection
+// ---------------------------------------------------------------------------
+
 /**
  * Confirm the source stage review-complete.
  *
@@ -55,3 +112,9 @@ export function buildRealSourceToolServices(): SourceToolServices {
     confirmSelection,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Re-export helpers for consumers (SourceTool wires role/ignore PATCH calls)
+// ---------------------------------------------------------------------------
+
+export { FILE_STATE_TO_PAGE_TYPE };
