@@ -37,6 +37,11 @@ import {
   type StageSettingsServices,
   type StageSettingsState,
 } from "./stageSettings";
+// FILE_STATE_TO_PAGE_TYPE is imported from the service layer.
+// This import does NOT introduce a circular dependency — source.ts is the
+// machine definition; sourceTool.ts is the service adapter (injected via
+// SourceToolServices). The const is a plain mapping Record, not a service call.
+import { FILE_STATE_TO_PAGE_TYPE } from "@/services/tools/sourceTool";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -65,9 +70,9 @@ export interface FileRow {
   tone?: "light" | "mid" | "dark";
   hue?: number;
   /**
-   * Stage thumbnail URL built by `stageThumbUrl` in useSourcePages.
+   * Ingest thumbnail URL built by `ingestThumbUrl` in useSourcePages.
    * When set, `RealThumb` renders the img directly via this URL.
-   * Falls back to `FakePaperThumb` on 404 (stage not clean yet).
+   * Falls back to `FakePaperThumb` on 404 (thumbnail not yet generated).
    *
    * Not set on inserted/pending pages.
    *
@@ -157,6 +162,38 @@ export interface SourceToolServices extends StageSettingsServices {
     projectId: string,
     files: FileRow[],
   ): Promise<{ pages: number }>;
+
+  /**
+   * PATCH /api/data/projects/{id}/pages/{idx0} { page_type }
+   * Persist a role change for multiple pages (fire-and-forget).
+   * clearIgnore=true also sends { ignore: false } to un-remove skipped pages.
+   */
+  markSelectedPages(
+    projectId: string,
+    idxList: number[],
+    pageType: string,
+    clearIgnore?: boolean,
+  ): Promise<void>;
+
+  /**
+   * PATCH /api/data/projects/{id}/pages/{idx0} { ignore }
+   * Reversible soft-exclude a single page. ignore=true removes it;
+   * ignore=false restores it. Event-logged server-side.
+   */
+  setPageIgnore(
+    projectId: string,
+    idx0: number,
+    ignore: boolean,
+  ): Promise<void>;
+
+  /**
+   * POST /api/data/projects/{id}/pages/insert { after_idx0 }
+   * Insert a real blank page and return the updated page list.
+   */
+  insertBlankPage(
+    projectId: string,
+    afterIdx0: number,
+  ): Promise<{ inserted_page: FileRow; pages: FileRow[] }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +221,14 @@ export type FilesRegionEvent =
    * Dispatched by SourceTool on first successful useSourcePages fetch.
    * Only applies when the machine's file list is empty (idempotent).
    */
-  | { type: "LOAD_FILES"; files: FileRow[] };
+  | { type: "LOAD_FILES"; files: FileRow[] }
+  /**
+   * Replace the machine's file list with the authoritative server list.
+   * Dispatched after a successful insert (or other server-side mutation)
+   * to sync in-memory state with the real page order + IDs. Unlike
+   * LOAD_FILES, this always replaces — even if files is non-empty.
+   */
+  | { type: "REFRESH_FILES"; files: FileRow[] };
 
 /** Events from the thumbnails region. */
 export type ThumbnailsRegionEvent =
@@ -489,6 +533,14 @@ export const sourceToolMachine = setup({
 
     /**
      * YAML: markSelected + recountTotals (folded — DIVERGENCES #9).
+     *
+     * Persistence: fires PATCH /api/data/projects/{id}/pages/{idx0}
+     * { page_type } for each selected page (fire-and-forget; machine state
+     * already updated). Maps FileState → PageType via FILE_STATE_TO_PAGE_TYPE.
+     *
+     * When any selected page was previously "skipped" (soft-removed), we also
+     * send { ignore: false } to restore it (clearIgnore=true). This makes
+     * marking a skipped page as "page"/"blank"/etc. a true reversal of Remove.
      */
     markSelected: assign(
       ({
@@ -502,6 +554,24 @@ export const sourceToolMachine = setup({
         const files = context.files.map((f) =>
           context.selected.includes(f.idx) ? { ...f, state: event.state } : f,
         );
+        // Fire-and-forget persistence: map FileState → PageType and PATCH each page.
+        const pageType = FILE_STATE_TO_PAGE_TYPE[event.state];
+        if (pageType !== null && pageType !== undefined) {
+          // clearIgnore=true when any selected page is currently skipped
+          const hasSkipped = context.files.some(
+            (f) => context.selected.includes(f.idx) && f.state === "skipped",
+          );
+          void context.services
+            .markSelectedPages(
+              context.projectId,
+              context.selected,
+              pageType,
+              hasSkipped,
+            )
+            .catch((err: unknown) => {
+              console.error("[source] markSelected PATCH failed", err);
+            });
+        }
         return { files, totals: recount(files) };
       },
     ),
@@ -509,6 +579,9 @@ export const sourceToolMachine = setup({
     /**
      * YAML: assignRole + recountTotals (folded — DIVERGENCES #9).
      * Single-page variant used from the workbench role segment.
+     *
+     * Persistence: fires PATCH for the single page (fire-and-forget).
+     * Sends { ignore: false } if the page was skipped (un-remove on re-assign).
      */
     assignRole: assign(
       ({
@@ -522,18 +595,76 @@ export const sourceToolMachine = setup({
         const files = context.files.map((f) =>
           f.idx === event.idx ? { ...f, state: event.role } : f,
         );
+        // Fire-and-forget persistence for single page.
+        const pageType = FILE_STATE_TO_PAGE_TYPE[event.role];
+        if (pageType !== null && pageType !== undefined) {
+          const wasSkipped =
+            context.files.find((f) => f.idx === event.idx)?.state === "skipped";
+          void context.services
+            .markSelectedPages(
+              context.projectId,
+              [event.idx],
+              pageType,
+              wasSkipped,
+            )
+            .catch((err: unknown) => {
+              console.error("[source] assignRole PATCH failed", err);
+            });
+        }
         return { files, totals: recount(files) };
       },
     ),
 
     /**
      * YAML: removeSelected + recountTotals (folded — DIVERGENCES #9).
+     *
+     * Persistence contract: REMOVE is a reversible soft-exclude, NOT a
+     * hard-delete. Selected pages are marked "skipped" in-memory so they
+     * remain visible in the grid (where they can be un-removed) and each
+     * selected page gets PATCH { ignore: true } (event-logged server-side
+     * as PageIgnoreSet).
+     *
+     * CT explicitly required Remove to be reversible + tracked in history.
+     * Inserted pages (state === "inserted") that have not yet been
+     * persisted to the server are removed from the list entirely
+     * (they have no server representation to ignore).
      */
     removeSelected: assign(({ context }: { context: SourceToolContext }) => {
-      const files = context.files.filter(
-        (f) => !context.selected.includes(f.idx),
-      );
-      return { files, selected: [] as number[], totals: recount(files) };
+      const selectedSet = new Set(context.selected);
+      const files = context.files
+        .map((f) => {
+          if (!selectedSet.has(f.idx)) return f;
+          // Inserted pages (in-memory only before insert API call) are hard-removed.
+          if (f.state === "inserted") return null;
+          // All other pages: soft-exclude → "skipped"
+          return { ...f, state: "skipped" as const };
+        })
+        .filter((f): f is FileRow => f !== null);
+
+      // Fire-and-forget: PATCH ignore=true for all non-inserted selected pages.
+      const persistIdxList = context.files
+        .filter((f) => selectedSet.has(f.idx) && f.state !== "inserted")
+        .map((f) => f.idx);
+      if (persistIdxList.length > 0) {
+        void Promise.all(
+          persistIdxList.map(async (idx0) =>
+            context.services
+              .setPageIgnore(context.projectId, idx0, true)
+              .catch((err: unknown) => {
+                console.error(
+                  `[source] removeSelected PATCH ignore idx0=${String(idx0)} failed`,
+                  err,
+                );
+              }),
+          ),
+        );
+      }
+
+      return {
+        files,
+        selected: [] as number[],
+        totals: recount(files),
+      };
     }),
 
     /**
@@ -572,12 +703,32 @@ export const sourceToolMachine = setup({
 
     /**
      * YAML: createInsertedRow + recountTotals + clearInsertDraft (folded).
+     *
+     * Persistence: the machine itself performs an optimistic in-memory insert.
+     * SourceTool.tsx wires the real API call and dispatches REFRESH_FILES on
+     * success (see onInsertConfirm handler in SourceTool.tsx). This gives
+     * immediate visual feedback while the server persists the insert.
+     *
+     * We store the draft's anchor information in context before clearing it
+     * so SourceTool can compute the correct after_idx0 for the API call.
      */
     createInsertedRow: assign(({ context }: { context: SourceToolContext }) => {
       if (!context.insertDraft) return {};
       const files = insertAt(context.files, context.insertDraft);
       return { files, insertDraft: null, totals: recount(files) };
     }),
+
+    /**
+     * Replace the file list with the authoritative server list (after insert).
+     * Always replaces — unlike loadFiles which is idempotent/empty-only.
+     */
+    refreshFiles: assign(
+      ({ event }: { context: SourceToolContext; event: SourceToolEvent }) => {
+        if (event.type !== "REFRESH_FILES") return {};
+        const files = event.files;
+        return { files, totals: recount(files) };
+      },
+    ),
 
     /**
      * YAML: clearInsertDraft
@@ -857,6 +1008,9 @@ export const sourceToolMachine = setup({
         },
         // Seed files from the API fetch (no-op if files already loaded).
         LOAD_FILES: { actions: ["loadFiles"] },
+        // Replace file list with the authoritative server list after insert or
+        // other server-side mutations. Always replaces (unlike LOAD_FILES).
+        REFRESH_FILES: { actions: ["refreshFiles"] },
       },
     },
 

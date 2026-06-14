@@ -6,16 +6,17 @@
  *
  * Tests:
  *   1. Returns FileRow[] mapped from BackendPage records
- *   2. thumbnailKey is the stage-thumbnail API URL (not the raw thumbnail_key)
+ *   2. thumbnailKey is the ingest-thumbnail URL (not the grayscale stage thumbnail)
  *   3. Ignored pages map to state="skipped"; non-ignored map to state="ready"
  *   4. isLoading=true before fetch completes
  *   5. isError=true on non-2xx response
  *   6. Returns empty array when enabled=false
  *
- * ## Contract changes (Wave-1)
+ * ## Contract changes (Wave-1 / Wire pass)
  * - `thumbnail_key` from the backend is always null (ingest_source is not a
- *   v2 page stage). `thumbnailKey` in `FileRow` is now set to the stage-
- *   thumbnail API URL built by `stageThumbUrl()`, regardless of `thumbnail_key`.
+ *   v2 page stage). `thumbnailKey` in `FileRow` is now set to the
+ *   ingest-thumbnail URL `/api/data/.../pages/{idx0}/thumbnail` (not the
+ *   grayscale stage thumbnail, which 404s before grayscale runs).
  * - `ignore: true` → `state: "skipped"` (was `"ready"` in the old contract).
  */
 
@@ -89,16 +90,16 @@ describe("useSourcePages", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.files).toHaveLength(3);
-    // thumbnailKey is now the stage-thumbnail API URL, not the raw backend key
+    // thumbnailKey is now the ingest-thumbnail URL (not the grayscale stage thumbnail)
     expect(result.current.files[0]).toMatchObject({
       idx: 0,
       stem: "survivals_0000",
       state: "ready",
-      thumbnailKey: `/api/data/projects/${PROJECT_ID}/pages/0/stages/grayscale/thumbnail`,
+      thumbnailKey: `/api/data/projects/${PROJECT_ID}/pages/0/thumbnail`,
     });
   });
 
-  it("thumbnailKey is the stage-thumbnail API URL (not raw thumbnail_key)", async () => {
+  it("thumbnailKey is the ingest-thumbnail URL (not grayscale stage thumbnail)", async () => {
     const { result } = renderHook(() => useSourcePages(PROJECT_ID), {
       wrapper: makeWrapper(),
     });
@@ -108,16 +109,16 @@ describe("useSourcePages", () => {
     const f0 = result.current.files[0];
     const f1 = result.current.files[1];
     const f2 = result.current.files[2];
-    // All pages get a stage-thumbnail URL regardless of the backend thumbnail_key field
-    // (thumbnail_key is always null for ingest_source; the real thumb is via the stage route)
+    // All pages get the ingest-thumbnail URL (works at Source time before any stage runs).
+    // The grayscale stage thumbnail (/stages/grayscale/thumbnail) would 404 at Source time.
     expect(f0?.thumbnailKey).toBe(
-      `/api/data/projects/${PROJECT_ID}/pages/0/stages/grayscale/thumbnail`,
+      `/api/data/projects/${PROJECT_ID}/pages/0/thumbnail`,
     );
     expect(f1?.thumbnailKey).toBe(
-      `/api/data/projects/${PROJECT_ID}/pages/1/stages/grayscale/thumbnail`,
+      `/api/data/projects/${PROJECT_ID}/pages/1/thumbnail`,
     );
     expect(f2?.thumbnailKey).toBe(
-      `/api/data/projects/${PROJECT_ID}/pages/2/stages/grayscale/thumbnail`,
+      `/api/data/projects/${PROJECT_ID}/pages/2/thumbnail`,
     );
   });
 

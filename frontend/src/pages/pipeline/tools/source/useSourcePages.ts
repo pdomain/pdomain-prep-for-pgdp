@@ -7,12 +7,18 @@
  * `FileRow[]` so `SourceFiles` can render real thumbnails.
  *
  * ## Thumbnail URL
- * `PageRecord.thumbnail_key` is always null (ingest_source is not a v2
- * page stage). Real thumbnails are served at
- * `/api/data/projects/{id}/pages/{idx0}/stages/grayscale/thumbnail`
- * when the grayscale stage is clean. The `stageThumbUrl` helper builds
- * this URL; `RealThumb` handles the URL and falls back to `FakePaperThumb`
- * on 404.
+ * Thumbnails are served at the ingest-thumbnail route:
+ *   `GET /api/data/projects/{id}/pages/{idx0}/thumbnail`
+ *
+ * This route works at Source time, immediately after the ingest/source stage
+ * runs — no processing stage needs to have completed. It returns 404 until
+ * the ingest thumbnail has been generated; `RealThumb`'s `onError` handler
+ * falls back to a paper placeholder in that case.
+ *
+ * NOTE: The previous implementation used the grayscale stage thumbnail route
+ * (`/stages/grayscale/thumbnail`) which 404s before the grayscale stage runs,
+ * making thumbnails unavailable at Source time. The ingest-thumbnail route is
+ * the correct choice here.
  *
  * ## Pagination
  * The backend caps `limit` at 500. For projects >500 pages we follow the
@@ -62,18 +68,20 @@ export interface ListPagesResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the per-page stage thumbnail URL.
- * Uses the grayscale stage (first v2 stage with a thumbnail in the local
- * pipeline) as the source image for the Source tool grid.
+ * Build the ingest-thumbnail URL for a page.
  *
- * Returns null when projectId or idx0 is not available.
+ * Route: GET /api/data/projects/{id}/pages/{idx0}/thumbnail
+ *
+ * This route serves the page's ingest-time JPEG thumbnail, which is available
+ * immediately after the source/ingest stage runs — no downstream pipeline stage
+ * needs to be clean. Returns 404 if the thumbnail has not yet been generated
+ * (still running), which `RealThumb` handles gracefully via its `onError` fallback.
+ *
+ * Use this instead of a stage thumbnail URL for Source-time display: the
+ * grayscale stage thumbnail (`/stages/grayscale/thumbnail`) 404s before grayscale runs.
  */
-export function stageThumbUrl(
-  projectId: string,
-  idx0: number,
-  stageId = "grayscale",
-): string {
-  return `/api/data/projects/${encodeURIComponent(projectId)}/pages/${String(idx0)}/stages/${encodeURIComponent(stageId)}/thumbnail`;
+export function ingestThumbUrl(projectId: string, idx0: number): string {
+  return `/api/data/projects/${encodeURIComponent(projectId)}/pages/${String(idx0)}/thumbnail`;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,8 +111,9 @@ export async function fetchAllSourcePages(
         stem: p.source_stem,
         // ignore=true → "skipped" so the machine can filter+restore
         state: p.ignore ? "skipped" : "ready",
-        // Wire real stage thumbnail URL instead of the always-null thumbnail_key
-        thumbnailKey: stageThumbUrl(projectId, p.idx0),
+        // Use the ingest-thumbnail route — works at Source time before any
+        // pipeline stage runs. Falls back to FakePaperThumb on 404 (still generating).
+        thumbnailKey: ingestThumbUrl(projectId, p.idx0),
       };
       rows.push(row);
     }

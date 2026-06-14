@@ -3,12 +3,12 @@
  * falling back to a paper-toned placeholder.
  *
  * URL convention: `thumbnailKey` is a full URL path (e.g.
- * `/api/data/projects/{id}/pages/{idx0}/stages/grayscale/thumbnail`).
- * This is built by `stageThumbUrl` in useSourcePages. The server returns
- * 404 when the stage is not-run / not-clean; the `onError` handler falls
- * back to the paper placeholder in that case.
+ * `/api/data/projects/{id}/pages/{idx0}/thumbnail`).
+ * This is built by `ingestThumbUrl` in useSourcePages. The server returns
+ * 404 when the ingest thumbnail has not yet been generated; the `onError`
+ * handler falls back to the paper placeholder in that case.
  *
- * @see frontend/src/pages/pipeline/tools/source/useSourcePages.ts — stageThumbUrl
+ * @see frontend/src/pages/pipeline/tools/source/useSourcePages.ts — ingestThumbUrl
  */
 
 import type { ReactNode } from "react";
@@ -137,7 +137,7 @@ export function RealThumb({
     );
   }
 
-  // thumbnailKey is already a full URL path from stageThumbUrl().
+  // thumbnailKey is already a full URL path from ingestThumbUrl().
   const url = thumbnailKey;
 
   return (

@@ -33,6 +33,7 @@ import { RealThumb } from "./source/RealThumb";
 // ---------------------------------------------------------------------------
 
 /** Filter the file list per the active filter chip. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function applyFilter(files: FileRow[], filter: FileFilter): FileRow[] {
   switch (filter) {
     case "page":
@@ -50,6 +51,7 @@ export function applyFilter(files: FileRow[], filter: FileFilter): FileRow[] {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function applySearch(files: FileRow[], query: string): FileRow[] {
   if (!query) return files;
   const q = query.toLowerCase();

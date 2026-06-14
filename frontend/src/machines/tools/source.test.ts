@@ -64,6 +64,14 @@ function makeServices(
       .fn()
       .mockImplementation(settings.resetSettings.bind(settings)),
     confirmSelection: vi.fn().mockResolvedValue({ pages: 4 }),
+    // Persistence service stubs (fire-and-forget; tests that care about
+    // the API call provide their own mocks via overrides).
+    markSelectedPages: vi.fn().mockResolvedValue(undefined),
+    setPageIgnore: vi.fn().mockResolvedValue(undefined),
+    insertBlankPage: vi.fn().mockResolvedValue({
+      inserted_page: { idx: 0, stem: "inserted", state: "ready" },
+      pages: [],
+    }),
     ...overrides,
   };
 }
@@ -278,7 +286,9 @@ describe("sourceToolMachine — files region marking", () => {
     actor.stop();
   });
 
-  it("REMOVE_FILES removes selected inserted files from the list", () => {
+  it("REMOVE_FILES hard-removes inserted pages (no server representation)", () => {
+    // Inserted pages (state="inserted") are in-memory only before the insert API
+    // call completes; they have no server representation so they are hard-deleted.
     const files: FileRow[] = [
       makeFile({ idx: 0, stem: "img001", state: "ready" }),
       makeFile({ idx: 1, stem: "__inserted_001", state: "inserted" }),
@@ -290,6 +300,26 @@ describe("sourceToolMachine — files region marking", () => {
     const ctx = actor.getSnapshot().context;
     expect(ctx.files).toHaveLength(2);
     expect(ctx.files.some((f) => f.state === "inserted")).toBe(false);
+    actor.stop();
+  });
+
+  it("REMOVE_FILES soft-excludes real pages (marks as 'skipped', not hard-deleted)", () => {
+    // Real pages (state="ready") are soft-excluded: they remain in the list
+    // as "skipped" so the user can see and reverse the removal.
+    const files: FileRow[] = makeFiles(4);
+    const actor = startMachine({ initialFiles: files });
+    actor.send({ type: "SELECT_FILE", idx: 1 });
+    actor.send({ type: "SELECT_FILE", idx: 3 });
+    actor.send({ type: "REMOVE_FILES" });
+    const ctx = actor.getSnapshot().context;
+    // All 4 files remain in the list (no hard-delete)
+    expect(ctx.files).toHaveLength(4);
+    // Removed pages are "skipped"
+    expect(ctx.files[1]?.state).toBe("skipped");
+    expect(ctx.files[3]?.state).toBe("skipped");
+    // Un-removed pages are unchanged
+    expect(ctx.files[0]?.state).toBe("ready");
+    expect(ctx.files[2]?.state).toBe("ready");
     actor.stop();
   });
 });

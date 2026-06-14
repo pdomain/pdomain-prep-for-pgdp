@@ -71,15 +71,19 @@
  * @see src/machines/DIVERGENCES.md — F5-1 through F5-5
  */
 
-import { useEffect, useRef, useMemo, useState } from "react";
+import { useEffect, useCallback, useRef, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
 import { sourceToolMachine, recount } from "@/machines/tools/source";
+import type { FileRow } from "@/machines/tools/source";
 import type { ToolSlotProps } from "@/pages/pipeline/toolSlot";
-import { buildRealSourceToolServices } from "@/services/tools/sourceTool";
-import { useSourcePages } from "./source/useSourcePages";
+import {
+  buildRealSourceToolServices,
+  insertBlankPage,
+} from "@/services/tools/sourceTool";
+import { useSourcePages, ingestThumbUrl } from "./source/useSourcePages";
 // shellSend is available in ToolSlotProps but not used in this component —
 // SourceTool has no events to forward to the pipeline shell currently.
 
@@ -102,8 +106,8 @@ import { SourceStepSettings } from "./SourceToolSettings";
 import { SourcePageWorkbench } from "./SourceToolWorkbench";
 
 /** The tabs available on the source stage (matches pipelineShell STAGE_TABS_MAP). */
-const SOURCE_TAB_IDS = ["overview", "files", "workbench", "settings"] as const;
-type SourceTab = (typeof SOURCE_TAB_IDS)[number];
+const _SOURCE_TAB_IDS = ["overview", "files", "workbench", "settings"] as const;
+type SourceTab = (typeof _SOURCE_TAB_IDS)[number];
 
 /**
  * Typed snapshot helper — avoids `as any` for parallel-state matching.
@@ -182,6 +186,54 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
       send({ type: "LOAD_FILES", files: fetchedFiles });
     }
   }, [pagesLoading, fetchedFiles, ctx.files.length, send]);
+
+  // ---------------------------------------------------------------------------
+  // Insert API call wiring
+  // ---------------------------------------------------------------------------
+  /**
+   * handleInsertConfirm — called when the user clicks "Insert page" in the dialog.
+   *
+   * 1. Reads insertDraft from context (before CONFIRM_INSERT clears it).
+   * 2. Dispatches CONFIRM_INSERT (optimistic in-memory insert).
+   * 3. Calls the real POST .../pages/insert API.
+   * 4. On success, dispatches REFRESH_FILES with the authoritative page list.
+   *
+   * The optimistic insert gives immediate UI feedback; REFRESH_FILES replaces
+   * it with the real server page (with a proper source_stem and idx0).
+   */
+  const handleInsertConfirm = useCallback(() => {
+    const draft = ctx.insertDraft;
+    // Dispatch optimistic in-memory insert immediately.
+    send({ type: "CONFIRM_INSERT" });
+
+    if (!draft) return;
+
+    // Compute after_idx0 from the anchor stem.
+    const allFiles = ctx.files;
+    const foundIdx = draft.anchorStem
+      ? allFiles.findIndex((f) => f.stem === draft.anchorStem)
+      : -1;
+    const anchorIdx = foundIdx >= 0 ? foundIdx : allFiles.length - 1;
+    const afterIdx0 =
+      draft.position === "after" ? anchorIdx : Math.max(0, anchorIdx - 1);
+
+    void (async () => {
+      try {
+        const result = await insertBlankPage(projectId, afterIdx0);
+        // Map the server page list back to FileRow[] and refresh the machine.
+        const refreshedFiles: FileRow[] = result.pages.map((p) => ({
+          idx: p.idx0,
+          stem: p.source_stem,
+          state: p.ignore ? ("skipped" as const) : ("ready" as const),
+          thumbnailKey: ingestThumbUrl(projectId, p.idx0),
+        }));
+        send({ type: "REFRESH_FILES", files: refreshedFiles });
+      } catch (err) {
+        console.error("[SourceTool] handleInsertConfirm: API call failed", err);
+        // Optimistic insert stays in place until next reload.
+      }
+    })();
+  }, [ctx.insertDraft, ctx.files, projectId, send]);
 
   // Determine sub-states using typed SnapshotFrom helper (Fix 3 — no `as any`).
   const isGenerating: boolean = matchesState(snapshot, {
@@ -341,7 +393,7 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
               })
             }
             onInsertPatch={(patch) => send({ type: "SET_INSERT_FIELD", patch })}
-            onInsertConfirm={() => send({ type: "CONFIRM_INSERT" })}
+            onInsertConfirm={handleInsertConfirm}
             onInsertCancel={() => send({ type: "CANCEL_INSERT" })}
             onConfirmSelection={() => send({ type: "CONFIRM_SELECTION" })}
           />
