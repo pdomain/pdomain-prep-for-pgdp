@@ -1003,15 +1003,10 @@ export function PipelinePage({
       if (!projectId) return;
       const unsubscribe = subscribeProject(projectId, (event) => {
         const machineEvent = mapProjectEvent(event);
-        // Forward only event types the machine's event union accepts.
-        // W3.4: forward STATUS_PUSH variants now wired into PipelineShellEvent.
-        if (
-          machineEvent.type === "STAGE_PUSH" ||
-          machineEvent.type === "PROGRESS_PUSH" ||
-          machineEvent.type === "STATUS_PUSH"
-        ) {
-          send(machineEvent);
-        }
+        // Forward all SseMachineEvent types to the machine.
+        // SseMachineEvent = StatusPushEvent | StagePushEvent | ProgressPushEvent —
+        // every value from mapProjectEvent is one of these, so send unconditionally.
+        send(machineEvent);
       });
       return unsubscribe;
     },

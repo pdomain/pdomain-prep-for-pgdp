@@ -517,7 +517,7 @@ export function PageOrderTool({
         );
         if (cancelled) return;
         const prefixes: Record<number, string | null> = {};
-        for (const entry of raw.pages ?? []) {
+        for (const entry of raw.pages) {
           prefixes[entry.idx0] = entry.prefix;
         }
         send({ type: "MANIFEST_PUSH", prefixes });

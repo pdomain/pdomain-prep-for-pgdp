@@ -15,16 +15,19 @@
  *   - manage    — manage tab (active project)
  */
 import JSZip from "jszip";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useActor } from "@xstate/react";
+import { createActor } from "xstate";
 import { api } from "@/api/client";
 import type { components } from "@/api/types.gen";
 import {
   buildRealRailListServices,
   buildRealProjectDetailServices,
   buildRealManageActionsServices,
+  buildRealRecentActivityServices,
+  buildRealAttributesPanelServices,
 } from "@/services/projects";
 import { FormErrorBanner } from "@/components/FormErrorBanner";
 import { Badge, type BadgeStatus } from "@/components/ui/Badge";
@@ -45,6 +48,9 @@ import type {
   ProjectLifecycleStatus,
   ManageAction,
   ManageActionResult,
+  ActivityEntry,
+  AttributeRecord,
+  AttributeSection,
 } from "@/mocks/types";
 import {
   railListMachine,
@@ -58,6 +64,14 @@ import {
   manageActionsMachine,
   type ManageActionsServices,
 } from "@/machines/projects/manageActions";
+import {
+  recentActivityMachine,
+  type RecentActivityServices,
+} from "@/machines/projects/recentActivity";
+import {
+  attributesPanelMachine,
+  type AttributesPanelServices,
+} from "@/machines/projects/attributesPanel";
 import { ProjectsEmpty } from "./ProjectsEmpty";
 import type { StateValue } from "xstate";
 
@@ -215,6 +229,8 @@ export interface ProjectsPageServices {
   rail: RailListServices;
   detail: ProjectDetailServices;
   manage: ManageActionsServices;
+  activity: RecentActivityServices;
+  attributes: AttributesPanelServices;
 }
 
 export function ProjectsPage({
@@ -234,6 +250,8 @@ export function ProjectsPage({
       rail: buildRealRailListServices(),
       detail: buildRealProjectDetailServices(),
       manage: buildRealManageActionsServices(),
+      activity: buildRealRecentActivityServices(),
+      attributes: buildRealAttributesPanelServices(),
     };
   }, [services, queryClient]);
 
@@ -560,6 +578,8 @@ export function ProjectsPage({
                 detailSend({ type: "VIEW_ALL_ACTIVITY" })
               }
               manageServices={resolvedServices.manage}
+              activityServices={resolvedServices.activity}
+              attributesServices={resolvedServices.attributes}
               onProjectMutated={() => {
                 railSend({ type: "PROJECTS_CHANGED" });
                 detailSend({ type: "PROJECTS_CHANGED" });
@@ -592,6 +612,8 @@ function ProjectDetailPane({
   onOpenProject,
   onViewAllActivity,
   manageServices,
+  activityServices,
+  attributesServices,
   onProjectMutated,
 }: {
   project: ProjectRecord;
@@ -600,11 +622,49 @@ function ProjectDetailPane({
   onOpenProject: () => void;
   onViewAllActivity: () => void;
   manageServices: ManageActionsServices;
+  activityServices: RecentActivityServices;
+  attributesServices: AttributesPanelServices;
   onProjectMutated: () => void;
 }) {
   const s = toBadgeStatus(project.status, project.archived);
   const label = statusLabel(project.status, project.archived);
   const pct = Math.round((project.currentStage / project.totalStages) * 100);
+
+  // Derive current stage name for pipeline strip (page-scoped stages 0-15, project-scoped 16-23)
+  const PAGE_STAGE_NAMES = [
+    "grayscale",
+    "illustrations",
+    "crop",
+    "threshold",
+    "deskew",
+    "denoise",
+    "dewarp",
+    "post_transform_crop",
+    "canvas_map",
+    "text_zones",
+    "post_ocr_crop",
+    "ocr",
+    "wordcheck",
+    "hyphen_join",
+    "regex",
+    "text_review",
+  ] as const;
+  const PROJECT_STAGE_NAMES = [
+    "source",
+    "page_order",
+    "validation",
+    "proof_pack",
+    "build_package",
+    "zip",
+    "submit_check",
+    "archive",
+  ] as const;
+  const ALL_STAGE_NAMES = [
+    ...PAGE_STAGE_NAMES,
+    ...PROJECT_STAGE_NAMES,
+  ] as readonly string[];
+  const currentStageName =
+    ALL_STAGE_NAMES[project.currentStage] ?? `stage_${project.currentStage}`;
 
   return (
     <div className="p-8" data-testid="detail-pane">
@@ -636,57 +696,106 @@ function ProjectDetailPane({
         </Button>
       </div>
 
-      {/* Stats grid */}
+      {/* Stats grid — 6 tiles separated by 1px gaps (bg-border-1 bleeds through) */}
       <div
         className="mt-6 grid grid-cols-6 overflow-hidden rounded-lg border border-border-1 bg-border-1"
         data-testid="detail-stats"
         style={{ gap: 1 }}
       >
-        {(
-          [
-            { label: "pages", value: String(project.pages) },
-            { label: "on disk", value: project.size },
-            {
-              label: "flagged",
-              value: project.flagged != null ? String(project.flagged) : "—",
-              highlight: !!project.flagged,
-            },
-            {
-              label: "progress",
-              value: `${pct}%`,
-              sub: `${project.currentStage + 1}/${project.totalStages}`,
-            },
-            {
-              label: "created",
-              value: project.created.replace(", 2026", ""),
-            },
-            { label: "updated", value: project.updatedRel },
-          ] as {
-            label: string;
-            value: string;
-            highlight?: boolean;
-            sub?: string;
-          }[]
-        ).map((stat) => (
-          <div key={stat.label} className="bg-bg-surface px-3.5 py-3.5">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
-              {stat.label}
-            </div>
-            <div
-              className={`mt-1.5 font-mono text-lg font-semibold ${
-                stat.highlight ? "text-status-review" : "text-ink-1"
-              }`}
-              data-testid={`stat-${stat.label.replace(/\s+/g, "-")}`}
-            >
-              {stat.value}
-            </div>
-            {stat.sub ? (
-              <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
-                {stat.sub}
-              </div>
-            ) : null}
+        {/* PAGES */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            pages
           </div>
-        ))}
+          <div
+            className="mt-1.5 font-mono text-lg font-semibold text-ink-1"
+            data-testid="stat-pages"
+          >
+            {project.pages}
+          </div>
+        </div>
+        {/* ON DISK */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            on disk
+          </div>
+          <div
+            className="mt-1.5 font-mono text-lg font-semibold text-ink-1"
+            data-testid="stat-on-disk"
+          >
+            {project.size}
+          </div>
+        </div>
+        {/* FLAGGED */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            flagged
+          </div>
+          <div
+            className={`mt-1.5 font-mono text-lg font-semibold ${project.flagged ? "text-status-review" : "text-ink-2"}`}
+            data-testid="stat-flagged"
+          >
+            {project.flagged != null ? project.flagged : "—"}
+          </div>
+          {project.flagged ? (
+            <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
+              awaiting review
+            </div>
+          ) : (
+            <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
+              none
+            </div>
+          )}
+        </div>
+        {/* PROGRESS */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            progress
+          </div>
+          <div
+            className="mt-1.5 font-mono text-lg font-semibold text-ink-1"
+            data-testid="stat-progress"
+          >
+            {pct}%
+          </div>
+          <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
+            {project.currentStage + 1}/{project.totalStages} stages
+          </div>
+        </div>
+        {/* CREATED */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            created
+          </div>
+          <div
+            className="mt-1.5 font-mono text-lg font-semibold text-ink-2"
+            data-testid="stat-created"
+          >
+            {/* Show "May 18" style — strip year from absolute date */}
+            {project.created.replace(/,?\s*\d{4}$/, "")}
+          </div>
+          <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
+            {/\d{4}$/.exec(project.created)?.[0] ?? ""}
+          </div>
+        </div>
+        {/* UPDATED */}
+        <div className="bg-bg-surface px-3.5 py-3.5">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+            updated
+          </div>
+          <div
+            className="mt-1.5 font-mono text-lg font-semibold text-ink-2"
+            data-testid="stat-updated"
+          >
+            {project.updatedRel}
+          </div>
+          {/* Show time portion from updatedAbs ISO string if available */}
+          <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
+            {project.updatedAbs.includes("T")
+              ? project.updatedAbs.slice(11, 16)
+              : (project.updatedAbs.split(", ")[1] ?? "")}
+          </div>
+        </div>
       </div>
 
       {/* Pipeline strip */}
@@ -703,13 +812,14 @@ function ProjectDetailPane({
           <div className="mt-2.5 flex justify-between font-mono text-[11.5px] text-ink-3">
             <span>
               stage {project.currentStage + 1}/{project.totalStages}
-              {project.archived ? " · final" : ""}
+              {project.archived ? " · final" : ` · ${currentStageName}`}
             </span>
-            {project.flagged ? (
-              <span className="text-status-review">
-                {project.flagged} pages flagged
-              </span>
-            ) : null}
+            <span
+              className={project.flagged ? "text-status-review" : "text-ink-4"}
+            >
+              {project.flagged ? `${project.flagged} pages flagged · ` : ""}
+              {project.archived ? `archived` : ""}
+            </span>
           </div>
         </div>
       </div>
@@ -724,9 +834,9 @@ function ProjectDetailPane({
         >
           {(
             [
-              { id: "activity", label: "Recent activity" },
-              { id: "attributes", label: "Attributes" },
-              { id: "manage", label: "Manage" },
+              { id: "activity", label: "Recent activity", count: "last 3" },
+              { id: "attributes", label: "Attributes", count: null },
+              { id: "manage", label: "Manage", count: null },
             ] as const
           ).map((t) => {
             const active = tab === t.id;
@@ -737,11 +847,22 @@ function ProjectDetailPane({
                 aria-selected={active}
                 data-testid={`tab-${t.id}`}
                 onClick={() => onTabChange(t.id)}
-                className={`relative px-3.5 py-2.5 text-[12.5px] font-medium ${
+                className={`relative flex items-center gap-2 px-3.5 py-2.5 text-[12.5px] font-medium ${
                   active ? "text-ink-1" : "text-ink-3"
                 }`}
               >
                 {t.label}
+                {t.count ? (
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                      active
+                        ? "bg-accent/15 text-accent"
+                        : "bg-bg-raised text-ink-3"
+                    }`}
+                  >
+                    {t.count}
+                  </span>
+                ) : null}
                 {active && (
                   <span className="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-t bg-accent" />
                 )}
@@ -755,16 +876,22 @@ function ProjectDetailPane({
               onClick={onViewAllActivity}
               className="flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
             >
-              View all activity
+              View all activity →
             </button>
           )}
         </div>
 
         {/* Tab panels */}
         {tab === "activity" && (
-          <ActivityTabPanel project={project} onViewAll={onViewAllActivity} />
+          <ActivityTabPanel
+            project={project}
+            services={activityServices}
+            onViewAll={onViewAllActivity}
+          />
         )}
-        {tab === "attributes" && <AttributesTabPanel project={project} />}
+        {tab === "attributes" && (
+          <AttributesTabPanel project={project} services={attributesServices} />
+        )}
         {tab === "manage" && (
           <ManageTabPanel
             project={project}
@@ -778,34 +905,147 @@ function ProjectDetailPane({
 }
 
 // ---------------------------------------------------------------------------
-// Activity tab panel
+// Activity tab panel — wired to recentActivityMachine
 // ---------------------------------------------------------------------------
+
+/**
+ * Format an ISO timestamp as "May 21, 18:30" style for display in the activity log.
+ */
+function formatActivityTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const month = d.toLocaleString("en-US", { month: "short" });
+    const day = d.getDate();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${month} ${day}, ${hh}:${mm}`;
+  } catch {
+    return iso;
+  }
+}
 
 function ActivityTabPanel({
   project,
+  services,
   onViewAll,
 }: {
   project: ProjectRecord;
+  services: RecentActivityServices;
   onViewAll: () => void;
 }) {
+  // Spawn the recentActivity machine as a local actor, keyed to project.id.
+  // Re-create when project changes.
+  const [activityEntries, setActivityEntries] = useState<ActivityEntry[]>([]);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityLoading, setActivityLoading] = useState(true);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
+  // Use the recentActivity machine via createActor so we get the full
+  // machine lifecycle without mounting another hook at the component boundary.
+  // Key on project.id so switching projects resets the actor.
+  useEffect(() => {
+    setActivityLoading(true);
+    setActivityError(null);
+    setActivityEntries([]);
+    setActivityTotal(0);
+
+    const actor = createActor(recentActivityMachine, {
+      input: {
+        projectId: project.id,
+        services,
+      },
+    });
+
+    const sub = actor.subscribe((snapshot) => {
+      const ctx = snapshot.context;
+      if (snapshot.matches("loading")) {
+        setActivityLoading(true);
+        setActivityError(null);
+      } else if (snapshot.matches("error")) {
+        setActivityLoading(false);
+        setActivityError(ctx.error ?? "Failed to load activity");
+      } else if (snapshot.matches("loaded")) {
+        setActivityLoading(false);
+        setActivityError(null);
+        setActivityEntries(ctx.entries);
+        setActivityTotal(ctx.totalCount);
+      }
+    });
+
+    actor.start();
+    actor.send({ type: "LOAD", projectId: project.id });
+
+    return () => {
+      sub.unsubscribe();
+      actor.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
+
   return (
     <div
       className="mt-3 rounded-lg border border-border-1 bg-bg-surface"
       data-testid="activity-panel"
+      style={{ padding: "4px 0" }}
     >
-      <div className="px-4 py-3 text-xs text-ink-4">
-        Activity for <span className="font-mono">{project.id}</span> — connect
-        recentActivity machine here.
-      </div>
-      <div className="flex items-center justify-between border-t border-border-1 px-4 py-2.5">
-        <span className="font-mono text-[11px] text-ink-4">—</span>
+      {activityLoading && (
+        <div className="px-4 py-3 font-mono text-[11px] text-ink-4">
+          Loading activity…
+        </div>
+      )}
+
+      {activityError && !activityLoading && (
+        <div className="px-4 py-3 text-xs text-status-error">
+          {activityError}
+        </div>
+      )}
+
+      {!activityLoading && !activityError && activityEntries.length === 0 && (
+        <div className="px-4 py-3 font-mono text-[11px] text-ink-4">
+          No activity recorded yet.
+        </div>
+      )}
+
+      {!activityLoading &&
+        activityEntries.map((entry, i) => (
+          <div
+            key={entry.id}
+            className="grid items-center border-t border-border-1 px-4 py-2.5"
+            style={{
+              gridTemplateColumns: "120px 1fr 140px",
+              gap: 12,
+              borderTopWidth: i === 0 ? 0 : 1,
+            }}
+          >
+            <span className="font-mono text-[11.5px] font-semibold text-ink-2">
+              {entry.stage}
+            </span>
+            <span className="text-[12px] text-ink-3">{entry.description}</span>
+            <span className="text-right font-mono text-[11px] text-ink-4">
+              {formatActivityTime(entry.at)}
+            </span>
+          </div>
+        ))}
+
+      {/* Footer */}
+      <div
+        className="flex items-center justify-between border-t border-border-1 px-4 py-2.5"
+        style={{ borderTopWidth: activityEntries.length > 0 ? 1 : 0 }}
+      >
+        <span className="font-mono text-[11px] text-ink-4">
+          {activityTotal > activityEntries.length
+            ? `+ ${activityTotal - activityEntries.length} earlier entries`
+            : activityTotal > 0
+              ? `${activityTotal} entries`
+              : "—"}
+        </span>
         <Button
           variant="ghost"
           size="sm"
           data-testid="open-activity-log-btn"
           onClick={onViewAll}
         >
-          Open activity log
+          Open activity log →
         </Button>
       </div>
     </div>
@@ -813,19 +1053,202 @@ function ActivityTabPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Attributes tab panel
+// Attributes tab panel — wired to attributesPanelMachine
 // ---------------------------------------------------------------------------
 
-function AttributesTabPanel({ project }: { project: ProjectRecord }) {
+const SECTION_LABELS: Record<AttributeSection, string> = {
+  bib: "Bibliographic",
+  pgdp: "PGDP project",
+  fmt: "Format & content",
+  comments: "Project comments (to proofreaders)",
+};
+
+function AttributesTabPanel({
+  project,
+  services,
+}: {
+  project: ProjectRecord;
+  services: AttributesPanelServices;
+}) {
+  // Local state driven by the attributesPanel machine
+  const [attrFields, setAttrFields] = useState<AttributeRecord | null>(null);
+  const [attrOpen, setAttrOpen] = useState<Record<AttributeSection, boolean>>({
+    bib: true,
+    pgdp: true,
+    fmt: true,
+    comments: true,
+  });
+  const [attrLoading, setAttrLoading] = useState(true);
+  const [attrError, setAttrError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAttrLoading(true);
+    setAttrError(null);
+    setAttrFields(null);
+
+    const actor = createActor(attributesPanelMachine, {
+      input: { projectId: project.id, services },
+    });
+
+    const sub = actor.subscribe((snapshot) => {
+      const ctx = snapshot.context;
+      if (snapshot.matches("loading")) {
+        setAttrLoading(true);
+        setAttrError(null);
+      } else if (snapshot.matches("loadError")) {
+        setAttrLoading(false);
+        setAttrError(ctx.error ?? "Failed to load attributes");
+      } else if (snapshot.matches("viewing")) {
+        setAttrLoading(false);
+        setAttrError(null);
+        setAttrFields(ctx.fields);
+        setAttrOpen({ ...ctx.open });
+      }
+    });
+
+    actor.start();
+
+    return () => {
+      sub.unsubscribe();
+      actor.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
+
+  const toggleSection = (section: AttributeSection) => {
+    setAttrOpen((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  if (attrLoading) {
+    return (
+      <div
+        className="mt-3 rounded-lg border border-border-1 bg-bg-surface px-4 py-3"
+        data-testid="attributes-panel"
+      >
+        <span className="font-mono text-[11px] text-ink-4">
+          Loading attributes…
+        </span>
+      </div>
+    );
+  }
+
+  if (attrError) {
+    return (
+      <div
+        className="mt-3 rounded-lg border border-border-1 bg-bg-surface px-4 py-3"
+        data-testid="attributes-panel"
+      >
+        <span className="text-xs text-status-error">{attrError}</span>
+      </div>
+    );
+  }
+
+  // Sections: bib/pgdp/fmt as field maps, comments as single string
+  const sections: AttributeSection[] = ["bib", "pgdp", "fmt", "comments"];
+
   return (
     <div
-      className="mt-3 rounded-lg border border-border-1 bg-bg-surface"
+      className="mt-3"
       data-testid="attributes-panel"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+        gap: 12,
+      }}
     >
-      <div className="px-4 py-3 text-xs text-ink-4">
-        Attributes for <span className="font-mono">{project.id}</span> — connect
-        attributesPanel machine here.
-      </div>
+      {sections.map((section) => {
+        const isOpen = attrOpen[section];
+        const sectionLabel = SECTION_LABELS[section];
+
+        let fieldEntries: [string, string][] = [];
+        if (attrFields) {
+          if (section === "comments") {
+            // comments is a string, shown as body text
+          } else {
+            const raw = attrFields[section] as
+              | Record<string, string>
+              | undefined;
+            if (raw) fieldEntries = Object.entries(raw);
+          }
+        }
+
+        return (
+          <div
+            key={section}
+            className="overflow-hidden rounded-lg border border-border-1 bg-bg-surface"
+            style={{
+              gridColumn: section === "comments" ? "1 / -1" : undefined,
+              alignSelf: "start",
+            }}
+          >
+            {/* Collapse header */}
+            <button
+              type="button"
+              onClick={() => toggleSection(section)}
+              className="flex w-full cursor-pointer items-center justify-between border-b border-border-1 bg-bg-page px-3.5 py-2.5"
+              style={{ borderBottomWidth: isOpen ? 1 : 0 }}
+            >
+              <span className="flex items-center gap-2">
+                <span
+                  className="text-ink-3"
+                  style={{
+                    display: "inline-flex",
+                    transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                    transition: "transform 0.15s",
+                  }}
+                >
+                  ▾
+                </span>
+                <span className="text-[12px] font-medium text-ink-2">
+                  {sectionLabel}
+                </span>
+                <span className="font-mono text-[10.5px] text-ink-4">
+                  {section === "comments"
+                    ? ""
+                    : `${fieldEntries.length} fields`}
+                </span>
+              </span>
+              <span className="font-mono text-[11px] text-ink-3">Edit</span>
+            </button>
+
+            {/* Body */}
+            {isOpen && (
+              <div>
+                {section === "comments" ? (
+                  <div className="px-4 py-3.5 text-[12.5px] leading-relaxed text-ink-2">
+                    {attrFields?.comments || (
+                      <span className="text-ink-4">No project comments.</span>
+                    )}
+                  </div>
+                ) : (
+                  fieldEntries.map(([key, val], i) => (
+                    <div
+                      key={key}
+                      className="grid items-baseline px-3.5 py-2.5"
+                      style={{
+                        gridTemplateColumns: "170px 1fr",
+                        gap: 12,
+                        borderTop:
+                          i === 0 ? "none" : "1px solid var(--border-1)",
+                      }}
+                    >
+                      <span className="text-[12px] text-ink-3">{key}</span>
+                      <span className="text-[12.5px] font-medium text-ink-1">
+                        {val}
+                      </span>
+                    </div>
+                  ))
+                )}
+                {section !== "comments" && fieldEntries.length === 0 && (
+                  <div className="px-4 py-3 font-mono text-[11px] text-ink-4">
+                    No {SECTION_LABELS[section].toLowerCase()} data.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -928,19 +1351,22 @@ function ManageTabPanel({
           <ManageRow
             id="clean"
             label="Clean intermediate artifacts"
-            desc="Drop stage outputs that can be re-derived automatically."
+            desc="Drop stage outputs that can be re-derived automatically (crops, OCR, dewarped images). Final package is preserved."
+            meta="reclaim artifacts"
             onAction={() => manageSend({ type: "CLEAN" })}
           />
           <ManageRow
             id="archive"
             label="Archive project"
-            desc="Zip the project in place and mark it read-only."
+            desc="Zip the project in place and mark it read-only. Stays in this list under Archived."
+            meta="→ stays here"
             onAction={() => manageSend({ type: "ARCHIVE" })}
           />
           <ManageRow
             id="saveCopy"
             label="Save a copy…"
-            desc="Download a zip of the full project."
+            desc="Download a zip of the full project to a different location. The original remains untouched."
+            meta="choose destination"
             onAction={() => {
               if (project.archived !== true) {
                 void navigate(`/projects/${project.id}/export`);
@@ -952,8 +1378,9 @@ function ManageTabPanel({
           <ManageRow
             id="delete"
             label="Delete project"
-            desc="Step 1 of 2 — archives the project (run delete again from archived to remove permanently)."
-            danger
+            desc="Cleans intermediate artifacts and archives the project. Run delete again from the archived state to remove it permanently."
+            meta="step 1 of 2 · → archived"
+            twoStep
             buttonLabel="Delete…"
             onAction={() => manageSend({ type: "DELETE" })}
           />
@@ -966,19 +1393,22 @@ function ManageTabPanel({
           <ManageRow
             id="restore"
             label="Restore project"
-            desc="Unarchive and make the project editable again."
+            desc="Unarchive and make the project editable again. Intermediate artifacts will be regenerated on demand."
+            meta="unzip in place"
             onAction={() => manageSend({ type: "RESTORE" })}
           />
           <ManageRow
             id="saveCopy"
             label="Save a copy…"
-            desc="Download the archived zip to a different location."
+            desc="Download the archived zip to a different location. The original archive remains here."
+            meta={`${project.size} · choose destination`}
             onAction={() => manageSend({ type: "SAVE_COPY" })}
           />
           <ManageRow
             id="delete"
             label="Delete project"
-            desc="Permanently remove everything. Only archived projects can be deleted."
+            desc="Permanently remove everything: pages, settings, package, and history. Only archived projects can be deleted."
+            meta="cannot be undone"
             danger
             buttonLabel="Delete permanently"
             onAction={() => manageSend({ type: "DELETE" })}
@@ -1080,27 +1510,99 @@ function ManageTabPanel({
   );
 }
 
+/** Inline SVG icons for the manage action tiles */
+function ManageActionIcon({
+  id,
+  danger,
+  twoStep,
+}: {
+  id: ManageAction;
+  danger?: boolean;
+  twoStep?: boolean;
+}) {
+  const iconColor = danger
+    ? "var(--status-error)"
+    : twoStep
+      ? "var(--status-review)"
+      : "var(--ink-2)";
+  const bgColor = danger
+    ? "color-mix(in oklab, var(--status-error) 10%, transparent)"
+    : twoStep
+      ? "color-mix(in oklab, var(--status-review) 12%, transparent)"
+      : "var(--bg-raised)";
+
+  // Simple inline SVG icons matching lucide style
+  const path: Record<ManageAction, string> = {
+    clean: "M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm0 6v4l3 3",
+    archive:
+      "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+    saveCopy: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
+    delete:
+      "M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+    restore:
+      "M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15",
+  };
+
+  return (
+    <div
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 6,
+        background: bgColor,
+        color: iconColor,
+        display: "grid",
+        placeItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <svg
+        width={14}
+        height={14}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={path[id]} />
+      </svg>
+    </div>
+  );
+}
+
 function ManageRow({
   id,
   label,
   desc,
+  meta,
   danger,
+  twoStep,
   buttonLabel,
   onAction,
 }: {
   id: ManageAction;
   label: string;
   desc: string;
+  meta?: string;
   danger?: boolean;
+  twoStep?: boolean;
   buttonLabel?: string;
   onAction: () => void;
 }) {
   return (
     <div
       data-testid={`manage-action-${id}`}
-      className="flex items-center gap-3.5 border-t border-border-1 first:border-t-0 px-4 py-3.5"
+      className="grid items-center border-t border-border-1 first:border-t-0 px-4 py-3.5"
+      style={{ gridTemplateColumns: "28px 1fr auto auto", gap: 14 }}
     >
-      <div className="min-w-0 flex-1">
+      <ManageActionIcon
+        id={id}
+        {...(danger !== undefined && { danger })}
+        {...(twoStep !== undefined && { twoStep })}
+      />
+      <div className="min-w-0">
         <div
           className={`text-[13px] font-semibold ${
             danger === true ? "text-status-error" : "text-ink-1"
@@ -1108,8 +1610,25 @@ function ManageRow({
         >
           {label}
         </div>
-        <div className="mt-0.5 text-xs text-ink-3">{desc}</div>
+        <div className="mt-0.5 text-xs text-ink-3 leading-snug">{desc}</div>
       </div>
+      {meta ? (
+        <div
+          className="font-mono text-[11px] text-right"
+          style={{
+            color: danger
+              ? "var(--status-error)"
+              : twoStep
+                ? "var(--status-review)"
+                : "var(--ink-4)",
+            minWidth: 120,
+          }}
+        >
+          {meta}
+        </div>
+      ) : (
+        <div />
+      )}
       <Button
         variant={danger === true ? "danger" : "outline"}
         size="sm"

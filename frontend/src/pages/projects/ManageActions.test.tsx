@@ -76,6 +76,28 @@ function makeServices(
     rail: { fetchProjects: vi.fn().mockResolvedValue(projects) },
     detail: { fetchProjects: vi.fn().mockResolvedValue(projects) },
     manage: makeManageServices(manageSpy),
+    activity: {
+      fetchRecentActivity: vi.fn().mockResolvedValue({
+        entries: [],
+        totalCount: 0,
+        commentCount: 0,
+        stageCount: 0,
+      }),
+    },
+    attributes: {
+      fetchAttributes: vi.fn().mockResolvedValue({
+        title: "",
+        author: "",
+        language: "",
+        charsuites: [],
+      }),
+      saveAttributes: vi.fn().mockResolvedValue({
+        title: "",
+        author: "",
+        language: "",
+        charsuites: [],
+      }),
+    },
   };
 }
 

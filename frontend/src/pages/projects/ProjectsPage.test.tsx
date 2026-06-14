@@ -19,7 +19,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { ProjectRecord, ManageActionResult } from "@/mocks/types";
+import type {
+  ProjectRecord,
+  ManageActionResult,
+  ActivityFeedResponse,
+  AttributeRecord,
+} from "@/mocks/types";
 import { ProjectsPage, type ProjectsPageServices } from "./ProjectsPage";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,20 @@ const ARCHIVED_1 = makeProject({
   archivedOn: "May 10, 2026",
 });
 
+const EMPTY_ACTIVITY_FEED: ActivityFeedResponse = {
+  entries: [],
+  totalCount: 0,
+  commentCount: 0,
+  stageCount: 0,
+};
+
+const EMPTY_ATTRIBUTES: AttributeRecord = {
+  bib: {},
+  pgdp: {},
+  fmt: {},
+  comments: "",
+};
+
 function makeServices(
   projects: ProjectRecord[],
   overrides: Partial<ProjectsPageServices> = {},
@@ -78,6 +97,13 @@ function makeServices(
         action: "archive",
         status: "archived",
       } satisfies ManageActionResult),
+    },
+    activity: {
+      fetchRecentActivity: vi.fn().mockResolvedValue(EMPTY_ACTIVITY_FEED),
+    },
+    attributes: {
+      fetchAttributes: vi.fn().mockResolvedValue(EMPTY_ATTRIBUTES),
+      saveAttributes: vi.fn().mockResolvedValue(EMPTY_ATTRIBUTES),
     },
     ...overrides,
   };

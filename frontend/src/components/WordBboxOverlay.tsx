@@ -81,7 +81,9 @@ function hitTestWord(
   words: readonly OcrWord[],
 ): number | null {
   for (let i = 0; i < words.length; i++) {
-    const bb = words[i]!.bounding_box;
+    const word = words[i];
+    if (!word) continue;
+    const bb = word.bounding_box;
     if (
       naturalX >= bb.left &&
       naturalX <= bb.left + bb.width &&
