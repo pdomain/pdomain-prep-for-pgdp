@@ -236,6 +236,17 @@ export interface StageStatusEvent {
   status: PageStageStatus;
   job_id: string | null;
   error_message: string | null;
+  /**
+   * Epoch seconds of when the stage committed — present only on `status: "clean"` events.
+   * Populated by `run_stage` from `PageStageState.last_run_at`; used by the frontend
+   * PAGE_PUSH bridge to set `lastRunAt` in the artifact URL cache-buster.
+   */
+  last_run_at?: number;
+  /**
+   * Integer page index (zero-padded page_id parsed as int) — present only on `status: "clean"`.
+   * Lets the PAGE_PUSH bridge identify which page completed without a separate lookup.
+   */
+  idx0?: number;
 }
 
 export interface StageProgressEvent {

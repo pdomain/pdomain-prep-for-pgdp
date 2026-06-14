@@ -26,7 +26,7 @@
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -34,10 +34,12 @@ import {
   type GrayscaleToolServices,
   type GrayscaleMode,
   type GrayscaleBackend,
+  type GrayscalePage,
 } from "@/machines/tools/grayscaleTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
+import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -644,7 +646,16 @@ export function GrayscaleTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
   _testServices,
-}: ToolSlotProps & { _testServices?: GrayscaleToolServices }) {
+  totalPages = 1,
+}: ToolSlotProps & {
+  _testServices?: GrayscaleToolServices;
+  /**
+   * Total page count for the project — used by the SSE bridge to know when
+   * all pages have completed grayscale conversion. Defaults to 1 for demo/test.
+   * Pass `project.page_count` from the pipeline snapshot in production.
+   */
+  totalPages?: number;
+}) {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 
   const services = useMemo(
@@ -659,6 +670,36 @@ export function GrayscaleTool({
       services,
     },
   });
+
+  // I1: Wire real SSE PAGE_PUSH feed into the grayscale machine.
+  // Subscribes to each page's SSE channel and dispatches PAGE_PUSH events
+  // when the grayscale stage completes for that page.
+  useEffect(() => {
+    if (!projectId || projectId === "demo") return;
+
+    const unsubscribe = subscribePageChannelForTool({
+      projectId,
+      stageId: "grayscale",
+      totalPages,
+      getPageMode: (_idx0) => {
+        // Use the machine's detected mode; fall back to "perceptual".
+        const ctx = snapshot.context;
+        return ctx.detected?.mode ?? "perceptual";
+      },
+      onPagePush: (page) => {
+        send({
+          type: "PAGE_PUSH",
+          page: page as GrayscalePage & { _total?: number },
+        });
+      },
+    });
+
+    return unsubscribe;
+    // We intentionally omit `snapshot` from deps — we only want to re-subscribe
+    // when projectId or totalPages changes, not on every state update.
+    // `send` is stable from useActor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, totalPages, send]);
 
   const ctx = snapshot.context;
 

@@ -54,6 +54,7 @@ and the eager dirty cascade that follows on success.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -152,11 +153,16 @@ async def _emit(
     event_type: str,
     stage_id: str,
     status: str,
+    *,
+    extra: dict[str, object] | None = None,
 ) -> None:
     if broker is None:
         return
     key = stage_events_key(project_id, page_id)
-    await broker.publish(key, {"type": event_type, "stage_id": stage_id, "status": status})
+    payload: dict[str, object] = {"type": event_type, "stage_id": stage_id, "status": status}
+    if extra:
+        payload.update(extra)
+    await broker.publish(key, payload)
 
 
 # ─── Typed exceptions ───────────────────────────────────────────────────────
@@ -1381,7 +1387,15 @@ async def run_stage(
     )
 
     # Emit clean event for the completed stage after the cascade.
-    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean")
+    # Carry last_run_at (epoch seconds) and idx0 so the frontend can set
+    # lastRunAt in the artifact URL cache-buster and know which page completed.
+    # idx0 is derived from page_id (zero-padded string like "0000" → 0).
+    _clean_extra: dict[str, object] = {}
+    if committed.last_run_at is not None:
+        _clean_extra["last_run_at"] = committed.last_run_at
+    with contextlib.suppress(ValueError):
+        _clean_extra["idx0"] = int(page_id)
+    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean", extra=_clean_extra)
 
     return committed
 
@@ -1587,7 +1601,13 @@ async def run_image_prep_chain_with_events(
             page_id=page_id,
             stage_id=stage_id,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean")
+        # Enrich clean event with last_run_at + idx0 for PAGE_PUSH bridge.
+        _chain_clean_extra: dict[str, object] = {"last_run_at": time()}
+        with contextlib.suppress(ValueError):
+            _chain_clean_extra["idx0"] = int(page_id)
+        await _emit(
+            stage_events, project_id, page_id, "stage-status", stage_id, "clean", extra=_chain_clean_extra
+        )
         result[stage_id] = "clean"
 
     return result

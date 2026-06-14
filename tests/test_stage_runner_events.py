@@ -146,3 +146,57 @@ async def test_run_stage_without_events_broker_is_unchanged(tmp_path: Path, db: 
     from pdomain_prep_for_pgdp.core.models import PageStageStatus
 
     assert state.status == PageStageStatus.clean
+
+
+@pytest.mark.asyncio
+async def test_run_stage_clean_event_carries_last_run_at_and_idx0(tmp_path: Path, db: SqliteDatabase) -> None:
+    """I1 (PAGE_PUSH bridge): the `clean` stage-status event carries last_run_at and idx0.
+
+    These fields are forwarded by mapPageEvent() → StagePushStatus and consumed by
+    subscribePageChannelForTool() to build GrayscalePage objects with lastRunAt set.
+    The test is the PRODUCER test — it verifies the event payload, not just a consumer
+    that receives hand-fed synthetic events.
+    """
+    project_id, page_id = "bridge1", "0003"
+    payload = _checkerboard_bgr_png()
+    await _seed_grayscale_source(db, tmp_path, project_id, page_id, payload)
+
+    broker = StageEventBroker()
+    key = stage_events_key(project_id, page_id)
+    clean_events: list[dict] = []
+
+    async def listen() -> None:
+        async for ev in broker.subscribe(key):
+            if (
+                ev.get("type") == "stage-status"
+                and ev.get("status") == "clean"
+                and ev.get("stage_id") == "grayscale"
+            ):
+                clean_events.append(ev)
+                break
+
+    listener = asyncio.create_task(listen())
+    await asyncio.sleep(0.01)
+
+    await run_stage(
+        data_root=tmp_path,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="grayscale",
+        stage_events=broker,
+    )
+
+    await asyncio.wait_for(listener, timeout=2.0)
+
+    assert clean_events, "no clean stage-status event received"
+    ev = clean_events[0]
+
+    # Must carry last_run_at (epoch seconds, positive float).
+    assert "last_run_at" in ev, f"last_run_at missing from clean event: {ev}"
+    assert isinstance(ev["last_run_at"], float), f"last_run_at should be float, got {type(ev['last_run_at'])}"
+    assert ev["last_run_at"] > 0, f"last_run_at should be positive epoch, got {ev['last_run_at']}"
+
+    # Must carry idx0 (integer parsed from page_id "0003" → 3).
+    assert "idx0" in ev, f"idx0 missing from clean event: {ev}"
+    assert ev["idx0"] == 3, f"idx0 should be 3 (from page_id '0003'), got {ev['idx0']}"

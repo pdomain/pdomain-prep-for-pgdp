@@ -101,6 +101,17 @@ export interface StagePushStatus {
   status: PageStageStatus;
   job_id: string | null;
   error_message: string | null;
+  /**
+   * Epoch seconds of the stage commit — forwarded from the server's clean event.
+   * Used by the PAGE_PUSH bridge (pageToolSseBridge.ts) to populate `lastRunAt`
+   * in artifact URL cache-busters. Absent on non-clean transitions.
+   */
+  last_run_at?: number;
+  /**
+   * Integer page index (zero-based) — forwarded from the server's clean event.
+   * Identifies which page completed; used by the PAGE_PUSH bridge.
+   */
+  idx0?: number;
 }
 export interface StagePushProgress {
   type: "STAGE_PUSH";
@@ -192,8 +203,8 @@ function mapPageEvent(event: PageChannelEvent): SseMachineEvent {
         variant: "page-snapshot",
         stages: event.stages,
       };
-    case "stage-status":
-      return {
+    case "stage-status": {
+      const push: StagePushStatus = {
         type: "STAGE_PUSH",
         variant: "status",
         stage_id: event.stage_id,
@@ -201,6 +212,15 @@ function mapPageEvent(event: PageChannelEvent): SseMachineEvent {
         job_id: event.job_id,
         error_message: event.error_message,
       };
+      // Forward optional completion fields present only on clean events.
+      if (event.last_run_at !== undefined) {
+        push.last_run_at = event.last_run_at;
+      }
+      if (event.idx0 !== undefined) {
+        push.idx0 = event.idx0;
+      }
+      return push;
+    }
     case "stage-progress":
       return {
         type: "STAGE_PUSH",
