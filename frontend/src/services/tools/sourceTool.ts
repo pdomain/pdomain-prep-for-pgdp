@@ -30,6 +30,7 @@
 import { api } from "@/api/client";
 import type { FileRow, SourceToolServices } from "@/machines/tools/source";
 import { buildRealStageSettingsServices } from "@/services/stageSettings";
+import { resolveFileState } from "@/pages/pipeline/tools/source/useSourcePages";
 
 // ---------------------------------------------------------------------------
 // PageType mapping from FileState
@@ -184,7 +185,7 @@ async function confirmSelection(
   projectId: string,
   _files: FileRow[],
 ): Promise<{ pages: number }> {
-  const result = await api.post<{
+  await api.post<{
     stage_id: string;
     status: string;
     confirmed_at: string;
@@ -192,9 +193,9 @@ async function confirmSelection(
     `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/source/confirm`,
     {},
   );
-  // Return pages: 0 since we don't track exact page count at confirm time.
+  // Return pages: 0 — source confirm does not return a page count.
   // The pipeline snapshot provides the authoritative page count via pipelineShell.
-  return { pages: result.status === "clean" ? 0 : 0 };
+  return { pages: 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -218,12 +219,15 @@ export function buildRealSourceToolServices(): SourceToolServices {
         inserted_page: {
           idx: result.inserted_page.idx0,
           stem: result.inserted_page.source_stem,
+          // Newly inserted page starts as "ready" (no role yet).
           state: "ready" as const,
         },
         pages: result.pages.map((p) => ({
           idx: p.idx0,
           stem: p.source_stem,
-          state: p.ignore ? ("skipped" as const) : ("ready" as const),
+          // Use the same resolveFileState logic as the load path so existing
+          // page roles survive the post-insert refresh.
+          state: resolveFileState(p.ignore, p.page_type),
         })),
       };
     },

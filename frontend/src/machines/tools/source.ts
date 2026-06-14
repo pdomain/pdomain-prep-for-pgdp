@@ -94,6 +94,8 @@ export interface FileTotals {
     blank: number;
     duplicate: number;
     inserted: number;
+    /** Soft-removed pages (ignore=true). Shown in the "Skipped" filter chip. */
+    skipped: number;
   };
   unmarked: number;
 }
@@ -259,6 +261,7 @@ export function recount(files: FileRow[]): FileTotals {
     blank: 0,
     duplicate: 0,
     inserted: 0,
+    skipped: 0,
   };
   let thumbed = 0;
   let unmarked = 0;

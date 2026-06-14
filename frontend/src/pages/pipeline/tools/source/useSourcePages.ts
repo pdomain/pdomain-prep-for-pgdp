@@ -25,8 +25,14 @@
  * `next_cursor` in a loop so all pages load.
  *
  * ## State mapping
- * `ignore: true` maps to FileState `"skipped"` (reversible via PATCH).
- * All other pages map to `"ready"`.
+ * Priority: `ignore=true` always → `"skipped"` (manual soft-remove wins).
+ * Otherwise, `page_type` is reverse-mapped to `FileState`:
+ *   normal  → "page"
+ *   cover   → "cover"
+ *   blank   → "blank"
+ *   skip    → "skipped"  (backend limitation: back + duplicate both write
+ *                         "skip"; they cannot be distinguished on reload)
+ *   other   → "ready"    (safe default for unknown/future types)
  *
  * @see frontend/src/api/types.gen.ts — PageRecord schema
  * @see frontend/src/pages/pipeline/tools/source/RealThumb.tsx
@@ -34,7 +40,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
-import type { FileRow } from "@/machines/tools/source";
+import type { FileRow, FileState } from "@/machines/tools/source";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -61,6 +67,54 @@ export interface ListPagesResponse {
   pages: BackendPage[];
   next_cursor: string | null;
   total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Reverse PageType → FileState map
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps backend PageType values back to frontend FileState on load.
+ *
+ * Backend PageType enum (models.py): normal | blank | plate_b | plate_p |
+ *   plate_r | skip | cover
+ *
+ * Mapping decisions:
+ *   normal → "page"     (body page)
+ *   cover  → "cover"    (front cover / endpapers)
+ *   blank  → "blank"    (blank scan)
+ *   skip   → "skipped"  (excluded role; back AND duplicate both write "skip" —
+ *                        backend has no back/duplicate enum values, so they
+ *                        collapse to "skipped" on reload; this is intentional
+ *                        and documented here as a known backend limitation)
+ *
+ * Unknown/future types fall through to "ready" (safe default).
+ *
+ * Priority over this map: if ignore=true, the page is always "skipped"
+ * regardless of page_type (ignore is a manual soft-remove that wins).
+ */
+const PAGE_TYPE_TO_FILE_STATE: Record<string, FileState> = {
+  normal: "page",
+  cover: "cover",
+  blank: "blank",
+  skip: "skipped",
+};
+
+/**
+ * Resolve a loaded page's FileState from its persisted fields.
+ *
+ * Rule: ignore=true always wins → "skipped".
+ * Otherwise: use PAGE_TYPE_TO_FILE_STATE, fall back to "ready".
+ *
+ * Exported so that other load paths (e.g. the insert-page refresh in
+ * sourceTool.ts) can apply the same mapping and stay in sync.
+ */
+export function resolveFileState(
+  ignore: boolean,
+  page_type: string,
+): FileState {
+  if (ignore) return "skipped";
+  return PAGE_TYPE_TO_FILE_STATE[page_type] ?? "ready";
 }
 
 // ---------------------------------------------------------------------------
@@ -109,8 +163,12 @@ export async function fetchAllSourcePages(
       const row: FileRow = {
         idx: p.idx0,
         stem: p.source_stem,
-        // ignore=true → "skipped" so the machine can filter+restore
-        state: p.ignore ? "skipped" : "ready",
+        // Resolve state from persisted fields: ignore wins, then page_type reverse-map.
+        // ignore=true → "skipped" regardless of page_type (manual soft-remove).
+        // page_type: normal→page, cover→cover, blank→blank, skip→skipped (back+
+        // duplicate collapse to skip on reload — backend limitation; see
+        // PAGE_TYPE_TO_FILE_STATE comment). Unknown types → "ready".
+        state: resolveFileState(p.ignore, p.page_type),
         // Use the ingest-thumbnail route — works at Source time before any
         // pipeline stage runs. Falls back to FakePaperThumb on 404 (still generating).
         thumbnailKey: ingestThumbUrl(projectId, p.idx0),

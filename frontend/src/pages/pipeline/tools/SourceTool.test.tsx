@@ -59,6 +59,7 @@ function makeTotals(overrides: Partial<FileTotals> = {}): FileTotals {
       blank: 0,
       duplicate: 0,
       inserted: 0,
+      skipped: 0,
     },
     unmarked: 4,
     ...overrides,

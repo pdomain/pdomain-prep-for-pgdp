@@ -39,9 +39,11 @@ export function applyFilter(files: FileRow[], filter: FileFilter): FileRow[] {
     case "page":
       return files.filter((f) => f.state === "page");
     case "skipped":
-      return files.filter((f) =>
-        ["cover", "back", "blank", "duplicate"].includes(f.state),
-      );
+      // "Skipped" = soft-removed via ignore=true (reversible, state="skipped").
+      // Role-assigned pages (cover/back/blank/duplicate) have their own states
+      // and are NOT included here — they appear under "All" and can be toggled
+      // back. This filter matches what the "Remove from project" action creates.
+      return files.filter((f) => f.state === "skipped");
     case "unmarked":
       return files.filter((f) => f.state === "ready");
     case "inserts":
@@ -699,11 +701,14 @@ export function FileToolbar({
     blank: 0,
     duplicate: 0,
     inserted: 0,
+    skipped: 0,
   };
   const counts: Record<string, number> = {
     all: totals?.files ?? 0,
     page: m.page,
-    skipped: m.cover + m.back + m.blank + m.duplicate,
+    // "Skipped" count = soft-removed pages (ignore=true → state="skipped").
+    // Matches applyFilter("skipped") which filters on state==="skipped".
+    skipped: m.skipped,
     unmarked: totals?.unmarked ?? 0,
     inserts: m.inserted,
   };

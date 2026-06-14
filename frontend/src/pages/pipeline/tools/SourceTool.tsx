@@ -83,7 +83,11 @@ import {
   buildRealSourceToolServices,
   insertBlankPage,
 } from "@/services/tools/sourceTool";
-import { useSourcePages, ingestThumbUrl } from "./source/useSourcePages";
+import {
+  useSourcePages,
+  ingestThumbUrl,
+  resolveFileState,
+} from "./source/useSourcePages";
 // shellSend is available in ToolSlotProps but not used in this component —
 // SourceTool has no events to forward to the pipeline shell currently.
 
@@ -224,7 +228,9 @@ export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
         const refreshedFiles: FileRow[] = result.pages.map((p) => ({
           idx: p.idx0,
           stem: p.source_stem,
-          state: p.ignore ? ("skipped" as const) : ("ready" as const),
+          // Use the same resolveFileState logic as the load path so existing
+          // page roles survive the post-insert refresh.
+          state: resolveFileState(p.ignore, p.page_type),
           thumbnailKey: ingestThumbUrl(projectId, p.idx0),
         }));
         send({ type: "REFRESH_FILES", files: refreshedFiles });
