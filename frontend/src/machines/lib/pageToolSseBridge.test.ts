@@ -88,6 +88,7 @@ function makeGrayscaleServices(
     }),
     runStage: vi.fn().mockResolvedValue(undefined),
     runPageStage: vi.fn().mockResolvedValue(undefined),
+    loadPageStages: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }

@@ -42,6 +42,8 @@ const defaultServices: GrayscaleToolServices = {
     }),
   runStage: () => Promise.resolve(),
   runPageStage: () => Promise.resolve(),
+  // Return no pages so tests are not affected by REST prefetch.
+  loadPageStages: () => Promise.resolve([]),
 };
 
 function renderGrayscale(
@@ -260,6 +262,7 @@ describe("GrayscaleTool — error state", () => {
     detectProfile: () => Promise.reject(new Error("network error")),
     runStage: () => Promise.resolve(),
     runPageStage: () => Promise.resolve(),
+    loadPageStages: () => Promise.resolve([]),
   };
 
   it("renders grayscale-tool-error when detectProfile rejects", async () => {

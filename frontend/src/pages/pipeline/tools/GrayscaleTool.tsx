@@ -241,6 +241,53 @@ export function GrayscaleTool({
     return unsub;
   }, [projectId, totalPages, send]);
 
+  // REST prefetch: when detection completes and the machine enters `converting`,
+  // immediately fetch the current page's stage status so the workbench shows the
+  // real grayscale image without waiting for SSE replay (SSE has no replay on
+  // subscribe — artifacts computed before the browser connected are missed).
+  //
+  // We fire one GET /pages/{cursor}/stages request per (projectId, converting-entry).
+  // The result is sent as STAGES_LOADED; if the current page is already clean, the
+  // machine exits `converting` immediately into `done` and the workbench becomes
+  // interactive. If the page is not yet clean, the machine stays in `converting`
+  // but is now also interactive (draft-editing and RERUN_PAGE work there too).
+  const inConverting = topState === "converting";
+  const cursorForPrefetch = ctx.cursor;
+  const detectedMode = ctx.detected?.mode ?? "perceptual";
+  useEffect(() => {
+    if (!inConverting || !projectId || projectId === "demo") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const pages = await services.loadPageStages(
+          projectId,
+          "grayscale",
+          cursorForPrefetch,
+          detectedMode,
+        );
+        if (!cancelled) {
+          send({ type: "STAGES_LOADED", pages });
+        }
+      } catch {
+        // Prefetch failure is non-fatal; machine stays in converting and
+        // waits for live SSE events.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally depend on inConverting (not topState) so the prefetch
+    // only fires on each entry into converting (e.g. after Apply&Run re-enters).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    inConverting,
+    projectId,
+    cursorForPrefetch,
+    detectedMode,
+    services,
+    send,
+  ]);
+
   // ── Error state ──────────────────────────────────────────────────────────
   if (topState === "error") {
     return (

@@ -80,6 +80,17 @@ export interface GrayscaleToolServices extends StageSettingsServices {
   ): Promise<void>;
   /** POST .../pages/{idx0}/stages/{stageId}/run */
   runPageStage(projectId: string, stageId: string, idx0: number): Promise<void>;
+  /**
+   * GET .../pages/{idx0}/stages — load the stage row list for one page.
+   * Used on mount to seed page state from REST without waiting for SSE replay.
+   * Returns an array of pages (may be empty if grayscale is not_run).
+   */
+  loadPageStages(
+    projectId: string,
+    stageId: string,
+    idx0: number,
+    mode: GrayscaleMode,
+  ): Promise<GrayscalePage[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +137,14 @@ export type GrayscaleToolEvent =
   | { type: "REDETECT" }
   | { type: "RESET" }
   | { type: "APPLY_RUN" }
-  | { type: "RETRY" };
+  | { type: "RETRY" }
+  /**
+   * STAGES_LOADED — sent by the REST prefetch on mount after detection.
+   * Carries an array of already-clean pages for the current stage; the
+   * machine merges them into ctx.pages and, if any are present, exits
+   * `converting` into `done` so the workbench is immediately interactive.
+   */
+  | { type: "STAGES_LOADED"; pages: GrayscalePage[] };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -203,6 +221,15 @@ export const grayscaleToolMachine = setup({
 
     /** YAML: `notLast: ctx.cursor < ctx.pages.length - 1` */
     notLast: ({ context }) => context.cursor < context.pages.length - 1,
+
+    /**
+     * `hasAnyPage` — true when STAGES_LOADED delivered at least one page.
+     * Used to exit `converting` early when REST prefetch finds clean pages.
+     */
+    hasAnyPage: ({ event }) => {
+      if (event.type !== "STAGES_LOADED") return false;
+      return event.pages.length > 0;
+    },
   },
 
   actions: {
@@ -231,6 +258,23 @@ export const grayscaleToolMachine = setup({
       pages: ({ context, event }) => {
         if (event.type !== "PAGE_PUSH") return context.pages;
         return upsertPage(context.pages, event.page);
+      },
+    }),
+
+    /**
+     * `mergePages` — bulk-upsert pages delivered by STAGES_LOADED.
+     * The REST prefetch may return all already-clean pages for the stage;
+     * we upsert each in turn so live SSE pushes (PAGE_PUSH) still win via
+     * lastRunAt recency.
+     */
+    mergePages: assign({
+      pages: ({ context, event }) => {
+        if (event.type !== "STAGES_LOADED") return context.pages;
+        let next = context.pages;
+        for (const p of event.pages) {
+          next = upsertPage(next, p);
+        }
+        return next;
       },
     }),
 
@@ -421,6 +465,25 @@ export const grayscaleToolMachine = setup({
 
     converting: {
       on: {
+        /**
+         * STAGES_LOADED — REST prefetch delivers already-clean pages on mount.
+         * If any pages came back, transition immediately to `done` so the
+         * workbench is interactive without waiting for 233 SSE events.
+         * If none came back (stage not yet run), stay in `converting` and
+         * wait for live SSE PAGE_PUSH events as before.
+         */
+        STAGES_LOADED: [
+          {
+            target: "done",
+            guard: "hasAnyPage",
+            actions: ["mergePages"],
+          },
+          {
+            // No pages yet — absorb event, stay in converting.
+            actions: ["mergePages"],
+          },
+        ],
+
         PAGE_PUSH: [
           {
             target: "done",
@@ -431,6 +494,35 @@ export const grayscaleToolMachine = setup({
             actions: ["mergePage"],
           },
         ],
+
+        // ── Per-page interaction while converting runs in background ────────
+        // Allow the user to tune settings and re-run the current page without
+        // waiting for all pages to finish. These mirror the done.tuned handlers.
+
+        SET_PARAM: { actions: ["beginDraft", "patchDraft"] },
+        SET_MODE: { actions: ["beginDraft", "patchDraft"] },
+        RESET: { actions: ["clearDraft"] },
+
+        /**
+         * RERUN_PAGE while converting: re-run the current page immediately.
+         * The resulting SSE PAGE_PUSH will update ctx.pages[cursor].lastRunAt
+         * so the image URL cache-busts and the new grayscale artifact appears.
+         */
+        RERUN_PAGE: { actions: ["requestPageRun"] },
+
+        /**
+         * APPLY_RUN while converting: persist draft + run current page, then
+         * commit draft. We stay in `converting` (already there); the resulting
+         * SSE will merge the updated page via PAGE_PUSH.
+         */
+        APPLY_RUN: {
+          actions: ["requestRun", "commitDraft", "emitStaleDownstream"],
+        },
+
+        SET_FILTER: { actions: ["assignFilter"] },
+        PREV_PAGE: { guard: "notFirst", actions: ["stepPrev"] },
+        NEXT_PAGE: { guard: "notLast", actions: ["stepNext"] },
+        GOTO_PAGE: { actions: ["gotoPage"] },
       },
     },
 
@@ -477,6 +569,22 @@ export const grayscaleToolMachine = setup({
         GOTO_PAGE: { actions: ["gotoPage"] },
         RERUN_PAGE: { actions: ["requestPageRun"] },
         REDETECT: { target: "detecting" },
+
+        /**
+         * PAGE_PUSH in done — live SSE update for a page that completed after
+         * the machine already entered `done` (e.g. background batch conversion
+         * continues after the initial REST prefetch unblocked the UI, or a
+         * RERUN_PAGE result arrives). Merges/updates the page's lastRunAt so
+         * the artifact URL cache-busts and the new image loads automatically.
+         */
+        PAGE_PUSH: { actions: ["mergePage"] },
+
+        /**
+         * STAGES_LOADED in done — absorb silently (idempotent). Can arrive if
+         * the REST prefetch resolves after the machine already reached done via
+         * a concurrent SSE stream.
+         */
+        STAGES_LOADED: { actions: ["mergePages"] },
       },
     },
 

@@ -35,6 +35,7 @@ import type {
   GrayscaleToolServices,
   GrayscaleMode,
   GrayscaleBackend,
+  GrayscalePage,
 } from "@/machines/tools/grayscaleTool";
 // W5.2 — include real stageSettings methods (save-as-default / revert / reset)
 import {
@@ -170,6 +171,59 @@ async function runPageStage(
 }
 
 // ---------------------------------------------------------------------------
+// Load page stage status (REST prefetch on mount)
+// ---------------------------------------------------------------------------
+
+/**
+ * Load the stage row list for a single page and map the grayscale row
+ * (if clean) to a GrayscalePage so the machine can seed ctx.pages without
+ * waiting for SSE events.
+ *
+ * GET /api/data/projects/{id}/pages/{idx0}/stages
+ * → PageStageState[] (all 16 page-scoped stages for that page)
+ *
+ * We look for the row where stage_id === stageId and status === "clean".
+ * If found, we build a GrayscalePage with lastRunAt from the DB row so the
+ * artifact URL cache-buster is correct on first render. Returns [] if the
+ * stage is not yet clean.
+ */
+/** Minimal shape of a page stage row returned by GET /pages/{idx0}/stages. */
+interface PageStageRow {
+  stage_id: string;
+  status: string;
+  last_run_at: number | null;
+}
+
+async function loadPageStages(
+  projectId: string,
+  stageId: string,
+  idx0: number,
+  mode: GrayscaleMode,
+): Promise<GrayscalePage[]> {
+  let rows: PageStageRow[];
+  try {
+    rows = await api.get<PageStageRow[]>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages`,
+    );
+  } catch {
+    // If the endpoint is missing or fails, return nothing — the machine
+    // will stay in `converting` and wait for live SSE events as before.
+    return [];
+  }
+
+  const row = rows.find((r) => r.stage_id === stageId && r.status === "clean");
+  if (!row) return [];
+
+  const page: GrayscalePage = {
+    id: String(idx0).padStart(4, "0"),
+    idx0,
+    mode,
+    ...(row.last_run_at != null ? { lastRunAt: row.last_run_at } : {}),
+  };
+  return [page];
+}
+
+// ---------------------------------------------------------------------------
 // Exported factory
 // ---------------------------------------------------------------------------
 
@@ -180,5 +234,6 @@ export function buildRealGrayscaleToolServices(): GrayscaleToolServices {
     detectProfile,
     runStage,
     runPageStage,
+    loadPageStages,
   };
 }

@@ -37,6 +37,8 @@ function makeServices(
     }),
     runStage: vi.fn().mockResolvedValue(undefined),
     runPageStage: vi.fn().mockResolvedValue(undefined),
+    // Stub returns no pages by default so tests are unaffected by prefetch.
+    loadPageStages: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -373,6 +375,102 @@ describe("grayscaleTool — isLastPage sentinel", () => {
     const snap = actor.getSnapshot();
     expect(snap.matches("done")).toBe(true);
     expect(snap.context.pages).toHaveLength(2);
+    actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 7a: STAGES_LOADED — REST prefetch exit from converting
+// ---------------------------------------------------------------------------
+
+describe("grayscaleTool — STAGES_LOADED prefetch", () => {
+  it("exits converting immediately when STAGES_LOADED delivers pages", async () => {
+    const actor = createActor(grayscaleToolMachine, { input: makeInput() });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    actor.send({
+      type: "STAGES_LOADED",
+      pages: [{ id: "0000", idx0: 0, mode: "perceptual", lastRunAt: 1000 }],
+    });
+
+    const snap = actor.getSnapshot();
+    expect(snap.matches("done")).toBe(true);
+    expect(snap.context.pages).toHaveLength(1);
+    expect(snap.context.pages[0]?.lastRunAt).toBe(1000);
+    actor.stop();
+  });
+
+  it("stays in converting when STAGES_LOADED delivers no pages", async () => {
+    const actor = createActor(grayscaleToolMachine, { input: makeInput() });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    actor.send({ type: "STAGES_LOADED", pages: [] });
+
+    expect(actor.getSnapshot().matches("converting")).toBe(true);
+    actor.stop();
+  });
+
+  it("merges STAGES_LOADED pages with later PAGE_PUSH events", async () => {
+    const actor = createActor(grayscaleToolMachine, { input: makeInput() });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    // Prefetch fires and transitions to done
+    actor.send({
+      type: "STAGES_LOADED",
+      pages: [{ id: "0000", idx0: 0, mode: "perceptual", lastRunAt: 100 }],
+    });
+    expect(actor.getSnapshot().matches("done")).toBe(true);
+
+    // Live SSE fires for the same page with updated lastRunAt
+    actor.send({
+      type: "PAGE_PUSH",
+      page: { id: "0000", idx0: 0, mode: "perceptual", lastRunAt: 200 },
+    });
+
+    const snap = actor.getSnapshot();
+    expect(snap.context.pages).toHaveLength(1);
+    // lastRunAt should be updated by the PAGE_PUSH merge
+    expect(snap.context.pages[0]?.lastRunAt).toBe(200);
+    actor.stop();
+  });
+
+  it("allows SET_PARAM draft editing in converting state", async () => {
+    const actor = createActor(grayscaleToolMachine, { input: makeInput() });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    actor.send({ type: "SET_PARAM", patch: { gamma: 1.5 } });
+
+    const snap = actor.getSnapshot();
+    expect(snap.matches("converting")).toBe(true);
+    expect(snap.context.draft).toMatchObject({ gamma: 1.5 });
+    actor.stop();
+  });
+
+  it("RERUN_PAGE works in converting state", async () => {
+    const runPageStage = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ runPageStage });
+    const actor = createActor(grayscaleToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    // Seed a page so cursor 0 has a page record
+    actor.send({
+      type: "STAGES_LOADED",
+      pages: [{ id: "0000", idx0: 0, mode: "perceptual", lastRunAt: 100 }],
+    });
+    // now in done; go back to converting via APPLY_RUN to test RERUN_PAGE in that state
+    actor.send({ type: "SET_MODE", mode: "standard" });
+    actor.send({ type: "APPLY_RUN" });
+    expect(actor.getSnapshot().matches("converting")).toBe(true);
+
+    actor.send({ type: "RERUN_PAGE" });
+    expect(runPageStage).toHaveBeenCalledWith("proj-1", "grayscale", 0);
     actor.stop();
   });
 });
