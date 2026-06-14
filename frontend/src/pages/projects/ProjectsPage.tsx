@@ -203,6 +203,7 @@ function PipelineMini({
         return (
           <span
             key={i}
+            className={here && status === "running" ? "pgd-pulse" : undefined}
             style={{
               width: here ? 8 : 6,
               height: here ? 8 : 6,
@@ -212,6 +213,7 @@ function PipelineMini({
                   ? color
                   : "color-mix(in srgb, currentColor 20%, transparent)",
               opacity: done && !here ? 0.7 : 1,
+              display: "inline-block",
             }}
           />
         );
@@ -424,9 +426,18 @@ export function ProjectsPage({
           </div>
 
           {/* Summary */}
-          <div className="px-4 pb-2 text-xs font-mono text-ink-3">
-            <div>{counts.active + counts.archived} projects</div>
-          </div>
+          {(() => {
+            const all = railSnap.context.all ?? [];
+            const totalPages = all.reduce((sum, p) => sum + (p.pages ?? 0), 0);
+            return (
+              <div className="px-4 pb-2 font-mono text-[11px] text-ink-3">
+                <div>
+                  {counts.active + counts.archived} projects ·{" "}
+                  {totalPages.toLocaleString()} pages
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Active / Archived tabs */}
           <div
@@ -574,9 +585,6 @@ export function ProjectsPage({
               tab={activeTab}
               onTabChange={(t) => detailSend({ type: "SET_TAB", tab: t })}
               onOpenProject={() => detailSend({ type: "OPEN_PROJECT" })}
-              onViewAllActivity={() =>
-                detailSend({ type: "VIEW_ALL_ACTIVITY" })
-              }
               manageServices={resolvedServices.manage}
               activityServices={resolvedServices.activity}
               attributesServices={resolvedServices.attributes}
@@ -610,7 +618,6 @@ function ProjectDetailPane({
   tab,
   onTabChange,
   onOpenProject,
-  onViewAllActivity,
   manageServices,
   activityServices,
   attributesServices,
@@ -620,7 +627,6 @@ function ProjectDetailPane({
   tab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
   onOpenProject: () => void;
-  onViewAllActivity: () => void;
   manageServices: ManageActionsServices;
   activityServices: RecentActivityServices;
   attributesServices: AttributesPanelServices;
@@ -704,7 +710,7 @@ function ProjectDetailPane({
       >
         {/* PAGES */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             pages
           </div>
           <div
@@ -716,7 +722,7 @@ function ProjectDetailPane({
         </div>
         {/* ON DISK */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             on disk
           </div>
           <div
@@ -728,7 +734,7 @@ function ProjectDetailPane({
         </div>
         {/* FLAGGED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             flagged
           </div>
           <div
@@ -749,7 +755,7 @@ function ProjectDetailPane({
         </div>
         {/* PROGRESS */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             progress
           </div>
           <div
@@ -764,7 +770,7 @@ function ProjectDetailPane({
         </div>
         {/* CREATED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             created
           </div>
           <div
@@ -780,7 +786,7 @@ function ProjectDetailPane({
         </div>
         {/* UPDATED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
             updated
           </div>
           <div
@@ -789,18 +795,21 @@ function ProjectDetailPane({
           >
             {project.updatedRel}
           </div>
-          {/* Show time portion from updatedAbs ISO string if available */}
+          {/* Extract HH:MM from updatedAbs which is now "Jun 10, 14:00" format */}
           <div className="mt-0.5 font-mono text-[10.5px] text-ink-4">
-            {project.updatedAbs.includes("T")
-              ? project.updatedAbs.slice(11, 16)
-              : (project.updatedAbs.split(", ")[1] ?? "")}
+            {(() => {
+              const parts = project.updatedAbs.split(", ");
+              const timePart = parts[1] ?? "";
+              // Only show if it looks like HH:MM (not a year)
+              return /^\d{2}:\d{2}$/.test(timePart) ? timePart : "";
+            })()}
           </div>
         </div>
       </div>
 
       {/* Pipeline strip */}
       <div className="mt-6" data-testid="detail-pipeline">
-        <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-ink-3">
+        <div className="mb-2 text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
           Pipeline
         </div>
         <div className="rounded-lg border border-border-1 bg-bg-surface px-4 py-3.5">
@@ -873,8 +882,9 @@ function ProjectDetailPane({
           {tab === "activity" && (
             <button
               data-testid="view-all-activity-btn"
-              onClick={onViewAllActivity}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] text-ink-3 hover:text-ink-1"
+              disabled
+              title="Coming soon"
+              className="flex cursor-not-allowed items-center gap-1 px-2.5 py-1.5 text-[11.5px] text-ink-4 opacity-50"
             >
               View all activity →
             </button>
@@ -883,11 +893,7 @@ function ProjectDetailPane({
 
         {/* Tab panels */}
         {tab === "activity" && (
-          <ActivityTabPanel
-            project={project}
-            services={activityServices}
-            onViewAll={onViewAllActivity}
-          />
+          <ActivityTabPanel project={project} services={activityServices} />
         )}
         {tab === "attributes" && (
           <AttributesTabPanel project={project} services={attributesServices} />
@@ -914,6 +920,7 @@ function ProjectDetailPane({
 function formatActivityTime(iso: string): string {
   try {
     const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
     const month = d.toLocaleString("en-US", { month: "short" });
     const day = d.getDate();
     const hh = String(d.getHours()).padStart(2, "0");
@@ -927,11 +934,9 @@ function formatActivityTime(iso: string): string {
 function ActivityTabPanel({
   project,
   services,
-  onViewAll,
 }: {
   project: ProjectRecord;
   services: RecentActivityServices;
-  onViewAll: () => void;
 }) {
   // Spawn the recentActivity machine as a local actor, keyed to project.id.
   // Re-create when project changes.
@@ -1043,7 +1048,8 @@ function ActivityTabPanel({
           variant="ghost"
           size="sm"
           data-testid="open-activity-log-btn"
-          onClick={onViewAll}
+          disabled
+          title="Coming soon"
         >
           Open activity log →
         </Button>
@@ -1190,14 +1196,25 @@ function AttributesTabPanel({
             >
               <span className="flex items-center gap-2">
                 <span
-                  className="text-ink-3"
                   style={{
                     display: "inline-flex",
                     transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
                     transition: "transform 0.15s",
+                    color: "var(--ink-3)",
                   }}
                 >
-                  ▾
+                  <svg
+                    width={12}
+                    height={12}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
                 </span>
                 <span className="text-[12px] font-medium text-ink-2">
                   {sectionLabel}
@@ -1208,7 +1225,16 @@ function AttributesTabPanel({
                     : `${fieldEntries.length} fields`}
                 </span>
               </span>
-              <span className="font-mono text-[11px] text-ink-3">Edit</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                data-testid={`attr-edit-btn-${section}`}
+              >
+                Edit
+              </Button>
             </button>
 
             {/* Body */}
@@ -1266,7 +1292,6 @@ function ManageTabPanel({
   services: ManageActionsServices;
   onProjectMutated: () => void;
 }) {
-  const navigate = useNavigate();
   const [manageSnap, manageSend] = useActor(manageActionsMachine, {
     input: {
       projectId: project.id,
@@ -1367,13 +1392,8 @@ function ManageTabPanel({
             label="Save a copy…"
             desc="Download a zip of the full project to a different location. The original remains untouched."
             meta="choose destination"
-            onAction={() => {
-              if (project.archived !== true) {
-                void navigate(`/projects/${project.id}/export`);
-              } else {
-                manageSend({ type: "SAVE_COPY" });
-              }
-            }}
+            comingSoon
+            onAction={() => {}} // no-op until export route exists
           />
           <ManageRow
             id="delete"
@@ -1580,6 +1600,7 @@ function ManageRow({
   danger,
   twoStep,
   buttonLabel,
+  comingSoon,
   onAction,
 }: {
   id: ManageAction;
@@ -1589,6 +1610,7 @@ function ManageRow({
   danger?: boolean;
   twoStep?: boolean;
   buttonLabel?: string;
+  comingSoon?: boolean;
   onAction: () => void;
 }) {
   return (
@@ -1634,8 +1656,10 @@ function ManageRow({
         size="sm"
         data-testid={`manage-action-btn-${id}`}
         onClick={onAction}
+        disabled={comingSoon}
+        title={comingSoon ? "Coming soon" : undefined}
       >
-        {buttonLabel ?? label.replace("…", "")}
+        {comingSoon ? "Coming soon" : (buttonLabel ?? label.replace("…", ""))}
       </Button>
     </div>
   );

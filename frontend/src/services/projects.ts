@@ -129,7 +129,7 @@ function formatDateRel(iso: string): string {
   }
 }
 
-/** Format a datetime string to an absolute display string like "Jun 10, 09:00". */
+/** Format a datetime string to an absolute display string like "Jun 10, 2026". */
 function formatDateAbs(iso: string): string {
   try {
     const dt = new Date(iso);
@@ -143,6 +143,47 @@ function formatDateAbs(iso: string): string {
   }
 }
 
+/** Format a datetime string to "Jun 10, 14:00" — month+day+time (no year). */
+function formatDateAbsTime(iso: string): string {
+  try {
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return iso;
+    const datePart = dt.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const mm = String(dt.getMinutes()).padStart(2, "0");
+    return `${datePart}, ${hh}:${mm}`;
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Map backend status to approximate currentStage in the 23-stage pipeline.
+ * This is a coarse approximation from status only — the precise stage would
+ * require a separate /pipeline call (N+1). See: docs/specs/stage-registry-v2.md
+ */
+function approximateCurrentStage(status: BackendProject["status"]): number {
+  switch (status) {
+    case "ingesting":
+      return 0; // source ingest, before page stages
+    case "configuring":
+      return 0; // project configured, no page stages run yet
+    case "processing":
+      return 6; // mid page-stage processing (denoise/dewarp range)
+    case "reviewing":
+      return 14; // text_review stage (stage index 14 in 0-based 16 page stages)
+    case "packaging":
+      return 19; // validation/proof_pack range (project stages)
+    case "complete":
+      return 22; // zip/submit_check done
+    default:
+      return 0;
+  }
+}
+
 /** Adapt a backend Project to the frontend ProjectRecord view-model. */
 export function adaptProject(p: BackendProject): ProjectRecord {
   const totalBytes = p.stage_artifacts_bytes + p.source_zip_bytes;
@@ -151,15 +192,16 @@ export function adaptProject(p: BackendProject): ProjectRecord {
     title: p.name,
     author: p.config.author ?? "—",
     pages: p.page_count,
-    totalStages: 23, // fixed: 23 runner stages (24 stages minus source)
-    currentStage: 0, // computed from stage progress — simplified at I1
+    totalStages: 23,
+    currentStage: approximateCurrentStage(p.status),
     status: mapStatus(p.status, p.archived),
     archived: p.archived,
     updatedRel: formatDateRel(p.updated_at),
-    updatedAbs: formatDateAbs(p.updated_at),
+    updatedAbs: formatDateAbsTime(p.updated_at),
     created: formatDateAbs(p.created_at),
     size: formatBytes(totalBytes),
     registry_version: p.registry_version,
+    // flagged: omitted — list response has no flagged count; shows "—" in UI
   };
   // Only set archivedOn when archived (exactOptionalPropertyTypes: omit rather than undefined)
   if (p.archived) {
@@ -202,32 +244,38 @@ interface BackendActivityEntry {
  *
  * Route: GET /api/data/projects/{id}/activity (W4 Group 4 — real route).
  * Returns the project event log as an ActivityFeedResponse.
- * Falls back to an empty feed on error (e.g. while the project is initialising).
+ * Swallows 404 (route missing or project not initialized) — propagates other errors.
  */
 export async function fetchRecentActivity(
   projectId: string,
   limit = 10,
 ): Promise<ActivityFeedResponse> {
+  let entries: BackendActivityEntry[];
   try {
-    const entries = await api.get<BackendActivityEntry[]>(
+    entries = await api.get<BackendActivityEntry[]>(
       `/api/data/projects/${encodeURIComponent(projectId)}/activity?limit=${limit}`,
     );
-    return {
-      entries: entries.map((e) => ({
-        id: e.id,
-        stage: e.stage_id ?? e.event_type,
-        description: e.description ?? e.event_type,
-        at: e.created_at,
-        kind: "stage" as const,
-      })),
-      totalCount: entries.length,
-      commentCount: 0,
-      stageCount: entries.length,
-    };
-  } catch {
-    // Route not yet implemented — return empty feed rather than error.
-    return { entries: [], totalCount: 0, commentCount: 0, stageCount: 0 };
+  } catch (err) {
+    // Only swallow 404 (project not yet initialized) — propagate other errors
+    const status = (err as { status?: number })?.status;
+    if (status === 404 || status === undefined) {
+      // Route missing or project not initialized — return empty feed
+      return { entries: [], totalCount: 0, commentCount: 0, stageCount: 0 };
+    }
+    throw err;
   }
+  return {
+    entries: entries.map((e) => ({
+      id: e.id,
+      stage: e.stage_id ?? e.event_type,
+      description: e.description ?? e.event_type,
+      at: e.created_at,
+      kind: "stage" as const,
+    })),
+    totalCount: entries.length,
+    commentCount: 0,
+    stageCount: entries.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -239,37 +287,35 @@ export async function fetchRecentActivity(
  *
  * Route: GET /api/data/projects/{id}/attributes (W4 Group 4 — real route).
  * Returns bib/pgdp/fmt fields from the project config.
- * Falls back to deriving from the project record when the attributes route
- * returns an error (e.g. legacy projects without stored attributes).
+ * Falls back to deriving from the project record on 404 (not yet implemented);
+ * propagates other errors (e.g. 500) so the caller can show an error state.
  */
 export async function fetchAttributes(
   projectId: string,
 ): Promise<AttributeRecord> {
   try {
-    const attrs = await api.get<AttributeRecord>(
+    return await api.get<AttributeRecord>(
       `/api/data/projects/${encodeURIComponent(projectId)}/attributes`,
     );
-    return attrs;
-  } catch {
-    // Derive from project config on 404/not-implemented.
-    try {
-      const project = await api.get<BackendProject>(
-        `/api/data/projects/${encodeURIComponent(projectId)}`,
-      );
-      return {
-        bib: {
-          Title: project.name,
-          Author: project.config.author ?? "—",
-        },
-        pgdp: {
-          "Project ID": project.id,
-        },
-        fmt: {},
-        comments: "",
-      };
-    } catch {
-      return { bib: {}, pgdp: {}, fmt: {}, comments: "" };
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    if (status === 404 || status === undefined) {
+      // Route not yet implemented or project not found — derive from project config
+      try {
+        const project = await api.get<BackendProject>(
+          `/api/data/projects/${encodeURIComponent(projectId)}`,
+        );
+        return {
+          bib: { Title: project.name, Author: project.config.author ?? "—" },
+          pgdp: { "Project ID": project.id },
+          fmt: {},
+          comments: "",
+        };
+      } catch {
+        return { bib: {}, pgdp: {}, fmt: {}, comments: "" };
+      }
     }
+    throw err;
   }
 }
 
@@ -278,22 +324,17 @@ export async function fetchAttributes(
  *
  * Route: PATCH /api/data/projects/{id}/attributes/{section}
  * W4 Group 4 — real route.
+ * Re-throws on error — callers handle errors through the machine error state.
  */
 export async function saveAttributes(
   projectId: string,
   section: AttributeSection,
   draft: Record<string, string>,
 ): Promise<AttributeRecord> {
-  try {
-    const result = await api.patch<AttributeRecord>(
-      `/api/data/projects/${encodeURIComponent(projectId)}/attributes/${encodeURIComponent(section)}`,
-      draft,
-    );
-    return result;
-  } catch {
-    // Fallback: return current attributes on error.
-    return fetchAttributes(projectId);
-  }
+  return await api.patch<AttributeRecord>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/attributes/${encodeURIComponent(section)}`,
+    draft,
+  );
 }
 
 // ---------------------------------------------------------------------------
