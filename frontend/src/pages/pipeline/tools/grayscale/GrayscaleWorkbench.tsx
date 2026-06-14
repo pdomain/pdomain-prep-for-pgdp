@@ -13,7 +13,7 @@
  * backend integration deferred to I1. Marked [OPEN:I1] in comments.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@pdomain/pdomain-ui/icons";
 import type {
@@ -830,14 +830,23 @@ function PageViewerPane({
   currentMode: GrayscaleMode;
 }): ReactNode {
   const [viewMode, setViewMode] = useState<ViewMode>("split");
+  // Track whether the before-pane ingest thumbnail failed to load so we can
+  // fall back to the synthetic placeholder gracefully (OQ-5).
+  const [srcImgFailed, setSrcImgFailed] = useState(false);
   const page = pages[cursor];
+
+  // Reset the failed flag whenever the page changes so navigating to a new
+  // page re-attempts the ingest thumbnail fetch.
+  const srcUrl = page ? sourceArtifactUrl(projectId, page.idx0) : null;
+  useEffect(() => {
+    setSrcImgFailed(false);
+  }, [srcUrl]);
   const sec = estimateSecPerPage(backend);
 
-  // Artifact URLs keyed on page.idx0 + page.lastRunAt for cache-busting
+  // Artifact URL for the grayscale stage output (after-pane).
   const gsUrl = page
     ? grayscaleArtifactUrl(projectId, page.idx0, page.lastRunAt ?? null)
     : null;
-  const srcUrl = page ? sourceArtifactUrl(projectId, page.idx0) : null;
 
   const pageLabel = page?.id ?? String(cursor + 1).padStart(4, "0");
   const total = pages.length;
@@ -954,15 +963,16 @@ function PageViewerPane({
           overflow: "hidden",
         }}
       >
-        {/* Before pane */}
+        {/* Before pane — real color source thumbnail (OQ-5) */}
         {(viewMode === "before" || viewMode === "split") && (
           <div style={{ position: "relative", overflow: "hidden" }}>
-            {srcUrl ? (
+            {srcUrl != null && !srcImgFailed ? (
               <img
                 data-testid="before-image"
                 src={srcUrl}
                 alt="source (before grayscale)"
                 style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                onError={() => setSrcImgFailed(true)}
               />
             ) : (
               <SyntheticPage isColor />

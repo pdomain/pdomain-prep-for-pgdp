@@ -1,14 +1,17 @@
 /**
  * GrayscalePages — Pages tab for the Grayscale tool.
  *
- * Renders a grid of page thumbnails (either real images via the artifact
- * endpoint or synthetic grey thumbnails when no artifact is available).
+ * Renders a grid of page thumbnails using real images from the API:
+ *   - Grayscale stage thumbnail when the stage is clean (OQ-4 fix).
+ *   - Falls back to the ingest color thumbnail on 404 (stage not yet run).
+ *   - Falls back to a neutral placeholder only if both fetches fail.
  * Each card shows page id + ModePill.
  *
  * Design reference: grayscale.jsx § GrayscalePages + GrayThumb + ModePill
  */
 
-import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { GrayscaleBackend, GrayscalePage } from "./types";
 import {
   BackendChip,
@@ -17,85 +20,108 @@ import {
   ModePill,
   VDivider,
 } from "./GrayscaleShared";
-import { estimateSecPerPage, fmtSec } from "./helpers";
+import {
+  estimateSecPerPage,
+  fmtSec,
+  grayscaleStageThumbnailUrl,
+  sourceArtifactUrl,
+} from "./helpers";
 
 // ---------------------------------------------------------------------------
-// Synthetic page thumbnail (when no artifact available yet)
+// Page thumbnail — real image with graceful fallback (OQ-4)
 // ---------------------------------------------------------------------------
 
+/**
+ * GrayThumb renders a real page thumbnail.
+ *
+ * Strategy:
+ *   1. Try the grayscale stage thumbnail (small PNG pre-generated at stage-write time).
+ *      URL: /api/data/projects/{id}/pages/{idx0}/stages/grayscale/thumbnail
+ *      Returns 404 when the stage has not run or is not clean — handled via
+ *      the img onError handler.
+ *   2. On 404 (or any load error), fall back to the ingest color thumbnail.
+ *      URL: /api/data/projects/{id}/pages/{idx0}/thumbnail
+ *      This is always available after ingest and is a color JPEG.
+ *   3. If both fail (network error, page never ingested), show a neutral
+ *      grey placeholder div so no broken-image icon leaks through.
+ */
 function GrayThumb({
   page,
   active = false,
-  projectId: _projectId,
-  idx0: _idx0,
+  projectId,
+  idx0,
 }: {
   page: GrayscalePage;
   active?: boolean;
   projectId: string;
   idx0: number;
 }): ReactNode {
-  // GrayscalePage doesn't carry artifact_key at F5 — always use synthetic gradient.
-  // Wire to real artifact endpoint at I1 (OQ-4).
-  const tone = typeof page.tone === "number" ? page.tone : 0.86;
-  const inkTone = Math.max(0.2, tone - 0.55);
+  // Primary: grayscale stage thumbnail (exists only when stage is clean).
+  // Secondary: ingest color thumbnail (always present after ingest).
+  const grayThumbUrl = grayscaleStageThumbnailUrl(
+    projectId,
+    idx0,
+    page.lastRunAt ?? null,
+  );
+  const colorThumbUrl = sourceArtifactUrl(projectId, idx0);
+
+  // Track which URL we're showing and whether both have failed.
+  const [src, setSrc] = useState<string>(grayThumbUrl);
+  const [failed, setFailed] = useState(false);
+
+  // Reset to the grayscale thumbnail URL when lastRunAt changes (stage re-ran).
+  useEffect(() => {
+    setSrc(grayThumbUrl);
+    setFailed(false);
+  }, [grayThumbUrl]);
+
+  const boxShadow = active
+    ? "0 0 0 2px var(--accent), inset 0 0 0 1px rgba(40,40,40,0.15)"
+    : "inset 0 0 0 1px rgba(40,40,40,0.15)";
+
+  const containerStyle: CSSProperties = {
+    width: "100%",
+    aspectRatio: "3/4",
+    borderRadius: 3,
+    position: "relative",
+    overflow: "hidden",
+    boxShadow,
+    cursor: "pointer",
+    background: "var(--bg-page)",
+  };
+
+  if (failed) {
+    // Both URLs failed — show a minimal neutral placeholder (no synthetic gradient).
+    return (
+      <div
+        data-testid={`gs-page-thumb-${page.id}`}
+        style={{ ...containerStyle, background: "oklch(0.86 0 0)" }}
+      />
+    );
+  }
+
   return (
-    <div
-      data-testid={`gs-page-thumb-${page.id}`}
-      style={{
-        width: "100%",
-        aspectRatio: "3/4",
-        borderRadius: 3,
-        position: "relative",
-        overflow: "hidden",
-        background: `oklch(${tone} 0 0)`,
-        boxShadow: active
-          ? "0 0 0 2px var(--accent), inset 0 0 0 1px rgba(40,40,40,0.15)"
-          : "inset 0 0 0 1px rgba(40,40,40,0.15)",
-        cursor: "pointer",
-      }}
-    >
-      {/* Paper grain */}
-      <div
+    <div data-testid={`gs-page-thumb-${page.id}`} style={containerStyle}>
+      <img
+        src={src}
+        alt={`page ${page.id} thumbnail`}
+        loading="lazy"
+        onError={() => {
+          if (src === grayThumbUrl) {
+            // Grayscale thumbnail not available — fall back to ingest color thumbnail.
+            setSrc(colorThumbUrl);
+          } else {
+            // Both failed — show placeholder.
+            setFailed(true);
+          }
+        }}
         style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `radial-gradient(ellipse at top, oklch(${tone + 0.04} 0 0) 0%, transparent 50%), radial-gradient(ellipse at bottom right, oklch(${tone - 0.04} 0 0) 0%, transparent 60%)`,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: "block",
         }}
       />
-      {/* Ink lines */}
-      <div
-        style={{
-          position: "absolute",
-          inset: "14% 14%",
-          backgroundImage: `repeating-linear-gradient(to bottom, oklch(${inkTone} 0 0) 0 1.2px, transparent 1.2px 6px)`,
-          opacity: 0.65,
-        }}
-      />
-      {/* Page number stripe */}
-      <div
-        style={{
-          position: "absolute",
-          left: "40%",
-          right: "40%",
-          bottom: "7%",
-          height: 2,
-          background: `oklch(${inkTone} 0 0)`,
-          opacity: 0.55,
-        }}
-      />
-      {/* Label */}
-      <span
-        className="mono"
-        style={{
-          position: "absolute",
-          top: 4,
-          right: 4,
-          fontSize: 8,
-          color: "oklch(0.32 0 0)",
-        }}
-      >
-        p{page.id}
-      </span>
     </div>
   );
 }

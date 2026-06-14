@@ -45,8 +45,35 @@ export function grayscaleArtifactUrl(
 }
 
 /**
- * Build the artifact URL for a page's source (manual_deskew_pre or decode_source).
+ * Build the URL for a page's ingest-time color thumbnail.
+ *   GET /api/data/projects/{projectId}/pages/{idx0}/thumbnail
+ *
+ * This route is served from the BlobStore (written during ingest) and is
+ * available for every page immediately after the source/thumbnail ingest
+ * stage completes.  It is the authoritative color-source image for the
+ * before pane in the grayscale workbench.
+ *
+ * Previously this function built a URL for the `manual_deskew_pre` stage
+ * artifact, which is not a V2_PAGE_STAGE_IDS member and therefore always
+ * returned 422.  That has been corrected here (OQ-5).
  */
 export function sourceArtifactUrl(projectId: string, idx0: number): string {
-  return `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/manual_deskew_pre/artifact`;
+  return `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/thumbnail`;
+}
+
+/**
+ * Build the URL for a page's grayscale stage thumbnail (small PNG).
+ *   GET /api/data/projects/{projectId}/pages/{idx0}/stages/grayscale/thumbnail
+ *
+ * Returns 404 when the grayscale stage has not yet run or is not clean.
+ * Callers should fall back to sourceArtifactUrl() (the ingest color thumbnail)
+ * when this returns a non-200 status (OQ-4).
+ */
+export function grayscaleStageThumbnailUrl(
+  projectId: string,
+  idx0: number,
+  lastRunAt?: number | null,
+): string {
+  const base = `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/grayscale/thumbnail`;
+  return lastRunAt != null ? `${base}?v=${lastRunAt}` : base;
 }
