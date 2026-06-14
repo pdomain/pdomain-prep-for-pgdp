@@ -35,6 +35,8 @@ function makeServices(
       why: "newsprint · low contrast",
       backend: "gpu",
     }),
+    runStage: vi.fn().mockResolvedValue(undefined),
+    runPageStage: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -51,7 +53,7 @@ function makeInput(
 }
 
 function makePage(overrides: Partial<GrayscalePage> = {}): GrayscalePage {
-  return { id: "p001", mode: "perceptual", ...overrides };
+  return { id: "p001", idx0: 0, mode: "perceptual", ...overrides };
 }
 
 async function waitForState(

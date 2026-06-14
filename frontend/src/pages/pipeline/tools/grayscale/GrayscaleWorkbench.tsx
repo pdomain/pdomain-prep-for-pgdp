@@ -15,8 +15,10 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { Icon } from "@pdomain/pdomain-ui/icons";
 import type {
   GrayscaleBackend,
+  GrayscaleDetected,
   GrayscaleDraft,
   GrayscaleMode,
   GrayscalePage,
@@ -83,14 +85,13 @@ function AdvancedParamsStacked({
       >
         <span
           style={{
-            fontSize: 10,
             color: "var(--ink-3)",
             transform: open ? "rotate(90deg)" : "none",
             display: "inline-block",
             transition: "transform 0.15s",
           }}
         >
-          ▶
+          <Icon name="chevR" size={10} />
         </span>
         <span
           style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-1)" }}
@@ -441,7 +442,7 @@ function ModeRowCompact({
           flexShrink: 0,
         }}
       >
-        {time}
+        est. {time}
       </span>
     </div>
   );
@@ -456,9 +457,10 @@ type SettingsState = "default" | "modified" | "preset";
 function StageControlsDrawer({
   backend,
   draft,
+  detected,
   settingsState,
-  onSetMode,
-  onPatch,
+  onSetMode: _onSetMode,
+  onPatch: _onPatch,
   onRevert,
   onSaveDefault,
   onRedetect,
@@ -466,6 +468,7 @@ function StageControlsDrawer({
 }: {
   backend: GrayscaleBackend;
   draft: GrayscaleDraft | null;
+  detected: GrayscaleDetected | null;
   settingsState: SettingsState;
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
@@ -485,9 +488,9 @@ function StageControlsDrawer({
         : "var(--exact)";
   const bannerLabel =
     settingsState === "modified"
-      ? "Modified · 2 changes vs project default"
+      ? "Modified vs project default"
       : settingsState === "preset"
-        ? "Using preset · Newsprint · pre-1920"
+        ? "Using a preset"
         : "Using project default";
 
   return (
@@ -586,12 +589,14 @@ function StageControlsDrawer({
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 12, color: bannerTone, flexShrink: 0 }}>
-            {settingsState === "modified"
-              ? "⚠"
-              : settingsState === "preset"
-                ? "✦"
-                : "✓"}
+          <span style={{ color: bannerTone, flexShrink: 0, display: "flex" }}>
+            {settingsState === "modified" ? (
+              <Icon name="alert" size={12} />
+            ) : settingsState === "preset" ? (
+              <Icon name="sparkles" size={12} />
+            ) : (
+              <Icon name="check" size={10} />
+            )}
           </span>
           <span
             style={{
@@ -635,7 +640,7 @@ function StageControlsDrawer({
               color: "var(--accent)",
             }}
           >
-            ✦ Auto-detected
+            <Icon name="sparkles" size={12} /> Auto-detected
           </div>
           <div
             style={{
@@ -647,12 +652,14 @@ function StageControlsDrawer({
           >
             Picked{" "}
             <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>
-              perceptual
+              {detected?.mode ?? "—"}
             </span>{" "}
-            from 8-page sample.{" "}
-            <span className="mono" style={{ color: "var(--ink-3)" }}>
-              newsprint · low contrast · low DPI
-            </span>
+            from a sample of 8 pages.{" "}
+            {detected?.why && (
+              <span className="mono" style={{ color: "var(--ink-3)" }}>
+                {detected.why}
+              </span>
+            )}
           </div>
           <div
             style={{
@@ -696,9 +703,10 @@ function StageControlsDrawer({
                 color: "var(--mismatch)",
                 marginTop: 1,
                 flexShrink: 0,
+                display: "flex",
               }}
             >
-              ⚠
+              <Icon name="alert" size={12} />
             </span>
             <div>
               <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>
@@ -710,37 +718,60 @@ function StageControlsDrawer({
           </div>
         )}
 
-        {/* Mode chooser */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* Wave 2 — mode + params (disabled until perceptual primitive ships) */}
+        <div style={{ position: "relative" }}>
+          <div style={{ pointerEvents: "none", opacity: 0.45 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  letterSpacing: ".08em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-4)",
+                }}
+              >
+                Grayscale mode
+              </div>
+              <ModeRowCompact
+                kind="standard"
+                selected={currentMode === "standard"}
+                backend={backend}
+                onClick={() => {}}
+              />
+              <ModeRowCompact
+                kind="perceptual"
+                selected={currentMode === "perceptual"}
+                backend={backend}
+                onClick={() => {}}
+              />
+            </div>
+            {currentMode === "perceptual" && (
+              <AdvancedParamsStacked draft={draft} onPatch={() => {}} />
+            )}
+          </div>
           <div
             style={{
-              fontSize: 9.5,
-              fontWeight: 700,
-              letterSpacing: ".08em",
-              textTransform: "uppercase",
-              color: "var(--ink-4)",
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background:
+                "color-mix(in oklab, var(--bg-surface) 70%, transparent)",
+              borderRadius: 7,
+              flexDirection: "column",
+              gap: 6,
             }}
           >
-            Grayscale mode
+            <Icon name="wrench" size={14} color="var(--ink-3)" />
+            <span
+              style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}
+            >
+              Mode tuning coming soon
+            </span>
           </div>
-          <ModeRowCompact
-            kind="standard"
-            selected={currentMode === "standard"}
-            backend={backend}
-            onClick={() => onSetMode("standard")}
-          />
-          <ModeRowCompact
-            kind="perceptual"
-            selected={currentMode === "perceptual"}
-            backend={backend}
-            onClick={() => onSetMode("perceptual")}
-          />
         </div>
-
-        {/* Advanced params (perceptual only) */}
-        {currentMode === "perceptual" && (
-          <AdvancedParamsStacked draft={draft} onPatch={onPatch} />
-        )}
 
         {/* Cached note */}
         <div
@@ -757,8 +788,15 @@ function StageControlsDrawer({
             lineHeight: 1.45,
           }}
         >
-          <span style={{ color: "var(--ink-4)", marginTop: 1, flexShrink: 0 }}>
-            ℹ
+          <span
+            style={{
+              color: "var(--ink-4)",
+              marginTop: 1,
+              flexShrink: 0,
+              display: "flex",
+            }}
+          >
+            <Icon name="info" size={12} />
           </span>
           <span>
             Output cached per page. Downstream stages re-use the cached tensor —
@@ -820,9 +858,11 @@ function PageViewerPane({
   const page = pages[cursor];
   const sec = estimateSecPerPage(backend);
 
-  // Artifact URLs (only available if grayscale has run)
-  const gsUrl = page ? grayscaleArtifactUrl(projectId, cursor) : null;
-  const srcUrl = page ? sourceArtifactUrl(projectId, cursor) : null;
+  // Artifact URLs keyed on page.idx0 + page.lastRunAt for cache-busting
+  const gsUrl = page
+    ? grayscaleArtifactUrl(projectId, page.idx0, page.lastRunAt ?? null)
+    : null;
+  const srcUrl = page ? sourceArtifactUrl(projectId, page.idx0) : null;
 
   const pageLabel = page?.id ?? String(cursor + 1).padStart(4, "0");
   const total = pages.length;
@@ -917,10 +957,8 @@ function PageViewerPane({
           style={{ fontSize: 10.5, color: "var(--ink-3)" }}
         >
           this page ·{" "}
-          <span style={{ color: "var(--accent)", fontWeight: 600 }}>
-            {fmtSec(sec)}
-          </span>{" "}
-          · {page ? "cached" : "not run"}
+          <span style={{ color: "var(--ink-3)" }}>est. {fmtSec(sec)}</span> ·{" "}
+          {page ? "cached" : "not run"}
         </span>
         <VDivider />
         <GhostButton onClick={onRerunPage} data-testid="rerun-page-btn">
@@ -958,35 +996,14 @@ function PageViewerPane({
           </div>
         )}
 
-        {/* Split handle */}
+        {/* Split divider — drag not yet implemented */}
         {viewMode === "split" && (
           <div
             style={{
               background: "var(--border-2)",
               position: "relative",
             }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: 22,
-                height: 22,
-                borderRadius: 99,
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-2)",
-                display: "grid",
-                placeItems: "center",
-                cursor: "col-resize",
-                color: "var(--ink-3)",
-                fontSize: 11,
-              }}
-            >
-              ⇔
-            </span>
-          </div>
+          />
         )}
 
         {/* After pane */}
@@ -1039,7 +1056,7 @@ function PageViewerPane({
         }}
       >
         <GhostButton onClick={onPrev} data-testid="prev-page-strip-btn">
-          ‹
+          <Icon name="chevL" size={14} />
         </GhostButton>
         <div
           style={{
@@ -1088,7 +1105,7 @@ function PageViewerPane({
           })}
         </div>
         <GhostButton onClick={onNext} data-testid="next-page-strip-btn">
-          ›
+          <Icon name="chevR" size={14} />
         </GhostButton>
       </div>
     </div>
@@ -1215,6 +1232,7 @@ export function GrayscaleWorkbenchTab({
   cursor,
   backend,
   draft,
+  detected,
   settingsState,
   onPrev,
   onNext,
@@ -1231,6 +1249,7 @@ export function GrayscaleWorkbenchTab({
   cursor: number;
   backend: GrayscaleBackend;
   draft: GrayscaleDraft | null;
+  detected: GrayscaleDetected | null;
   settingsState: SettingsState;
   onPrev: () => void;
   onNext: () => void;
@@ -1263,10 +1282,10 @@ export function GrayscaleWorkbenchTab({
         right={
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <GhostButton onClick={onPrev} data-testid="prev-page-btn">
-              ‹ Prev page
+              <Icon name="chevL" size={14} /> Prev page
             </GhostButton>
             <GhostButton onClick={onNext} data-testid="next-page-btn">
-              Next page ›
+              Next page <Icon name="chevR" size={14} />
             </GhostButton>
             <VDivider />
             <PrimaryButton onClick={onApplyRun} data-testid="apply-run-btn">
@@ -1288,13 +1307,14 @@ export function GrayscaleWorkbenchTab({
           <StageControlsDrawer
             backend={backend}
             draft={draft}
+            detected={detected}
             settingsState={settingsState}
             onSetMode={onSetMode}
             onPatch={onPatch}
             onRevert={onRevert}
             onSaveDefault={onSaveDefault}
             onRedetect={onRedetect}
-            pageCount={pages.length || 232}
+            pageCount={pages.length}
           />
           <PageViewerPane
             projectId={projectId}

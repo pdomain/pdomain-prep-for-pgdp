@@ -39,10 +39,44 @@ async function detectProfile(
 }
 
 // ---------------------------------------------------------------------------
+// Run stage (project-wide)
+// ---------------------------------------------------------------------------
+
+async function runStage(
+  projectId: string,
+  stageId: string,
+  settings: Record<string, unknown>,
+): Promise<void> {
+  await api.post(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/run`,
+    settings,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run single page stage
+// ---------------------------------------------------------------------------
+
+async function runPageStage(
+  projectId: string,
+  stageId: string,
+  idx0: number,
+): Promise<void> {
+  await api.post(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/${encodeURIComponent(stageId)}/run`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Exported factory
 // ---------------------------------------------------------------------------
 
 /** Build real GrayscaleToolServices for injection into the machine. */
 export function buildRealGrayscaleToolServices(): GrayscaleToolServices {
-  return { ...buildRealStageSettingsServices(), detectProfile };
+  return {
+    ...buildRealStageSettingsServices(),
+    detectProfile,
+    runStage,
+    runPageStage,
+  };
 }

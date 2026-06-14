@@ -40,6 +40,8 @@ const defaultServices: GrayscaleToolServices = {
       why: "newsprint · low contrast · low DPI",
       backend: "gpu" as const,
     }),
+  runStage: () => Promise.resolve(),
+  runPageStage: () => Promise.resolve(),
 };
 
 function renderGrayscale(
@@ -256,6 +258,8 @@ describe("GrayscaleTool — error state", () => {
   const errorServices: GrayscaleToolServices = {
     ...stubStageSettingsServices(),
     detectProfile: () => Promise.reject(new Error("network error")),
+    runStage: () => Promise.resolve(),
+    runPageStage: () => Promise.resolve(),
   };
 
   it("renders grayscale-tool-error when detectProfile rejects", async () => {

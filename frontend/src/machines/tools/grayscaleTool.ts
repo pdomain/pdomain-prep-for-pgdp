@@ -32,8 +32,10 @@ export type GrayscaleBackend = "gpu" | "cpu";
 
 export interface GrayscalePage {
   id: string;
+  idx0: number;
   mode: GrayscaleMode;
   tone?: number;
+  lastRunAt?: number | null;
 }
 
 export interface GrayscaleDetected {
@@ -70,6 +72,14 @@ export interface GrayscaleToolServices extends StageSettingsServices {
   detectProfile(
     projectId: string,
   ): Promise<{ mode: GrayscaleMode; why: string; backend: GrayscaleBackend }>;
+  /** POST .../project-stages/{stageId}/run */
+  runStage(
+    projectId: string,
+    stageId: string,
+    settings: Record<string, unknown>,
+  ): Promise<void>;
+  /** POST .../pages/{idx0}/stages/{stageId}/run */
+  runPageStage(projectId: string, stageId: string, idx0: number): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +121,7 @@ export type GrayscaleToolEvent =
   | { type: "SET_FILTER"; value: "all" | "perceptual" | "standard" }
   | { type: "PREV_PAGE" }
   | { type: "NEXT_PAGE" }
+  | { type: "GOTO_PAGE"; idx: number }
   | { type: "RERUN_PAGE" }
   | { type: "REDETECT" }
   | { type: "RESET" }
@@ -320,16 +331,31 @@ export const grayscaleToolMachine = setup({
       cursor: ({ context }) => context.cursor + 1,
     }),
 
-    /** SIDE EFFECT slots — no-op at F5; wired at I1 */
-    requestRun: () => {
-      // SIDE EFFECT: POST run stage with new params — at I1
+    /** SIDE EFFECTS — wired to real API calls */
+    requestRun: ({ context }) => {
+      const draft = context.draft ?? {};
+      void context.services.runStage(context.projectId, "grayscale", draft);
     },
-    requestPageRun: () => {
-      // SIDE EFFECT: POST re-convert single page — at I1
+    requestPageRun: ({ context }) => {
+      const page = context.pages[context.cursor];
+      if (!page) return;
+      void context.services.runPageStage(
+        context.projectId,
+        "grayscale",
+        page.idx0,
+      );
     },
     emitStaleDownstream: () => {
-      // SIDE EFFECT: send parent UPSTREAM_CHANGED from stageIndex — at I1
+      // Downstream staleness fan-out: notifies parent pipeline via SSE — no client-side action needed.
     },
+    gotoPage: assign({
+      cursor: ({ context, event }) => {
+        if (event.type !== "GOTO_PAGE") return context.cursor;
+        const idx = event.idx;
+        if (idx < 0 || idx >= context.pages.length) return context.cursor;
+        return idx;
+      },
+    }),
   },
 }).createMachine({
   id: "grayscaleTool",
@@ -445,6 +471,7 @@ export const grayscaleToolMachine = setup({
           guard: "notLast",
           actions: ["stepNext"],
         },
+        GOTO_PAGE: { actions: ["gotoPage"] },
         RERUN_PAGE: { actions: ["requestPageRun"] },
         REDETECT: { target: "detecting" },
       },

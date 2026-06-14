@@ -8,7 +8,12 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import type { GrayscaleBackend, GrayscaleDraft, GrayscaleMode } from "./types";
+import type {
+  GrayscaleBackend,
+  GrayscaleDetected,
+  GrayscaleDraft,
+  GrayscaleMode,
+} from "./types";
 import {
   BackendChip,
   GhostButton,
@@ -466,6 +471,7 @@ function AdvancedParamsFull({
 export function GrayscaleSettingsTab({
   backend,
   draft,
+  detected: _detected,
   onSetMode,
   onPatch,
   onRedetect,
@@ -473,6 +479,7 @@ export function GrayscaleSettingsTab({
 }: {
   backend: GrayscaleBackend;
   draft: GrayscaleDraft | null;
+  detected: GrayscaleDetected | null;
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
   onRedetect: () => void;

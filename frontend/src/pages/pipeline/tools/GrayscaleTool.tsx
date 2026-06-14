@@ -19,28 +19,25 @@
  * Machine: grayscaleToolMachine (src/machines/tools/grayscaleTool.ts)
  * Services: buildRealGrayscaleToolServices (src/services/tools/grayscaleTool.ts)
  *
- * OPEN QUESTIONS (deferred to I1):
- *   [OQ-1] Apply & Run — POST run to backend; currently calls machine APPLY_RUN
- *          which no-ops the side-effect slot.
- *   [OQ-2] Re-run page  — POST single-page run; machine RERUN_PAGE no-ops at F5.
- *   [OQ-3] Save as default — machine SAVE_DEFAULT no-ops at F5.
- *   [OQ-4] Page grid real thumbs — GrayscalePage carries no artifact_key at F5;
- *          synthetic gradient used. Wire at I1 via thumbnail endpoint.
- *   [OQ-5] Before-pane source image — uses manual_deskew_pre/artifact; may
- *          404 for pages where that stage hasn't run. Degrade gracefully to
- *          synthetic page.
- *   [OQ-6] Backend chip auto-detect — project-stage detect route not yet in
- *          the grayscale spec. Currently uses value from detectProfile service.
+ * I1 wiring complete:
+ *   - Apply & Run → POST .../project-stages/grayscale/run (requestRun action)
+ *   - Re-run page → POST .../pages/{idx0}/stages/grayscale/run (requestPageRun action)
+ *   - Save as default → saveAsDefault service
+ *   - detect result (mode/why/backend) threaded to Overview/drawer/Settings banners
+ *   - GOTO_PAGE event replaces loop of NEXT_PAGE/PREV_PAGE in onSelectPage
+ *   - Keyboard nav: ArrowLeft/[ and ArrowRight/] → PREV_PAGE/NEXT_PAGE in workbench
+ *   Remaining: page grid real thumbs (OQ-4), before-pane source degradation (OQ-5)
  *
  * @see src/machines/tools/grayscaleTool.ts
  * @see src/services/tools/grayscaleTool.ts
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
+import { Icon } from "@pdomain/pdomain-ui/icons";
 import {
   grayscaleToolMachine,
   type GrayscaleToolServices,
@@ -77,7 +74,7 @@ function DetectingBanner(): ReactNode {
         gap: 10,
       }}
     >
-      <span style={{ color: "var(--accent)" }}>⟳</span>
+      <Icon name="refresh" size={12} color="var(--accent)" />
       Detecting source profile from 8 sample pages…
     </div>
   );
@@ -175,21 +172,6 @@ export function GrayscaleTool({
   // Determine settings state for drawer
   const settingsState = ctx.draft != null ? "modified" : "default";
 
-  // ── Error state ──────────────────────────────────────────────────────────
-  if (topState === "error") {
-    return (
-      <GrayscaleError
-        message={ctx.error?.message ?? "Unknown error"}
-        onRetry={() => send({ type: "RETRY" })}
-      />
-    );
-  }
-
-  // ── Loading / in-flight states — show detecting/converting banners ────────
-  // Still render the tab bar so the user can navigate to Overview
-  const showLoadingBanner =
-    topState === "detecting" || topState === "converting";
-
   // ── Event handlers ───────────────────────────────────────────────────────
   const handleSetFilter = (v: "all" | "perceptual" | "standard") =>
     send({ type: "SET_FILTER", value: v });
@@ -205,11 +187,47 @@ export function GrayscaleTool({
 
   const handleRevert = () => send({ type: "RESET" });
   const handleSaveDefault = () => {
-    // [OQ-3] No-op at F5 — I1 will call stage settings save-as-default route
+    const draft = ctx.draft ?? {};
+    void ctx.services.saveAsDefault(projectId, "grayscale", draft);
   };
   const handleRedetect = () => send({ type: "REDETECT" });
   const handleApplyRun = () => send({ type: "APPLY_RUN" });
   const handleRerunPage = () => send({ type: "RERUN_PAGE" });
+
+  // Keyboard navigation in workbench tab (ArrowLeft/[ → PREV_PAGE, ArrowRight/] → NEXT_PAGE)
+  // Must be declared before any early returns to satisfy rules-of-hooks.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (activeTab !== "workbench") return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+      if (e.key === "ArrowLeft" || e.key === "[") {
+        send({ type: "PREV_PAGE" });
+      } else if (e.key === "ArrowRight" || e.key === "]") {
+        send({ type: "NEXT_PAGE" });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTab, send]);
+
+  // ── Error state ──────────────────────────────────────────────────────────
+  if (topState === "error") {
+    return (
+      <GrayscaleError
+        message={ctx.error?.message ?? "Unknown error"}
+        onRetry={() => send({ type: "RETRY" })}
+      />
+    );
+  }
+
+  // ── Loading / in-flight states — show detecting/converting banners ────────
+  // Still render the tab bar so the user can navigate to Overview
+  const showLoadingBanner =
+    topState === "detecting" || topState === "converting";
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -258,13 +276,7 @@ export function GrayscaleTool({
           onSetFilter={handleSetFilter}
           cursor={ctx.cursor}
           onSelectPage={(idx) => {
-            // Navigate to selected page: step cursor to idx
-            const diff = idx - ctx.cursor;
-            if (diff > 0) {
-              for (let i = 0; i < diff; i++) send({ type: "NEXT_PAGE" });
-            } else if (diff < 0) {
-              for (let i = 0; i > diff; i--) send({ type: "PREV_PAGE" });
-            }
+            send({ type: "GOTO_PAGE", idx });
           }}
           backend={ctx.backend}
           projectId={projectId}
@@ -278,6 +290,7 @@ export function GrayscaleTool({
           cursor={ctx.cursor}
           backend={ctx.backend}
           draft={ctx.draft}
+          detected={ctx.detected}
           settingsState={settingsState}
           onPrev={handlePrev}
           onNext={handleNext}
@@ -295,10 +308,11 @@ export function GrayscaleTool({
         <GrayscaleSettingsTab
           backend={ctx.backend}
           draft={ctx.draft}
+          detected={ctx.detected}
           onSetMode={handleSetMode}
           onPatch={handlePatch}
           onRedetect={handleRedetect}
-          pageCount={ctx.pages.length || 232}
+          pageCount={ctx.pages.length}
         />
       )}
     </div>
