@@ -1150,6 +1150,7 @@ export function PipelinePage({
                 stageId={ctx.currentStageId}
                 runnerRef={currentRunnerRef}
                 shellSend={send}
+                pageCount={ctx.pageCount}
               />
             ) : (
               /* Unreachable in normal use: every runner stage has a runner actor.

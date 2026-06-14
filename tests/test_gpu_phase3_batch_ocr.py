@@ -296,13 +296,15 @@ async def test_fanout_emits_running_and_clean_sse_per_page(tmp_path: Path) -> No
             batch_size=None,
         )
 
-    # 2 pages x 2 events each (running + clean) = at least 4 events.
+    # _emit dual-publishes to both per-page key AND project-wide key.
+    # 2 pages x 2 statuses (running + clean) x 2 keys = 8 total stage-status events.
     stage_status_events = [(k, p) for k, p in sse_events if p.get("type") == "stage-status"]
     running_events = [e for e in stage_status_events if e[1].get("status") == "running"]
     clean_events = [e for e in stage_status_events if e[1].get("status") == "clean"]
 
-    assert len(running_events) == 2, f"Expected 2 running events, got {running_events}"
-    assert len(clean_events) == 2, f"Expected 2 clean events, got {clean_events}"
+    # 2 pages x 2 keys each = 4 running, 4 clean.
+    assert len(running_events) == 4, f"Expected 4 running events (dual-publish), got {running_events}"
+    assert len(clean_events) == 4, f"Expected 4 clean events (dual-publish), got {clean_events}"
 
     # Result stats.
     assert result["total"] == 2

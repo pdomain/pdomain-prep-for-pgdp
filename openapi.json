@@ -2717,6 +2717,52 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/page-stages/events": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Stream Project Page Stage Events",
+        "description": "SSE \u2014 project-wide page-stage event channel (single subscription for all pages).\n\nEvery ``stage-status`` and ``stage-progress`` event that any page-stage\nemits is published to **two** keys in the broker: the existing per-page key\n(``{project_id}:{page_id}``) **and** the project-wide key\n(``page-stages:{project_id}``). This endpoint subscribes to the project-wide\nkey so clients can receive completions for all pages in the project with a\nsingle EventSource connection, instead of N connections (one per page).\n\nOn connect: no initial snapshot is emitted (page-stage state is available via\nGET /projects/{id}/project-stages/{stage_id}/pages or the pipeline snapshot).\nSubsequent frames are incremental ``stage-status`` events identical to those\nemitted on per-page channels, but now fanned to a single stream.\n\nAuth: owner check identical to ``stream_page_stage_events``.\n\nSpec: fix(sse) \u2014 I1 efficiency fix: single project-channel subscription.",
+        "operationId": "stream_project_page_stage_events",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/regex/rules": {
       "get": {
         "tags": [

@@ -318,6 +318,13 @@ export interface PipelineShellContext {
    * Context flag pattern from DIVERGENCES.md #6.
    */
   _inSettings: boolean;
+  /**
+   * Total page count for the project, sourced from ``PipelineSnapshot.project.page_count``.
+   * Set by ``assignAndSpawnRunners`` on boot and used by SSE-bridge tools (e.g.
+   * GrayscaleTool) to know when all pages have completed. Defaults to 0 until the
+   * snapshot has loaded.
+   */
+  pageCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -461,6 +468,7 @@ export const pipelineShellMachine = setup({
           currentIndex: resolvedIndex,
           currentTab: resolvedTab,
           automation,
+          pageCount: snapshot.project.page_count,
         };
       },
     ),
@@ -807,6 +815,7 @@ export const pipelineShellMachine = setup({
     onOpenSettings: input.onOpenSettings,
     onCloseSettings: input.onCloseSettings,
     _inSettings: false,
+    pageCount: 0,
   }),
 
   initial: "booting",

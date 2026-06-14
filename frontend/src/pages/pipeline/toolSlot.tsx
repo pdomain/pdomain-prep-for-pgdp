@@ -68,6 +68,13 @@ export interface ToolSlotProps {
   runnerRef: StageRunnerRef | null;
   /** W5.3: forward events to pipelineShell (e.g. STAGE_COMPLETED fan-out). */
   shellSend?: (event: PipelineShellEvent) => void;
+  /**
+   * Total page count for the project. Used by SSE-bridge tools (e.g. GrayscaleTool)
+   * to know when all pages have completed so the ``_total`` sentinel fires.
+   * Sourced from ``PipelineSnapshot.project.page_count``.
+   * Defaults to 1 for backward compatibility — override by passing the real count.
+   */
+  pageCount?: number;
 }
 
 export type ToolSlotComponent = (props: ToolSlotProps) => ReactNode;

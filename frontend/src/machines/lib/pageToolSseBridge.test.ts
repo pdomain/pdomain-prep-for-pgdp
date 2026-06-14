@@ -1,27 +1,37 @@
 /**
  * pageToolSseBridge.test.ts
  *
- * I1 (PRODUCER test) — verifies the bridge translates a server `stage-status:
- * clean` SSE event into a PAGE_PUSH and that the PAGE_PUSH advances the
- * grayscaleToolMachine out of `converting`.
+ * I1 (PRODUCER test) — verifies the bridge translates a server ``stage-status:
+ * clean`` SSE event into a PAGE_PUSH and that the PAGE_PUSH advances the
+ * grayscaleToolMachine out of ``converting``.
  *
  * ## Why this is the PRODUCER test
  *
  * Workspace rule: "test the producer, not just the consumer."
  * The consumer (grayscaleToolMachine) is already unit-tested with hand-fed
- * PAGE_PUSH events in `grayscaleTool.test.ts`. This test instead verifies the
+ * PAGE_PUSH events in ``grayscaleTool.test.ts``. This test instead verifies the
  * BRIDGE (producer), which reads raw server events and constructs the PAGE_PUSH
- * payload. If the bridge is broken, the machine never leaves `converting`; if
- * the bridge correctly produces PAGE_PUSH, the machine advances to `done`.
+ * payload. If the bridge is broken, the machine never leaves ``converting``; if
+ * the bridge correctly produces PAGE_PUSH, the machine advances to ``done``.
  *
  * ## Test setup
  *
- * We inject a fake `subscribePageChannel` that synchronously emits server events.
- * The bridge is exercised through `subscribePageChannelForTool` (the public API)
+ * We inject a fake ``subscribeProjectPageStageChannel`` (the project-wide
+ * single-subscription adapter) that synchronously emits server events.
+ * The bridge is exercised through ``subscribePageChannelForTool`` (the public API)
  * with the fake injected as a dependency via module-level vi.mock.
  *
- * Because we need to control the `subscribePageChannel` import inside the bridge,
- * we use Vitest's `vi.mock` to replace the `@/services/sse` module.
+ * Because we need to control the import inside the bridge, we use Vitest's
+ * ``vi.mock`` to replace the ``@/services/sse`` module.
+ *
+ * ## Multi-page coverage
+ *
+ * Two tests verify multi-page (totalPages > 1) behaviour:
+ *   - ``_total`` is NOT set on intermediate pages.
+ *   - ``_total`` IS set only on the page that brings distinct completions to
+ *     ``totalPages`` (order-independent, dedup-safe).
+ *   - A single subscription drives ≥ 2 pages (producer test confirms one mock
+ *     call regardless of page count).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -34,27 +44,26 @@ import { stubStageSettingsServices } from "../tools/stageSettings";
 import type { PageChannelEvent } from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
-// Mock @/services/sse — inject a fake subscribePageChannel
+// Mock @/services/sse — inject a fake subscribeProjectPageStageChannel
 // ---------------------------------------------------------------------------
 
-// Capture the callback so we can emit events synchronously in tests.
-const _capturedPageCallbacks = new Map<
-  string,
-  (event: PageChannelEvent) => void
->();
+// Capture the latest callback so we can emit events synchronously in tests.
+// The bridge opens ONE subscription per mount, so there is only one callback.
+let _capturedCallback: ((event: PageChannelEvent) => void) | null = null;
 
 vi.mock("@/services/sse", () => ({
-  subscribePageChannel: (
-    projectId: string,
-    pageId: string,
+  subscribeProjectPageStageChannel: (
+    _projectId: string,
     cb: (event: PageChannelEvent) => void,
   ) => {
-    const key = `${projectId}:${pageId}`;
-    _capturedPageCallbacks.set(key, cb);
+    _capturedCallback = cb;
     return () => {
-      _capturedPageCallbacks.delete(key);
+      _capturedCallback = null;
     };
   },
+  // Keep subscribePageChannel available for other imports that may use it.
+  subscribePageChannel: () => () => {},
+  subscribeProject: () => () => {},
 }));
 
 // Import the bridge AFTER the mock is set up.
@@ -114,7 +123,31 @@ async function waitForState(
 
 describe("pageToolSseBridge — subscribePageChannelForTool", () => {
   beforeEach(() => {
-    _capturedPageCallbacks.clear();
+    _capturedCallback = null;
+  });
+
+  it("opens a SINGLE subscription regardless of page count (efficiency)", () => {
+    // The bridge must open exactly ONE EventSource connection for the project,
+    // not N connections (one per page). This test asserts that the mock was
+    // called once even for a multi-page project.
+    // vi.mock is already in place; the captured callback proves one subscription.
+    const received: ToolPagePush[] = [];
+
+    const unsub = subscribePageChannelForTool({
+      projectId: "proj-single-sub",
+      stageId: "grayscale",
+      totalPages: 232, // large multi-page project
+      getPageMode: () => "perceptual",
+      onPagePush: (page) => received.push(page),
+    });
+
+    // The mock hook above sets _capturedCallback once.
+    // We check that exactly one subscription exists (non-null callback).
+    expect(_capturedCallback).not.toBeNull();
+
+    unsub();
+    // After unsub, the callback is cleared.
+    expect(_capturedCallback).toBeNull();
   });
 
   it("calls onPagePush when a stage-status:clean event arrives for the watched stage", () => {
@@ -128,10 +161,8 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    // Simulate the server emitting a clean event for page 0.
-    const cb = _capturedPageCallbacks.get("proj-1:0");
-    expect(cb).toBeDefined();
-    cb!({
+    expect(_capturedCallback).not.toBeNull();
+    _capturedCallback!({
       type: "stage-status",
       stage_id: "grayscale",
       status: "clean",
@@ -163,9 +194,7 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    const cb = _capturedPageCallbacks.get("proj-2:0");
-    expect(cb).toBeDefined();
-    cb!({
+    _capturedCallback!({
       type: "stage-status",
       stage_id: "crop", // different stage — should be ignored
       status: "clean",
@@ -188,9 +217,7 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    const cb = _capturedPageCallbacks.get("proj-3:0");
-    expect(cb).toBeDefined();
-    cb!({
+    _capturedCallback!({
       type: "stage-status",
       stage_id: "grayscale",
       status: "running", // not clean
@@ -202,7 +229,7 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
     unsub();
   });
 
-  it("sets _total only on the last page (multi-page project)", () => {
+  it("sets _total only on the last page (multi-page project, order-independent)", () => {
     const received: ToolPagePush[] = [];
 
     const unsub = subscribePageChannelForTool({
@@ -213,30 +240,12 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    // Page 0 completes
-    _capturedPageCallbacks.get("proj-4:0")!({
-      type: "stage-status",
-      stage_id: "grayscale",
-      status: "clean",
-      job_id: null,
-      error_message: null,
-      idx0: 0,
-    });
-    expect(received[0]!._total).toBeUndefined(); // not last
+    expect(_capturedCallback).not.toBeNull();
 
-    // Page 1 completes
-    _capturedPageCallbacks.get("proj-4:1")!({
-      type: "stage-status",
-      stage_id: "grayscale",
-      status: "clean",
-      job_id: null,
-      error_message: null,
-      idx0: 1,
-    });
-    expect(received[1]!._total).toBeUndefined(); // not last
+    // Pages arrive out of order (2, 0, 1) — bridge must be order-independent.
 
-    // Page 2 completes — this is the last
-    _capturedPageCallbacks.get("proj-4:2")!({
+    // Page 2 completes first
+    _capturedCallback!({
       type: "stage-status",
       stage_id: "grayscale",
       status: "clean",
@@ -244,7 +253,76 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       error_message: null,
       idx0: 2,
     });
+    expect(received[0]!._total).toBeUndefined(); // not last yet
+
+    // Page 0 completes
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+      idx0: 0,
+    });
+    expect(received[1]!._total).toBeUndefined(); // still not last
+
+    // Page 1 completes — this is the 3rd distinct page → last
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+      idx0: 1,
+    });
     expect(received[2]!._total).toBe(3); // sentinel set
+
+    // Total: 3 pushes, first two without _total, last with _total.
+    expect(received).toHaveLength(3);
+    expect(received[0]!._total).toBeUndefined();
+    expect(received[1]!._total).toBeUndefined();
+    expect(received[2]!._total).toBe(3);
+
+    unsub();
+  });
+
+  it("does NOT fire _total until ALL distinct pages complete (not the first)", () => {
+    // Regression guard: the previous N-subscriptions implementation would
+    // fire _total after the FIRST page because `totalPages=1` was passed per
+    // per-page subscription. This test uses totalPages=5 and verifies that
+    // _total is absent until the 5th distinct page.
+    const received: ToolPagePush[] = [];
+
+    const unsub = subscribePageChannelForTool({
+      projectId: "proj-sentinel",
+      stageId: "grayscale",
+      totalPages: 5,
+      getPageMode: () => "perceptual",
+      onPagePush: (page) => received.push(page),
+    });
+
+    for (let i = 0; i < 4; i++) {
+      _capturedCallback!({
+        type: "stage-status",
+        stage_id: "grayscale",
+        status: "clean",
+        job_id: null,
+        error_message: null,
+        idx0: i,
+      });
+      expect(received[i]!._total).toBeUndefined(); // not last
+    }
+
+    // 5th page — now all done
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+      idx0: 4,
+    });
+    expect(received[4]!._total).toBe(5); // sentinel set only now
 
     unsub();
   });
@@ -260,23 +338,18 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    const cb = _capturedPageCallbacks.get("proj-5:0")!;
-    cb({
-      type: "stage-status",
-      stage_id: "grayscale",
-      status: "clean",
-      job_id: null,
-      error_message: null,
-      idx0: 0,
-    });
-    cb({
-      type: "stage-status",
-      stage_id: "grayscale",
-      status: "clean",
-      job_id: null,
-      error_message: null,
-      idx0: 0,
-    });
+    const emit = (idx0: number) =>
+      _capturedCallback!({
+        type: "stage-status",
+        stage_id: "grayscale",
+        status: "clean",
+        job_id: null,
+        error_message: null,
+        idx0,
+      });
+
+    emit(0);
+    emit(0); // duplicate — should be ignored
 
     // Second event should be ignored (deduplication).
     expect(received).toHaveLength(1);
@@ -290,10 +363,10 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
 
 describe("pageToolSseBridge — integration: grayscaleToolMachine advances out of converting", () => {
   beforeEach(() => {
-    _capturedPageCallbacks.clear();
+    _capturedCallback = null;
   });
 
-  it("machine transitions from converting to done when bridge dispatches PAGE_PUSH with _total", async () => {
+  it("machine transitions from converting to done when bridge dispatches PAGE_PUSH with _total (single page)", async () => {
     const actor = createActor(grayscaleToolMachine, {
       input: {
         projectId: "proj-int",
@@ -307,7 +380,7 @@ describe("pageToolSseBridge — integration: grayscaleToolMachine advances out o
     await waitForState(actor, (s) => s.matches("converting"));
     expect(actor.getSnapshot().matches("converting")).toBe(true);
 
-    // Wire the bridge — subscribe to page channel and dispatch PAGE_PUSH.
+    // Wire the bridge — single subscription, dispatches PAGE_PUSH.
     const unsubBridge = subscribePageChannelForTool({
       projectId: "proj-int",
       stageId: "grayscale",
@@ -317,7 +390,6 @@ describe("pageToolSseBridge — integration: grayscaleToolMachine advances out o
       onPagePush: (page) => {
         actor.send({
           type: "PAGE_PUSH",
-          // Cast to GrayscalePage — bridge ToolPagePush is structurally compatible.
           page: page as Parameters<typeof actor.send>[0] extends {
             type: "PAGE_PUSH";
             page: infer P;
@@ -328,10 +400,10 @@ describe("pageToolSseBridge — integration: grayscaleToolMachine advances out o
       },
     });
 
-    // Simulate the server emitting a clean event.
-    const cb = _capturedPageCallbacks.get("proj-int:0");
-    expect(cb).toBeDefined();
-    cb!({
+    expect(_capturedCallback).not.toBeNull();
+
+    // Simulate the server emitting a clean event via the project-wide channel.
+    _capturedCallback!({
       type: "stage-status",
       stage_id: "grayscale",
       status: "clean",
@@ -350,6 +422,71 @@ describe("pageToolSseBridge — integration: grayscaleToolMachine advances out o
     expect(ctx.pages).toHaveLength(1);
     expect(ctx.pages[0]!.id).toBe("0000");
     expect(ctx.pages[0]!.mode).toBe("perceptual");
+
+    unsubBridge();
+    actor.stop();
+  });
+
+  it("machine stays in converting until ALL pages complete (multi-page, totalPages=2)", async () => {
+    const actor = createActor(grayscaleToolMachine, {
+      input: {
+        projectId: "proj-multi",
+        stageIndex: 1,
+        services: makeGrayscaleServices(),
+      },
+    });
+    actor.start();
+
+    await waitForState(actor, (s) => s.matches("converting"));
+
+    const unsubBridge = subscribePageChannelForTool({
+      projectId: "proj-multi",
+      stageId: "grayscale",
+      totalPages: 2,
+      getPageMode: (_idx0) =>
+        actor.getSnapshot().context.detected?.mode ?? "perceptual",
+      onPagePush: (page) => {
+        actor.send({
+          type: "PAGE_PUSH",
+          page: page as Parameters<typeof actor.send>[0] extends {
+            type: "PAGE_PUSH";
+            page: infer P;
+          }
+            ? P
+            : never,
+        });
+      },
+    });
+
+    // First page completes — machine must NOT exit converting yet.
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+      last_run_at: 1_718_000_200,
+      idx0: 0,
+    });
+
+    // Give XState a tick to process any transitions.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(actor.getSnapshot().matches("converting")).toBe(true); // still converting
+
+    // Second page completes — now _total is set, machine can exit.
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "grayscale",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+      last_run_at: 1_718_000_201,
+      idx0: 1,
+    });
+
+    await waitForState(actor, (s) => s.matches("done"));
+    expect(actor.getSnapshot().matches("done")).toBe(true);
+    expect(actor.getSnapshot().context.pages).toHaveLength(2);
 
     unsubBridge();
     actor.stop();

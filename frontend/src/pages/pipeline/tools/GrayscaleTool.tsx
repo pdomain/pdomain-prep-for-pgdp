@@ -26,7 +26,7 @@
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useEffect } from "react";
+import { useMemo, useEffect, useRef } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -646,15 +646,9 @@ export function GrayscaleTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
   _testServices,
-  totalPages = 1,
+  pageCount = 1,
 }: ToolSlotProps & {
   _testServices?: GrayscaleToolServices;
-  /**
-   * Total page count for the project — used by the SSE bridge to know when
-   * all pages have completed grayscale conversion. Defaults to 1 for demo/test.
-   * Pass `project.page_count` from the pipeline snapshot in production.
-   */
-  totalPages?: number;
 }) {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 
@@ -671,20 +665,26 @@ export function GrayscaleTool({
     },
   });
 
+  // Mode ref: updated on every render so getPageMode always reads the latest
+  // detected mode, not the stale mount-time closure snapshot (where `detected`
+  // is still null because detection resolves async after the effect runs).
+  const detectedRef = useRef(snapshot.context.detected);
+  detectedRef.current = snapshot.context.detected;
+
   // I1: Wire real SSE PAGE_PUSH feed into the grayscale machine.
-  // Subscribes to each page's SSE channel and dispatches PAGE_PUSH events
-  // when the grayscale stage completes for that page.
+  // A single project-wide page-stage SSE subscription receives completions for
+  // all pages and dispatches PAGE_PUSH events filtered by stageId="grayscale".
   useEffect(() => {
     if (!projectId || projectId === "demo") return;
 
     const unsubscribe = subscribePageChannelForTool({
       projectId,
       stageId: "grayscale",
-      totalPages,
+      totalPages: pageCount,
       getPageMode: (_idx0) => {
-        // Use the machine's detected mode; fall back to "perceptual".
-        const ctx = snapshot.context;
-        return ctx.detected?.mode ?? "perceptual";
+        // Read from ref — always sees the current detected mode even when the
+        // closure was created before detection resolved.
+        return detectedRef.current?.mode ?? "perceptual";
       },
       onPagePush: (page) => {
         send({
@@ -695,11 +695,9 @@ export function GrayscaleTool({
     });
 
     return unsubscribe;
-    // We intentionally omit `snapshot` from deps — we only want to re-subscribe
-    // when projectId or totalPages changes, not on every state update.
-    // `send` is stable from useActor.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, totalPages, send]);
+    // Re-subscribe only when projectId or pageCount changes.
+    // detectedRef is a stable ref object; send is stable from useActor.
+  }, [projectId, pageCount, send]);
 
   const ctx = snapshot.context;
 

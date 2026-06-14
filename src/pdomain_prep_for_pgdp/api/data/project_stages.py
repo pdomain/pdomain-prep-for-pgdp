@@ -2476,6 +2476,57 @@ async def stream_project_stage_events(
     return EventSourceResponse(_stream())  # type: ignore[return-value]
 
 
+# ─── Project-wide page-stage SSE channel ──────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/page-stages/events",
+    operation_id="stream_project_page_stage_events",
+)
+async def stream_project_page_stage_events(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    stage_events: StageEventsDep,
+) -> Response:
+    """SSE — project-wide page-stage event channel (single subscription for all pages).
+
+    Every ``stage-status`` and ``stage-progress`` event that any page-stage
+    emits is published to **two** keys in the broker: the existing per-page key
+    (``{project_id}:{page_id}``) **and** the project-wide key
+    (``page-stages:{project_id}``). This endpoint subscribes to the project-wide
+    key so clients can receive completions for all pages in the project with a
+    single EventSource connection, instead of N connections (one per page).
+
+    On connect: no initial snapshot is emitted (page-stage state is available via
+    GET /projects/{id}/project-stages/{stage_id}/pages or the pipeline snapshot).
+    Subsequent frames are incremental ``stage-status`` events identical to those
+    emitted on per-page channels, but now fanned to a single stream.
+
+    Auth: owner check identical to ``stream_page_stage_events``.
+
+    Spec: fix(sse) — I1 efficiency fix: single project-channel subscription.
+    """
+    import json as _json
+    from collections.abc import AsyncIterator
+
+    from sse_starlette.sse import EventSourceResponse
+
+    from pdomain_prep_for_pgdp.core.stage_events import project_page_stage_events_key
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    project_key = project_page_stage_events_key(project_id)
+
+    async def _stream() -> AsyncIterator[dict[str, str]]:
+        async for ev in stage_events.subscribe(project_key):
+            yield {"event": str(ev.get("type", "stage-status")), "data": _json.dumps(ev)}
+
+    return EventSourceResponse(_stream())  # type: ignore[return-value]
+
+
 # ─── R2: regexPass — regex rules store + apply ───────────────────────────────
 #
 # Rules are stored per-project at:

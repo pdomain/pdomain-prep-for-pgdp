@@ -4,8 +4,13 @@ Mirrors `core.job_events.JobEventBroker` but keyed by a composite
 page key so the SSE handler at
 `GET /api/data/projects/{id}/pages/{idx0}/events` can subscribe per page.
 
-Use `stage_events_key(project_id, page_id)` to build the key and keep
-project + page isolation without requiring callers to manage the format.
+Use `stage_events_key(project_id, page_id)` to build the per-page key.
+
+Use `project_page_stage_events_key(project_id)` to build the project-wide
+page-stage key — subscribed by
+`GET /api/data/projects/{id}/page-stages/events`. Every page-stage event is
+published to **both** keys so a single project-level subscriber can receive
+completions for all pages without opening N connections.
 """
 
 from __future__ import annotations
@@ -23,7 +28,17 @@ else:
 
 
 def stage_events_key(project_id: str, page_id: str) -> str:
+    """Per-page broker key: ``{project_id}:{page_id}``."""
     return f"{project_id}:{page_id}"
+
+
+def project_page_stage_events_key(project_id: str) -> str:
+    """Project-wide page-stage broker key: ``page-stages:{project_id}``.
+
+    Used by the project-level page-stage SSE endpoint so a single
+    EventSource subscription receives events for *all* pages in the project.
+    """
+    return f"page-stages:{project_id}"
 
 
 class _Sentinel:

@@ -77,7 +77,11 @@ from pdomain_prep_for_pgdp.core.page_service_helpers import (
     get_page_record,
     list_page_records_by_parent_id,
 )
-from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker, stage_events_key
+from pdomain_prep_for_pgdp.core.stage_events import (
+    StageEventBroker,
+    project_page_stage_events_key,
+    stage_events_key,
+)
 
 from . import stage_dag as _stage_dag_module
 from .page_stage_writer import (
@@ -158,11 +162,16 @@ async def _emit(
 ) -> None:
     if broker is None:
         return
-    key = stage_events_key(project_id, page_id)
     payload: dict[str, object] = {"type": event_type, "stage_id": stage_id, "status": status}
     if extra:
         payload.update(extra)
-    await broker.publish(key, payload)
+    # Publish to the per-page channel (keyed by project_id:page_id).
+    per_page_key = stage_events_key(project_id, page_id)
+    await broker.publish(per_page_key, payload)
+    # Also publish to the project-wide page-stage channel so a single
+    # subscriber can receive completions for all pages without N connections.
+    project_key = project_page_stage_events_key(project_id)
+    await broker.publish(project_key, payload)
 
 
 # ─── Typed exceptions ───────────────────────────────────────────────────────

@@ -19,7 +19,7 @@
  * @see frontend/src/machines/lib/sseActor.ts — SubscriptionFn<T> interface
  */
 
-import type { ProjectChannelEvent, PageChannelEvent } from "@/mocks/types";
+import type { ProjectChannelEvent, PageChannelEvent } from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
 // Project-level SSE channel
@@ -85,6 +85,51 @@ export function subscribePageChannel(
   cb: (event: PageChannelEvent) => void,
 ): () => void {
   const url = `/api/data/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(idx0)}/events`;
+  const es = new EventSource(url, { withCredentials: true });
+
+  es.onmessage = (evt) => {
+    try {
+      const data = JSON.parse(evt.data as string) as PageChannelEvent;
+      cb(data);
+    } catch {
+      // Malformed SSE frame — ignore
+    }
+  };
+
+  es.onerror = (_err) => {
+    // EventSource auto-reconnects on error.
+  };
+
+  return () => {
+    es.close();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Project-wide page-stage SSE channel
+// GET /api/data/projects/{project_id}/page-stages/events
+// ---------------------------------------------------------------------------
+
+/**
+ * Subscription function for the project-wide page-stage SSE channel.
+ *
+ * Subscribes to a single EventSource that receives ``stage-status`` events for
+ * **all** pages in the project. The backend fans every page-stage event to both
+ * the per-page key and this project-wide key, so a single connection replaces
+ * the N-connection-per-page approach.
+ *
+ * Usage in the bridge:
+ *   subscribeProjectPageStageChannel(projectId, (ev) => {
+ *     // ev is a PageChannelEvent — filter by stage_id client-side
+ *   })
+ *
+ * @see frontend/src/machines/lib/pageToolSseBridge.ts
+ */
+export function subscribeProjectPageStageChannel(
+  projectId: string,
+  cb: (event: PageChannelEvent) => void,
+): () => void {
+  const url = `/api/data/projects/${encodeURIComponent(projectId)}/page-stages/events`;
   const es = new EventSource(url, { withCredentials: true });
 
   es.onmessage = (evt) => {
