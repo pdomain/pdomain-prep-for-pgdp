@@ -1,633 +1,130 @@
 /**
- * GrayscaleTool — React surface for the Grayscale stage (stage 02).
+ * GrayscaleTool — high-fidelity React surface for the Grayscale stage (stage 02).
  *
- * Drives `grayscaleToolMachine`. Three sections:
- *   - Auto-detect banner (with backend chip: GPU / CPU)
- *   - Page grid (filterable by mode: all / perceptual / standard)
- *   - Step-settings panel (mode toggle + advanced params)
+ * Four tabs that match the design canvas:
+ *   - Overview       — stat tiles + auto-detect banner + downstream impact cards
+ *   - Pages          — filterable page grid (all / perceptual / standard)
+ *   - Page workbench — two-pane: stage controls drawer (340px) + page viewer
+ *                      (before/after split + page strip)
+ *   - Stage settings — full-width mode cards + advanced params + auto-detect banner
  *
- * DCArtboard-faithful layout:
- *   ┌──────────────────────────────────────────────────┐
- *   │  Auto-detect banner  (detecting / result)        │
- *   │  ─────────────────────────────────────────────   │
- *   │  Filter bar  ·  Backend chip  ·  Page cursor     │
- *   │  ─────────────────────────────────────────────   │
- *   │  Page viewer (current page thumbnail + mode)     │
- *   │  ─────────────────────────────────────────────   │
- *   │  Step-settings (mode toggle + advanced params)   │
- *   │  ─────────────────────────────────────────────   │
- *   │  Apply / Re-run / Reset actions                  │
- *   └──────────────────────────────────────────────────┘
+ * The workbench tab wires the real grayscale artifact endpoint:
+ *   GET /api/data/projects/{id}/pages/{idx0}/stages/grayscale/artifact
  *
- * Props: ToolSlotProps { stageId, runnerRef }
+ * Design references:
+ *   - docs/plans/design_handoff_pgdp_app/final/grayscale/grayscale.jsx
+ *   - .audit-shots/D07-grayscale.png
+ *   - docs/plans/design_handoff_pgdp_app/design-system/tokens.css
+ *
+ * Machine: grayscaleToolMachine (src/machines/tools/grayscaleTool.ts)
+ * Services: buildRealGrayscaleToolServices (src/services/tools/grayscaleTool.ts)
+ *
+ * OPEN QUESTIONS (deferred to I1):
+ *   [OQ-1] Apply & Run — POST run to backend; currently calls machine APPLY_RUN
+ *          which no-ops the side-effect slot.
+ *   [OQ-2] Re-run page  — POST single-page run; machine RERUN_PAGE no-ops at F5.
+ *   [OQ-3] Save as default — machine SAVE_DEFAULT no-ops at F5.
+ *   [OQ-4] Page grid real thumbs — GrayscalePage carries no artifact_key at F5;
+ *          synthetic gradient used. Wire at I1 via thumbnail endpoint.
+ *   [OQ-5] Before-pane source image — uses manual_deskew_pre/artifact; may
+ *          404 for pages where that stage hasn't run. Degrade gracefully to
+ *          synthetic page.
+ *   [OQ-6] Backend chip auto-detect — project-stage detect route not yet in
+ *          the grayscale spec. Currently uses value from detectProfile service.
  *
  * @see src/machines/tools/grayscaleTool.ts
- * @see docs/plans/design_handoff_pgdp_app/final/grayscale/grayscale.jsx
+ * @see src/services/tools/grayscaleTool.ts
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   grayscaleToolMachine,
   type GrayscaleToolServices,
   type GrayscaleMode,
-  type GrayscaleBackend,
-  type GrayscalePage,
 } from "@/machines/tools/grayscaleTool";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
-import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
+import type { GrayscaleTab } from "./grayscale/types";
+import { GrayscaleTabBar } from "./grayscale/GrayscaleTabBar";
+import { GrayscaleOverviewTab } from "./grayscale/GrayscaleOverview";
+import { GrayscalePagesTab } from "./grayscale/GrayscalePages";
+import { GrayscaleWorkbenchTab } from "./grayscale/GrayscaleWorkbench";
+import { GrayscaleSettingsTab } from "./grayscale/GrayscaleSettings";
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Loading / converting inline banners
 // ---------------------------------------------------------------------------
 
-/** Backend pill — GPU exact-green, CPU fuzzy-amber */
-function BackendChip({ backend }: { backend: GrayscaleBackend }) {
-  const isGpu = backend === "gpu";
-  const color = isGpu ? "var(--exact)" : "var(--fuzzy)";
-  const label = isGpu ? "GPU · CUDA" : "CPU · numpy";
-  return (
-    <span
-      data-testid="backend-chip"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "2px 8px",
-        height: 22,
-        borderRadius: 99,
-        background: `color-mix(in oklab, ${color} 12%, transparent)`,
-        border: `1px solid color-mix(in oklab, ${color} 35%, var(--border-1))`,
-        color,
-        fontSize: 11,
-        fontWeight: 600,
-        fontFamily: "var(--mono-font, monospace)",
-        letterSpacing: ".02em",
-      }}
-    >
-      <span
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 99,
-          background: color,
-          boxShadow: `0 0 6px ${color}`,
-        }}
-      />
-      {label}
-    </span>
-  );
-}
-
-/** Mode chip (perceptual / standard) */
-function ModeChip({ mode }: { mode: GrayscaleMode }) {
-  const color = mode === "perceptual" ? "var(--ocr)" : "var(--ink-3)";
-  return (
-    <span
-      data-testid={`mode-chip-${mode}`}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "1px 7px",
-        height: 18,
-        borderRadius: 99,
-        background: `color-mix(in oklab, ${color} 14%, rgba(12,12,16,0.78))`,
-        border: `1px solid color-mix(in oklab, ${color} 40%, transparent)`,
-        color,
-        fontSize: 9.5,
-        fontWeight: 600,
-        fontFamily: "var(--mono-font, monospace)",
-      }}
-    >
-      {mode}
-    </span>
-  );
-}
-
-/** Auto-detect banner */
-function AutoDetectBanner({
-  machineState,
-  detected,
-  why,
-  backend,
-}: {
-  machineState: string;
-  detected: GrayscaleMode | null;
-  why: string | null;
-  backend: GrayscaleBackend;
-}) {
-  if (machineState === "detecting") {
-    return (
-      <div
-        data-testid="autodetect-banner-detecting"
-        style={{
-          padding: "10px 14px",
-          borderRadius: 8,
-          background:
-            "color-mix(in oklab, var(--accent) 6%, var(--bg-surface))",
-          border:
-            "1px solid color-mix(in oklab, var(--accent) 30%, var(--border-1))",
-          fontSize: 13,
-          color: "var(--ink-2)",
-        }}
-      >
-        Detecting source profile from 8 sample pages…
-      </div>
-    );
-  }
-
-  if (!detected) return null;
-
+function DetectingBanner(): ReactNode {
   return (
     <div
-      data-testid="autodetect-banner-result"
+      data-testid="autodetect-banner-detecting"
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr auto",
-        gap: 14,
-        padding: "12px 14px",
+        padding: "10px 14px",
         borderRadius: 8,
         background: "color-mix(in oklab, var(--accent) 6%, var(--bg-surface))",
         border:
-          "1px solid color-mix(in oklab, var(--accent) 35%, var(--border-1))",
+          "1px solid color-mix(in oklab, var(--accent) 30%, var(--border-1))",
+        fontSize: 13,
+        color: "var(--ink-2)",
+        display: "flex",
         alignItems: "center",
-      }}
-    >
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-1)" }}>
-          Auto-detected source profile
-        </div>
-        <div
-          style={{
-            marginTop: 3,
-            fontSize: 12,
-            color: "var(--ink-3)",
-            lineHeight: 1.5,
-          }}
-        >
-          Picked{" "}
-          <span style={{ color: "var(--ink-1)", fontWeight: 600 }}>
-            {detected}
-          </span>{" "}
-          from a sample of 8 pages ·{" "}
-          <span
-            style={{
-              fontFamily: "monospace",
-              fontSize: 11,
-              color: "var(--ink-2)",
-            }}
-          >
-            {why}
-          </span>
-        </div>
-      </div>
-      <BackendChip backend={backend} />
-    </div>
-  );
-}
-
-/** Filter bar for mode filtering */
-function GrayscaleFilterBar({
-  filter,
-  onSetFilter,
-}: {
-  filter: "all" | "perceptual" | "standard";
-  onSetFilter: (v: "all" | "perceptual" | "standard") => void;
-}) {
-  const chips = [
-    { id: "all" as const, label: "All" },
-    { id: "perceptual" as const, label: "Perceptual" },
-    { id: "standard" as const, label: "Standard" },
-  ];
-  return (
-    <div data-testid="grayscale-filter-bar" style={{ display: "flex", gap: 6 }}>
-      {chips.map((chip) => {
-        const active = filter === chip.id;
-        return (
-          <button
-            key={chip.id}
-            data-testid={`gs-filter-${chip.id}`}
-            onClick={() => onSetFilter(chip.id)}
-            style={{
-              padding: "3px 10px",
-              height: 26,
-              borderRadius: 6,
-              border: active
-                ? "1px solid color-mix(in oklab, var(--accent) 50%, var(--border-1))"
-                : "1px solid var(--border-1)",
-              background: active
-                ? "color-mix(in oklab, var(--accent) 12%, transparent)"
-                : "transparent",
-              color: active ? "var(--accent)" : "var(--ink-2)",
-              fontSize: 11.5,
-              fontWeight: active ? 600 : 500,
-              cursor: "pointer",
-            }}
-          >
-            {chip.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Page viewer — simple page thumbnail with mode indicator */
-function PageViewer({
-  page,
-  index,
-  total,
-  onPrev,
-  onNext,
-}: {
-  page: { id: string; mode: GrayscaleMode; tone?: number } | null;
-  index: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  if (!page) {
-    return (
-      <div
-        data-testid="page-viewer-empty"
-        style={{
-          height: 200,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 8,
-          color: "var(--ink-4)",
-          fontSize: 12,
-        }}
-      >
-        No pages loaded
-      </div>
-    );
-  }
-
-  return (
-    <div
-      data-testid="page-viewer"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        padding: 12,
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 8,
-      }}
-    >
-      {/* Toolbar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <button
-          data-testid="prev-page-btn"
-          onClick={onPrev}
-          disabled={index === 0}
-          style={{
-            padding: "3px 8px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-raised)",
-            color: "var(--ink-2)",
-            fontSize: 12,
-            cursor: index === 0 ? "default" : "pointer",
-            opacity: index === 0 ? 0.4 : 1,
-          }}
-        >
-          ‹
-        </button>
-        <span
-          style={{
-            fontSize: 11.5,
-            color: "var(--ink-3)",
-            fontFamily: "monospace",
-          }}
-        >
-          {index + 1} / {total}
-        </span>
-        <button
-          data-testid="next-page-btn"
-          onClick={onNext}
-          disabled={index >= total - 1}
-          style={{
-            padding: "3px 8px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-raised)",
-            color: "var(--ink-2)",
-            fontSize: 12,
-            cursor: index >= total - 1 ? "default" : "pointer",
-            opacity: index >= total - 1 ? 0.4 : 1,
-          }}
-        >
-          ›
-        </button>
-        <div style={{ flex: 1 }} />
-        <ModeChip mode={page.mode} />
-        {page.tone != null && (
-          <span
-            style={{
-              fontFamily: "monospace",
-              fontSize: 11,
-              color: "var(--ink-3)",
-            }}
-          >
-            tone: {page.tone.toFixed(3)}
-          </span>
-        )}
-      </div>
-
-      {/* Fake page thumbnail */}
-      <div
-        data-testid={`page-thumb-grayscale-${page.id}`}
-        style={{
-          height: 140,
-          borderRadius: 4,
-          background:
-            page.mode === "perceptual"
-              ? "linear-gradient(145deg, oklch(0.91 0.006 200) 0%, oklch(0.88 0.004 200) 100%)"
-              : "linear-gradient(145deg, oklch(0.92 0 0) 0%, oklch(0.89 0 0) 100%)",
-          border: "1px solid var(--border-2)",
-          position: "relative",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {/* Ink lines */}
-        <div
-          style={{
-            position: "absolute",
-            inset: "12% 14%",
-            backgroundImage: `repeating-linear-gradient(to bottom, oklch(0.32 0 0) 0 1.5px, transparent 1.5px 6px)`,
-            opacity: 0.6,
-          }}
-        />
-        <span
-          style={{
-            position: "absolute",
-            bottom: 6,
-            left: "50%",
-            transform: "translateX(-50%)",
-            fontFamily: "monospace",
-            fontSize: 9,
-            color: "oklch(0.4 0 0)",
-          }}
-        >
-          {page.id}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** Step settings panel — mode toggle + advanced params */
-function StepSettings({
-  draft,
-  onPatch,
-  onReset,
-}: {
-  draft: Record<string, unknown> | null;
-  onPatch: (patch: Record<string, unknown>) => void;
-  onReset: () => void;
-}) {
-  const mode = (draft?.["mode"] as GrayscaleMode | undefined) ?? "perceptual";
-  const samplerRadius = (draft?.["samplerRadius"] as number | undefined) ?? 64;
-  const gamma = (draft?.["gamma"] as number | undefined) ?? 1.0;
-  const outputRangeMin = (draft?.["outputRangeMin"] as number | undefined) ?? 0;
-  const outputRangeMax =
-    (draft?.["outputRangeMax"] as number | undefined) ?? 255;
-
-  return (
-    <div
-      data-testid="step-settings-panel"
-      style={{
-        display: "flex",
-        flexDirection: "column",
         gap: 10,
-        padding: "12px 14px",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 8,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 2,
-        }}
-      >
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-1)" }}>
-          Step settings
-        </span>
-        <button
-          data-testid="reset-btn"
-          onClick={onReset}
-          style={{
-            fontSize: 11,
-            color: "var(--ink-3)",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            padding: "2px 6px",
-          }}
-        >
-          Reset to default
-        </button>
-      </div>
+      <span style={{ color: "var(--accent)" }}>⟳</span>
+      Detecting source profile from 8 sample pages…
+    </div>
+  );
+}
 
-      {/* Mode toggle */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>Mode</span>
-        <div
-          data-testid="mode-toggle"
-          style={{
-            display: "inline-flex",
-            padding: 2,
-            gap: 2,
-            background: "var(--bg-page)",
-            border: "1px solid var(--border-1)",
-            borderRadius: 6,
-            alignSelf: "flex-start",
-          }}
-        >
-          {(["perceptual", "standard"] as const).map((m) => (
-            <button
-              key={m}
-              data-testid={`mode-btn-${m}`}
-              onClick={() => onPatch({ mode: m })}
-              style={{
-                padding: "3px 12px",
-                borderRadius: 4,
-                border:
-                  mode === m
-                    ? "1px solid var(--border-2)"
-                    : "1px solid transparent",
-                background: mode === m ? "var(--bg-surface)" : "transparent",
-                color: mode === m ? "var(--ink-1)" : "var(--ink-3)",
-                fontSize: 11.5,
-                fontWeight: mode === m ? 600 : 500,
-                cursor: "pointer",
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--ink-4)", lineHeight: 1.4 }}>
-          {mode === "perceptual"
-            ? "Weighted luma transform — preserves ink contrast. Best for newsprint and low-DPI scans."
-            : "Simple ITU-R luma weights — faster, uniform output. Best for clean modern book scans."}
-        </div>
-      </div>
+function ConvertingBanner({ done }: { done: number }): ReactNode {
+  return (
+    <div
+      data-testid="converting-progress"
+      style={{
+        padding: "8px 12px",
+        background: "color-mix(in oklab, var(--ocr) 8%, var(--bg-surface))",
+        border:
+          "1px solid color-mix(in oklab, var(--ocr) 30%, var(--border-1))",
+        borderRadius: 7,
+        fontSize: 12,
+        color: "var(--ocr)",
+      }}
+    >
+      Converting pages… {done} done
+    </div>
+  );
+}
 
-      {/* Sampler radius (perceptual only) */}
-      {mode === "perceptual" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <label
-              htmlFor="gs-sampler-radius"
-              style={{ fontSize: 11.5, color: "var(--ink-2)" }}
-            >
-              Sampler radius (px)
-            </label>
-            <span
-              style={{
-                fontFamily: "monospace",
-                fontSize: 11,
-                fontWeight: 600,
-                color: "var(--ink-1)",
-              }}
-            >
-              {samplerRadius}
-            </span>
-          </div>
-          <input
-            id="gs-sampler-radius"
-            type="range"
-            data-testid="slider-samplerRadius"
-            min={8}
-            max={256}
-            step={8}
-            value={samplerRadius}
-            onChange={(e) =>
-              onPatch({ samplerRadius: parseInt(e.target.value, 10) })
-            }
-            style={{ width: "100%" }}
-          />
-          <div style={{ fontSize: 10.5, color: "var(--ink-4)" }}>
-            Neighbourhood radius for the perceptual sampler. Larger = smoother
-            tone map.
-          </div>
-        </div>
-      )}
+// ---------------------------------------------------------------------------
+// Error state
+// ---------------------------------------------------------------------------
 
-      {/* Gamma */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <label
-            htmlFor="gs-gamma"
-            style={{ fontSize: 11.5, color: "var(--ink-2)" }}
-          >
-            Gamma
-          </label>
-          <span
-            style={{
-              fontFamily: "monospace",
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--ink-1)",
-            }}
-          >
-            {gamma.toFixed(2)}
-          </span>
-        </div>
-        <input
-          id="gs-gamma"
-          type="range"
-          data-testid="slider-gamma"
-          min={0.5}
-          max={2.5}
-          step={0.05}
-          value={gamma}
-          onChange={(e) => onPatch({ gamma: parseFloat(e.target.value) })}
-          style={{ width: "100%" }}
-        />
+function GrayscaleError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}): ReactNode {
+  return (
+    <div
+      data-testid="grayscale-tool-error"
+      style={{ padding: 24, textAlign: "center", color: "var(--mismatch)" }}
+    >
+      <div style={{ marginBottom: 12 }}>Detection failed.</div>
+      <div style={{ marginBottom: 12, fontSize: 12, color: "var(--ink-3)" }}>
+        {message}
       </div>
-
-      {/* Output range */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>
-          Output range
-        </span>
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
-        >
-          <div>
-            <label
-              htmlFor="gs-output-min"
-              style={{
-                fontSize: 10.5,
-                color: "var(--ink-4)",
-                display: "block",
-                marginBottom: 2,
-              }}
-            >
-              Min
-            </label>
-            <input
-              id="gs-output-min"
-              type="range"
-              data-testid="slider-outputRangeMin"
-              min={0}
-              max={128}
-              step={1}
-              value={outputRangeMin}
-              onChange={(e) =>
-                onPatch({ outputRangeMin: parseInt(e.target.value, 10) })
-              }
-              style={{ width: "100%" }}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="gs-output-max"
-              style={{
-                fontSize: 10.5,
-                color: "var(--ink-4)",
-                display: "block",
-                marginBottom: 2,
-              }}
-            >
-              Max
-            </label>
-            <input
-              id="gs-output-max"
-              type="range"
-              data-testid="slider-outputRangeMax"
-              min={128}
-              max={255}
-              step={1}
-              value={outputRangeMax}
-              onChange={(e) =>
-                onPatch({ outputRangeMax: parseInt(e.target.value, 10) })
-              }
-              style={{ width: "100%" }}
-            />
-          </div>
-        </div>
-      </div>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   );
 }
@@ -637,19 +134,15 @@ function StepSettings({
 // ---------------------------------------------------------------------------
 
 /**
- * GrayscaleTool — tool slot surface for the Grayscale stage.
+ * GrayscaleTool — high-fidelity tool slot surface for the Grayscale stage.
  *
- * @see docs/plans/design_handoff_pgdp_app/final/grayscale/grayscale.jsx
  * @see src/pages/pipeline/toolSlot.tsx — F5 contract
  */
 export function GrayscaleTool({
   stageId: _stageId,
   runnerRef: _runnerRef,
   _testServices,
-  pageCount = 1,
-}: ToolSlotProps & {
-  _testServices?: GrayscaleToolServices;
-}) {
+}: ToolSlotProps & { _testServices?: GrayscaleToolServices }) {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 
   const services = useMemo(
@@ -665,42 +158,9 @@ export function GrayscaleTool({
     },
   });
 
-  // Mode ref: updated on every render so getPageMode always reads the latest
-  // detected mode, not the stale mount-time closure snapshot (where `detected`
-  // is still null because detection resolves async after the effect runs).
-  const detectedRef = useRef(snapshot.context.detected);
-  detectedRef.current = snapshot.context.detected;
-
-  // I1: Wire real SSE PAGE_PUSH feed into the grayscale machine.
-  // A single project-wide page-stage SSE subscription receives completions for
-  // all pages and dispatches PAGE_PUSH events filtered by stageId="grayscale".
-  useEffect(() => {
-    if (!projectId || projectId === "demo") return;
-
-    const unsubscribe = subscribePageChannelForTool({
-      projectId,
-      stageId: "grayscale",
-      totalPages: pageCount,
-      getPageMode: (_idx0) => {
-        // Read from ref — always sees the current detected mode even when the
-        // closure was created before detection resolved.
-        return detectedRef.current?.mode ?? "perceptual";
-      },
-      onPagePush: (page) => {
-        send({
-          type: "PAGE_PUSH",
-          page: page as GrayscalePage & { _total?: number },
-        });
-      },
-    });
-
-    return unsubscribe;
-    // Re-subscribe only when projectId or pageCount changes.
-    // detectedRef is a stable ref object; send is stable from useActor.
-  }, [projectId, pageCount, send]);
-
   const ctx = snapshot.context;
 
+  // Derive top-level machine state
   const topState = (() => {
     if (snapshot.matches("detecting")) return "detecting";
     if (snapshot.matches("converting")) return "converting";
@@ -709,35 +169,49 @@ export function GrayscaleTool({
     return "unknown";
   })();
 
-  const currentPage = ctx.pages[ctx.cursor] ?? null;
+  // Tab state — default to "workbench" as it's the focal tab per spec
+  const [activeTab, setActiveTab] = useState<GrayscaleTab>("workbench");
 
-  // Filtered pages for the grid (not displayed in the canvas but tracked for
-  // the filter bar — actual page browsing uses cursor navigation)
-  const filteredCount =
-    ctx.filter === "all"
-      ? ctx.pages.length
-      : ctx.pages.filter((p) => p.mode === ctx.filter).length;
+  // Determine settings state for drawer
+  const settingsState = ctx.draft != null ? "modified" : "default";
 
+  // ── Error state ──────────────────────────────────────────────────────────
   if (topState === "error") {
     return (
-      <div
-        data-testid="grayscale-tool-error"
-        style={{ padding: 24, textAlign: "center", color: "var(--mismatch)" }}
-      >
-        <div style={{ marginBottom: 12 }}>Detection failed.</div>
-        <div style={{ marginBottom: 12, fontSize: 12, color: "var(--ink-3)" }}>
-          {ctx.error?.message}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => send({ type: "RETRY" })}
-        >
-          Retry
-        </Button>
-      </div>
+      <GrayscaleError
+        message={ctx.error?.message ?? "Unknown error"}
+        onRetry={() => send({ type: "RETRY" })}
+      />
     );
   }
+
+  // ── Loading / in-flight states — show detecting/converting banners ────────
+  // Still render the tab bar so the user can navigate to Overview
+  const showLoadingBanner =
+    topState === "detecting" || topState === "converting";
+
+  // ── Event handlers ───────────────────────────────────────────────────────
+  const handleSetFilter = (v: "all" | "perceptual" | "standard") =>
+    send({ type: "SET_FILTER", value: v });
+
+  const handlePrev = () => send({ type: "PREV_PAGE" });
+  const handleNext = () => send({ type: "NEXT_PAGE" });
+
+  const handleSetMode = (mode: GrayscaleMode) =>
+    send({ type: "SET_MODE", mode });
+
+  const handlePatch = (patch: Record<string, unknown>) =>
+    send({ type: "SET_PARAM", patch });
+
+  const handleRevert = () => send({ type: "RESET" });
+  const handleSaveDefault = () => {
+    // [OQ-3] No-op at F5 — I1 will call stage settings save-as-default route
+  };
+  const handleRedetect = () => send({ type: "REDETECT" });
+  const handleApplyRun = () => send({ type: "APPLY_RUN" });
+  const handleRerunPage = () => send({ type: "RERUN_PAGE" });
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div
@@ -745,109 +219,87 @@ export function GrayscaleTool({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-        padding: 16,
         flex: 1,
         minHeight: 0,
       }}
     >
-      {/* Auto-detect banner */}
-      <AutoDetectBanner
-        machineState={topState}
-        detected={ctx.detected?.mode ?? null}
-        why={ctx.detected?.why ?? null}
-        backend={ctx.backend}
+      {/* Tab bar */}
+      <GrayscaleTabBar
+        active={activeTab}
+        onChange={(tab) => setActiveTab(tab)}
+        {...(ctx.pages.length > 0 && { pageCount: ctx.pages.length })}
       />
 
-      {/* Converting progress */}
-      {topState === "converting" && (
-        <div
-          data-testid="converting-progress"
-          style={{
-            padding: "8px 12px",
-            background: "color-mix(in oklab, var(--ocr) 8%, var(--bg-surface))",
-            border:
-              "1px solid color-mix(in oklab, var(--ocr) 30%, var(--border-1))",
-            borderRadius: 7,
-            fontSize: 12,
-            color: "var(--ocr)",
-          }}
-        >
-          Converting pages… {ctx.pages.length} done
+      {/* In-flight banners (detecting / converting) */}
+      {showLoadingBanner && (
+        <div style={{ padding: "14px 28px 0" }}>
+          {topState === "detecting" ? (
+            <DetectingBanner />
+          ) : (
+            <ConvertingBanner done={ctx.pages.length} />
+          )}
         </div>
       )}
 
-      {/* Toolbar: filter bar + page count */}
-      {(topState === "done" || ctx.pages.length > 0) && (
-        <div
-          data-testid="grayscale-toolbar"
-          style={{ display: "flex", alignItems: "center", gap: 10 }}
-        >
-          <GrayscaleFilterBar
-            filter={ctx.filter}
-            onSetFilter={(v) => send({ type: "SET_FILTER", value: v })}
-          />
-          <div style={{ flex: 1 }} />
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--ink-3)",
-              fontFamily: "monospace",
-            }}
-          >
-            {filteredCount} page{filteredCount !== 1 ? "s" : ""}
-          </span>
-          <BackendChip backend={ctx.backend} />
-        </div>
-      )}
-
-      {/* Page viewer */}
-      {ctx.pages.length > 0 && (
-        <PageViewer
-          page={currentPage}
-          index={ctx.cursor}
-          total={ctx.pages.length}
-          onPrev={() => send({ type: "PREV_PAGE" })}
-          onNext={() => send({ type: "NEXT_PAGE" })}
+      {/* Tab bodies */}
+      {activeTab === "overview" && (
+        <GrayscaleOverviewTab
+          pages={ctx.pages}
+          detected={ctx.detected}
+          backend={ctx.backend}
+          onRedetect={handleRedetect}
         />
       )}
 
-      {/* Step settings (done state only) */}
-      {topState === "done" && (
-        <StepSettings
-          draft={ctx.draft ?? {}}
-          onPatch={(patch) => send({ type: "SET_PARAM", patch })}
-          onReset={() => send({ type: "RESET" })}
+      {activeTab === "pages" && (
+        <GrayscalePagesTab
+          pages={ctx.pages}
+          filter={ctx.filter}
+          onSetFilter={handleSetFilter}
+          cursor={ctx.cursor}
+          onSelectPage={(idx) => {
+            // Navigate to selected page: step cursor to idx
+            const diff = idx - ctx.cursor;
+            if (diff > 0) {
+              for (let i = 0; i < diff; i++) send({ type: "NEXT_PAGE" });
+            } else if (diff < 0) {
+              for (let i = 0; i > diff; i--) send({ type: "PREV_PAGE" });
+            }
+          }}
+          backend={ctx.backend}
+          projectId={projectId}
         />
       )}
 
-      {/* Action bar (done state — tuned sub-state shows Apply button) */}
-      {topState === "done" && (
-        <div
-          data-testid="grayscale-action-bar"
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            padding: "8px 0",
-          }}
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => send({ type: "REDETECT" })}
-          >
-            Re-detect
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => send({ type: "APPLY_RUN" })}
-            data-testid="apply-run-btn"
-          >
-            Apply &amp; re-run all
-          </Button>
-        </div>
+      {activeTab === "workbench" && (
+        <GrayscaleWorkbenchTab
+          projectId={projectId}
+          pages={ctx.pages}
+          cursor={ctx.cursor}
+          backend={ctx.backend}
+          draft={ctx.draft}
+          settingsState={settingsState}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          onSetMode={handleSetMode}
+          onPatch={handlePatch}
+          onRevert={handleRevert}
+          onSaveDefault={handleSaveDefault}
+          onRedetect={handleRedetect}
+          onApplyRun={handleApplyRun}
+          onRerunPage={handleRerunPage}
+        />
+      )}
+
+      {activeTab === "settings" && (
+        <GrayscaleSettingsTab
+          backend={ctx.backend}
+          draft={ctx.draft}
+          onSetMode={handleSetMode}
+          onPatch={handlePatch}
+          onRedetect={handleRedetect}
+          pageCount={ctx.pages.length || 232}
+        />
       )}
     </div>
   );
