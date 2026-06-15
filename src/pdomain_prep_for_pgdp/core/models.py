@@ -345,6 +345,82 @@ class Project(ApiModel):
     registry_version: int = 2
 
 
+# ─── GrayscaleConfigModel (pydantic mirror of book-tools GrayscaleConfig) ────
+#
+# Field names and defaults mirror the dict produced by
+# `pdomain_book_tools.image_processing.grayscale_pipeline.GrayscaleConfig.to_dict()`
+# exactly, so that `GrayscaleConfig.from_dict(model.model_dump())` round-trips
+# without any key translation.  See Task 1.1 of the grayscale-pipeline plan.
+
+
+class FlattenConfigModel(ApiModel):
+    """Mirrors book-tools FlattenConfig dict shape."""
+
+    enabled: bool = False
+    radius: int = 64
+    strength: float = 1.0
+
+
+class ClaheConfigModel(ApiModel):
+    """Mirrors book-tools ClaheConfig dict shape."""
+
+    enabled: bool = False
+    clip_limit: float = 2.0
+    tile_grid: int = 8
+
+
+class Color2GrayParamsModel(ApiModel):
+    """Mirrors book-tools Color2GrayParams dict shape."""
+
+    radius: int = 300
+    samples: int = 4
+    iterations: int = 10
+    enhance_shadows: bool = False
+
+
+class GrayscaleConfigModel(ApiModel):
+    """Pydantic mirror of book-tools GrayscaleConfig.
+
+    Field names and defaults exactly match the dict produced by
+    ``GrayscaleConfig.to_dict()`` so that
+    ``GrayscaleConfig.from_dict(model.model_dump())`` round-trips without
+    any key translation.
+
+    Converter values (str): luma | luma_bt709 | lab_l | color2gray | best_channel.
+    Channel values (str): green | red | blue | auto.
+    """
+
+    flatten: FlattenConfigModel = Field(default_factory=FlattenConfigModel)
+    converter: str = "luma"
+    channel: str = "green"
+    color2gray: Color2GrayParamsModel = Field(default_factory=Color2GrayParamsModel)
+    clahe: ClaheConfigModel = Field(default_factory=ClaheConfigModel)
+    output_range: list[int] | None = None
+
+    @classmethod
+    def from_settings(cls, settings: dict[str, Any]) -> GrayscaleConfigModel:
+        """Build a GrayscaleConfigModel from a (possibly sparse) settings dict.
+
+        Unknown keys are ignored.  Nested sub-dicts (flatten, clahe,
+        color2gray) are merged with their respective submodel defaults so
+        partial overrides work correctly.
+        """
+        if not settings:
+            return cls()
+        # Build top-level kwargs, expanding nested dicts into submodels.
+        kwargs: dict[str, Any] = {}
+        for key, value in settings.items():
+            if key == "flatten" and isinstance(value, dict):
+                kwargs["flatten"] = FlattenConfigModel(**value)
+            elif key == "clahe" and isinstance(value, dict):
+                kwargs["clahe"] = ClaheConfigModel(**value)
+            elif key == "color2gray" and isinstance(value, dict):
+                kwargs["color2gray"] = Color2GrayParamsModel(**value)
+            else:
+                kwargs[key] = value
+        return cls(**kwargs)
+
+
 # ─── ResolvedPageConfig (output of resolver; not persisted) ──────────────────
 
 
@@ -410,6 +486,11 @@ class ResolvedPageConfig(ApiModel):
     """Minimum output value after output-range remap (0-255 scale)."""
     grayscale_output_range_max: int = 248
     """Maximum output value after output-range remap (0-255 scale)."""
+
+    # ── Pipeline GrayscaleConfig (Task 1.1) ───────────────────────────────────
+    # Full book-tools pipeline config; supersedes the flat legacy fields above.
+    # Task 1.3 will migrate the stage to read this field and remove the flat fields.
+    grayscale: GrayscaleConfigModel = Field(default_factory=GrayscaleConfigModel)
 
 
 # ─── Job ─────────────────────────────────────────────────────────────────────
