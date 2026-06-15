@@ -704,3 +704,207 @@ def test_insert_page_prefixes_consistent_after_insert(tmp_path: Path) -> None:
         # No page should be ignore=True — all three are in-range normal pages.
         for page in body["pages"]:
             assert page["ignore"] is False, f"page idx0={page['idx0']} should not be ignored after insert"
+
+
+# ─── 5. PageRoleSet event emission ────────────────────────────────────────────
+
+
+def test_patch_page_role_set_appends_event_back(tmp_path: Path) -> None:
+    """PATCH {page_role: back} appends a PageRoleSet event to PrepProjectAggregate."""
+    settings = _settings(tmp_path)
+    project_id = "pr1"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        assert r.status_code == 200, r.text
+
+    events = _get_prep_agg_events_from_db(settings, project_id)
+    topic_values = [e.get("topic", "") for e in events]
+    assert any("PageRoleSet" in t for t in topic_values), (
+        f"Expected PageRoleSet event; got topics: {topic_values}"
+    )
+
+
+def test_patch_page_role_set_appends_event_duplicate(tmp_path: Path) -> None:
+    """PATCH {page_role: duplicate} appends a PageRoleSet event."""
+    settings = _settings(tmp_path)
+    project_id = "pr2"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "duplicate"},
+        )
+        assert r.status_code == 200, r.text
+
+    events = _get_prep_agg_events_from_db(settings, project_id)
+    topic_values = [e.get("topic", "") for e in events]
+    assert any("PageRoleSet" in t for t in topic_values), (
+        f"Expected PageRoleSet event for duplicate; got topics: {topic_values}"
+    )
+
+
+def test_patch_page_role_cleared_appends_event(tmp_path: Path) -> None:
+    """PATCH {page_role: null} (clearing a prior sub-role) appends a PageRoleSet event."""
+    settings = _settings(tmp_path)
+    project_id = "pr3"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # First set a role
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        # Now clear it
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "normal", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+
+    events = _get_prep_agg_events_from_db(settings, project_id)
+    topic_values = [e.get("topic", "") for e in events]
+    # Two PageRoleSet events: one for "back" and one for clearing to None.
+    role_set_events = [t for t in topic_values if "PageRoleSet" in t]
+    assert len(role_set_events) >= 2, (
+        f"Expected >=2 PageRoleSet events (set + clear); got topics: {topic_values}"
+    )
+
+
+# ─── 6. Role-transition matrix ─────────────────────────────────────────────────
+
+
+def test_role_transition_back_to_cover(tmp_path: Path) -> None:
+    """back → cover: page_type=cover, page_role=None (cleared), no stale role."""
+    settings = _settings(tmp_path)
+    project_id = "rt1"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        # Set as back
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        # Transition to cover (page_role=null clears prior sub-role)
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "cover", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "cover", f"Expected page_type=cover, got: {body['page_type']}"
+        assert body["page_role"] is None, f"Expected page_role=None (cleared), got: {body['page_role']}"
+
+        # Verify via GET that the stale 'back' role is gone
+        r2 = client.get(f"/api/data/projects/{project_id}/pages/0")
+        assert r2.json()["page_type"] == "cover"
+        assert r2.json()["page_role"] is None
+
+
+def test_role_transition_back_to_blank(tmp_path: Path) -> None:
+    """back → blank: page_type=blank, page_role=None (cleared)."""
+    settings = _settings(tmp_path)
+    project_id = "rt2"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "blank", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "blank"
+        assert body["page_role"] is None
+
+        r2 = client.get(f"/api/data/projects/{project_id}/pages/0")
+        assert r2.json()["page_type"] == "blank"
+        assert r2.json()["page_role"] is None
+
+
+def test_role_transition_back_to_page(tmp_path: Path) -> None:
+    """back → page: page_type=normal, page_role=None (cleared)."""
+    settings = _settings(tmp_path)
+    project_id = "rt3"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "normal", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "normal"
+        assert body["page_role"] is None
+
+        r2 = client.get(f"/api/data/projects/{project_id}/pages/0")
+        assert r2.json()["page_type"] == "normal"
+        assert r2.json()["page_role"] is None
+
+
+def test_role_transition_duplicate_to_cover(tmp_path: Path) -> None:
+    """duplicate → cover: page_type=cover, page_role=None (cleared)."""
+    settings = _settings(tmp_path)
+    project_id = "rt4"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "duplicate"},
+        )
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "cover", "page_role": None},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "cover"
+        assert body["page_role"] is None
+
+        r2 = client.get(f"/api/data/projects/{project_id}/pages/0")
+        assert r2.json()["page_type"] == "cover"
+        assert r2.json()["page_role"] is None
+
+
+def test_role_transition_back_to_duplicate(tmp_path: Path) -> None:
+    """back → duplicate: role swaps correctly (not stale 'back')."""
+    settings = _settings(tmp_path)
+    project_id = "rt5"
+    _seed_project(settings, project_id, _two_pages(project_id))
+    app = build_app(settings)
+    with TestClient(app) as client:
+        client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "back"},
+        )
+        r = client.patch(
+            f"/api/data/projects/{project_id}/pages/0",
+            json={"page_type": "skip", "page_role": "duplicate"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["page_type"] == "skip"
+        assert body["page_role"] == "duplicate", (
+            f"Expected page_role=duplicate after back→duplicate swap; got: {body['page_role']}"
+        )
+
+        r2 = client.get(f"/api/data/projects/{project_id}/pages/0")
+        assert r2.json()["page_type"] == "skip"
+        assert r2.json()["page_role"] == "duplicate"

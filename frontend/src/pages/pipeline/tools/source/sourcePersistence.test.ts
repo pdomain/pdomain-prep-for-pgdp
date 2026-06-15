@@ -687,7 +687,143 @@ describe("FILE_STATE_TO_PAGE_ROLE mapping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Suite 10 — resolveFileState round-trip: back/duplicate survive reload
+// Suite 10 — Role-transition: MARK_AS sends page_role=null for non-sub-role states
+// ---------------------------------------------------------------------------
+
+describe("MARK_AS role-transition: clears page_role when transitioning away from back/duplicate", () => {
+  it("MARK_AS cover sends page_role=null (clears prior back sub-role)", async () => {
+    const markSelectedPagesFn = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ markSelectedPages: markSelectedPagesFn });
+    const files = makeFiles(3);
+    // Page 0 currently has state="back"
+    files[0] = { ...files[0]!, state: "back" };
+    const actor = startMachine({ services, initialFiles: files });
+
+    actor.send({ type: "SELECT_FILE", idx: 0 });
+    actor.send({ type: "MARK_AS", state: "cover" });
+
+    await vi.waitFor(() => expect(markSelectedPagesFn).toHaveBeenCalledOnce());
+
+    // Must send page_role=null to clear the prior "back" sub-role
+    expect(markSelectedPagesFn).toHaveBeenCalledWith(
+      "proj-persist-test",
+      [0],
+      "cover",
+      false, // clearIgnore=false (page was "back", not "skipped")
+      null, // page_role=null clears prior sub-role
+    );
+    actor.stop();
+  });
+
+  it("MARK_AS blank sends page_role=null (clears prior back sub-role)", async () => {
+    const markSelectedPagesFn = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ markSelectedPages: markSelectedPagesFn });
+    const files = makeFiles(3);
+    files[1] = { ...files[1]!, state: "back" };
+    const actor = startMachine({ services, initialFiles: files });
+
+    actor.send({ type: "SELECT_FILE", idx: 1 });
+    actor.send({ type: "MARK_AS", state: "blank" });
+
+    await vi.waitFor(() => expect(markSelectedPagesFn).toHaveBeenCalledOnce());
+
+    expect(markSelectedPagesFn).toHaveBeenCalledWith(
+      "proj-persist-test",
+      [1],
+      "blank",
+      false,
+      null,
+    );
+    actor.stop();
+  });
+
+  it("MARK_AS page sends page_role=null (clears prior duplicate sub-role)", async () => {
+    const markSelectedPagesFn = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ markSelectedPages: markSelectedPagesFn });
+    const files = makeFiles(3);
+    files[2] = { ...files[2]!, state: "duplicate" };
+    const actor = startMachine({ services, initialFiles: files });
+
+    actor.send({ type: "SELECT_FILE", idx: 2 });
+    actor.send({ type: "MARK_AS", state: "page" });
+
+    await vi.waitFor(() => expect(markSelectedPagesFn).toHaveBeenCalledOnce());
+
+    expect(markSelectedPagesFn).toHaveBeenCalledWith(
+      "proj-persist-test",
+      [2],
+      "normal",
+      false,
+      null,
+    );
+    actor.stop();
+  });
+
+  it("MARK_AS duplicate sends page_role=duplicate (correct sub-role for swap)", async () => {
+    const markSelectedPagesFn = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ markSelectedPages: markSelectedPagesFn });
+    const files = makeFiles(3);
+    files[0] = { ...files[0]!, state: "back" };
+    const actor = startMachine({ services, initialFiles: files });
+
+    // back → duplicate swap
+    actor.send({ type: "SELECT_FILE", idx: 0 });
+    actor.send({ type: "MARK_AS", state: "duplicate" });
+
+    await vi.waitFor(() => expect(markSelectedPagesFn).toHaveBeenCalledOnce());
+
+    expect(markSelectedPagesFn).toHaveBeenCalledWith(
+      "proj-persist-test",
+      [0],
+      "skip",
+      false,
+      "duplicate", // page_role=duplicate (not null — this is a new sub-role, not a clear)
+    );
+    actor.stop();
+  });
+
+  it("SET_ROLE cover sends page_role=null (single-page workbench path)", async () => {
+    const markSelectedPagesFn = vi.fn().mockResolvedValue(undefined);
+    const services = makeServices({ markSelectedPages: markSelectedPagesFn });
+    const files = makeFiles(3);
+    files[0] = { ...files[0]!, state: "back" };
+    const actor = startMachine({ services, initialFiles: files });
+
+    actor.send({ type: "SET_ROLE", idx: 0, role: "cover" });
+
+    await vi.waitFor(() => expect(markSelectedPagesFn).toHaveBeenCalledOnce());
+
+    expect(markSelectedPagesFn).toHaveBeenCalledWith(
+      "proj-persist-test",
+      [0],
+      "cover",
+      false,
+      null, // page_role=null clears prior sub-role
+    );
+    actor.stop();
+  });
+
+  it("reload after back→cover: resolveFileState returns cover (not back)", () => {
+    // Simulate what happens when the server returns the updated state after a
+    // back→cover transition: page_type=cover, page_role=null.
+    // resolveFileState must return "cover" (not "back" from a stale role).
+    const fileState = resolveFileState(false, "cover", null);
+    expect(fileState).toBe("cover");
+
+    // Contrast: if page_role were stale "back" (the bug that was fixed),
+    // resolveFileState would incorrectly return "back".
+    // Verify the priority rule: page_role takes precedence when non-null.
+    const staleState = resolveFileState(false, "cover", "back");
+    // This reveals the potential bug: stale page_role would override page_type.
+    // The fix is to always send page_role=null for non-sub-role transitions.
+    expect(staleState).toBe("back"); // Documents the risk of stale roles
+    // The actual reload state after a correct transition (role=null) is:
+    expect(fileState).toBe("cover"); // Confirmed: no stale role interference
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 11 — resolveFileState round-trip: back/duplicate survive reload
 // ---------------------------------------------------------------------------
 
 describe("resolveFileState: back/duplicate distinct from plain skip", () => {

@@ -12,16 +12,18 @@
  *   5. isError=true on non-2xx response
  *   6. Returns empty array when enabled=false
  *   7. [ROUND-TRIP] mark cover → refetch → role chip still shows cover
- *   8. [ROUND-TRIP] back/duplicate collapse to skip honestly on reload
+ *   8. [ROUND-TRIP] back/duplicate survive reload via page_role
+ *   9. [ROUND-TRIP] role-transition: back→cover clears page_role on reload
+ *  10. [ROUND-TRIP] role-transition: duplicate→page clears page_role on reload
  *
- * ## State-mapping contract (after Wave-2 fix)
+ * ## State-mapping contract
  * - ignore=true wins over page_type → "skipped" (manual soft-remove)
+ * - page_role="back"      → "back"      (durable sub-role, distinct from plain skip)
+ * - page_role="duplicate" → "duplicate" (durable sub-role, distinct from plain skip)
  * - page_type "normal"  → "page"
  * - page_type "cover"   → "cover"
  * - page_type "blank"   → "blank"
- * - page_type "skip"    → "skipped" (back + duplicate both write "skip";
- *                          they cannot be distinguished on reload — backend
- *                          limitation; see PAGE_TYPE_TO_FILE_STATE in useSourcePages.ts)
+ * - page_type "skip" (no page_role) → "skipped"
  * - unknown page_type   → "ready" (safe default)
  */
 
@@ -46,20 +48,26 @@ function makeWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
     createElement(QueryClientProvider, { client: qc }, children);
 }
 
-/** Stateful fake backend — stores PATCH page_type and reflects it on GET. */
+/** Stateful fake backend — stores PATCH page_type, page_role, and ignore; reflects them on GET. */
 function makeStatefulBackend(projectId: string): {
-  pageStore: Map<number, { page_type: string; ignore: boolean }>;
+  pageStore: Map<
+    number,
+    { page_type: string; page_role: string | null; ignore: boolean }
+  >;
 } {
   const baseUrl = `/api/data/projects/${projectId}/pages`;
 
-  // Initial state: three pages, all normal / not ignored
-  const pageStore = new Map<number, { page_type: string; ignore: boolean }>([
-    [0, { page_type: "normal", ignore: false }],
-    [1, { page_type: "normal", ignore: false }],
-    [2, { page_type: "normal", ignore: false }],
+  // Initial state: three pages, all normal / not ignored / no sub-role
+  const pageStore = new Map<
+    number,
+    { page_type: string; page_role: string | null; ignore: boolean }
+  >([
+    [0, { page_type: "normal", page_role: null, ignore: false }],
+    [1, { page_type: "normal", page_role: null, ignore: false }],
+    [2, { page_type: "normal", page_role: null, ignore: false }],
   ]);
 
-  // GET handler — returns current pageStore state
+  // GET handler — returns current pageStore state including page_role
   server.use(
     http.get(`*${baseUrl}*`, () => {
       const pages = Array.from(pageStore.entries()).map(([idx0, p]) => ({
@@ -68,23 +76,30 @@ function makeStatefulBackend(projectId: string): {
         thumbnail_key: null,
         ignore: p.ignore,
         page_type: p.page_type,
+        page_role: p.page_role,
       }));
       return HttpResponse.json({ pages, next_cursor: null });
     }),
 
-    // PATCH handler — stores page_type and/or ignore updates
+    // PATCH handler — stores page_type, page_role, and/or ignore updates
     http.patch(`*${baseUrl}/:idx0`, async ({ params, request }) => {
       const idx0 = Number(params["idx0"]);
       const body = (await request.json()) as {
         page_type?: string;
+        page_role?: string | null;
         ignore?: boolean;
       };
       const current = pageStore.get(idx0) ?? {
         page_type: "normal",
+        page_role: null,
         ignore: false,
       };
       pageStore.set(idx0, {
         page_type: body.page_type ?? current.page_type,
+        // page_role is explicitly included when the client sends null (clear) or a string.
+        // Use `"page_role" in body` to distinguish "omitted" from "set to null".
+        page_role:
+          "page_role" in body ? (body.page_role ?? null) : current.page_role,
         ignore: body.ignore ?? current.ignore,
       });
       return HttpResponse.json({ ok: true });
@@ -298,7 +313,7 @@ describe("useSourcePages — round-trip role persistence", () => {
 
     // Simulate PATCH page_type=cover (the machine does this via markSelectedPages).
     // We update pageStore directly as if the PATCH was sent and stored.
-    pageStore.set(0, { page_type: "cover", ignore: false });
+    pageStore.set(0, { page_type: "cover", page_role: null, ignore: false });
 
     // Refetch simulates a reload: new GET will return the updated page_type.
     await act(async () => {
@@ -317,7 +332,7 @@ describe("useSourcePages — round-trip role persistence", () => {
     expect(files[1]?.state).toBe("page"); // initial: normal → page
 
     // Simulate PATCH page_type=blank
-    pageStore.set(1, { page_type: "blank", ignore: false });
+    pageStore.set(1, { page_type: "blank", page_role: null, ignore: false });
 
     const filesAfter = await fetchAllSourcePages(PROJECT_ID);
     expect(filesAfter[1]?.state).toBe("blank");
@@ -330,33 +345,73 @@ describe("useSourcePages — round-trip role persistence", () => {
     expect(files[2]?.state).toBe("page"); // initial
 
     // Simulate PATCH ignore=true (Remove from project)
-    pageStore.set(2, { page_type: "normal", ignore: true });
+    pageStore.set(2, { page_type: "normal", page_role: null, ignore: true });
 
     const filesAfter = await fetchAllSourcePages(PROJECT_ID);
     expect(filesAfter[2]?.state).toBe("skipped"); // ignore=true wins
   });
 
-  it("back/duplicate collapse to skip on reload (documented limitation)", async () => {
-    // Both "back" and "duplicate" FileStates map to page_type="skip" on save.
-    // On reload, page_type="skip" → "skipped" (state).
-    // The original "back" vs "duplicate" distinction is NOT recoverable.
-    // This test confirms the honest behaviour: skip → "skipped", not silently "ready".
+  it("back/duplicate survive reload via page_role (not just plain skip)", async () => {
+    // Both "back" and "duplicate" FileStates map to page_type="skip" for packaging,
+    // but also write page_role="back"/"duplicate" so the UI chip survives reload.
+    // resolveFileState checks page_role first, so the distinct label is recoverable.
     const { pageStore } = makeStatefulBackend(PROJECT_ID);
 
-    // Simulate: user marked page 0 as "back" (which writes page_type="skip")
-    pageStore.set(0, { page_type: "skip", ignore: false });
+    // Simulate: user marked page 0 as "back"
+    // Machine sends page_type=skip + page_role=back
+    pageStore.set(0, { page_type: "skip", page_role: "back", ignore: false });
 
     const files = await fetchAllSourcePages(PROJECT_ID);
-    // After reload: "skip" → "skipped" (not "ready", not "back")
-    expect(files[0]?.state).toBe("skipped");
+    // After reload: page_role="back" wins → "back" (not "skipped")
+    expect(files[0]?.state).toBe("back");
 
-    // Simulate: user marked page 1 as "duplicate" (also writes page_type="skip")
-    pageStore.set(1, { page_type: "skip", ignore: false });
+    // Simulate: user marked page 1 as "duplicate"
+    pageStore.set(1, {
+      page_type: "skip",
+      page_role: "duplicate",
+      ignore: false,
+    });
 
     const files2 = await fetchAllSourcePages(PROJECT_ID);
-    expect(files2[1]?.state).toBe("skipped");
+    expect(files2[1]?.state).toBe("duplicate");
 
-    // Both collapse — they can't be told apart from each other or from
-    // a soft-remove. This is a backend limitation (no back/duplicate enum).
+    // A plain skip (no page_role) still resolves to "skipped"
+    pageStore.set(2, { page_type: "skip", page_role: null, ignore: false });
+    const files3 = await fetchAllSourcePages(PROJECT_ID);
+    expect(files3[2]?.state).toBe("skipped");
+  });
+
+  it("role-transition: back→cover clears page_role on reload", async () => {
+    // When the user marks a "back" page as "cover", the machine sends:
+    //   page_type=cover, page_role=null (clearing the prior sub-role).
+    // The stateful backend reflects both writes, so reload shows "cover" not "back".
+    const { pageStore } = makeStatefulBackend(PROJECT_ID);
+
+    // First, mark as back
+    pageStore.set(0, { page_type: "skip", page_role: "back", ignore: false });
+    const filesBack = await fetchAllSourcePages(PROJECT_ID);
+    expect(filesBack[0]?.state).toBe("back");
+
+    // Then, transition to cover (clears page_role)
+    pageStore.set(0, { page_type: "cover", page_role: null, ignore: false });
+    const filesCover = await fetchAllSourcePages(PROJECT_ID);
+    expect(filesCover[0]?.state).toBe("cover");
+  });
+
+  it("role-transition: duplicate→page clears page_role on reload", async () => {
+    const { pageStore } = makeStatefulBackend(PROJECT_ID);
+
+    pageStore.set(1, {
+      page_type: "skip",
+      page_role: "duplicate",
+      ignore: false,
+    });
+    const filesDup = await fetchAllSourcePages(PROJECT_ID);
+    expect(filesDup[1]?.state).toBe("duplicate");
+
+    // Transition to page (page_type=normal, page_role=null)
+    pageStore.set(1, { page_type: "normal", page_role: null, ignore: false });
+    const filesPage = await fetchAllSourcePages(PROJECT_ID);
+    expect(filesPage[1]?.state).toBe("page");
   });
 });
