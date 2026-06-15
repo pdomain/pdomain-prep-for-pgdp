@@ -764,15 +764,20 @@ async def insert_page(
             "bodymatter_end_idx0": old_cfg.bodymatter_end_idx0 + 1
             if old_cfg.bodymatter_end_idx0 >= insert_at
             else old_cfg.bodymatter_end_idx0,
-            # Start bounds shift too if they are at or after insert_at.
+            # Start bounds shift only when they are STRICTLY AFTER insert_at.
+            # If insert_at == start_bound, the new page is inserted at the
+            # boundary and the section should extend to include it — so the
+            # start bound stays put.  Shifting it at >= would push the start
+            # past the newly inserted page, leaving it outside any section and
+            # producing duplicate folio-1 values for two adjacent pages.
             "proof_start_idx0": old_cfg.proof_start_idx0 + 1
-            if old_cfg.proof_start_idx0 >= insert_at
+            if old_cfg.proof_start_idx0 > insert_at
             else old_cfg.proof_start_idx0,
             "frontmatter_start_idx0": old_cfg.frontmatter_start_idx0 + 1
-            if old_cfg.frontmatter_start_idx0 >= insert_at
+            if old_cfg.frontmatter_start_idx0 > insert_at
             else old_cfg.frontmatter_start_idx0,
             "bodymatter_start_idx0": old_cfg.bodymatter_start_idx0 + 1
-            if old_cfg.bodymatter_start_idx0 >= insert_at
+            if old_cfg.bodymatter_start_idx0 > insert_at
             else old_cfg.bodymatter_start_idx0,
         }
     )
