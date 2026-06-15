@@ -68,10 +68,16 @@ def test_get_stage_impl_raises_keyerror_for_unknown_stage() -> None:
         get_stage_impl("not_a_real_stage", "cpu")
 
 
-def test_get_stage_impl_raises_keyerror_for_unknown_device() -> None:
-    """`mps` and other unregistered devices fall through to KeyError."""
-    with pytest.raises(KeyError):
-        get_stage_impl("grayscale", "mps")
+def test_get_stage_impl_unknown_device_falls_back_to_cpu() -> None:
+    """Unknown device strings fall back to the cpu impl (no KeyError).
+
+    Before Task 2.1 this raised KeyError.  The GPU dispatcher emits ``"cuda"``
+    but registry keys are ``"gpu"``; any unrecognised device must degrade to
+    CPU rather than crashing the pipeline.
+    """
+    impl_cpu = get_stage_impl("grayscale", "cpu")
+    impl_mps = get_stage_impl("grayscale", "mps")
+    assert impl_mps is impl_cpu
 
 
 # ─── Placeholder behavior ───────────────────────────────────────────────────

@@ -1073,20 +1073,45 @@ get_stage_impl() routes v2 stage IDs to V2_STAGE_IMPL instead.
 """
 
 
+_DEVICE_TO_IMPL_KEY: dict[str, str] = {
+    "cuda": "gpu",
+    "gpu": "gpu",
+    "cpu": "cpu",
+}
+"""Normalize an arbitrary device string to the registry impl key.
+
+The GPU dispatcher / ``pick_device`` produces ``"cuda"`` for CUDA devices,
+but registry entries are keyed ``"gpu"``.  Any unrecognised device string
+(e.g. ``"mps"``, ``"xpu"``) falls back to ``"cpu"`` — the stage is always
+runnable on CPU and it is safer to degrade than to raise a ``KeyError``.
+"""
+
+
 def get_stage_impl(stage_id: str, device: str) -> StageImpl:
     """Return the callable registered for ``(stage_id, device)``.
 
     Routes v2 stage IDs (V2_PAGE_STAGE_IDS + V2_PROJECT_STAGE_IDS) to
     V2_STAGE_IMPL. Routes legacy v1 IDs to STAGE_IMPL (still used by
-    page_stage_writer fallback path). Raises ``KeyError`` for unknown
-    stage_ids or unregistered devices.
+    page_stage_writer fallback path).
+
+    Device normalization:
+      - ``"cuda"`` / ``"gpu"`` → look up ``"gpu"`` impl key.
+      - ``"cpu"`` → ``"cpu"`` impl key.
+      - Any unknown device string → ``"cpu"`` (safe fallback).
+    If a stage has no GPU impl (``"gpu"`` key absent), falls back to the
+    ``"cpu"`` impl rather than raising ``KeyError``.
     """
+    # Normalize the device string to an impl key.
+    impl_key = _DEVICE_TO_IMPL_KEY.get(device, "cpu")
+
     # V2 IDs always route to V2_STAGE_IMPL (defined after this function;
     # by call-time the module is fully loaded so the name resolves).
     if stage_id in V2_PAGE_STAGE_IDS or stage_id in V2_PROJECT_STAGE_IDS:
-        return V2_STAGE_IMPL[stage_id][device]
+        devices = V2_STAGE_IMPL[stage_id]
+        # CPU fallback: if the requested impl key is absent, use "cpu".
+        return devices.get(impl_key) or devices["cpu"]
     devices = STAGE_IMPL[stage_id]
-    return devices[device]
+    return devices.get(impl_key) or devices["cpu"]
 
 
 # ─── V2 registry (stage-registry-v2.md §2) ──────────────────────────────────
@@ -1335,8 +1360,15 @@ without a real implementation raise StageNotImplemented; B2-B4 will wire them.
 
 
 def get_v2_stage_impl(stage_id: str, device: str) -> StageImpl:
-    """Return the v2 callable registered for ``(stage_id, device)``."""
-    return V2_STAGE_IMPL[stage_id][device]
+    """Return the v2 callable registered for ``(stage_id, device)``.
+
+    Applies the same device normalization as ``get_stage_impl``:
+    ``"cuda"``/``"gpu"`` → ``"gpu"``; unknown → ``"cpu"``; CPU fallback when
+    no GPU impl is registered for the stage.
+    """
+    impl_key = _DEVICE_TO_IMPL_KEY.get(device, "cpu")
+    devices = V2_STAGE_IMPL[stage_id]
+    return devices.get(impl_key) or devices["cpu"]
 
 
 # ─── Phase 2: GPU-resident segment execution ─────────────────────────────────
