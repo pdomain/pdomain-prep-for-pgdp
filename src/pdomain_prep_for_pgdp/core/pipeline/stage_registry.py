@@ -158,50 +158,49 @@ def _make_placeholder(stage_id: str) -> StageImpl:
 def _grayscale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Convert a 3-channel BGR ndarray to a 2-D grayscale ndarray.
 
-    Calls ``to_grayscale(img, mode=, sampler_radius=, gamma=, output_range=)``
-    from ``pdomain_book_tools.image_processing.cv2_processing`` (requires
-    pdomain-book-tools >= 0.20.0, which is the pinned minimum).
+    Calls ``run_grayscale_pipeline(img, config, use_gpu=False)`` from
+    ``pdomain_book_tools.image_processing.grayscale_pipeline`` (requires
+    pdomain-book-tools >= 0.21.0, which is the pinned minimum).
 
-    When ``cfg`` carries Wave-2 grayscale stage-settings fields those values
-    are forwarded to ``to_grayscale``; otherwise hard-coded defaults are used.
+    When ``cfg`` is provided, ``cfg.grayscale.model_dump()`` is passed to
+    ``GrayscaleConfig.from_dict()`` to build the full pipeline config.
+    When ``cfg`` is None, the default ``GrayscaleConfig()`` is used.
 
-    Raises ``RuntimeError`` (fail-loud) if ``to_grayscale`` is absent — a
-    downgrade below the required book-tools version should surface immediately
-    rather than silently discarding all tuning parameters.
+    Raises ``RuntimeError`` (fail-loud) if the pipeline module or its symbols
+    are absent — a downgrade or incomplete install must be loud rather than
+    silently discarding all grayscale tuning parameters.
     """
+    from typing import Any
+
     try:
-        to_grayscale = _load_attr("pdomain_book_tools.image_processing.cv2_processing", "to_grayscale")
+        run_grayscale_pipeline = cast(
+            "Callable[..., ImageArray]",
+            _load_attr(
+                "pdomain_book_tools.image_processing.grayscale_pipeline",
+                "run_grayscale_pipeline",
+            ),
+        )
+        # GrayscaleConfig is a dynamically loaded class; use Any so the type checker
+        # accepts from_dict() and __call__() without needing a stub or Protocol.
+        GrayscaleConfigCls: Any = _load_attr(
+            "pdomain_book_tools.image_processing.grayscale_pipeline",
+            "GrayscaleConfig",
+        )
     except AttributeError as exc:
         raise RuntimeError(
-            "pdomain_book_tools.image_processing.cv2_processing.to_grayscale is missing. "
-            "pdomain-book-tools >= 0.20.0 is required. "
+            "pdomain_book_tools.image_processing.grayscale_pipeline is missing "
+            "run_grayscale_pipeline or GrayscaleConfig. "
+            "pdomain-book-tools >= 0.21.0 is required. "
             "A downgrade or incomplete install would silently discard all grayscale "
             "tuning parameters — aborting instead."
         ) from exc
 
-    mode = "perceptual"
-    sampler_radius = 3
-    gamma = 1.1
-    output_range: tuple[int, int] = (12, 248)
     if cfg is not None:
-        mode = getattr(cfg, "grayscale_mode", mode)
-        sampler_radius = getattr(cfg, "grayscale_sampler_radius", sampler_radius)
-        gamma = getattr(cfg, "grayscale_gamma", gamma)
-        output_range = (
-            getattr(cfg, "grayscale_output_range_min", output_range[0]),
-            getattr(cfg, "grayscale_output_range_max", output_range[1]),
-        )
-    to_grayscale_fn = cast(
-        "Callable[..., ImageArray]",
-        to_grayscale,
-    )
-    return to_grayscale_fn(
-        image,
-        mode=mode,
-        sampler_radius=sampler_radius,
-        gamma=gamma,
-        output_range=output_range,
-    )
+        gcfg = GrayscaleConfigCls.from_dict(cfg.grayscale.model_dump())
+    else:
+        gcfg = GrayscaleConfigCls()
+
+    return run_grayscale_pipeline(image, gcfg, use_gpu=False)
 
 
 def _threshold_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:

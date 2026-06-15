@@ -80,26 +80,29 @@ def make_cfg(**kwargs):  # type: ignore[no-untyped-def]
 
 
 class TestGrayscaleCpuWithParams:
-    """_grayscale_cpu passes Wave-2 params to to_grayscale when available."""
+    """_grayscale_cpu calls run_grayscale_pipeline with the cfg.grayscale config."""
 
-    def test_calls_to_grayscale_with_mode_and_params(self) -> None:
-        """When to_grayscale is available, it is called with cfg params."""
+    def test_calls_run_grayscale_pipeline_with_cfg_grayscale(self) -> None:
+        """run_grayscale_pipeline is called with config from cfg.grayscale."""
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
         image = make_bgr_image()
         expected_out = np.zeros((64, 64), dtype=np.uint8)
 
         cfg = make_cfg(
-            grayscale_mode="standard",
-            grayscale_sampler_radius=5,
-            grayscale_gamma=1.0,
-            grayscale_output_range_min=0,
-            grayscale_output_range_max=255,
+            grayscale=GrayscaleConfigModel(converter="best_channel", channel="green"),
         )
 
-        mock_to_grayscale = MagicMock(return_value=expected_out)
+        mock_pipeline = MagicMock(return_value=expected_out)
+        mock_config_cls = MagicMock()
+        mock_config_instance = MagicMock()
+        mock_config_cls.from_dict.return_value = mock_config_instance
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
-            if attr_name == "to_grayscale":
-                return mock_to_grayscale
+            if attr_name == "run_grayscale_pipeline":
+                return mock_pipeline
+            if attr_name == "GrayscaleConfig":
+                return mock_config_cls
             raise AttributeError(f"unexpected attr: {attr_name}")
 
         with patch(
@@ -109,26 +112,31 @@ class TestGrayscaleCpuWithParams:
             result = _grayscale_cpu(image, cfg)
 
         assert result is expected_out
-        mock_to_grayscale.assert_called_once_with(
-            image,
-            mode="standard",
-            sampler_radius=5,
-            gamma=1.0,
-            output_range=(0, 255),
-        )
+        # GrayscaleConfig.from_dict must be called with the model_dump of cfg.grayscale
+        mock_config_cls.from_dict.assert_called_once_with(cfg.grayscale.model_dump())
+        # run_grayscale_pipeline must be called with image + config + use_gpu=False
+        mock_pipeline.assert_called_once_with(image, mock_config_instance, use_gpu=False)
 
-    def test_calls_to_grayscale_with_perceptual_mode_defaults(self) -> None:
-        """Perceptual mode uses the Wave-2 defaults from cfg."""
+    def test_calls_run_grayscale_pipeline_with_default_cfg_grayscale(self) -> None:
+        """Default cfg.grayscale (luma converter) is forwarded to run_grayscale_pipeline."""
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
         image = make_bgr_image()
         expected_out = np.zeros((64, 64), dtype=np.uint8)
 
-        cfg = make_cfg()  # uses default field values: perceptual, radius=3, gamma=1.1, 12/248
+        cfg = make_cfg()  # default GrayscaleConfigModel() → converter=luma
+        default_dump = GrayscaleConfigModel().model_dump()
 
-        mock_to_grayscale = MagicMock(return_value=expected_out)
+        mock_pipeline = MagicMock(return_value=expected_out)
+        mock_config_cls = MagicMock()
+        mock_config_instance = MagicMock()
+        mock_config_cls.from_dict.return_value = mock_config_instance
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
-            if attr_name == "to_grayscale":
-                return mock_to_grayscale
+            if attr_name == "run_grayscale_pipeline":
+                return mock_pipeline
+            if attr_name == "GrayscaleConfig":
+                return mock_config_cls
             raise AttributeError(f"unexpected attr: {attr_name}")
 
         with patch(
@@ -138,28 +146,19 @@ class TestGrayscaleCpuWithParams:
             result = _grayscale_cpu(image, cfg)
 
         assert result is expected_out
-        mock_to_grayscale.assert_called_once_with(
-            image,
-            mode="perceptual",
-            sampler_radius=3,
-            gamma=1.1,
-            output_range=(12, 248),
-        )
+        mock_config_cls.from_dict.assert_called_once_with(default_dump)
+        mock_pipeline.assert_called_once_with(image, mock_config_instance, use_gpu=False)
 
-    def test_raises_runtime_error_when_to_grayscale_missing(self) -> None:
-        """Fail-loud: RuntimeError is raised when to_grayscale is absent.
+    def test_raises_runtime_error_when_run_grayscale_pipeline_missing(self) -> None:
+        """Fail-loud: RuntimeError is raised when run_grayscale_pipeline is absent.
 
-        Silently falling back to the legacy cv2_convert_to_grayscale would
-        discard all four tuning params (mode/sampler_radius/gamma/output_range).
-        The pin is pdomain-book-tools >= 0.20.0 so this should never fire in
-        practice — but a bad downgrade must be loud rather than silent.
+        A downgrade below pdomain-book-tools >= 0.21.0 must surface immediately
+        rather than silently discarding all grayscale tuning parameters.
         """
         image = make_bgr_image()
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
-            if attr_name == "to_grayscale":
-                raise AttributeError("to_grayscale not in this version")
-            raise AttributeError(f"unexpected attr: {attr_name}")
+            raise AttributeError(f"{attr_name} not in this version")
 
         with (
             patch(
@@ -175,9 +174,7 @@ class TestGrayscaleCpuWithParams:
         image = make_bgr_image()
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
-            if attr_name == "to_grayscale":
-                raise AttributeError("not found")
-            raise AttributeError(f"unexpected attr: {attr_name}")
+            raise AttributeError("not found")
 
         with (
             patch(
@@ -190,15 +187,21 @@ class TestGrayscaleCpuWithParams:
         # __cause__ should be the original AttributeError (raised from exc)
         assert isinstance(exc_info.value.__cause__, AttributeError)
 
-    def test_no_cfg_uses_built_in_defaults(self) -> None:
-        """When cfg=None, to_grayscale is called with hard-coded defaults."""
+    def test_no_cfg_uses_default_grayscale_config(self) -> None:
+        """When cfg=None, run_grayscale_pipeline is called with GrayscaleConfig()."""
         image = make_bgr_image()
         expected_out = np.zeros((64, 64), dtype=np.uint8)
-        mock_to_grayscale = MagicMock(return_value=expected_out)
+
+        mock_pipeline = MagicMock(return_value=expected_out)
+        mock_config_cls = MagicMock()
+        mock_default_instance = MagicMock()
+        mock_config_cls.return_value = mock_default_instance  # GrayscaleConfig() call
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
-            if attr_name == "to_grayscale":
-                return mock_to_grayscale
+            if attr_name == "run_grayscale_pipeline":
+                return mock_pipeline
+            if attr_name == "GrayscaleConfig":
+                return mock_config_cls
             raise AttributeError(f"unexpected attr: {attr_name}")
 
         with patch(
@@ -208,13 +211,9 @@ class TestGrayscaleCpuWithParams:
             result = _grayscale_cpu(image, None)
 
         assert result is expected_out
-        mock_to_grayscale.assert_called_once_with(
-            image,
-            mode="perceptual",
-            sampler_radius=3,
-            gamma=1.1,
-            output_range=(12, 248),
-        )
+        # When cfg is None, GrayscaleConfig() (no args) must be used
+        mock_config_cls.assert_called_once_with()
+        mock_pipeline.assert_called_once_with(image, mock_default_instance, use_gpu=False)
 
 
 # ---------------------------------------------------------------------------
@@ -312,11 +311,11 @@ class TestApplyStageSettingsGrayscale:
 
 
 class TestGrayscaleRealByteDiff:
-    """Prove that different param sets produce pixel-distinct output.
+    """Prove that different GrayscaleConfigModel settings produce pixel-distinct output.
 
-    Uses the REAL pdomain_book_tools.to_grayscale — no mocking of the
-    core function.  This is the committed proof that tuning parameters
-    actually reach the primitive and change the resulting image bytes,
+    Uses the REAL pdomain_book_tools.run_grayscale_pipeline — no mocking of the
+    core function.  This is the committed proof that tuning parameters via
+    cfg.grayscale actually reach the pipeline and change the resulting image bytes,
     not just that the call happens.
     """
 
@@ -325,44 +324,32 @@ class TestGrayscaleRealByteDiff:
         """Return a synthetic BGR image with strong per-pixel variation.
 
         A uniform (solid) image collapses to a single luma value, which the
-        output_range normalisation maps to the same byte regardless of mode.
-        We need spatial variation so each mode's distinct channel-weight
-        formula (BT.601 vs BT.709 linear-light) produces a *different* per-pixel
-        luma distribution.  A deterministic random array with seed 123 is
-        used so the test is reproducible across machines.
+        output_range normalisation maps to the same byte regardless of converter.
+        We need spatial variation so each converter's distinct channel-weight
+        formula produces a *different* per-pixel distribution.  A deterministic
+        random array with seed 123 is used so the test is reproducible.
         """
         rng = np.random.default_rng(123)
         return rng.integers(0, 255, (h, w, 3), dtype=np.uint8)
 
-    def test_standard_vs_perceptual_produce_different_pixels(self) -> None:
-        """standard + gamma=1.0 vs perceptual + gamma=2.2 + radius=7 differ.
+    def test_luma_vs_best_channel_produce_different_pixels(self) -> None:
+        """luma converter vs best_channel/green produce distinct pixel outputs.
 
-        Param set A (standard / fast luma):
-          mode="standard", sampler_radius=0, gamma=1.0, output_range=(0, 255)
+        Param set A (luma): converter=luma (weighted BT.601 combination)
+        Param set B (best_channel/green): converter=best_channel, channel=green
 
-        Param set B (perceptual / gamma-aware):
-          mode="perceptual", sampler_radius=7, gamma=2.2, output_range=(0, 255)
-
-        The two modes use different channel-weight formulas (BT.601 vs BT.709
-        in linear light), so even a uniform-colour patch will yield a different
-        single luma value.  We assert pixel arrays differ AND report the mean
-        absolute difference for traceability.
+        These must differ on any image where the green channel differs from
+        the BT.601 luma, which is virtually any natural image.
         """
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
         image = self._make_colorful_image()
 
         cfg_a = make_cfg(
-            grayscale_mode="standard",
-            grayscale_sampler_radius=0,
-            grayscale_gamma=1.0,
-            grayscale_output_range_min=0,
-            grayscale_output_range_max=255,
+            grayscale=GrayscaleConfigModel(converter="luma"),
         )
         cfg_b = make_cfg(
-            grayscale_mode="perceptual",
-            grayscale_sampler_radius=7,
-            grayscale_gamma=2.2,
-            grayscale_output_range_min=0,
-            grayscale_output_range_max=255,
+            grayscale=GrayscaleConfigModel(converter="best_channel", channel="green"),
         )
 
         result_a = _grayscale_cpu(image, cfg_a)
@@ -376,12 +363,11 @@ class TestGrayscaleRealByteDiff:
         mean_diff = float(diff.mean())
         changed_pixels = int((diff > 0).sum())
 
-        # Commit the proof: params must reach the real primitive and change output.
-        # The threshold is deliberately low — even 1 changed pixel falsifies
-        # the "params are silently dropped" hypothesis.  In practice the BT.601
-        # vs BT.709 difference on our test patch is several luma counts.
+        # Commit the proof: cfg.grayscale params must reach the real pipeline and
+        # change output.  The threshold is deliberately low — even 1 changed pixel
+        # falsifies the "params are silently dropped" hypothesis.
         assert changed_pixels > 0, (
-            f"PARAMS IGNORED: result_a and result_b are identical pixel-for-pixel "
+            f"PARAMS IGNORED: luma and best_channel/green produced identical output "
             f"(mean_diff={mean_diff:.4f}, changed_pixels={changed_pixels})"
         )
 
@@ -391,6 +377,101 @@ class TestGrayscaleRealByteDiff:
         print(
             f"\n  byte-diff proof: mean_abs_diff={mean_diff:.2f}, "
             f"changed_pixels={changed_pixels}/{result_a.size} "
+            f"({100 * changed_pixels / result_a.size:.1f}%)",
+            file=sys.stderr,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Suite 4: Task 1.2 — _grayscale_cpu calls run_grayscale_pipeline via cfg.grayscale
+# ---------------------------------------------------------------------------
+
+
+class TestGrayscaleCpuRunsPipeline:
+    """_grayscale_cpu reads cfg.grayscale and calls run_grayscale_pipeline.
+
+    These tests prove the migration from to_grayscale + flat fields to
+    run_grayscale_pipeline + GrayscaleConfigModel.  They use the REAL
+    book-tools pipeline — no mocking — so parameter propagation is proven
+    by observable pixel differences, not call-site assertions.
+    """
+
+    @staticmethod
+    def _make_distinct_bgr(h: int = 64, w: int = 64) -> np.ndarray:
+        """Build a BGR image where each channel has clearly distinct values.
+
+        B channel: low values (0-63)
+        G channel: mid values (100-163)
+        R channel: high values (200-255)
+        This ensures best_channel/green output differs visibly from luma output.
+        """
+        rng = np.random.default_rng(77)
+        img = np.zeros((h, w, 3), dtype=np.uint8)
+        img[:, :, 0] = rng.integers(0, 64, (h, w), dtype=np.uint8)  # B
+        img[:, :, 1] = rng.integers(100, 164, (h, w), dtype=np.uint8)  # G
+        img[:, :, 2] = rng.integers(200, 255, (h, w), dtype=np.uint8)  # R
+        return img
+
+    def test_best_channel_green_equals_green_channel(self) -> None:
+        """cfg.grayscale(converter=best_channel, channel=green) → output == green channel.
+
+        Proof that the config reaches run_grayscale_pipeline: best_channel picks
+        the channel specified (green = BGR index 1) and returns it verbatim.
+        """
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
+        image = self._make_distinct_bgr()
+        cfg = make_cfg(
+            grayscale=GrayscaleConfigModel(converter="best_channel", channel="green"),
+        )
+
+        result = _grayscale_cpu(image, cfg)
+
+        assert result.ndim == 2, f"expected 2D grayscale output, got shape {result.shape}"
+        assert result.shape == image.shape[:2], f"shape mismatch: {result.shape} vs {image.shape[:2]}"
+        # best_channel/green must return the green channel (BGR index 1) verbatim
+        np.testing.assert_array_equal(
+            result,
+            image[:, :, 1],
+            err_msg="best_channel/green output does not equal the green channel pixel-for-pixel",
+        )
+
+    def test_byte_diff_luma_vs_best_channel(self) -> None:
+        """Two different GrayscaleConfigModel configs produce distinct output bytes.
+
+        Config A: converter=luma (weighted BT.601 luma from all channels)
+        Config B: converter=best_channel, channel=green (just the green channel)
+
+        With distinct per-channel values the two outputs must differ.
+        """
+        import sys
+
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
+        image = self._make_distinct_bgr()
+
+        cfg_a = make_cfg(
+            grayscale=GrayscaleConfigModel(converter="luma", channel="green"),
+        )
+        cfg_b = make_cfg(
+            grayscale=GrayscaleConfigModel(converter="best_channel", channel="green"),
+        )
+
+        result_a = _grayscale_cpu(image, cfg_a)
+        result_b = _grayscale_cpu(image, cfg_b)
+
+        assert result_a.shape == result_b.shape, f"shape mismatch: {result_a.shape} vs {result_b.shape}"
+
+        diff = np.abs(result_a.astype(int) - result_b.astype(int))
+        changed_pixels = int((diff > 0).sum())
+
+        assert changed_pixels > 0, (
+            "BYTE-DIFF FAILED: luma and best_channel/green produced identical output "
+            "(cfg.grayscale is being silently ignored)"
+        )
+
+        print(
+            f"\n  Task-1.2 byte-diff: changed_pixels={changed_pixels}/{result_a.size} "
             f"({100 * changed_pixels / result_a.size:.1f}%)",
             file=sys.stderr,
         )
