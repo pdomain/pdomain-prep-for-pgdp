@@ -42,42 +42,43 @@ import {
   buildRealStageSettingsServices,
   putStageSettings,
 } from "@/services/stageSettings";
+// Task 4.1 — pipeline config types + serializers
+import {
+  type GrayscaleConfig,
+  draftToSettings,
+} from "@/pages/pipeline/tools/grayscale/grayscaleConfig";
 
 // ---------------------------------------------------------------------------
-// Snake-case serialization (Issue 3 fix)
+// Settings serialization (Task 4.1 — nested pipeline config)
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a camelCase draft dict to the snake_case body expected by
- * PUT /stages/grayscale/settings and the StageSettingsStore.
+ * Convert a machine draft (GrayscaleDraftConfig) to the nested snake_case
+ * body expected by PUT /stages/grayscale/settings.
  *
- * STAGE_SETTINGS_DEFAULTS["grayscale"] keys: mode, sampler_radius, gamma,
- * output_range_min, output_range_max — all snake_case. Unknown camelCase
- * keys from the draft are dropped here; only the five known knobs are emitted.
+ * Task 4.1: the draft is now a GrayscaleDraftConfig (nested pipeline config
+ * shape), not a flat camelCase dict. draftToSettings() from grayscaleConfig.ts
+ * handles the serialization; it deep-clones the nested config to avoid
+ * mutation.
  *
- * Accepts Record<string, unknown> (the machine passes GrayscaleDraft which
- * is assignable to this) to avoid a redundant type assertion at the call site.
+ * The machine passes `context.draft` (GrayscaleDraft, a Record<string,unknown>)
+ * to runStage. We cast it to GrayscaleConfig for the serializer.  The machine
+ * must populate a proper GrayscaleDraftConfig into ctx.draft for this to work
+ * correctly (Task 4.2 wires the form to do that; for now the machine keeps its
+ * existing draft patch logic until 4.2 upgrades it).
+ *
+ * For backward compat: if the draft lacks the nested keys (old-style flat
+ * draft), draftToSettings() will still produce a valid GrayscaleConfig by
+ * using GRAYSCALE_CONFIG_DEFAULTS for missing fields.
  */
-function draftToSnakeCase(
+function serializeDraftToSettings(
   draft: Record<string, unknown>,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  if (draft["mode"] !== undefined) {
-    body["mode"] = draft["mode"];
-  }
-  if (draft["samplerRadius"] !== undefined) {
-    body["sampler_radius"] = draft["samplerRadius"];
-  }
-  if (draft["gamma"] !== undefined) {
-    body["gamma"] = draft["gamma"];
-  }
-  if (draft["outputRangeMin"] !== undefined) {
-    body["output_range_min"] = draft["outputRangeMin"];
-  }
-  if (draft["outputRangeMax"] !== undefined) {
-    body["output_range_max"] = draft["outputRangeMax"];
-  }
-  return body;
+): GrayscaleConfig {
+  // If the draft already has nested structure (Task 4.1+ draft), use draftToSettings.
+  // Cast: the machine populates draft via GrayscaleDraftConfig once Task 4.2 lands;
+  // until then the cast is safe because draftToSettings handles missing nested keys
+  // by falling back to defaults via settingsToDraft in the round-trip.
+  return draftToSettings(draft as unknown as GrayscaleConfig);
 }
 
 // ---------------------------------------------------------------------------
@@ -88,16 +89,24 @@ function draftToSnakeCase(
  * Detect grayscale profile by sampling COLOR SOURCE page images from the BlobStore.
  *
  * POST /api/data/projects/{id}/project-stages/grayscale/detect
- * → { mode, why, backend }
+ * → { config, why, mode, backend }
  *
- * Backend heuristic: samples up to 8 original source images, measures YCbCr
- * chromatic energy. Returns "perceptual" for colour-biased sources, "standard"
- * for B&W line art.
+ * Task 4.1: response now includes `config` — the full GrayscalePipelineConfig
+ * recommended by the backend heuristic.  `mode` is kept for backward compat
+ * with the machine's `detected.mode` context field.
+ *
+ * Backend heuristic: samples up to 8 original source images, measures four
+ * chroma/contrast signals, and recommends the full nested GrayscaleConfig.
+ * Spec: docs/specs/2026-06-15-grayscale-pipeline.md §8a.
  */
-async function detectProfile(
-  projectId: string,
-): Promise<{ mode: GrayscaleMode; why: string; backend: GrayscaleBackend }> {
+async function detectProfile(projectId: string): Promise<{
+  config: GrayscaleConfig;
+  mode: GrayscaleMode;
+  why: string;
+  backend: GrayscaleBackend;
+}> {
   return api.post<{
+    config: GrayscaleConfig;
     mode: GrayscaleMode;
     why: string;
     backend: GrayscaleBackend;
@@ -134,8 +143,12 @@ async function runStage(
   settings: Record<string, unknown>,
 ): Promise<void> {
   // Persist the draft override first so run_stage sees the new settings.
-  const snakeSettings = draftToSnakeCase(settings);
-  await putStageSettings(projectId, stageId, snakeSettings);
+  const snakeSettings = serializeDraftToSettings(settings);
+  await putStageSettings(
+    projectId,
+    stageId,
+    snakeSettings as unknown as Record<string, unknown>,
+  );
 
   // Run on page 0 (the "currently viewed" page in Apply&Run context).
   // The machine always navigates to the current page; idx0=0 is the canonical

@@ -299,6 +299,7 @@ export function GrayscaleOverviewTab({
             detected ?? {
               mode: "perceptual",
               why: "newsprint · low contrast · low DPI",
+              config: null,
             }
           }
           backend={backend}

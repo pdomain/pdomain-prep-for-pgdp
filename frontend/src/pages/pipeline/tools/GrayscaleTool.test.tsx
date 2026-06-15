@@ -36,6 +36,19 @@ const defaultServices: GrayscaleToolServices = {
   ...stubStageSettingsServices(),
   detectProfile: () =>
     Promise.resolve({
+      config: {
+        flatten: { enabled: false, radius: 64, strength: 1.0 },
+        converter: "luma" as const,
+        channel: "green" as const,
+        color2gray: {
+          radius: 300,
+          samples: 4,
+          iterations: 10,
+          enhance_shadows: false,
+        },
+        clahe: { enabled: false, clip_limit: 2.0, tile_grid: 8 },
+        output_range: null,
+      },
       mode: "perceptual" as const,
       why: "newsprint · low contrast · low DPI",
       backend: "gpu" as const,

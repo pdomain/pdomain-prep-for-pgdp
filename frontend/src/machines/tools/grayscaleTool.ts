@@ -22,6 +22,8 @@
 import { setup, assign, fromPromise } from "xstate";
 // W5.2 — import StageSettingsServices so GrayscaleToolServices can extend it
 import type { StageSettingsServices } from "./stageSettings";
+// Task 4.1 — import pipeline config types for the new detectProfile return shape
+import type { GrayscaleConfig } from "@/pages/pipeline/tools/grayscale/grayscaleConfig";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -41,6 +43,8 @@ export interface GrayscalePage {
 export interface GrayscaleDetected {
   mode: GrayscaleMode;
   why: string;
+  /** Task 4.1: full pipeline config recommended by detect (null before first detection). */
+  config: GrayscaleConfig | null;
 }
 
 export interface GrayscaleParams {
@@ -67,11 +71,18 @@ export interface GrayscaleDraft {
 export interface GrayscaleToolServices extends StageSettingsServices {
   /**
    * POST /api/projects/:id/stages/grayscale/detect
-   * -> { mode, why, backend }
+   * -> { config, why, mode, backend }
+   *
+   * Task 4.1: `config` carries the full nested GrayscaleConfig recommended by
+   * the backend heuristic.  `mode` is kept for backward compat with the
+   * machine's `detected.mode` context field.
    */
-  detectProfile(
-    projectId: string,
-  ): Promise<{ mode: GrayscaleMode; why: string; backend: GrayscaleBackend }>;
+  detectProfile(projectId: string): Promise<{
+    config: GrayscaleConfig;
+    mode: GrayscaleMode;
+    why: string;
+    backend: GrayscaleBackend;
+  }>;
   /** POST .../project-stages/{stageId}/run */
   runStage(
     projectId: string,
@@ -177,7 +188,12 @@ export const grayscaleToolMachine = setup({
      * DIVERGENCE #3: onDone carries event.output not event.data.
      */
     detectProfile: fromPromise<
-      { mode: GrayscaleMode; why: string; backend: GrayscaleBackend },
+      {
+        config: GrayscaleConfig;
+        mode: GrayscaleMode;
+        why: string;
+        backend: GrayscaleBackend;
+      },
       { projectId: string; services: GrayscaleToolServices }
     >(({ input }) => input.services.detectProfile(input.projectId)),
   },
@@ -242,13 +258,18 @@ export const grayscaleToolMachine = setup({
         _args,
         params: {
           output: {
+            config: GrayscaleConfig;
             mode: GrayscaleMode;
             why: string;
             backend: GrayscaleBackend;
           };
         },
       ): Partial<GrayscaleToolContext> => ({
-        detected: { mode: params.output.mode, why: params.output.why },
+        detected: {
+          mode: params.output.mode,
+          why: params.output.why,
+          config: params.output.config,
+        },
         backend: params.output.backend,
       }),
     ),
@@ -440,6 +461,7 @@ export const grayscaleToolMachine = setup({
               }: {
                 event: {
                   output: {
+                    config: GrayscaleConfig;
                     mode: GrayscaleMode;
                     why: string;
                     backend: GrayscaleBackend;
