@@ -13,6 +13,7 @@ import type {
   GrayscaleDetected,
   GrayscaleDraft,
   GrayscaleMode,
+  GrayscaleConverter,
 } from "./types";
 import {
   BackendChip,
@@ -21,6 +22,7 @@ import {
   GrayscaleSubhead,
 } from "./GrayscaleShared";
 import { estimateSecPerPage, fmtSec, fmtProjectTotal } from "./helpers";
+import { GrayscalePipelineEditor } from "./GrayscalePipelineEditor";
 
 // ---------------------------------------------------------------------------
 // Full-width ModeCard
@@ -472,17 +474,28 @@ export function GrayscaleSettingsTab({
   backend,
   draft,
   detected,
+  sources,
   onSetMode,
   onPatch,
   onRedetect,
+  onSetConverter,
+  onSetFlatten,
+  onSetClahe,
+  onSetChannel,
   pageCount,
 }: {
   backend: GrayscaleBackend;
   draft: GrayscaleDraft | null;
   detected: GrayscaleDetected | null;
+  /** Per-field resolved source tier map (from GET .../settings/resolved). */
+  sources: Record<string, string>;
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
   onRedetect: () => void;
+  onSetConverter: (c: GrayscaleConverter) => void;
+  onSetFlatten: (enabled: boolean) => void;
+  onSetClahe: (enabled: boolean) => void;
+  onSetChannel: (ch: string) => void;
   pageCount: number;
 }): ReactNode {
   const sec = estimateSecPerPage(backend);
@@ -629,6 +642,30 @@ export function GrayscaleSettingsTab({
         {currentMode === "perceptual" && (
           <AdvancedParamsFull draft={draft} onPatch={onPatch} />
         )}
+
+        {/* Pipeline editor — flatten / converter / CLAHE (Task 4.2) */}
+        <GrayscalePipelineEditor
+          draft={
+            draft ?? {
+              flatten: { enabled: false, radius: 64, strength: 1.0 },
+              converter: "luma",
+              channel: "green",
+              color2gray: {
+                radius: 300,
+                samples: 4,
+                iterations: 10,
+                enhance_shadows: false,
+              },
+              clahe: { enabled: false, clip_limit: 2.0, tile_grid: 8 },
+              output_range: null,
+            }
+          }
+          sources={sources}
+          onSetConverter={onSetConverter}
+          onSetFlatten={onSetFlatten}
+          onSetClahe={onSetClahe}
+          onSetChannel={onSetChannel}
+        />
       </GrayscaleBody>
     </>
   );

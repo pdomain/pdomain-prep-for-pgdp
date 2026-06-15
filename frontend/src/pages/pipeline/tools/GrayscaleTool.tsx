@@ -43,9 +43,11 @@ import {
   type GrayscaleToolServices,
   type GrayscaleMode,
 } from "@/machines/tools/grayscaleTool";
+import type { GrayscaleConverter } from "./grayscale/types";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
+import { getStageSettingsResolved } from "@/services/stageSettings";
 import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
 import type { GrayscalePage } from "@/machines/tools/grayscaleTool";
 import type { GrayscaleTab } from "./grayscale/types";
@@ -175,6 +177,27 @@ export function GrayscaleTool({
   // Determine settings state for drawer
   const settingsState = ctx.draft != null ? "modified" : "default";
 
+  // Task 4.2: resolved source tier map — fetched from GET .../settings/resolved.
+  // Empty map on initial load; populated once the project is known.
+  const [resolvedSources, setResolvedSources] = useState<
+    Record<string, string>
+  >({});
+  useEffect(() => {
+    if (!projectId || projectId === "demo") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await getStageSettingsResolved(projectId, "grayscale");
+        if (!cancelled) setResolvedSources(resp.sources);
+      } catch {
+        // Non-fatal — source badges will show empty/registry default
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
   // ── Event handlers ───────────────────────────────────────────────────────
   const handleSetFilter = (v: "all" | "perceptual" | "standard") =>
     send({ type: "SET_FILTER", value: v });
@@ -196,6 +219,19 @@ export function GrayscaleTool({
   const handleRedetect = () => send({ type: "REDETECT" });
   const handleApplyRun = () => send({ type: "APPLY_RUN" });
   const handleRerunPage = () => send({ type: "RERUN_PAGE" });
+
+  // Task 4.2: pipeline config editor event handlers
+  const handleSetConverter = (converter: GrayscaleConverter) =>
+    send({ type: "SET_CONVERTER", converter });
+  const handleSetFlatten = (enabled: boolean) =>
+    send({ type: "SET_FLATTEN", enabled });
+  const handleSetClahe = (enabled: boolean) =>
+    send({ type: "SET_CLAHE", enabled });
+  const handleSetChannel = (channel: string) =>
+    send({
+      type: "SET_CHANNEL",
+      channel: channel as import("./grayscale/types").GrayscaleChannel,
+    });
 
   // Keyboard navigation in workbench tab (ArrowLeft/[ → PREV_PAGE, ArrowRight/] → NEXT_PAGE)
   // Must be declared before any early returns to satisfy rules-of-hooks.
@@ -366,6 +402,7 @@ export function GrayscaleTool({
           draft={ctx.draft}
           detected={ctx.detected}
           settingsState={settingsState}
+          sources={resolvedSources}
           onPrev={handlePrev}
           onNext={handleNext}
           onSetMode={handleSetMode}
@@ -375,6 +412,10 @@ export function GrayscaleTool({
           onRedetect={handleRedetect}
           onApplyRun={handleApplyRun}
           onRerunPage={handleRerunPage}
+          onSetConverter={handleSetConverter}
+          onSetFlatten={handleSetFlatten}
+          onSetClahe={handleSetClahe}
+          onSetChannel={handleSetChannel}
         />
       )}
 
@@ -383,9 +424,14 @@ export function GrayscaleTool({
           backend={ctx.backend}
           draft={ctx.draft}
           detected={ctx.detected}
+          sources={resolvedSources}
           onSetMode={handleSetMode}
           onPatch={handlePatch}
           onRedetect={handleRedetect}
+          onSetConverter={handleSetConverter}
+          onSetFlatten={handleSetFlatten}
+          onSetClahe={handleSetClahe}
+          onSetChannel={handleSetChannel}
           pageCount={ctx.pages.length}
         />
       )}

@@ -22,6 +22,7 @@ import type {
   GrayscaleDraft,
   GrayscaleMode,
   GrayscalePage,
+  GrayscaleConverter,
 } from "./types";
 import {
   BackendChip,
@@ -39,6 +40,7 @@ import {
   grayscaleArtifactUrl,
   sourceArtifactUrl,
 } from "./helpers";
+import { GrayscalePipelineEditor } from "./GrayscalePipelineEditor";
 
 // ---------------------------------------------------------------------------
 // Advanced params — collapsible stacked sliders
@@ -459,22 +461,33 @@ function StageControlsDrawer({
   draft,
   detected,
   settingsState,
+  sources,
   onSetMode,
   onPatch,
   onRevert,
   onSaveDefault,
   onRedetect,
+  onSetConverter,
+  onSetFlatten,
+  onSetClahe,
+  onSetChannel,
   pageCount,
 }: {
   backend: GrayscaleBackend;
   draft: GrayscaleDraft | null;
   detected: GrayscaleDetected | null;
   settingsState: SettingsState;
+  /** Per-field resolved source tier map (from GET .../settings/resolved). */
+  sources: Record<string, string>;
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
   onRevert: () => void;
   onSaveDefault: () => void;
   onRedetect: () => void;
+  onSetConverter: (c: GrayscaleConverter) => void;
+  onSetFlatten: (enabled: boolean) => void;
+  onSetClahe: (enabled: boolean) => void;
+  onSetChannel: (ch: string) => void;
   pageCount: number;
 }): ReactNode {
   const sec = estimateSecPerPage(backend);
@@ -747,6 +760,30 @@ function StageControlsDrawer({
         {currentMode === "perceptual" && (
           <AdvancedParamsStacked draft={draft} onPatch={onPatch} />
         )}
+
+        {/* Pipeline editor — flatten / converter / CLAHE (Task 4.2) */}
+        <GrayscalePipelineEditor
+          draft={
+            draft ?? {
+              flatten: { enabled: false, radius: 64, strength: 1.0 },
+              converter: "luma",
+              channel: "green",
+              color2gray: {
+                radius: 300,
+                samples: 4,
+                iterations: 10,
+                enhance_shadows: false,
+              },
+              clahe: { enabled: false, clip_limit: 2.0, tile_grid: 8 },
+              output_range: null,
+            }
+          }
+          sources={sources}
+          onSetConverter={onSetConverter}
+          onSetFlatten={onSetFlatten}
+          onSetClahe={onSetClahe}
+          onSetChannel={onSetChannel}
+        />
 
         {/* Cached note */}
         <div
@@ -1219,6 +1256,7 @@ export function GrayscaleWorkbenchTab({
   draft,
   detected,
   settingsState,
+  sources,
   onPrev,
   onNext,
   onSetMode,
@@ -1228,6 +1266,10 @@ export function GrayscaleWorkbenchTab({
   onRedetect,
   onApplyRun,
   onRerunPage,
+  onSetConverter,
+  onSetFlatten,
+  onSetClahe,
+  onSetChannel,
 }: {
   projectId: string;
   pages: GrayscalePage[];
@@ -1236,6 +1278,8 @@ export function GrayscaleWorkbenchTab({
   draft: GrayscaleDraft | null;
   detected: GrayscaleDetected | null;
   settingsState: SettingsState;
+  /** Per-field resolved source tier map (from GET .../settings/resolved). */
+  sources: Record<string, string>;
   onPrev: () => void;
   onNext: () => void;
   onSetMode: (m: GrayscaleMode) => void;
@@ -1245,6 +1289,10 @@ export function GrayscaleWorkbenchTab({
   onRedetect: () => void;
   onApplyRun: () => void;
   onRerunPage: () => void;
+  onSetConverter: (c: GrayscaleConverter) => void;
+  onSetFlatten: (enabled: boolean) => void;
+  onSetClahe: (enabled: boolean) => void;
+  onSetChannel: (ch: string) => void;
 }): ReactNode {
   const page = pages[cursor];
   const currentMode = draft?.mode ?? page?.mode ?? "perceptual";
@@ -1294,11 +1342,16 @@ export function GrayscaleWorkbenchTab({
             draft={draft}
             detected={detected}
             settingsState={settingsState}
+            sources={sources}
             onSetMode={onSetMode}
             onPatch={onPatch}
             onRevert={onRevert}
             onSaveDefault={onSaveDefault}
             onRedetect={onRedetect}
+            onSetConverter={onSetConverter}
+            onSetFlatten={onSetFlatten}
+            onSetClahe={onSetClahe}
+            onSetChannel={onSetChannel}
             pageCount={pages.length}
           />
           <PageViewerPane

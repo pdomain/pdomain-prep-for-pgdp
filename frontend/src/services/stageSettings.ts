@@ -42,6 +42,41 @@ export async function getStageSettings(
 }
 
 /**
+ * Task 4.2 — Resolved settings response shape.
+ *
+ * Shape returned by GET .../settings/resolved:
+ *   { "effective": {field: value, ...}, "sources": {field: "page"|"project"|"all"|"registry", ...} }
+ *
+ * The `sources` dict tells the UI which tier supplied each field value so it
+ * can show "from: page", "from: project", etc. as per-field source badges.
+ *
+ * Source tier values: "page" | "project" | "all" | "registry"
+ */
+export interface ResolvedSettingsResponse {
+  effective: Record<string, unknown>;
+  sources: Record<string, string>;
+}
+
+/**
+ * Task 4.2: GET .../settings/resolved — return effective settings + per-field tier sources.
+ *
+ * GET /api/data/projects/{id}/pages/{idx0}/stages/{stageId}/settings/resolved
+ * → { effective: {...}, sources: {field: "page"|"project"|"all"|"registry", ...} }
+ *
+ * The `sources` map lets the editor render a "from: <tier>" badge per field.
+ * Called by GrayscalePipelineEditor to populate the converter/flatten/clahe
+ * source-tier badges.
+ */
+export async function getStageSettingsResolved(
+  projectId: string,
+  stageId: string,
+): Promise<ResolvedSettingsResponse> {
+  return api.get<ResolvedSettingsResponse>(
+    `${settingsBase(projectId, stageId)}/resolved`,
+  );
+}
+
+/**
  * PUT saves a session-level override (not persisted as "my default").
  * @internal — Called directly by stage-settings tool surfaces at I2.
  */

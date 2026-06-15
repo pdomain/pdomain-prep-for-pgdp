@@ -23,7 +23,17 @@ import { setup, assign, fromPromise } from "xstate";
 // W5.2 — import StageSettingsServices so GrayscaleToolServices can extend it
 import type { StageSettingsServices } from "./stageSettings";
 // Task 4.1 — import pipeline config types for the new detectProfile return shape
-import type { GrayscaleConfig } from "@/pages/pipeline/tools/grayscale/grayscaleConfig";
+// Task 4.2 — also import draft type + serializers for nested-draft migration
+import type {
+  GrayscaleConfig,
+  GrayscaleDraftConfig,
+  GrayscaleConverter,
+  GrayscaleChannel,
+} from "@/pages/pipeline/tools/grayscale/grayscaleConfig";
+import {
+  GRAYSCALE_CONFIG_DEFAULTS,
+  settingsToDraft,
+} from "@/pages/pipeline/tools/grayscale/grayscaleConfig";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -54,13 +64,26 @@ export interface GrayscaleParams {
   outputRangeMax: number;
 }
 
-export interface GrayscaleDraft {
+/**
+ * GrayscaleDraft — the in-memory draft held in machine context.
+ *
+ * Task 4.2: migrated to hold the NESTED GrayscaleDraftConfig shape so the
+ * editor can mutate the full pipeline config and Task 4.3's save sends the
+ * real config. Backward-compat legacy keys (mode/samplerRadius/gamma/…)
+ * are preserved as explicit optional fields so old SET_PARAM patches still
+ * compile without requiring bracket notation (no index signature).
+ *
+ * The machine initialises `draft` from `settingsToDraft(detected.config)` on
+ * entering `done` (see `initDraft` action), so the editor always sees the
+ * latest resolved config.
+ */
+export interface GrayscaleDraft extends GrayscaleDraftConfig {
+  // Legacy flat fields kept for backward compat with SET_PARAM patches
   mode?: GrayscaleMode;
   samplerRadius?: number;
   gamma?: number;
   outputRangeMin?: number;
   outputRangeMax?: number;
-  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +178,18 @@ export type GrayscaleToolEvent =
    * machine merges them into ctx.pages and, if any are present, exits
    * `converting` into `done` so the workbench is immediately interactive.
    */
-  | { type: "STAGES_LOADED"; pages: GrayscalePage[] };
+  | { type: "STAGES_LOADED"; pages: GrayscalePage[] }
+  /**
+   * Task 4.2: pipeline config editor events.
+   * These events mutate the nested GrayscaleDraftConfig held in ctx.draft.
+   * Each carries the full new value for one field so the editor can call
+   * send({ type: "SET_CONVERTER", converter: "lab_l" }) and get predictable
+   * action results.
+   */
+  | { type: "SET_CONVERTER"; converter: GrayscaleConverter }
+  | { type: "SET_CHANNEL"; channel: GrayscaleChannel }
+  | { type: "SET_FLATTEN"; enabled: boolean }
+  | { type: "SET_CLAHE"; enabled: boolean };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -328,27 +362,119 @@ export const grayscaleToolMachine = setup({
     /**
      * YAML: `beginDraft: ctx.draft = ctx.draft ?? clone({ mode: pageMode(ctx), ...ctx.params })`
      * Opens a draft from current params and current page mode.
+     *
+     * Task 4.2: If the detected config has a nested GrayscaleConfig, initialise
+     * the draft from that (via settingsToDraft) so the pipeline editor starts
+     * from the resolved config rather than arbitrary defaults.
      */
     beginDraft: assign({
-      draft: ({ context }) => {
+      draft: ({ context }): GrayscaleDraft => {
         if (context.draft) return context.draft;
         const page = context.pages[context.cursor];
         const pageMode = page?.mode ?? context.detected?.mode ?? "perceptual";
+        // Task 4.2: seed nested pipeline config from detected.config if available
+        const nestedBase: GrayscaleDraft =
+          context.detected?.config != null
+            ? settingsToDraft(context.detected.config)
+            : { ...GRAYSCALE_CONFIG_DEFAULTS };
         return {
+          ...nestedBase,
           mode: pageMode,
           ...(context.params ?? {}),
         };
       },
     }),
 
+    /**
+     * Task 4.2: initDraft — initialise draft from detected.config when the
+     * machine first enters `done` after detection completes.  This ensures the
+     * pipeline editor shows the backend-recommended config without requiring
+     * the user to open the editor first.
+     *
+     * Called as an entry action on `done` so the editor is pre-populated.
+     * Does NOT overwrite an existing draft (user may have edited settings
+     * during `converting`).
+     */
+    initDraft: assign({
+      draft: ({ context }): GrayscaleDraft | null => {
+        if (context.draft != null) return context.draft;
+        const detected = context.detected;
+        if (detected?.config == null) return { ...GRAYSCALE_CONFIG_DEFAULTS };
+        // settingsToDraft returns GrayscaleDraftConfig (= GrayscaleConfig);
+        // cast to GrayscaleDraft which adds optional legacy fields.
+        return settingsToDraft(detected.config);
+      },
+    }),
+
+    /**
+     * Task 4.2: setConverter — update draft.converter from SET_CONVERTER event.
+     */
+    setConverter: assign({
+      draft: ({ context, event }): GrayscaleDraft | null => {
+        if (event.type !== "SET_CONVERTER") return context.draft;
+        return {
+          ...(context.draft ?? GRAYSCALE_CONFIG_DEFAULTS),
+          converter: event.converter,
+        };
+      },
+    }),
+
+    /**
+     * Task 4.2: setChannel — update draft.channel from SET_CHANNEL event.
+     */
+    setChannel: assign({
+      draft: ({ context, event }): GrayscaleDraft | null => {
+        if (event.type !== "SET_CHANNEL") return context.draft;
+        return {
+          ...(context.draft ?? GRAYSCALE_CONFIG_DEFAULTS),
+          channel: event.channel,
+        };
+      },
+    }),
+
+    /**
+     * Task 4.2: setFlatten — update draft.flatten.enabled from SET_FLATTEN event.
+     */
+    setFlatten: assign({
+      draft: ({ context, event }): GrayscaleDraft | null => {
+        if (event.type !== "SET_FLATTEN") return context.draft;
+        const base = context.draft ?? GRAYSCALE_CONFIG_DEFAULTS;
+        return {
+          ...base,
+          flatten: {
+            ...(base.flatten ?? GRAYSCALE_CONFIG_DEFAULTS.flatten),
+            enabled: event.enabled,
+          },
+        };
+      },
+    }),
+
+    /**
+     * Task 4.2: setClahe — update draft.clahe.enabled from SET_CLAHE event.
+     */
+    setClahe: assign({
+      draft: ({ context, event }): GrayscaleDraft | null => {
+        if (event.type !== "SET_CLAHE") return context.draft;
+        const base = context.draft ?? GRAYSCALE_CONFIG_DEFAULTS;
+        return {
+          ...base,
+          clahe: {
+            ...(base.clahe ?? GRAYSCALE_CONFIG_DEFAULTS.clahe),
+            enabled: event.enabled,
+          },
+        };
+      },
+    }),
+
     /** YAML: `patchDraft: ctx.draft = { ...ctx.draft, ...event.patch }` */
     patchDraft: assign({
-      draft: ({ context, event }) => {
+      draft: ({ context, event }): GrayscaleDraft | null => {
         if (event.type !== "SET_PARAM" && event.type !== "SET_MODE")
           return context.draft;
         const patch =
           event.type === "SET_MODE" ? { mode: event.mode } : event.patch;
-        return { ...(context.draft ?? {}), ...patch };
+        const base = context.draft ?? { ...GRAYSCALE_CONFIG_DEFAULTS };
+        return { ...base, ...patch };
       },
     }),
 
@@ -525,6 +651,12 @@ export const grayscaleToolMachine = setup({
         SET_MODE: { actions: ["beginDraft", "patchDraft"] },
         RESET: { actions: ["clearDraft"] },
 
+        // Task 4.2: pipeline config editor events (allowed while converting)
+        SET_CONVERTER: { actions: ["beginDraft", "setConverter"] },
+        SET_CHANNEL: { actions: ["beginDraft", "setChannel"] },
+        SET_FLATTEN: { actions: ["beginDraft", "setFlatten"] },
+        SET_CLAHE: { actions: ["beginDraft", "setClahe"] },
+
         /**
          * RERUN_PAGE while converting: re-run the current page immediately.
          * The resulting SSE PAGE_PUSH will update ctx.pages[cursor].lastRunAt
@@ -549,6 +681,12 @@ export const grayscaleToolMachine = setup({
     },
 
     done: {
+      /**
+       * Task 4.2: initDraft fires on entry to `done` so the pipeline editor
+       * is pre-populated from detected.config. Does not overwrite an existing
+       * draft (user may have edited during `converting`).
+       */
+      entry: ["initDraft"],
       initial: "idle",
       states: {
         idle: {
@@ -561,12 +699,34 @@ export const grayscaleToolMachine = setup({
               target: "tuned",
               actions: ["beginDraft", "patchDraft"],
             },
+            // Task 4.2: pipeline config editor events in idle → tuned
+            SET_CONVERTER: {
+              target: "tuned",
+              actions: ["beginDraft", "setConverter"],
+            },
+            SET_CHANNEL: {
+              target: "tuned",
+              actions: ["beginDraft", "setChannel"],
+            },
+            SET_FLATTEN: {
+              target: "tuned",
+              actions: ["beginDraft", "setFlatten"],
+            },
+            SET_CLAHE: {
+              target: "tuned",
+              actions: ["beginDraft", "setClahe"],
+            },
           },
         },
         tuned: {
           on: {
             SET_PARAM: { actions: ["patchDraft"] },
             SET_MODE: { actions: ["patchDraft"] },
+            // Task 4.2: pipeline config editor events in tuned (stay in tuned)
+            SET_CONVERTER: { actions: ["setConverter"] },
+            SET_CHANNEL: { actions: ["setChannel"] },
+            SET_FLATTEN: { actions: ["setFlatten"] },
+            SET_CLAHE: { actions: ["setClahe"] },
             RESET: { target: "idle", actions: ["clearDraft"] },
             APPLY_RUN: {
               target: "#grayscaleTool.converting",

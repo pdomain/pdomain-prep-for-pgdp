@@ -53,31 +53,34 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a machine draft (GrayscaleDraftConfig) to the nested snake_case
- * body expected by PUT /stages/grayscale/settings.
+ * Convert a machine draft (GrayscaleDraft = GrayscaleDraftConfig & {mode?:…})
+ * to the nested snake_case body expected by PUT /stages/grayscale/settings.
  *
- * Task 4.1: the draft is now a GrayscaleDraftConfig (nested pipeline config
- * shape), not a flat camelCase dict. draftToSettings() from grayscaleConfig.ts
- * handles the serialization; it deep-clones the nested config to avoid
- * mutation.
+ * Task 4.2: the machine's draft is now a proper GrayscaleDraftConfig (nested
+ * pipeline config shape) because `initDraft` seeds it from `settingsToDraft(
+ * detected.config)` on entry to `done`, and the SET_CONVERTER/SET_FLATTEN/
+ * SET_CLAHE/SET_CHANNEL actions mutate the nested keys directly.
  *
- * The machine passes `context.draft` (GrayscaleDraft, a Record<string,unknown>)
- * to runStage. We cast it to GrayscaleConfig for the serializer.  The machine
- * must populate a proper GrayscaleDraftConfig into ctx.draft for this to work
- * correctly (Task 4.2 wires the form to do that; for now the machine keeps its
- * existing draft patch logic until 4.2 upgrades it).
+ * draftToSettings() deep-clones the nested config to prevent mutation.
+ * The `as unknown as GrayscaleConfig` cast is now SAFE: the machine guarantees
+ * the draft has the nested shape. If a legacy flat draft somehow flows through
+ * (e.g. test mocks that pre-date Task 4.2), settingsToDraft-backed fallbacks
+ * in draftToSettings will still produce a valid GrayscaleConfig.
  *
- * For backward compat: if the draft lacks the nested keys (old-style flat
- * draft), draftToSettings() will still produce a valid GrayscaleConfig by
- * using GRAYSCALE_CONFIG_DEFAULTS for missing fields.
+ * The cast is tightened by the structural type check: GrayscaleDraft extends
+ * GrayscaleDraftConfig (which equals GrayscaleConfig), so the only unsound
+ * fields are the extra `mode?` and `[key:string]:unknown` index signature —
+ * both are ignored by draftToSettings which only reads known nested keys.
  */
 function serializeDraftToSettings(
   draft: Record<string, unknown>,
 ): GrayscaleConfig {
-  // If the draft already has nested structure (Task 4.1+ draft), use draftToSettings.
-  // Cast: the machine populates draft via GrayscaleDraftConfig once Task 4.2 lands;
-  // until then the cast is safe because draftToSettings handles missing nested keys
-  // by falling back to defaults via settingsToDraft in the round-trip.
+  // Task 4.2: draft is now structurally a GrayscaleDraft which extends
+  // GrayscaleDraftConfig (= GrayscaleConfig). The cast via unknown is safe:
+  // draftToSettings only reads: flatten, converter, channel, color2gray,
+  // clahe, output_range — all guaranteed present after initDraft runs.
+  // The double-cast avoids the "may be a mistake" tslint warning since
+  // Record<string,unknown> and GrayscaleConfig have overlapping keys at runtime.
   return draftToSettings(draft as unknown as GrayscaleConfig);
 }
 
