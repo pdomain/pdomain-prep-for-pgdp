@@ -2882,7 +2882,7 @@
           "project-stages"
         ],
         "summary": "Detect Grayscale Profile",
-        "description": "Detect the best grayscale conversion profile for a project.\n\nSamples up to 8 page COLOR SOURCE images from the BlobStore and measures\nchromatic energy via the YCbCr heuristic.\nHigh chromatic energy \u2192 'perceptual' (luminosity-weighted).\nLow chromatic energy \u2192 'standard' (flat channel average).\n\nSource images are read from PrepPageExtension.source_blob_hash \u2014 the original\ncolor scan bytes ingested before any grayscale conversion. This ensures the\nchroma heuristic sees real color data and not already-converted grayscale/binary\nartifacts.\n\nReturns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.\n\nR2 imagetools \u2014 grayscaleTool DRIFT resolution. Fix: sample color source not\ngrayscale artifacts (Issue 4 \u2014 chroma heuristic was always 0 on gray/binary).",
+        "description": "Recommend the full grayscale pipeline config for a project (Task 3.3).\n\nSamples up to 8 COLOR SOURCE images from the BlobStore, computes four\nsignals (chroma energy, channel imbalance, illumination spread, contrast\nenergy), and returns a full GrayscaleConfig dict + a human reason string.\n\n\u00a78a GPU-aware converter rule (spec \u00a78a):\n  - GPU present + meaningful colour  \u2192 color2gray\n  - strong foxing / single-channel cast \u2192 best_channel (green)\n  - mostly clean B&W                 \u2192 luma\n  - CPU-only with colour             \u2192 best_channel (color2gray too slow on CPU)\n\nResponse: {config: GrayscaleConfig dict, why: str, mode: str, backend: str}\nThe ``mode`` field is kept for backward compatibility with the old API\nsurface (``GrayscaleToolServices.detectProfile``).\n\nTask 3.3 (M3 \u2014 Milestone 3 final backend task).\nSpec: docs/specs/2026-06-15-grayscale-pipeline.md \u00a78a.",
         "operationId": "detect_grayscale_profile",
         "security": [
           {
@@ -2902,7 +2902,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Detected grayscale profile: {mode, why, backend}.",
+            "description": "Whole-pipeline recommendation: {config, why, mode, backend}.",
             "content": {
               "application/json": {
                 "schema": {}

@@ -1245,22 +1245,24 @@ export interface paths {
         put?: never;
         /**
          * Detect Grayscale Profile
-         * @description Detect the best grayscale conversion profile for a project.
+         * @description Recommend the full grayscale pipeline config for a project (Task 3.3).
          *
-         *     Samples up to 8 page COLOR SOURCE images from the BlobStore and measures
-         *     chromatic energy via the YCbCr heuristic.
-         *     High chromatic energy → 'perceptual' (luminosity-weighted).
-         *     Low chromatic energy → 'standard' (flat channel average).
+         *     Samples up to 8 COLOR SOURCE images from the BlobStore, computes four
+         *     signals (chroma energy, channel imbalance, illumination spread, contrast
+         *     energy), and returns a full GrayscaleConfig dict + a human reason string.
          *
-         *     Source images are read from PrepPageExtension.source_blob_hash — the original
-         *     color scan bytes ingested before any grayscale conversion. This ensures the
-         *     chroma heuristic sees real color data and not already-converted grayscale/binary
-         *     artifacts.
+         *     §8a GPU-aware converter rule (spec §8a):
+         *       - GPU present + meaningful colour  → color2gray
+         *       - strong foxing / single-channel cast → best_channel (green)
+         *       - mostly clean B&W                 → luma
+         *       - CPU-only with colour             → best_channel (color2gray too slow on CPU)
          *
-         *     Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
+         *     Response: {config: GrayscaleConfig dict, why: str, mode: str, backend: str}
+         *     The ``mode`` field is kept for backward compatibility with the old API
+         *     surface (``GrayscaleToolServices.detectProfile``).
          *
-         *     R2 imagetools — grayscaleTool DRIFT resolution. Fix: sample color source not
-         *     grayscale artifacts (Issue 4 — chroma heuristic was always 0 on gray/binary).
+         *     Task 3.3 (M3 — Milestone 3 final backend task).
+         *     Spec: docs/specs/2026-06-15-grayscale-pipeline.md §8a.
          */
         post: operations["detect_grayscale_profile"];
         delete?: never;
@@ -6241,7 +6243,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Detected grayscale profile: {mode, why, backend}. */
+            /** @description Whole-pipeline recommendation: {config, why, mode, backend}. */
             200: {
                 headers: {
                     [name: string]: unknown;

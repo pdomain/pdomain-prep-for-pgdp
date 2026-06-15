@@ -2725,25 +2725,86 @@ async def apply_regex_rule(
     return JSONResponse(content={"rule": rule, "counts": counts})
 
 
-# ─── R2: grayscaleTool — grayscale profile detection ─────────────────────────
+# ─── R2: grayscaleTool — grayscale profile detection (Task 3.3) ───────────────
 #
-# Samples up to N page images from the project to determine whether the
-# source material should be converted with a "perceptual" (luminosity-weighted,
-# recommended for photographs/halftones) or "standard" (average of channels)
-# grayscale transform.
+# Whole-pipeline Auto-detector.  Samples up to N source-page images, computes
+# four signals (chroma, channel-imbalance, illumination-spread, contrast-energy),
+# then composes a full GrayscaleConfig and a human reason string.
 #
-# Detection heuristic:
-#   For each sampled image, compute the mean chrominance (Cb, Cr) standard
-#   deviation. If the average chromatic energy > threshold, the source is
-#   colour-biased and "perceptual" is the better choice.  Below threshold
-#   (black-and-white line art, printed text) "standard" suffices.
+# §8a GPU-aware converter rule (spec docs/specs/2026-06-15-grayscale-pipeline.md):
+#   - GPU present + meaningful colour  → color2gray
+#   - strong foxing/single-channel cast → best_channel (green)
+#   - mostly clean B&W                 → luma
+#   - CPU-only with colour             → best_channel (color2gray too slow on CPU)
+# flatten.enabled when uneven illumination; clahe.enabled when low contrast.
 #
-# If no source images are accessible (stage not yet run, GPU backend unavailable)
-# the route returns "perceptual" as the safe default with a descriptive `why`.
+# The response includes {config, why, backend} plus backward-compat {mode} field.
+# _sample_source_images is a module-level callable (not a method) so tests can
+# patch it without touching the route function itself.
 
 
-_GRAYSCALE_SAMPLE_PAGES = 8  # max pages to sample
-_GRAYSCALE_CHROMA_THRESHOLD = 5.0  # std-dev in YCbCr Cb/Cr channels
+_GRAYSCALE_SAMPLE_PAGES = 8  # max pages to sample (kept for backward-compat)
+_GRAYSCALE_CHROMA_THRESHOLD = 5.0  # legacy threshold (kept for backward-compat)
+
+
+def _sample_source_images(
+    project_id: str,
+    page_service: Any,
+    max_pages: int = _GRAYSCALE_SAMPLE_PAGES,
+) -> list[Any]:  # list[np.ndarray]
+    """Load up to *max_pages* source-color images as BGR ndarrays.
+
+    Reads PrepPageExtension.source_blob_hash for each page and decodes the raw
+    source bytes.  This avoids the Issue-4 bug: threshold/canvas_map/grayscale
+    artifacts are already single-channel → chroma ≈ 0.
+
+    Returns an empty list when sampling is not possible (missing deps, no blobs).
+    Errors on individual pages are non-fatal and skipped.
+    """
+    try:
+        import cv2  # pyright: ignore[reportMissingImports]
+        import numpy as np  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return []
+
+    try:
+        import uuid as _uuid
+
+        from pdomain_ops.pages import get_extension as _ops_get_ext
+
+        from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension as _PrepExt
+    except ImportError:
+        return []
+
+    try:
+
+        def _to_uuid_local(s: str) -> _uuid.UUID:
+            try:
+                return _uuid.UUID(s)
+            except (ValueError, AttributeError):
+                return _uuid.uuid5(_uuid.NAMESPACE_OID, s)
+
+        proj_agg = page_service.store.get_project(_to_uuid_local(project_id))
+        page_uuids = list(proj_agg.record.page_ids)
+    except Exception:
+        return []
+
+    images: list[Any] = []
+    for page_uuid in page_uuids[:max_pages]:
+        try:
+            page_agg = page_service.store.get_page(page_uuid)
+            ext = _ops_get_ext(page_agg.record, "prep", _PrepExt)
+            if ext is None or not ext.source_blob_hash:
+                continue
+            raw_bytes = page_service.blobs.read(ext.source_blob_hash)
+            arr = np.frombuffer(raw_bytes, dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is not None:
+                images.append(img)
+        except Exception:  # page-load / blob-decode errors are non-fatal; skip
+            log.debug("grayscale detect: skipping page in sample due to error", exc_info=True)
+
+    return images
 
 
 @router.post(
@@ -2751,7 +2812,7 @@ _GRAYSCALE_CHROMA_THRESHOLD = 5.0  # std-dev in YCbCr Cb/Cr channels
     operation_id="detect_grayscale_profile",
     status_code=200,
     responses={
-        200: {"description": "Detected grayscale profile: {mode, why, backend}."},
+        200: {"description": "Whole-pipeline recommendation: {config, why, mode, backend}."},
         404: {"description": "Project not found."},
         409: {"description": "Registry version mismatch."},
     },
@@ -2763,23 +2824,29 @@ async def detect_grayscale_profile(
     settings: SettingsDep,
     page_service: PageServiceDep,
 ) -> JSONResponse:
-    """Detect the best grayscale conversion profile for a project.
+    """Recommend the full grayscale pipeline config for a project (Task 3.3).
 
-    Samples up to 8 page COLOR SOURCE images from the BlobStore and measures
-    chromatic energy via the YCbCr heuristic.
-    High chromatic energy → 'perceptual' (luminosity-weighted).
-    Low chromatic energy → 'standard' (flat channel average).
+    Samples up to 8 COLOR SOURCE images from the BlobStore, computes four
+    signals (chroma energy, channel imbalance, illumination spread, contrast
+    energy), and returns a full GrayscaleConfig dict + a human reason string.
 
-    Source images are read from PrepPageExtension.source_blob_hash — the original
-    color scan bytes ingested before any grayscale conversion. This ensures the
-    chroma heuristic sees real color data and not already-converted grayscale/binary
-    artifacts.
+    §8a GPU-aware converter rule (spec §8a):
+      - GPU present + meaningful colour  → color2gray
+      - strong foxing / single-channel cast → best_channel (green)
+      - mostly clean B&W                 → luma
+      - CPU-only with colour             → best_channel (color2gray too slow on CPU)
 
-    Returns { mode, why, backend } shaped for GrayscaleToolServices.detectProfile.
+    Response: {config: GrayscaleConfig dict, why: str, mode: str, backend: str}
+    The ``mode`` field is kept for backward compatibility with the old API
+    surface (``GrayscaleToolServices.detectProfile``).
 
-    R2 imagetools — grayscaleTool DRIFT resolution. Fix: sample color source not
-    grayscale artifacts (Issue 4 — chroma heuristic was always 0 on gray/binary).
+    Task 3.3 (M3 — Milestone 3 final backend task).
+    Spec: docs/specs/2026-06-15-grayscale-pipeline.md §8a.
     """
+    from pdomain_prep_for_pgdp.core.pipeline.grayscale_autodetect import (
+        recommend_grayscale_pipeline,
+    )
+
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
@@ -2787,8 +2854,40 @@ async def detect_grayscale_profile(
     if (rv := _check_registry(project)) is not None:
         return rv
 
-    mode, why = _detect_grayscale_mode_from_blobs(project_id, page_service)
-    return JSONResponse(content={"mode": mode, "why": why, "backend": "cpu"})
+    # Detect GPU availability using the same mechanism as the stage dispatcher.
+    gpu_available = False
+    try:
+        from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (  # pyright: ignore[reportMissingImports]
+            cupy_available,
+        )
+
+        gpu_available = cupy_available()
+    except ImportError:
+        pass
+
+    images = _sample_source_images(project_id, page_service)
+    config_dict, why = recommend_grayscale_pipeline(images, gpu_available=gpu_available)
+
+    # Backward-compat: include ``mode`` (old API surface expected "perceptual"|"standard").
+    # Map the new converter names to the old two-value vocabulary.
+    _converter_to_legacy_mode = {
+        "color2gray": "perceptual",
+        "luma_bt709": "perceptual",
+        "lab_l": "perceptual",
+        "best_channel": "perceptual",
+        "luma": "standard",
+    }
+    legacy_mode = _converter_to_legacy_mode.get(config_dict.get("converter", "luma"), "standard")
+    backend = "gpu" if gpu_available else "cpu"
+
+    return JSONResponse(
+        content={
+            "config": config_dict,
+            "why": why,
+            "mode": legacy_mode,
+            "backend": backend,
+        }
+    )
 
 
 def _detect_grayscale_mode_from_blobs(
