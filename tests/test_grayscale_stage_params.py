@@ -217,80 +217,74 @@ class TestGrayscaleCpuWithParams:
 
 
 # ---------------------------------------------------------------------------
-# Suite 2: apply_stage_settings_to_config for grayscale
+# Suite 2: apply_stage_settings_to_config for grayscale  (Task 1.3 updated)
 # ---------------------------------------------------------------------------
+#
+# Task 1.3 migrated the grayscale stage from flat-field assignment to nested
+# GrayscaleConfigModel assignment via migrate_grayscale_settings + from_settings.
+# Tests below reflect the new contract: effective_settings → cfg.grayscale,
+# with legacy flat-field dicts automatically migrated.
 
 
 class TestApplyStageSettingsGrayscale:
-    """apply_stage_settings_to_config correctly maps grayscale settings to cfg."""
+    """apply_stage_settings_to_config maps grayscale settings to cfg.grayscale."""
 
     def test_grayscale_defaults_in_registry(self) -> None:
-        """STAGE_SETTINGS_DEFAULTS includes the Wave-2 grayscale entry."""
+        """STAGE_SETTINGS_DEFAULTS includes the Wave-2 grayscale entry with nested shape."""
         assert "grayscale" in STAGE_SETTINGS_DEFAULTS
         gd = STAGE_SETTINGS_DEFAULTS["grayscale"]
-        assert gd["mode"] == "perceptual"
-        assert gd["sampler_radius"] == 3
-        assert gd["gamma"] == 1.1
-        assert gd["output_range_min"] == 12
-        assert gd["output_range_max"] == 248
+        # Task 1.3: nested pipeline shape replaces legacy flat keys
+        assert gd.get("converter") == "luma"
+        assert "flatten" in gd
+        assert gd["flatten"]["enabled"] is False
+        assert "clahe" in gd
+        assert gd["clahe"]["enabled"] is False
+        assert gd.get("output_range") is None
+        # Legacy flat keys must NOT be present
+        assert "mode" not in gd
+        assert "gamma" not in gd
+        assert "sampler_radius" not in gd
 
-    def test_mode_applied_to_grayscale_mode_field(self) -> None:
-        """'mode' key → grayscale_mode field on ResolvedPageConfig."""
-        cfg = make_cfg()
-        assert cfg.grayscale_mode == "perceptual"  # default
-
-        result = apply_stage_settings_to_config(cfg, "grayscale", {"mode": "standard"})
-        assert result.grayscale_mode == "standard"
-        assert result is not cfg  # model_copy returns new object
-
-    def test_sampler_radius_applied(self) -> None:
-        """'sampler_radius' key → grayscale_sampler_radius field."""
-        cfg = make_cfg()
-        result = apply_stage_settings_to_config(cfg, "grayscale", {"sampler_radius": 7})
-        assert result.grayscale_sampler_radius == 7
-
-    def test_gamma_applied(self) -> None:
-        """'gamma' key → grayscale_gamma field."""
-        cfg = make_cfg()
-        result = apply_stage_settings_to_config(cfg, "grayscale", {"gamma": 1.4})
-        assert result.grayscale_gamma == pytest.approx(1.4)
-
-    def test_output_range_min_applied(self) -> None:
-        """'output_range_min' key → grayscale_output_range_min field."""
-        cfg = make_cfg()
-        result = apply_stage_settings_to_config(cfg, "grayscale", {"output_range_min": 5})
-        assert result.grayscale_output_range_min == 5
-
-    def test_output_range_max_applied(self) -> None:
-        """'output_range_max' key → grayscale_output_range_max field."""
-        cfg = make_cfg()
-        result = apply_stage_settings_to_config(cfg, "grayscale", {"output_range_max": 240})
-        assert result.grayscale_output_range_max == 240
-
-    def test_full_grayscale_settings_dict(self) -> None:
-        """All 5 grayscale keys applied together."""
-        cfg = make_cfg()
-        effective = {
-            "mode": "standard",
-            "sampler_radius": 1,
-            "gamma": 1.0,
-            "output_range_min": 0,
-            "output_range_max": 255,
-        }
-        result = apply_stage_settings_to_config(cfg, "grayscale", effective)
-        assert result.grayscale_mode == "standard"
-        assert result.grayscale_sampler_radius == 1
-        assert result.grayscale_gamma == pytest.approx(1.0)
-        assert result.grayscale_output_range_min == 0
-        assert result.grayscale_output_range_max == 255
-
-    def test_unknown_key_ignored(self) -> None:
-        """Unknown key in settings dict does not crash."""
+    def test_nested_converter_applied_to_cfg_grayscale(self) -> None:
+        """Nested settings dict (with 'converter' key) → cfg.grayscale.converter."""
         cfg = make_cfg()
         result = apply_stage_settings_to_config(
-            cfg, "grayscale", {"mode": "standard", "unknown_future_key": 999}
+            cfg, "grayscale", {"converter": "lab_l", "output_range": None}
         )
-        assert result.grayscale_mode == "standard"
+        assert result.grayscale.converter == "lab_l"
+        assert result is not cfg  # model_copy returns new object
+
+    def test_legacy_perceptual_mode_migrated_to_luma_bt709(self) -> None:
+        """Legacy mode='perceptual' in effective_settings → cfg.grayscale.converter='luma_bt709'."""
+        cfg = make_cfg()
+        result = apply_stage_settings_to_config(
+            cfg, "grayscale", {"mode": "perceptual", "gamma": 1.1, "sampler_radius": 3}
+        )
+        assert result.grayscale.converter == "luma_bt709"
+
+    def test_legacy_standard_mode_migrated_to_luma(self) -> None:
+        """Legacy mode='standard' in effective_settings → cfg.grayscale.converter='luma'."""
+        cfg = make_cfg()
+        result = apply_stage_settings_to_config(cfg, "grayscale", {"mode": "standard", "gamma": 1.0})
+        assert result.grayscale.converter == "luma"
+
+    def test_legacy_output_range_migrated(self) -> None:
+        """Legacy output_range_min/max in effective_settings → cfg.grayscale.output_range."""
+        cfg = make_cfg()
+        result = apply_stage_settings_to_config(
+            cfg,
+            "grayscale",
+            {"mode": "perceptual", "output_range_min": 12, "output_range_max": 248},
+        )
+        assert result.grayscale.output_range == [12, 248]
+
+    def test_unknown_nested_key_does_not_crash(self) -> None:
+        """Unknown key alongside converter key does not crash (unknown_future_key ignored by from_settings)."""
+        cfg = make_cfg()
+        result = apply_stage_settings_to_config(
+            cfg, "grayscale", {"converter": "luma", "unknown_future_key": 999}
+        )
+        assert result.grayscale.converter == "luma"
 
     def test_mode_key_ignored_for_other_stages(self) -> None:
         """'mode' key is NOT applied for stages that don't declare it in their defaults."""
@@ -299,8 +293,8 @@ class TestApplyStageSettingsGrayscale:
         result = apply_stage_settings_to_config(
             cfg, "denoise", {"mode": "standard", "min_component_area": 10}
         )
-        # grayscale_mode should be unchanged
-        assert result.grayscale_mode == "perceptual"
+        # grayscale must be unchanged
+        assert result.grayscale.converter == "luma"
         # but known denoise key should be applied
         assert result.denoise_min_component_area == 10
 

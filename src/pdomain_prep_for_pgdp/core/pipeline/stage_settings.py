@@ -96,13 +96,24 @@ STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
     "crop": {
         "white_space_additional": None,
     },
-    # grayscale (Wave-2): conversion mode + sampler tuning
+    # grayscale (Wave-2): nested pipeline config shape.
+    # Matches GrayscaleConfigModel defaults: flatten off, converter=luma,
+    # channel=green, color2gray defaults, clahe off, output_range=None.
+    # Legacy flat fields (mode/gamma/sampler_radius/output_range_min/max) are
+    # migrated on read via migrate_grayscale_settings() before this default is
+    # consumed.
     "grayscale": {
-        "mode": "perceptual",
-        "sampler_radius": 3,
-        "gamma": 1.1,
-        "output_range_min": 12,
-        "output_range_max": 248,
+        "flatten": {"enabled": False, "radius": 64, "strength": 1.0},
+        "converter": "luma",
+        "channel": "green",
+        "color2gray": {
+            "radius": 300,
+            "samples": 4,
+            "iterations": 10,
+            "enhance_shadows": False,
+        },
+        "clahe": {"enabled": False, "clip_limit": 2.0, "tile_grid": 8},
+        "output_range": None,
     },
 }
 
@@ -115,14 +126,55 @@ STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
 _SETTINGS_KEY_TO_FIELD: dict[str, str] = {
     "min_component_area": "denoise_min_component_area",
     "median_kernel_size": "denoise_median_kernel_size",
-    # grayscale (Wave-2) — keys differ from ResolvedPageConfig field names
-    "mode": "grayscale_mode",
-    "sampler_radius": "grayscale_sampler_radius",
-    "gamma": "grayscale_gamma",
-    "output_range_min": "grayscale_output_range_min",
-    "output_range_max": "grayscale_output_range_max",
     # The remaining keys match their ResolvedPageConfig field names directly.
+    # NOTE: grayscale stage uses a special path in apply_stage_settings_to_config
+    # (migrate_grayscale_settings + GrayscaleConfigModel.from_settings → .grayscale)
+    # rather than flat-field assignment, so its keys do not appear here.
 }
+
+
+def migrate_grayscale_settings(d: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a legacy flat grayscale settings dict to the nested pipeline shape.
+
+    Detects a legacy dict by the presence of ``mode``, ``gamma``,
+    ``sampler_radius``, or ``output_range_min``/``output_range_max`` keys.
+    A dict already in the nested pipeline shape (has ``converter``, ``flatten``,
+    or ``clahe`` keys) is returned unchanged (idempotent).
+
+    Legacy → nested mapping:
+      ``mode == "perceptual"``  →  ``converter = "luma_bt709"``  (OQ-1 exact continuity)
+      ``mode == "standard"``    →  ``converter = "luma"``
+      ``output_range_min`` + ``output_range_max``  →  ``output_range: [min, max]``
+      ``gamma`` and ``sampler_radius`` have no direct pipeline equivalent; they
+      are dropped (the new pipeline models those concerns differently).
+
+    An empty dict is returned as-is.
+    """
+    if not d:
+        return d
+
+    # Already in nested shape — pass through unchanged.
+    nested_shape_keys = frozenset({"converter", "flatten", "clahe", "color2gray"})
+    if nested_shape_keys & d.keys():
+        return d
+
+    # Legacy shape detected — build the nested equivalent.
+    result: dict[str, Any] = {}
+
+    # converter: map legacy mode → pipeline converter
+    mode = d.get("mode", "standard")
+    result["converter"] = "luma_bt709" if mode == "perceptual" else "luma"
+
+    # output_range: combine flat min/max into a list
+    range_min = d.get("output_range_min")
+    range_max = d.get("output_range_max")
+    if range_min is not None and range_max is not None:
+        result["output_range"] = [range_min, range_max]
+
+    # gamma and sampler_radius: no direct pipeline equivalent; dropped.
+    # (The new pipeline models contrast/tone through clahe and flatten.)
+
+    return result
 
 
 def apply_stage_settings_to_config(
@@ -135,9 +187,17 @@ def apply_stage_settings_to_config(
     Precedence rule: per-page ``PageConfigOverrides`` values embedded in ``cfg``
     are NOT overwritten (they already won at resolve_page_config time).
 
-    Only the fields declared in ``STAGE_SETTINGS_DEFAULTS[stage_id]`` are
-    considered.  Unknown keys in ``effective_settings`` are ignored to allow
-    forward-compatible settings dicts stored in older projects.
+    For the ``grayscale`` stage the settings dict is first run through
+    ``migrate_grayscale_settings`` (converts legacy flat fields to the nested
+    pipeline shape) and then built into ``ResolvedPageConfig.grayscale`` via
+    ``GrayscaleConfigModel.from_settings``.  This path is separate from the
+    flat-field assignment used by other stages so that the 3-tier resolution
+    for non-grayscale stages is not affected.
+
+    For all other stages: only the fields declared in
+    ``STAGE_SETTINGS_DEFAULTS[stage_id]`` are considered.  Unknown keys in
+    ``effective_settings`` are ignored to allow forward-compatible settings
+    dicts stored in older projects.
 
     Returns a new ``ResolvedPageConfig`` (``model_copy``); the input is
     unchanged.
@@ -145,6 +205,15 @@ def apply_stage_settings_to_config(
     if not effective_settings:
         return cfg
 
+    # ── Grayscale stage: nested pipeline config path ──────────────────────
+    if stage_id == "grayscale":
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
+        migrated = migrate_grayscale_settings(effective_settings)
+        grayscale_model = GrayscaleConfigModel.from_settings(migrated)
+        return cfg.model_copy(update={"grayscale": grayscale_model})
+
+    # ── All other stages: flat-field assignment ────────────────────────────
     registry_defaults = STAGE_SETTINGS_DEFAULTS.get(stage_id, {})
     updates: dict[str, Any] = {}
 
