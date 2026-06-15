@@ -1322,6 +1322,35 @@ export interface paths {
         patch: operations["persist_illustration_region"];
         trace?: never;
     };
+    "/api/data/projects/{project_id}/stages/{stage_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Stage Settings
+         * @description Return the project-level (project-tier) default settings for a stage.
+         *
+         *     Returns the stored project default dict, or {} if none saved yet.
+         */
+        get: operations["get_project_stage_settings"];
+        /**
+         * Put Project Stage Settings
+         * @description Set the project-level (project-tier) default settings for a stage.
+         *
+         *     Equivalent to "save as default" — applies to all pages in this project
+         *     that have no page-level override for that field. Appends a SettingsChange event.
+         */
+        put: operations["put_project_stage_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/pages": {
         parameters: {
             query?: never;
@@ -1974,6 +2003,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Stage Settings Page Tier
+         * @description Return the per-page (page-tier) settings for a stage, or {} if none set.
+         *
+         *     Returns the sparse page-tier override dict (not the merged effective settings).
+         *     To get the fully resolved effective settings, use GET .../settings/resolved.
+         */
+        get: operations["get_page_stage_settings_page_tier"];
+        /**
+         * Put Page Stage Settings Page Tier
+         * @description Save a sparse per-page override for this stage.
+         *
+         *     Only the keys provided override those fields; other fields fall through to
+         *     the project/all/registry default. Appends a SettingsChange event.
+         *     To clear a per-page override, PUT an empty dict {} or use DELETE.
+         */
+        put: operations["put_page_stage_settings_page_tier"];
+        post?: never;
+        /**
+         * Delete Page Stage Settings Page Tier
+         * @description Remove the per-page override for this stage, reverting to project/all/registry defaults.
+         *
+         *     Appends a SettingsChange event. No-op if no page override exists.
+         */
+        delete: operations["delete_page_stage_settings_page_tier"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Stage Settings Resolved
+         * @description Return the fully resolved effective settings PLUS the tier source per field.
+         *
+         *     Response shape:
+         *       {
+         *         "effective": {field: value, ...},
+         *         "sources": {field: "page"|"project"|"all"|"registry", ...}
+         *       }
+         *
+         *     The 'sources' dict tells the UI which tier supplied each field value so it
+         *     can show "overriding project default" or "using app-wide default".
+         */
+        get: operations["get_page_stage_settings_resolved"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/system/defaults": {
         parameters: {
             query?: never;
@@ -2119,6 +2214,64 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/settings/stages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get All Stage Settings All
+         * @description Return all app-wide stage settings (all tier), keyed by stage_id.
+         */
+        get: operations["get_all_stage_settings_all"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/settings/stages/{stage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Stage Settings All
+         * @description Return the app-wide (all-tier) settings for a stage.
+         *
+         *     Returns the stage's stored app-wide settings if set, else the registry
+         *     default (so the response is always a usable dict, not null/404).
+         */
+        get: operations["get_stage_settings_all"];
+        /**
+         * Put Stage Settings All
+         * @description Set the app-wide (all-tier) defaults for a stage.
+         *
+         *     These apply to all projects that have no project-level or page-level
+         *     override for this stage's fields. Persists via
+         *     data_root/stage_settings_all.json (not the event store).
+         */
+        put: operations["put_stage_settings_all"];
+        post?: never;
+        /**
+         * Delete Stage Settings All
+         * @description Remove the app-wide (all-tier) defaults for a stage.
+         *
+         *     After deletion, the registry default applies for all projects without a
+         *     project-level or page-level override for this stage.
+         */
+        delete: operations["delete_stage_settings_all"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6217,6 +6370,76 @@ export interface operations {
             };
         };
     };
+    get_project_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_project_stage_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_pages: {
         parameters: {
             query?: {
@@ -7193,6 +7416,144 @@ export interface operations {
             };
         };
     };
+    get_page_stage_settings_page_tier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_page_stage_settings_page_tier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_page_stage_settings_page_tier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_page_stage_settings_resolved: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_system_defaults: {
         parameters: {
             query?: never;
@@ -7472,6 +7833,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_all_stage_settings_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_stage_settings_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_stage_settings_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_stage_settings_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

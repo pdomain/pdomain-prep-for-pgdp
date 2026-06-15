@@ -3051,6 +3051,126 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/stages/{stage_id}/settings": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Project Stage Settings",
+        "description": "Return the project-level (project-tier) default settings for a stage.\n\nReturns the stored project default dict, or {} if none saved yet.",
+        "operationId": "get_project_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Put Project Stage Settings",
+        "description": "Set the project-level (project-tier) default settings for a stage.\n\nEquivalent to \"save as default\" \u2014 applies to all pages in this project\nthat have no page-level override for that field. Appends a SettingsChange event.",
+        "operationId": "put_project_stage_settings",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/pages": {
       "get": {
         "tags": [
@@ -4905,6 +5025,270 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/page": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Stage Settings Page Tier",
+        "description": "Return the per-page (page-tier) settings for a stage, or {} if none set.\n\nReturns the sparse page-tier override dict (not the merged effective settings).\nTo get the fully resolved effective settings, use GET .../settings/resolved.",
+        "operationId": "get_page_stage_settings_page_tier",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Put Page Stage Settings Page Tier",
+        "description": "Save a sparse per-page override for this stage.\n\nOnly the keys provided override those fields; other fields fall through to\nthe project/all/registry default. Appends a SettingsChange event.\nTo clear a per-page override, PUT an empty dict {} or use DELETE.",
+        "operationId": "put_page_stage_settings_page_tier",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Delete Page Stage Settings Page Tier",
+        "description": "Remove the per-page override for this stage, reverting to project/all/registry defaults.\n\nAppends a SettingsChange event. No-op if no page override exists.",
+        "operationId": "delete_page_stage_settings_page_tier",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/resolved": {
+      "get": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Get Page Stage Settings Resolved",
+        "description": "Return the fully resolved effective settings PLUS the tier source per field.\n\nResponse shape:\n  {\n    \"effective\": {field: value, ...},\n    \"sources\": {field: \"page\"|\"project\"|\"all\"|\"registry\", ...}\n  }\n\nThe 'sources' dict tells the UI which tier supplied each field value so it\ncan show \"overriding project default\" or \"using app-wide default\".",
+        "operationId": "get_page_stage_settings_resolved",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/system/defaults": {
       "get": {
         "tags": [
@@ -5366,6 +5750,177 @@
                 "schema": {
                   "$ref": "#/components/schemas/SearchResponse"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/data/settings/stages": {
+      "get": {
+        "tags": [
+          "stage_settings_all"
+        ],
+        "summary": "Get All Stage Settings All",
+        "description": "Return all app-wide stage settings (all tier), keyed by stage_id.",
+        "operationId": "get_all_stage_settings_all",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/data/settings/stages/{stage_id}": {
+      "get": {
+        "tags": [
+          "stage_settings_all"
+        ],
+        "summary": "Get Stage Settings All",
+        "description": "Return the app-wide (all-tier) settings for a stage.\n\nReturns the stage's stored app-wide settings if set, else the registry\ndefault (so the response is always a usable dict, not null/404).",
+        "operationId": "get_stage_settings_all",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "stage_settings_all"
+        ],
+        "summary": "Put Stage Settings All",
+        "description": "Set the app-wide (all-tier) defaults for a stage.\n\nThese apply to all projects that have no project-level or page-level\noverride for this stage's fields. Persists via\ndata_root/stage_settings_all.json (not the event store).",
+        "operationId": "put_stage_settings_all",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "stage_settings_all"
+        ],
+        "summary": "Delete Stage Settings All",
+        "description": "Remove the app-wide (all-tier) defaults for a stage.\n\nAfter deletion, the registry default applies for all projects without a\nproject-level or page-level override for this stage.",
+        "operationId": "delete_stage_settings_all",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },

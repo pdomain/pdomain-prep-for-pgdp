@@ -1005,11 +1005,14 @@ async def run_stage(
             database=database, project_id=project_id, page_id=page_id, page_service=_ps
         )
 
-    # W1.1: merge effective stage settings into cfg.
+    # W1.1: merge effective stage settings into cfg — 3-tier (page > project > all > registry).
     #
-    # Precedence (already correct because of the order below):
+    # Precedence (highest wins):
     #   per-page PageConfigOverrides (baked into cfg by _resolve_config above)
-    #   > StageSettingsStore effective (override > saved default > registry default)
+    #   > page-tier StageSettingsStore settings (sparse per-page override)
+    #   > project-tier StageSettingsStore settings (save_as_default)
+    #   > all-tier AppWideStageSettings (data_root/stage_settings_all.json)
+    #   > registry default (STAGE_SETTINGS_DEFAULTS)
     #
     # apply_stage_settings_to_config only writes the stage-settings-specific
     # fields on ResolvedPageConfig; it does NOT overwrite per-page overrides.
@@ -1018,6 +1021,7 @@ async def run_stage(
     # for all other stages this is a fast no-op (no DB open, no I/O).
     from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
         STAGE_SETTINGS_DEFAULTS,
+        AppWideStageSettings,
         StageSettingsStore,
         apply_stage_settings_to_config,
     )
@@ -1027,8 +1031,13 @@ async def run_stage(
         _settings_db_path = data_root / "projects" / project_id / "stage_settings.db"
         _settings_db_path.parent.mkdir(parents=True, exist_ok=True)
         _settings_store = StageSettingsStore(_settings_db_path)
-        _effective = _settings_store.get_effective(
-            project_id, stage_id, registry_default=_stage_registry_defaults
+        _app_wide = AppWideStageSettings(data_root)
+        _effective = _settings_store.get_effective_3tier(
+            project_id,
+            stage_id,
+            page_id,
+            registry_default=_stage_registry_defaults,
+            app_wide=_app_wide,
         )
         cfg = apply_stage_settings_to_config(cfg, stage_id, _effective)
 

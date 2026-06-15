@@ -9,6 +9,7 @@ from .pipeline import router as pipeline_router
 from .project_stages import router as project_stages_router
 from .projects import router as projects_router
 from .search import router as search_router
+from .stage_settings_all import router as stage_settings_all_router
 from .system_defaults import router as system_defaults_router
 
 
@@ -22,4 +23,5 @@ def install_data_routes(app) -> None:  # type: ignore[no-untyped-def]
     root.include_router(jobs_router)
     root.include_router(pipeline_router)
     root.include_router(search_router)
+    root.include_router(stage_settings_all_router)
     app.include_router(root)

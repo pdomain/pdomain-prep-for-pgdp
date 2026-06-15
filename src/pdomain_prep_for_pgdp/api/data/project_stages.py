@@ -3139,3 +3139,121 @@ async def persist_illustration_region(
     regions[idx] = body.model_dump()
     _save_illustration_regions(settings.data_root, project_id, regions)
     return JSONResponse(content={"ok": True})
+
+
+# ── Per-project stage settings routes (3-tier: project tier read/write) ───────
+
+
+@router.get(
+    "/projects/{project_id}/stages/{stage_id}/settings",
+    operation_id="get_project_stage_settings",
+    response_model=None,
+)
+async def get_project_stage_settings(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> JSONResponse:
+    """Return the project-level (project-tier) default settings for a stage.
+
+    Returns the stored project default dict, or {} if none saved yet.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import StageSettingsStore
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = StageSettingsStore(db_path)
+    project_default = store.get_project_default(project_id, stage_id)
+    return JSONResponse(content=project_default or {})
+
+
+@router.put(
+    "/projects/{project_id}/stages/{stage_id}/settings",
+    operation_id="put_project_stage_settings",
+    response_model=None,
+)
+async def put_project_stage_settings(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    body: dict[str, object],
+) -> JSONResponse:
+    """Set the project-level (project-tier) default settings for a stage.
+
+    Equivalent to "save as default" — applies to all pages in this project
+    that have no page-level override for that field. Appends a SettingsChange event.
+    """
+    import uuid as _uuid
+
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        StageSettingsStore,
+    )
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = StageSettingsStore(db_path)
+    registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
+
+    _agg_app = _agg = None
+    try:
+        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
+            PrepApplication,
+            PrepProjectAggregate,
+        )
+
+        _events_db = settings.data_root / "projects" / project_id / "events.db"
+        _events_db.parent.mkdir(parents=True, exist_ok=True)
+        _app = PrepApplication(
+            env={
+                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
+                "SQLITE_DBNAME": str(_events_db),
+            }
+        )
+        try:
+            _proj_uuid = _uuid.UUID(project_id)
+        except ValueError:
+            _proj_uuid = _uuid.uuid5(_uuid.NAMESPACE_OID, project_id)
+        _agg_id = PrepProjectAggregate.create_id(_proj_uuid)
+        try:
+            _agg = _app.repository.get(_agg_id)  # type: ignore[assignment]
+        except Exception:
+            _agg = PrepProjectAggregate(project_id=_proj_uuid)
+        _agg_app = _app
+    except Exception as _e:
+        log.warning("put_project_stage_settings: could not load aggregate (non-fatal): %s", _e)
+
+    store.save_as_default(
+        project_id,
+        stage_id,
+        body,
+        aggregate=_agg,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    if _agg_app is not None and _agg is not None:
+        try:
+            _agg_app.save(_agg)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("put_project_stage_settings aggregate persist failed: %s", _e_save)
+
+    project_default = store.get_project_default(project_id, stage_id)
+    return JSONResponse(content=project_default or {})

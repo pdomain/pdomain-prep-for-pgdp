@@ -2513,3 +2513,217 @@ async def post_hyphen_join_decisions(
         page_id=page_id,
         candidates=candidates,
     )
+
+
+# ── 3-tier per-page stage settings routes ────────────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/page",
+    operation_id="get_page_stage_settings_page_tier",
+    response_model=None,
+)
+async def get_page_stage_settings_page_tier(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Return the per-page (page-tier) settings for a stage, or {} if none set.
+
+    Returns the sparse page-tier override dict (not the merged effective settings).
+    To get the fully resolved effective settings, use GET .../settings/resolved.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    store = _stage_settings_store(settings, project_id)
+    page_override = store.get_page_override(project_id, stage_id, page_id)
+    return JSONResponse(content=page_override or {})
+
+
+@router.put(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/page",
+    operation_id="put_page_stage_settings_page_tier",
+    response_model=None,
+)
+async def put_page_stage_settings_page_tier(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+    body: dict[str, object],
+):
+    """Save a sparse per-page override for this stage.
+
+    Only the keys provided override those fields; other fields fall through to
+    the project/all/registry default. Appends a SettingsChange event.
+    To clear a per-page override, PUT an empty dict {} or use DELETE.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
+    store.save_page_override(
+        project_id,
+        stage_id,
+        page_id,
+        body,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("put_page_stage_settings_page_tier aggregate persist failed: %s", _e_save)
+    page_override = store.get_page_override(project_id, stage_id, page_id)
+    return JSONResponse(content=page_override or {})
+
+
+@router.delete(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/page",
+    operation_id="delete_page_stage_settings_page_tier",
+    response_model=None,
+)
+async def delete_page_stage_settings_page_tier(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Remove the per-page override for this stage, reverting to project/all/registry defaults.
+
+    Appends a SettingsChange event. No-op if no page override exists.
+    """
+    from fastapi.responses import JSONResponse
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    _agg_app_w24, _agg_w24 = _load_prep_aggregate(settings, project_id)
+    store.delete_page_override(
+        project_id,
+        stage_id,
+        page_id,
+        aggregate=_agg_w24,  # type: ignore[arg-type]
+        registry_default=registry_default,
+        actor_id=user.user_id,
+    )
+    if _agg_app_w24 is not None and _agg_w24 is not None:
+        try:
+            _agg_app_w24.save(_agg_w24)  # type: ignore[arg-type]
+        except Exception as _e_save:
+            log.warning("delete_page_stage_settings_page_tier aggregate persist failed: %s", _e_save)
+    return JSONResponse(content={})
+
+
+@router.get(
+    "/projects/{project_id}/pages/{idx0}/stages/{stage_id}/settings/resolved",
+    operation_id="get_page_stage_settings_resolved",
+    response_model=None,
+)
+async def get_page_stage_settings_resolved(
+    project_id: str,
+    idx0: int,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+):
+    """Return the fully resolved effective settings PLUS the tier source per field.
+
+    Response shape:
+      {
+        "effective": {field: value, ...},
+        "sources": {field: "page"|"project"|"all"|"registry", ...}
+      }
+
+    The 'sources' dict tells the UI which tier supplied each field value so it
+    can show "overriding project default" or "using app-wide default".
+    """
+    from fastapi.responses import JSONResponse
+
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import AppWideStageSettings
+
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    if (rv := _check_registry_page(project)) is not None:
+        return rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    store = _stage_settings_store(settings, project_id)
+    registry_default = _stage_registry_default(stage_id)
+    app_wide = AppWideStageSettings(settings.data_root)
+    effective, sources = store.get_effective_3tier_with_sources(
+        project_id,
+        stage_id,
+        page_id,
+        registry_default=registry_default,
+        app_wide=app_wide,
+    )
+    return JSONResponse(content={"effective": effective, "sources": sources})
