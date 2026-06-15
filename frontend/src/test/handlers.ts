@@ -80,6 +80,11 @@ export const handlers: RequestHandler[] = [
     },
   ),
 
+  // Task 4.3 fix: app-wide (all-tier) stage settings — default returns empty
+  // dict so the form falls back to GRAYSCALE_CONFIG_DEFAULTS. Tests that need
+  // a saved value override this handler with server.use().
+  http.get("/api/data/settings/stages/:stageId", () => HttpResponse.json({})),
+
   // R2: grayscaleTool — detectProfile
   http.post(
     "/api/data/projects/:projectId/project-stages/grayscale/detect",

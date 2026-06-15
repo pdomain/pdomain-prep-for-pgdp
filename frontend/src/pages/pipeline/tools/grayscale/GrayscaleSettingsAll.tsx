@@ -15,7 +15,7 @@
  * @see src/pdomain_prep_for_pgdp/api/data/stage_settings_all.py — PUT route
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import type {
   GrayscaleDraftConfig,
@@ -52,6 +52,21 @@ export function GrayscaleSettingsAllSection({
   onSave,
 }: GrayscaleSettingsAllProps): ReactNode {
   const [draft, setDraft] = useState<GrayscaleDraftConfig>({ ...config });
+
+  // Sync local draft when the parent loads the persisted config from the API
+  // (the prop starts as GRAYSCALE_CONFIG_DEFAULTS then updates once the query
+  // resolves — the useEffect re-initialises the draft from the loaded value).
+  useEffect(() => {
+    setDraft({ ...config });
+    // Deep-equality would be nicer but config is a plain object and the parent
+    // only changes it once (loading → loaded), so shallow-spread is fine here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    config.converter,
+    config.flatten.enabled,
+    config.clahe.enabled,
+    config.channel,
+  ]);
 
   return (
     <div

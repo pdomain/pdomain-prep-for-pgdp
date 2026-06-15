@@ -266,6 +266,25 @@ export async function putPageTierSettings(
 }
 
 /**
+ * GET the app-wide (all-tier) defaults for a stage.
+ *
+ * GET /api/data/settings/stages/{stageId}
+ *
+ * Returns the stored app-wide defaults if set, else the registry default for
+ * the stage. The response is always a usable dict (never null/404).
+ *
+ * Used by SettingsPage to initialise the GrayscaleSettingsAllSection form from
+ * the persisted value rather than from the hardcoded GRAYSCALE_CONFIG_DEFAULTS.
+ */
+export async function getAllTierSettings(
+  stageId: string,
+): Promise<Record<string, unknown>> {
+  return api.get<Record<string, unknown>>(
+    `/api/data/settings/stages/${encodeURIComponent(stageId)}`,
+  );
+}
+
+/**
  * PUT the app-wide (all-tier) defaults for a stage.
  *
  * PUT /api/data/settings/stages/{stageId}

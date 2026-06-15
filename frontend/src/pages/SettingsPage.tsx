@@ -16,9 +16,15 @@ import {
 import { PageHeader } from "../components/shell/PageHeader";
 import { cn } from "@/lib/utils";
 import { GrayscaleSettingsAllSection } from "./pipeline/tools/grayscale/GrayscaleSettingsAll";
-import { putAllTierSettings } from "@/services/tools/grayscaleTool";
+import {
+  getAllTierSettings,
+  putAllTierSettings,
+} from "@/services/tools/grayscaleTool";
 import type { GrayscaleDraftConfig } from "./pipeline/tools/grayscale/grayscaleConfig";
-import { GRAYSCALE_CONFIG_DEFAULTS } from "./pipeline/tools/grayscale/grayscaleConfig";
+import {
+  GRAYSCALE_CONFIG_DEFAULTS,
+  settingsToDraft,
+} from "./pipeline/tools/grayscale/grayscaleConfig";
 
 // GET returns the *Output* schema (server populates every field, so they're
 // all required). PUT/POST accept the *Input* schema where defaults remain
@@ -74,9 +80,33 @@ export function SettingsPage() {
     },
   });
 
+  // Load persisted app-wide grayscale config so the form initialises from the
+  // saved value rather than the hardcoded GRAYSCALE_CONFIG_DEFAULTS.
+  const grayscaleAllTier = useQuery({
+    queryKey: ["stage-settings-all", "grayscale"],
+    queryFn: () => getAllTierSettings("grayscale"),
+  });
+
+  // Derive the initialisation config for the grayscale form: use the loaded
+  // value (cast through settingsToDraft to fill any gaps) when available,
+  // falling back to the spec defaults when the query is still loading or
+  // has failed.
+  const grayscaleInitConfig: GrayscaleDraftConfig = grayscaleAllTier.data
+    ? settingsToDraft(
+        grayscaleAllTier.data as unknown as Parameters<
+          typeof settingsToDraft
+        >[0],
+      )
+    : GRAYSCALE_CONFIG_DEFAULTS;
+
   const saveGrayscale = useMutation({
     mutationFn: (config: GrayscaleDraftConfig) =>
       putAllTierSettings("grayscale", config),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["stage-settings-all", "grayscale"],
+      });
+    },
   });
 
   if (defaults.isLoading || !draft) {
@@ -225,7 +255,7 @@ export function SettingsPage() {
 
       <FieldSet title="Grayscale stage defaults">
         <GrayscaleSettingsAllSection
-          config={GRAYSCALE_CONFIG_DEFAULTS}
+          config={grayscaleInitConfig}
           onSave={(config) => saveGrayscale.mutate(config)}
         />
         {saveGrayscale.isSuccess && (

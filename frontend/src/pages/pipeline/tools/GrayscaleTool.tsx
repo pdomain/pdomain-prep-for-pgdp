@@ -44,6 +44,7 @@ import {
   type GrayscaleMode,
 } from "@/machines/tools/grayscaleTool";
 import type { GrayscaleConverter } from "./grayscale/types";
+import { draftToSettings } from "./grayscale/grayscaleConfig";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import {
@@ -267,14 +268,12 @@ export function GrayscaleTool({
     if (!draft || !projectId || projectId === "demo") return;
     const page = ctx.pages[ctx.cursor];
     const idx0 = page?.idx0 ?? 0;
-    void import("./grayscale/grayscaleConfig").then(({ draftToSettings }) => {
-      void putPageTierSettings(
-        projectId,
-        "grayscale",
-        idx0,
-        draftToSettings(draft),
-      );
-    });
+    void putPageTierSettings(
+      projectId,
+      "grayscale",
+      idx0,
+      draftToSettings(draft),
+    );
   }, [ctx.draft, ctx.pages, ctx.cursor, projectId]);
 
   /**
