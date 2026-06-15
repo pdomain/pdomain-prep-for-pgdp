@@ -1799,9 +1799,7 @@ export interface paths {
          *     Spec: docs/specs/api-v2-deltas.md §1.8.
          *
          *     Validates grayscale-specific constraints to prevent to_grayscale ValueError:
-         *       - output_range_min < output_range_max, both in [0, 255]
-         *       - sampler_radius >= 0
-         *       - gamma > 0
+         *       - output_range: [min, max], min < max, both in [0, 255]
          */
         put: operations["put_page_stage_settings"];
         post?: never;

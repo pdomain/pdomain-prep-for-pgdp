@@ -249,8 +249,6 @@ STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
     "ocr": frozenset({"use_ocr_bbox_edge"}),
     # grayscale (Wave-2): the resolved GrayscaleConfigModel field on ResolvedPageConfig.
     # A settings change on the nested pipeline config → config hash differs → dirty cascade.
-    # Tracks "grayscale" (the GrayscaleConfigModel) rather than the legacy flat
-    # "grayscale_mode"/"grayscale_sampler_radius"/… fields superseded by Task 1.1.
     "grayscale": frozenset({"grayscale"}),
 }
 

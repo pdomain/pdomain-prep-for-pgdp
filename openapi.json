@@ -4455,7 +4455,7 @@
           "pages"
         ],
         "summary": "Put Page Stage Settings",
-        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.\n\nValidates grayscale-specific constraints to prevent to_grayscale ValueError:\n  - output_range_min < output_range_max, both in [0, 255]\n  - sampler_radius >= 0\n  - gamma > 0",
+        "description": "Save a project override for this stage's settings.\n\nThe override is used for the next run (not saved as \"my default\").\nAppends a SettingsChange event.\nProject-scoped stages (e.g. \"source\") are accepted; idx0 is ignored.\nSpec: docs/specs/api-v2-deltas.md \u00a71.8.\n\nValidates grayscale-specific constraints to prevent to_grayscale ValueError:\n  - output_range: [min, max], min < max, both in [0, 255]",
         "operationId": "put_page_stage_settings",
         "security": [
           {

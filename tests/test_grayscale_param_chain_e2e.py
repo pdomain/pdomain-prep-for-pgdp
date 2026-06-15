@@ -350,7 +350,8 @@ class TestGrayscaleParamChainE2E:
     def test_grayscale_settings_validation_rejects_bad_range(self, tmp_path: Any) -> None:
         """Issue 6: settings route validates grayscale-specific constraints.
 
-        output_range_min >= output_range_max should return 422 (not a stage crash).
+        output_range with min >= max should return 422 (not a stage crash).
+        The frontend sends nested {"output_range": [min, max]}, not flat keys.
         """
         settings = _settings(tmp_path)
         project_id = "e2e_validate"
@@ -361,34 +362,48 @@ class TestGrayscaleParamChainE2E:
             # min >= max should be rejected
             r = client.put(
                 f"/api/data/projects/{project_id}/pages/0/stages/grayscale/settings",
-                json={"output_range_min": 200, "output_range_max": 100},
+                json={"output_range": [200, 100]},
             )
         assert r.status_code == 422, f"Expected 422 for invalid range, got {r.status_code}: {r.text}"
 
-    def test_grayscale_settings_validation_rejects_bad_gamma(self, tmp_path: Any) -> None:
-        """gamma <= 0 should return 422."""
+    def test_grayscale_settings_validation_rejects_out_of_bounds_range(self, tmp_path: Any) -> None:
+        """output_range value outside [0, 255] should return 422."""
         settings = _settings(tmp_path)
-        project_id = "e2e_val_gamma"
+        project_id = "e2e_val_oob"
         _seed(settings, project_id)
         app = build_app(settings)
 
         with TestClient(app) as client:
             r = client.put(
                 f"/api/data/projects/{project_id}/pages/0/stages/grayscale/settings",
-                json={"gamma": 0.0},
+                json={"output_range": [-1, 200]},
             )
-        assert r.status_code == 422, f"Expected 422 for gamma=0, got {r.status_code}: {r.text}"
+        assert r.status_code == 422, f"Expected 422 for out-of-bounds range, got {r.status_code}: {r.text}"
 
-    def test_grayscale_settings_validation_rejects_negative_radius(self, tmp_path: Any) -> None:
-        """sampler_radius < 0 should return 422."""
+    def test_grayscale_settings_validation_accepts_valid_range(self, tmp_path: Any) -> None:
+        """A valid nested output_range should be accepted (not rejected with 422)."""
         settings = _settings(tmp_path)
-        project_id = "e2e_val_radius"
+        project_id = "e2e_val_ok"
         _seed(settings, project_id)
         app = build_app(settings)
 
         with TestClient(app) as client:
             r = client.put(
                 f"/api/data/projects/{project_id}/pages/0/stages/grayscale/settings",
-                json={"sampler_radius": -1},
+                json={"output_range": [12, 248]},
             )
-        assert r.status_code == 422, f"Expected 422 for sampler_radius=-1, got {r.status_code}: {r.text}"
+        assert r.status_code == 200, f"Expected 200 for valid range, got {r.status_code}: {r.text}"
+
+    def test_grayscale_settings_validation_rejects_non_list_range(self, tmp_path: Any) -> None:
+        """output_range must be a list of two numbers; a scalar should return 422."""
+        settings = _settings(tmp_path)
+        project_id = "e2e_val_scalar"
+        _seed(settings, project_id)
+        app = build_app(settings)
+
+        with TestClient(app) as client:
+            r = client.put(
+                f"/api/data/projects/{project_id}/pages/0/stages/grayscale/settings",
+                json={"output_range": 128},
+            )
+        assert r.status_code == 422, f"Expected 422 for scalar range, got {r.status_code}: {r.text}"

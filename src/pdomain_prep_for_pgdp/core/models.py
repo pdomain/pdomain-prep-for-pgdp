@@ -474,22 +474,11 @@ class ResolvedPageConfig(ApiModel):
     """Post-transform crop insets in pixels: (top, bottom, left, right).
     Applied after dewarp; default (0,0,0,0) is a pass-through."""
 
-    # grayscale stage settings — Wave-2 conversion mode + sampler tuning
-    grayscale_mode: Literal["perceptual", "standard"] = "perceptual"
-    """Grayscale conversion algorithm. 'perceptual' = luminosity-weighted (BT.709);
-    'standard' = fast BT.601 luma via cv2.COLOR_BGR2GRAY."""
-    grayscale_sampler_radius: int = 3
-    """Sampling radius for perceptual mode Gaussian weighting."""
-    grayscale_gamma: float = 1.1
-    """Gamma correction applied post-conversion (1.0 = no correction)."""
-    grayscale_output_range_min: int = 12
-    """Minimum output value after output-range remap (0-255 scale)."""
-    grayscale_output_range_max: int = 248
-    """Maximum output value after output-range remap (0-255 scale)."""
-
     # ── Pipeline GrayscaleConfig (Task 1.1) ───────────────────────────────────
-    # Full book-tools pipeline config; supersedes the flat legacy fields above.
-    # Task 1.3 will migrate the stage to read this field and remove the flat fields.
+    # Full book-tools pipeline config.  The old flat grayscale_mode /
+    # grayscale_sampler_radius / grayscale_gamma / grayscale_output_range_min/max
+    # fields were removed in Task 2 cleanup: ResolvedPageConfig is computed at
+    # runtime (not persisted), so no migration is needed.
     grayscale: GrayscaleConfigModel = Field(default_factory=GrayscaleConfigModel)
 
 
