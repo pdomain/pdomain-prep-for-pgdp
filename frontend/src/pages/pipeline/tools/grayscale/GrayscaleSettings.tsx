@@ -495,7 +495,7 @@ export function GrayscaleSettingsTab({
   onSetConverter: (c: GrayscaleConverter) => void;
   onSetFlatten: (enabled: boolean) => void;
   onSetClahe: (enabled: boolean) => void;
-  onSetChannel: (ch: string) => void;
+  onSetChannel: (ch: import("./grayscaleConfig").GrayscaleChannel) => void;
   pageCount: number;
 }): ReactNode {
   const sec = estimateSecPerPage(backend);

@@ -229,10 +229,10 @@ describe("GrayscaleTool — workbench tab (no pages)", () => {
     });
   });
 
-  it("apply-run-btn is present", async () => {
+  it("grayscale-apply-run is present", async () => {
     renderGrayscale();
     await waitFor(() => {
-      expect(screen.getByTestId("apply-run-btn")).toBeDefined();
+      expect(screen.getByTestId("grayscale-apply-run")).toBeDefined();
     });
   });
 

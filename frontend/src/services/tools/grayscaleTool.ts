@@ -240,6 +240,50 @@ async function loadPageStages(
 }
 
 // ---------------------------------------------------------------------------
+// Task 4.3 — Tier-scoped save functions
+// ---------------------------------------------------------------------------
+
+/**
+ * PUT the page-tier override for a given page.
+ *
+ * PUT /api/data/projects/{id}/pages/{idx0}/stages/{stageId}/settings/page
+ *
+ * This is a SPARSE page-level override: only the keys provided override that
+ * field for this specific page; everything else falls through to
+ * project / all / registry. The body is the full nested GrayscaleConfig so
+ * all fields are set explicitly (avoids partial-override surprises).
+ */
+export async function putPageTierSettings(
+  projectId: string,
+  stageId: string,
+  idx0: number,
+  body: GrayscaleConfig,
+): Promise<Record<string, unknown>> {
+  return api.put<Record<string, unknown>>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/${encodeURIComponent(stageId)}/settings/page`,
+    body,
+  );
+}
+
+/**
+ * PUT the app-wide (all-tier) defaults for a stage.
+ *
+ * PUT /api/data/settings/stages/{stageId}
+ *
+ * These apply to all projects that have no project-level or page-level
+ * override for this stage's fields.
+ */
+export async function putAllTierSettings(
+  stageId: string,
+  body: GrayscaleConfig,
+): Promise<Record<string, unknown>> {
+  return api.put<Record<string, unknown>>(
+    `/api/data/settings/stages/${encodeURIComponent(stageId)}`,
+    body,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Exported factory
 // ---------------------------------------------------------------------------
 

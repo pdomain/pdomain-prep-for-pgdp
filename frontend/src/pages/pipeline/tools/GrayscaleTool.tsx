@@ -33,7 +33,7 @@
  * @see src/pages/pipeline/toolSlot.tsx
  */
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
@@ -46,7 +46,10 @@ import {
 import type { GrayscaleConverter } from "./grayscale/types";
 import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
-import { buildRealGrayscaleToolServices } from "@/services/tools/grayscaleTool";
+import {
+  buildRealGrayscaleToolServices,
+  putPageTierSettings,
+} from "@/services/tools/grayscaleTool";
 import { getStageSettingsResolved } from "@/services/stageSettings";
 import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
 import type { GrayscalePage } from "@/machines/tools/grayscaleTool";
@@ -198,6 +201,9 @@ export function GrayscaleTool({
     };
   }, [projectId]);
 
+  // Task 4.3: autoDetectWhy — surfaces the why text from the last Auto detect.
+  const [autoDetectWhy, setAutoDetectWhy] = useState<string | null>(null);
+
   // ── Event handlers ───────────────────────────────────────────────────────
   const handleSetFilter = (v: "all" | "perceptual" | "standard") =>
     send({ type: "SET_FILTER", value: v });
@@ -212,10 +218,6 @@ export function GrayscaleTool({
     send({ type: "SET_PARAM", patch });
 
   const handleRevert = () => send({ type: "RESET" });
-  const handleSaveDefault = () => {
-    const draft = ctx.draft ?? {};
-    void ctx.services.saveAsDefault(projectId, "grayscale", draft);
-  };
   const handleRedetect = () => send({ type: "REDETECT" });
   const handleApplyRun = () => send({ type: "APPLY_RUN" });
   const handleRerunPage = () => send({ type: "RERUN_PAGE" });
@@ -227,11 +229,62 @@ export function GrayscaleTool({
     send({ type: "SET_FLATTEN", enabled });
   const handleSetClahe = (enabled: boolean) =>
     send({ type: "SET_CLAHE", enabled });
-  const handleSetChannel = (channel: string) =>
+  const handleSetChannel = (
+    channel: import("./grayscale/types").GrayscaleChannel,
+  ) =>
     send({
       type: "SET_CHANNEL",
-      channel: channel as import("./grayscale/types").GrayscaleChannel,
+      channel,
     });
+
+  /**
+   * Task 4.3: Auto — calls detectProfile, applies the returned config to the
+   * draft (via SET_* events), and surfaces the why text near the editor.
+   */
+  const handleAuto = useCallback(() => {
+    if (!projectId || projectId === "demo") return;
+    void (async () => {
+      try {
+        const result = await services.detectProfile(projectId);
+        // Apply each pipeline config field to the draft via machine events
+        send({ type: "SET_CONVERTER", converter: result.config.converter });
+        send({ type: "SET_CHANNEL", channel: result.config.channel });
+        send({ type: "SET_FLATTEN", enabled: result.config.flatten.enabled });
+        send({ type: "SET_CLAHE", enabled: result.config.clahe.enabled });
+        // Surface the why text
+        setAutoDetectWhy(result.why);
+      } catch {
+        // Non-fatal — Auto detect failure doesn't break the tool
+      }
+    })();
+  }, [projectId, services, send]);
+
+  /**
+   * Task 4.3: Save for this page — PUT page-tier override with current draft.
+   */
+  const handleSavePageTier = useCallback(() => {
+    const draft = ctx.draft;
+    if (!draft || !projectId || projectId === "demo") return;
+    const page = ctx.pages[ctx.cursor];
+    const idx0 = page?.idx0 ?? 0;
+    void import("./grayscale/grayscaleConfig").then(({ draftToSettings }) => {
+      void putPageTierSettings(
+        projectId,
+        "grayscale",
+        idx0,
+        draftToSettings(draft),
+      );
+    });
+  }, [ctx.draft, ctx.pages, ctx.cursor, projectId]);
+
+  /**
+   * Task 4.3: Save as project default — POST save-as-default with current draft.
+   */
+  const handleSaveProjectDefault = useCallback(() => {
+    const draft = ctx.draft ?? {};
+    if (!projectId || projectId === "demo") return;
+    void ctx.services.saveAsDefault(projectId, "grayscale", draft);
+  }, [ctx.draft, ctx.services, projectId]);
 
   // Keyboard navigation in workbench tab (ArrowLeft/[ → PREV_PAGE, ArrowRight/] → NEXT_PAGE)
   // Must be declared before any early returns to satisfy rules-of-hooks.
@@ -408,7 +461,6 @@ export function GrayscaleTool({
           onSetMode={handleSetMode}
           onPatch={handlePatch}
           onRevert={handleRevert}
-          onSaveDefault={handleSaveDefault}
           onRedetect={handleRedetect}
           onApplyRun={handleApplyRun}
           onRerunPage={handleRerunPage}
@@ -416,6 +468,10 @@ export function GrayscaleTool({
           onSetFlatten={handleSetFlatten}
           onSetClahe={handleSetClahe}
           onSetChannel={handleSetChannel}
+          onSavePageTier={handleSavePageTier}
+          onSaveProjectDefault={handleSaveProjectDefault}
+          onAuto={handleAuto}
+          autoDetectWhy={autoDetectWhy}
         />
       )}
 

@@ -215,7 +215,7 @@ function ConverterSection({
   onSetConverter: (c: GrayscaleConverter) => void;
   onSetChannel: (ch: GrayscaleChannel) => void;
 }): ReactNode {
-  const converterTier = sources["converter"] ?? sources["flatten.enabled"];
+  const converterTier = sources["converter"];
   const showChannel = draft.converter === "best_channel";
 
   return (
@@ -508,7 +508,8 @@ export function GrayscalePipelineEditor({
   onSetConverter: (c: GrayscaleConverter) => void;
   onSetFlatten: (enabled: boolean) => void;
   onSetClahe: (enabled: boolean) => void;
-  onSetChannel: (ch: string) => void;
+  /** Task 4.3 nit: narrowed from (ch: string) to (ch: GrayscaleChannel) for type parity. */
+  onSetChannel: (ch: GrayscaleChannel) => void;
 }): ReactNode {
   return (
     <div
@@ -520,7 +521,7 @@ export function GrayscalePipelineEditor({
         draft={draft}
         sources={sources}
         onSetConverter={onSetConverter}
-        onSetChannel={(ch) => onSetChannel(ch)}
+        onSetChannel={onSetChannel}
       />
       <ClaheSection draft={draft} onSetClahe={onSetClahe} />
     </div>

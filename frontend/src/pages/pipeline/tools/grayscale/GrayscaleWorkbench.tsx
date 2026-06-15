@@ -23,6 +23,7 @@ import type {
   GrayscaleMode,
   GrayscalePage,
   GrayscaleConverter,
+  GrayscaleChannel,
 } from "./types";
 import {
   BackendChip,
@@ -465,12 +466,13 @@ function StageControlsDrawer({
   onSetMode,
   onPatch,
   onRevert,
-  onSaveDefault,
   onRedetect,
   onSetConverter,
   onSetFlatten,
   onSetClahe,
   onSetChannel,
+  onSavePageTier,
+  onSaveProjectDefault,
   pageCount,
 }: {
   backend: GrayscaleBackend;
@@ -482,12 +484,15 @@ function StageControlsDrawer({
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
   onRevert: () => void;
-  onSaveDefault: () => void;
   onRedetect: () => void;
   onSetConverter: (c: GrayscaleConverter) => void;
   onSetFlatten: (enabled: boolean) => void;
   onSetClahe: (enabled: boolean) => void;
-  onSetChannel: (ch: string) => void;
+  onSetChannel: (ch: GrayscaleChannel) => void;
+  /** Task 4.3: Save draft as a page-level override (page tier). */
+  onSavePageTier: () => void;
+  /** Task 4.3: Save draft as the project-level default (project tier). */
+  onSaveProjectDefault: () => void;
   pageCount: number;
 }): ReactNode {
   const sec = estimateSecPerPage(backend);
@@ -817,26 +822,33 @@ function StageControlsDrawer({
         </div>
       </div>
 
-      {/* Sticky footer — save defaults */}
-      {settingsState === "modified" && (
-        <div
-          style={{
-            padding: "10px 14px",
-            borderTop: "1px solid var(--border-1)",
-            background: "var(--bg-surface)",
-            display: "flex",
-            gap: 8,
-            justifyContent: "flex-end",
-          }}
-        >
+      {/* Sticky footer — per-tier save actions (always shown so testids are accessible) */}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderTop: "1px solid var(--border-1)",
+          background: "var(--bg-surface)",
+          display: "flex",
+          gap: 8,
+          justifyContent: "flex-end",
+          flexWrap: "wrap",
+        }}
+      >
+        {settingsState === "modified" && (
           <GhostButton onClick={onRevert} data-testid="footer-revert-btn">
             Revert
           </GhostButton>
-          <PrimaryButton onClick={onSaveDefault} data-testid="save-default-btn">
-            Save as default
-          </PrimaryButton>
-        </div>
-      )}
+        )}
+        <GhostButton onClick={onSavePageTier} data-testid="grayscale-save-page">
+          Save for this page
+        </GhostButton>
+        <PrimaryButton
+          onClick={onSaveProjectDefault}
+          data-testid="grayscale-save-project"
+        >
+          Save as project default
+        </PrimaryButton>
+      </div>
     </div>
   );
 }
@@ -1262,7 +1274,6 @@ export function GrayscaleWorkbenchTab({
   onSetMode,
   onPatch,
   onRevert,
-  onSaveDefault,
   onRedetect,
   onApplyRun,
   onRerunPage,
@@ -1270,6 +1281,10 @@ export function GrayscaleWorkbenchTab({
   onSetFlatten,
   onSetClahe,
   onSetChannel,
+  onSavePageTier,
+  onSaveProjectDefault,
+  onAuto,
+  autoDetectWhy,
 }: {
   projectId: string;
   pages: GrayscalePage[];
@@ -1285,14 +1300,21 @@ export function GrayscaleWorkbenchTab({
   onSetMode: (m: GrayscaleMode) => void;
   onPatch: (patch: Partial<GrayscaleDraft>) => void;
   onRevert: () => void;
-  onSaveDefault: () => void;
   onRedetect: () => void;
   onApplyRun: () => void;
   onRerunPage: () => void;
   onSetConverter: (c: GrayscaleConverter) => void;
   onSetFlatten: (enabled: boolean) => void;
   onSetClahe: (enabled: boolean) => void;
-  onSetChannel: (ch: string) => void;
+  onSetChannel: (ch: GrayscaleChannel) => void;
+  /** Task 4.3: Save draft as a page-level override (page tier). */
+  onSavePageTier: () => void;
+  /** Task 4.3: Save draft as the project-level default (project tier). */
+  onSaveProjectDefault: () => void;
+  /** Task 4.3: Auto-detect — calls detect, applies config, surfaces why. */
+  onAuto: () => void;
+  /** Task 4.3: Why text from the last Auto detect (null = not yet run). */
+  autoDetectWhy: string | null;
 }): ReactNode {
   const page = pages[cursor];
   const currentMode = draft?.mode ?? page?.mode ?? "perceptual";
@@ -1310,6 +1332,18 @@ export function GrayscaleWorkbenchTab({
               Apply &amp; Run
             </span>{" "}
             commits the change to the cache.
+            {autoDetectWhy && (
+              <>
+                {" "}
+                <span
+                  data-testid="grayscale-auto-why"
+                  className="mono"
+                  style={{ color: "var(--ink-3)", fontSize: 11 }}
+                >
+                  Auto: {autoDetectWhy}
+                </span>
+              </>
+            )}
           </>
         }
         right={
@@ -1321,7 +1355,15 @@ export function GrayscaleWorkbenchTab({
               Next page <Icon name="chevR" size={14} />
             </GhostButton>
             <VDivider />
-            <PrimaryButton onClick={onApplyRun} data-testid="apply-run-btn">
+            {/* Task 4.3: Auto button — calls detectProfile, applies config, surfaces why */}
+            <GhostButton onClick={onAuto} data-testid="grayscale-auto">
+              <Icon name="sparkles" size={12} /> Auto
+            </GhostButton>
+            {/* Task 4.3: Apply & Run — testid must be grayscale-apply-run */}
+            <PrimaryButton
+              onClick={onApplyRun}
+              data-testid="grayscale-apply-run"
+            >
               Apply &amp; Run →
             </PrimaryButton>
           </div>
@@ -1346,12 +1388,13 @@ export function GrayscaleWorkbenchTab({
             onSetMode={onSetMode}
             onPatch={onPatch}
             onRevert={onRevert}
-            onSaveDefault={onSaveDefault}
             onRedetect={onRedetect}
             onSetConverter={onSetConverter}
             onSetFlatten={onSetFlatten}
             onSetClahe={onSetClahe}
             onSetChannel={onSetChannel}
+            onSavePageTier={onSavePageTier}
+            onSaveProjectDefault={onSaveProjectDefault}
             pageCount={pages.length}
           />
           <PageViewerPane

@@ -15,6 +15,10 @@ import {
 } from "../components/ui/Select";
 import { PageHeader } from "../components/shell/PageHeader";
 import { cn } from "@/lib/utils";
+import { GrayscaleSettingsAllSection } from "./pipeline/tools/grayscale/GrayscaleSettingsAll";
+import { putAllTierSettings } from "@/services/tools/grayscaleTool";
+import type { GrayscaleDraftConfig } from "./pipeline/tools/grayscale/grayscaleConfig";
+import { GRAYSCALE_CONFIG_DEFAULTS } from "./pipeline/tools/grayscale/grayscaleConfig";
 
 // GET returns the *Output* schema (server populates every field, so they're
 // all required). PUT/POST accept the *Input* schema where defaults remain
@@ -68,6 +72,11 @@ export function SettingsPage() {
       setHyphenText(d.hyphenation_join_list.join("\n"));
       void queryClient.invalidateQueries({ queryKey: ["system-defaults"] });
     },
+  });
+
+  const saveGrayscale = useMutation({
+    mutationFn: (config: GrayscaleDraftConfig) =>
+      putAllTierSettings("grayscale", config),
   });
 
   if (defaults.isLoading || !draft) {
@@ -212,6 +221,21 @@ export function SettingsPage() {
             spellCheck={false}
           />
         </label>
+      </FieldSet>
+
+      <FieldSet title="Grayscale stage defaults">
+        <GrayscaleSettingsAllSection
+          config={GRAYSCALE_CONFIG_DEFAULTS}
+          onSave={(config) => saveGrayscale.mutate(config)}
+        />
+        {saveGrayscale.isSuccess && (
+          <span className="text-sm text-ink-2">Grayscale defaults saved.</span>
+        )}
+        {saveGrayscale.isError && (
+          <span className="text-sm text-status-error">
+            {saveGrayscale.error.message}
+          </span>
+        )}
       </FieldSet>
 
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-border-1 bg-bg-surface px-0 py-3">
