@@ -405,3 +405,86 @@ def test_api_app_wide_unknown_stage_422(tmp_path) -> None:
     with TestClient(app) as client:
         resp = client.put("/api/data/settings/stages/not_a_stage", json={"foo": 1})
     assert resp.status_code == 422
+
+
+# ── Task 3.1: app-wide tier via pdomain-ops prefs ────────────────────────────
+
+
+def test_app_wide_uses_prefs_not_json_file(tmp_path) -> None:
+    """AppWideStageSettings writes through pdomain-ops LocalFilePrefs, not a JSON file.
+
+    Proves:
+    - Writing an app-wide setting stores it in the prefs file (ui-prefs.json),
+      retrievable via LocalFilePrefs.read().apps["stage_settings.{stage_id}"].
+    - No stage_settings_all.json file is created.
+    - A second AppWideStageSettings instance reading from the same prefs root
+      returns the value (persistence across instances).
+    """
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import AppWideStageSettings
+
+    prefs_root = tmp_path / "ui-prefs.json"
+
+    aw = AppWideStageSettings(tmp_path, prefs_root=prefs_root)
+    aw.put("grayscale", {"converter": "luma_bt709"})
+
+    # 1. The legacy JSON file must NOT be created.
+    legacy_json = tmp_path / "stage_settings_all.json"
+    assert not legacy_json.exists(), "stage_settings_all.json must not be created; use prefs instead"
+
+    # 2. The value must be readable via LocalFilePrefs at the same root.
+    lf = LocalFilePrefs(root=prefs_root)
+    apps = lf.read().apps
+    assert "stage_settings.grayscale" in apps, (
+        f"expected 'stage_settings.grayscale' key in prefs apps; got keys: {list(apps.keys())}"
+    )
+    assert apps["stage_settings.grayscale"] == {"converter": "luma_bt709"}
+
+    # 3. A new AppWideStageSettings at the same root reads the value back.
+    aw2 = AppWideStageSettings(tmp_path, prefs_root=prefs_root)
+    stored = aw2.get("grayscale")
+    assert stored == {"converter": "luma_bt709"}
+
+
+def test_app_wide_prefs_migration_from_legacy_json(tmp_path) -> None:
+    """On first read, if prefs key is absent but legacy JSON exists, the value is returned.
+
+    The migration fallback reads from stage_settings_all.json when:
+    - The prefs key is absent, AND
+    - The legacy JSON file exists.
+    This preserves existing app-wide settings across the prefs migration.
+    """
+    import json
+
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import AppWideStageSettings
+
+    prefs_root = tmp_path / "ui-prefs.json"
+    legacy_json = tmp_path / "stage_settings_all.json"
+
+    # Write a legacy JSON file as if it pre-existed.
+    legacy_json.write_text(json.dumps({"denoise": {"min_component_area": 77}}))
+
+    # No prefs file exists yet — AppWideStageSettings must fall back to the legacy JSON.
+    aw = AppWideStageSettings(tmp_path, prefs_root=prefs_root)
+    result = aw.get("denoise")
+    assert result == {"min_component_area": 77}, f"expected fallback to legacy JSON, got: {result!r}"
+
+
+def test_app_wide_prefs_delete_removes_prefs_key(tmp_path) -> None:
+    """delete() removes the stage key from prefs; subsequent get() returns None."""
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import AppWideStageSettings
+
+    prefs_root = tmp_path / "ui-prefs.json"
+
+    aw = AppWideStageSettings(tmp_path, prefs_root=prefs_root)
+    aw.put("denoise", {"min_component_area": 55})
+    aw.delete("denoise")
+    assert aw.get("denoise") is None
+
+    # Verify the key is gone from the raw prefs file too.
+    lf = LocalFilePrefs(root=prefs_root)
+    apps = lf.read().apps
+    assert "stage_settings.denoise" not in apps

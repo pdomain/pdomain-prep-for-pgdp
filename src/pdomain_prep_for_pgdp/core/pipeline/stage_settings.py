@@ -12,9 +12,10 @@ Effective-settings precedence (highest wins):
      those fields; all other fields fall through to lower tiers.
   3. **Project** default — a project-level "my default" saved via
      ``save_as_default``.
-  4. **All** (app-wide) default — persisted in a JSON file at
-     ``data_root/stage_settings_all.json``, keyed by stage_id.  Reads/writes go
-     through ``AppWideStageSettings``.  No event log (not project-scoped).
+  4. **All** (app-wide) default — persisted via ``pdomain-ops`` ``LocalFilePrefs``
+     under the key ``stage_settings.<stage_id>`` in the suite's
+     ``ui-prefs.json``.  Reads/writes go through ``AppWideStageSettings``.
+     No event log (not project-scoped).
   5. Registry default — the ``STAGE_SETTINGS_DEFAULTS`` dict for the stage.
 
 Storage tiers:
@@ -22,8 +23,10 @@ Storage tiers:
   (sparse — only fields that differ from the project default are stored).
 - **project** tier: SQLite ``stage_settings`` table with ``tier='default'``
   (the existing "save as default" mechanism, kept backwards-compatible).
-- **all** tier: ``data_root/stage_settings_all.json``
-  (JSON dict ``{stage_id: {field: value, ...}, ...}``).
+- **all** tier: ``pdomain-ops`` ``LocalFilePrefs`` under the app key
+  ``stage_settings.<stage_id>`` in the suite's shared ``ui-prefs.json``.
+  Migration fallback: ``data_root/stage_settings_all.json`` is read if the
+  prefs key is absent and the file exists.
 
 The ``resolve_effective_3tier`` function merges field-by-field in the order above:
 page field ?? project field ?? all field ?? registry field.
@@ -289,72 +292,122 @@ def resolve_effective_with_sources(
 
 
 class AppWideStageSettings:
-    """App-wide stage settings persisted to ``data_root/stage_settings_all.json``.
+    """App-wide stage settings persisted via pdomain-ops ``LocalFilePrefs``.
 
-    Stores a top-level dict keyed by stage_id; each value is a sparse dict of
-    field overrides.  Reads and writes are file-atomic (write-to-temp + rename).
+    Each stage's settings are stored as a per-app blob under the key
+    ``stage_settings.<stage_id>`` in the suite's shared ``ui-prefs.json`` file.
+    This allows a single user-scoped prefs store to hold all app-wide stage
+    defaults alongside other suite preferences.
+
+    **Migration fallback:** if the prefs key for a stage is absent but the
+    legacy ``data_root/stage_settings_all.json`` file exists (written by the
+    prior JSON-file implementation), ``get()`` reads from that file for the
+    requested stage.  Writes always go to prefs — never to the legacy file.
 
     This is the **all** tier — applies to every project when no project-level or
     page-level setting overrides that field.
+
+    Parameters
+    ----------
+    data_root
+        Used solely for the legacy migration fallback path
+        ``data_root/stage_settings_all.json``.
+    prefs_root
+        Passed directly to ``LocalFilePrefs(root=prefs_root)``.  When ``None``
+        the default platformdirs-based path is used (respects the
+        ``PD_SUITE_DATA_DIR`` env var, which tests can monkeypatch).
     """
 
-    def __init__(self, data_root: str | os.PathLike[str]) -> None:
+    _PREFS_KEY_PREFIX = "stage_settings."
+
+    def __init__(
+        self,
+        data_root: str | os.PathLike[str],
+        *,
+        prefs_root: str | os.PathLike[str] | None = None,
+    ) -> None:
         from pathlib import Path
 
-        self._path = Path(data_root) / "stage_settings_all.json"
+        from pdomain_ops.suite.prefs import LocalFilePrefs
 
-    def _load(self) -> dict[str, dict[str, Any]]:
-        if not self._path.exists():
+        self._legacy_path = Path(data_root) / "stage_settings_all.json"
+        _root = Path(prefs_root) if prefs_root is not None else None
+        self._prefs = LocalFilePrefs(root=_root)
+
+    # ── private ──────────────────────────────────────────────────────────────
+
+    def _prefs_key(self, stage_id: str) -> str:
+        return f"{self._PREFS_KEY_PREFIX}{stage_id}"
+
+    def _load_legacy(self) -> dict[str, dict[str, Any]]:
+        """Read the legacy JSON file if it exists; return {} otherwise."""
+        if not self._legacy_path.exists():
             return {}
         try:
-            data = json.loads(self._path.read_bytes().decode("utf-8"))
+            data = json.loads(self._legacy_path.read_bytes().decode("utf-8"))
             if isinstance(data, dict):
                 return data
         except Exception:  # noqa: S110
             pass
         return {}
 
-    def _save(self, data: dict[str, dict[str, Any]]) -> None:
-        import contextlib
-        import os
-        import tempfile
-
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        dir_ = str(self._path.parent)
-        fd, tmp = tempfile.mkstemp(dir=dir_, prefix=".stage_settings_all_", suffix=".json.tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-            os.replace(tmp, str(self._path))
-        except Exception:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp)
-            raise
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def get(self, stage_id: str) -> dict[str, Any] | None:
-        """Return the app-wide settings for ``stage_id``, or ``None`` if not set."""
-        data = self._load()
-        val = data.get(stage_id)
+        """Return the app-wide settings for ``stage_id``, or ``None`` if not set.
+
+        Reads from prefs first; falls back to the legacy JSON file if the prefs
+        key is absent but the legacy file exists.
+        """
+        apps = self._prefs.read().apps
+        key = self._prefs_key(stage_id)
+        if key in apps:
+            val = apps[key]
+            if isinstance(val, dict):
+                return dict(val)
+            return None
+
+        # Migration fallback: prefs key absent — check the legacy JSON file.
+        legacy = self._load_legacy()
+        val = legacy.get(stage_id)
         if val is None or not isinstance(val, dict):
             return None
         return dict(val)
 
     def put(self, stage_id: str, settings: dict[str, Any]) -> None:
-        """Write app-wide settings for ``stage_id``."""
-        data = self._load()
-        data[stage_id] = dict(settings)
-        self._save(data)
+        """Write app-wide settings for ``stage_id`` to prefs."""
+        self._prefs.write_app(self._prefs_key(stage_id), dict(settings))
 
     def delete(self, stage_id: str) -> None:
-        """Remove app-wide settings for ``stage_id`` (no-op if not set)."""
-        data = self._load()
-        if stage_id in data:
-            del data[stage_id]
-            self._save(data)
+        """Remove app-wide settings for ``stage_id`` from prefs (no-op if not set).
+
+        ``LocalFilePrefs.write_app`` only upserts a key; there is no public
+        delete-key method on the adapter.  We use the adapter's internal
+        lock + raw read/write primitives for an atomic in-place key removal.
+        """
+        key = self._prefs_key(stage_id)
+        with self._prefs._acquire():
+            data = self._prefs._read_raw()
+            apps_in_file = data.get("apps", {})
+            if key in apps_in_file:
+                del apps_in_file[key]
+                data["apps"] = apps_in_file
+                self._prefs._write_raw(data)
 
     def all_stages(self) -> dict[str, dict[str, Any]]:
-        """Return all stored app-wide settings, keyed by stage_id."""
-        return dict(self._load())
+        """Return all stored app-wide settings, keyed by stage_id.
+
+        Returns only entries from prefs (not the legacy JSON file).
+        Legacy entries are surfaced individually via ``get()``.
+        """
+        apps = self._prefs.read().apps
+        prefix = self._PREFS_KEY_PREFIX
+        result: dict[str, dict[str, Any]] = {}
+        for key, val in apps.items():
+            if key.startswith(prefix) and isinstance(val, dict):
+                stage_id = key[len(prefix) :]
+                result[stage_id] = dict(val)
+        return result
 
 
 class StageSettingsStore:
