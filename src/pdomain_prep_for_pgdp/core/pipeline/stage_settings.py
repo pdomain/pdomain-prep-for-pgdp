@@ -440,6 +440,59 @@ class StageSettingsStore:
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate_legacy_2tier_check(conn)
+
+    @staticmethod
+    def _migrate_legacy_2tier_check(conn: sqlite3.Connection) -> None:
+        """Drop the stale ``CHECK (tier IN ('override','default'))`` constraint.
+
+        Pre-3-tier project DBs were created with a 2-tier schema carrying that
+        CHECK.  ``CREATE TABLE IF NOT EXISTS`` never re-runs on those DBs, so the
+        stale CHECK survives and rejects the new ``tier='page:{page_id}'`` rows
+        written by ``save_page_override`` (sqlite3.IntegrityError).
+
+        SQLite cannot drop a CHECK via ``ALTER TABLE``, so this rebuilds the
+        table: create a CHECK-free clone, copy every row verbatim, drop the old
+        table, rename.  Tier values map identity — the new read path still
+        consults both ``'default'`` (project tier) and ``'override'`` (page-level
+        fallback), so no row remapping is needed; legacy flat grayscale settings
+        in those rows are normalized on read by ``migrate_grayscale_settings``.
+
+        Idempotent: a no-op on fresh / already-migrated DBs (those whose stored
+        DDL has no CHECK clause).
+        """
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='stage_settings'"
+        ).fetchone()
+        if row is None or "CHECK" not in (row[0] or "").upper():
+            # Fresh DB (just created CHECK-free) or already migrated — nothing to do.
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute("""
+                CREATE TABLE stage_settings_migrated (
+                    project_id  TEXT NOT NULL,
+                    stage_id    TEXT NOT NULL,
+                    tier        TEXT NOT NULL,
+                    settings    TEXT NOT NULL,
+                    updated_at  REAL NOT NULL,
+                    PRIMARY KEY (project_id, stage_id, tier)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO stage_settings_migrated
+                    (project_id, stage_id, tier, settings, updated_at)
+                SELECT project_id, stage_id, tier, settings, updated_at
+                FROM stage_settings
+            """)
+            conn.execute("DROP TABLE stage_settings")
+            conn.execute("ALTER TABLE stage_settings_migrated RENAME TO stage_settings")
+            conn.execute("CREATE INDEX IF NOT EXISTS stage_settings_proj ON stage_settings(project_id)")
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
     def _read_tier(self, project_id: str, stage_id: str, tier: str) -> dict[str, Any] | None:
         with self._connect() as conn:
