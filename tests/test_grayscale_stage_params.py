@@ -469,3 +469,109 @@ class TestGrayscaleCpuRunsPipeline:
             f"({100 * changed_pixels / result_a.size:.1f}%)",
             file=sys.stderr,
         )
+
+
+# ---------------------------------------------------------------------------
+# Suite 5: Task 2.2 — _grayscale_gpu parity + registration
+# ---------------------------------------------------------------------------
+
+
+try:
+    import cupy as _cupy  # noqa: F401
+
+    _CUPY_AVAILABLE = True
+except ImportError:
+    _CUPY_AVAILABLE = False
+
+
+@pytest.mark.skipif(not _CUPY_AVAILABLE, reason="cupy not installed")
+class TestGrayscaleGpuImpl:
+    """_grayscale_gpu produces output equal to _grayscale_cpu within tolerance.
+
+    These tests only run when CuPy is importable.  They verify:
+    1. _grayscale_gpu is callable and returns a 2-D uint8 ndarray.
+    2. GPU output is pixel-close to CPU output (luma converter).
+    3. "grayscale" is in _GPU_CAPABLE_STAGE_IDS.
+    4. V2_STAGE_IMPL["grayscale"] has a "gpu" key when cupy is available.
+    """
+
+    @staticmethod
+    def _make_bgr(h: int = 128, w: int = 128) -> np.ndarray:
+        rng = np.random.default_rng(99)
+        return rng.integers(0, 255, (h, w, 3), dtype=np.uint8)
+
+    def test_grayscale_in_gpu_capable_stage_ids(self) -> None:
+        """'grayscale' must be listed in _GPU_CAPABLE_STAGE_IDS."""
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _GPU_CAPABLE_STAGE_IDS
+
+        assert "grayscale" in _GPU_CAPABLE_STAGE_IDS, "'grayscale' is absent from _GPU_CAPABLE_STAGE_IDS"
+
+    def test_v2_stage_impl_has_gpu_key(self) -> None:
+        """V2_STAGE_IMPL['grayscale'] must have a 'gpu' key when cupy is available."""
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import V2_STAGE_IMPL
+
+        assert "gpu" in V2_STAGE_IMPL["grayscale"], (
+            "V2_STAGE_IMPL['grayscale'] is missing the 'gpu' key even though cupy is present"
+        )
+
+    def test_grayscale_gpu_returns_2d_uint8(self) -> None:
+        """_grayscale_gpu returns a 2-D uint8 numpy ndarray."""
+        import numpy as np
+
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _grayscale_gpu
+
+        image = self._make_bgr()
+        result = _grayscale_gpu(image)
+        # Convert CuPy → numpy if needed
+        if not isinstance(result, np.ndarray):
+            import cupy as cp
+
+            result = cp.asnumpy(result)
+
+        assert result.ndim == 2, f"expected 2D output, got shape {result.shape}"
+        assert result.dtype == np.uint8, f"expected uint8, got {result.dtype}"
+
+    def test_grayscale_gpu_parity_with_cpu_luma(self) -> None:
+        """_grayscale_gpu output equals _grayscale_cpu within ±2 per pixel for luma converter.
+
+        run_grayscale_pipeline(use_gpu=True) runs CuPy ops which must produce
+        results bit-close to the CPU path on a synthetic image.  A tolerance
+        of ±2 accommodates float32 precision differences in weighted sums.
+        """
+        import sys
+
+        import numpy as np
+
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+        from pdomain_prep_for_pgdp.core.pipeline.stage_registry import _grayscale_cpu, _grayscale_gpu
+
+        image = self._make_bgr()
+        cfg = make_cfg(grayscale=GrayscaleConfigModel(converter="luma"))
+
+        cpu_out = _grayscale_cpu(image, cfg)
+
+        gpu_raw = _grayscale_gpu(image, cfg)
+        # Convert CuPy → numpy if needed
+        if not isinstance(gpu_raw, np.ndarray):
+            import cupy as cp
+
+            gpu_out = cp.asnumpy(gpu_raw)
+        else:
+            gpu_out = gpu_raw
+
+        assert cpu_out.shape == gpu_out.shape, f"shape mismatch: cpu={cpu_out.shape} gpu={gpu_out.shape}"
+
+        diff = np.abs(cpu_out.astype(int) - gpu_out.astype(int))
+        max_diff = int(diff.max())
+        mean_diff = float(diff.mean())
+
+        print(
+            f"\n  GPU parity (luma): max_diff={max_diff}, mean_diff={mean_diff:.4f}, shape={gpu_out.shape}",
+            file=sys.stderr,
+        )
+
+        assert max_diff <= 2, (
+            f"GPU output deviates too much from CPU (max_diff={max_diff} > 2). "
+            f"mean_diff={mean_diff:.4f}. This suggests use_gpu=True is not calling "
+            f"the same pipeline or there is a serious float-precision issue."
+        )

@@ -203,6 +203,53 @@ def _grayscale_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     return run_grayscale_pipeline(image, gcfg, use_gpu=False)
 
 
+def _grayscale_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
+    """Convert a 3-channel BGR ndarray to a 2-D grayscale ndarray on GPU.
+
+    Calls ``run_grayscale_pipeline(img, config, use_gpu=True)`` from
+    ``pdomain_book_tools.image_processing.grayscale_pipeline`` (requires
+    pdomain-book-tools >= 0.21.0 and CuPy).
+
+    Config-building mirrors ``_grayscale_cpu`` exactly (``GrayscaleConfig.from_dict``
+    from ``cfg.grayscale.model_dump()``); only ``use_gpu=True`` differs.
+
+    Raises ``RuntimeError`` (fail-loud) if the pipeline module or its symbols
+    are absent.  The caller (``_build_gpu_entries``) guards with ``cupy_available()``
+    so this is only registered when CuPy is present at import time.
+    """
+    from typing import Any
+
+    from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import require_cupy
+
+    require_cupy()
+
+    try:
+        run_grayscale_pipeline = cast(
+            "Callable[..., ImageArray]",
+            _load_attr(
+                "pdomain_book_tools.image_processing.grayscale_pipeline",
+                "run_grayscale_pipeline",
+            ),
+        )
+        GrayscaleConfigCls: Any = _load_attr(
+            "pdomain_book_tools.image_processing.grayscale_pipeline",
+            "GrayscaleConfig",
+        )
+    except AttributeError as exc:
+        raise RuntimeError(
+            "pdomain_book_tools.image_processing.grayscale_pipeline is missing "
+            "run_grayscale_pipeline or GrayscaleConfig. "
+            "pdomain-book-tools >= 0.21.0 is required."
+        ) from exc
+
+    if cfg is not None:
+        gcfg = GrayscaleConfigCls.from_dict(cfg.grayscale.model_dump())
+    else:
+        gcfg = GrayscaleConfigCls()
+
+    return run_grayscale_pipeline(image, gcfg, use_gpu=True)
+
+
 def _threshold_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
     """Binarise a 2-D grayscale ndarray.
 
@@ -1398,7 +1445,7 @@ def get_v2_stage_impl(stage_id: str, device: str) -> StageImpl:
 #   threshold, deskew, denoise, dewarp, post_transform_crop, canvas_map
 #
 # NOT GPU-capable:
-#   grayscale, crop, ocr, post_ocr_crop, text_zones, wordcheck, hyphen_join,
+#   crop, ocr, post_ocr_crop, text_zones, wordcheck, hyphen_join,
 #   page_order, validation, proof_pack, build_package, zip, submit_check, archive
 
 
@@ -1675,6 +1722,7 @@ def _denoise_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 #
 # Stage           GPU-capable?  Reason if not
 # --------------- ------------- -------------------------------------------------
+# grayscale       YES           run_grayscale_pipeline(use_gpu=True) — book-tools 0.21.0
 # threshold       YES           otsu_binary_thresh + invert_image (cupy_processing)
 # invert          YES           invert_image (cupy_processing)
 # deskew          YES           auto_deskew_gpu (cupy_processing.deskew)
@@ -1683,34 +1731,34 @@ def _denoise_v2_gpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 # canvas_map      YES           morph_fill + rescale_image_gpu + canvas_map_gpu
 # denoise         YES           denoise_binary_gpu (cupy_processing.denoise) — book-tools 0.19.0
 # crop            NO            find_edges uses cv2 projections; no cupy mirror
-# grayscale       NO            bgr-to-gray (cupy exists but not wired here)
 # post_ocr_crop   NO            array slice only; not in image-prep hot path
 #
-# With denoise GPU-capable, the image-prep chain is a SINGLE GPU island:
-#   threshold → deskew → denoise → dewarp → post_transform_crop → canvas_map
+# With grayscale and denoise GPU-capable, the image-prep chain is a SINGLE GPU island:
+#   grayscale → threshold → deskew → denoise → dewarp → post_transform_crop → canvas_map
 #
 # The set below drives:
 #   1. _build_gpu_entries: which stages get a ``gpu`` key in V2_STAGE_IMPL.
 #   2. segment_runner.is_gpu_capable_stage: which stages can run on-device.
 
 _GPU_CAPABLE_STAGE_IDS: frozenset[str] = frozenset(
-    {"threshold", "deskew", "dewarp", "post_transform_crop", "canvas_map", "denoise"}
+    {"grayscale", "threshold", "deskew", "dewarp", "post_transform_crop", "canvas_map", "denoise"}
 )
 
 GPU_CAPABLE_STAGES: frozenset[str] = _GPU_CAPABLE_STAGE_IDS
-"""Set of v2 stage IDs that have GPU-resident implementations in book-tools 0.19.0.
+"""Set of v2 stage IDs that have GPU-resident implementations.
 
 A stage is included only when ALL its internal micro-steps have CuPy mirrors.
 Stages absent from this set run on CPU regardless of the selected device.
 
-With book-tools 0.19.0 (``denoise_binary_gpu`` shipped), the entire
-image-prep chain is a single GPU island:
-  threshold -> deskew -> denoise -> dewarp -> post_transform_crop -> canvas_map
+With book-tools 0.21.0 (``run_grayscale_pipeline(use_gpu=True)`` shipped),
+the entire image-prep chain is a single GPU island:
+  grayscale -> threshold -> deskew -> denoise -> dewarp -> post_transform_crop -> canvas_map
 
 Import this to check whether a stage can participate in a GPU segment.
 """
 
 _GPU_IMPL_MAP: dict[str, StageImpl] = {
+    "grayscale": _grayscale_gpu,
     "threshold": _threshold_v2_gpu,
     "deskew": _deskew_v2_gpu,
     "dewarp": _dewarp_gpu,

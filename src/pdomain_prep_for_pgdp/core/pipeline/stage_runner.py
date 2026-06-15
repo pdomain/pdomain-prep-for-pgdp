@@ -883,9 +883,9 @@ async def run_stage(
     stage_id
         Canonical stage_id from `V2_PAGE_STAGE_IDS`.
     device
-        ``"cpu"`` (default) or ``"cuda"``. Slice 3 has only cpu impls; cuda
-        will fall through to `KeyError` from the registry — caller should
-        either fall back to cpu or surface the gap.
+        ``"cpu"`` (default) or ``"cuda"``. ``"cuda"``/``"gpu"`` are normalized
+        to the ``"gpu"`` impl key by the registry; an unknown device string
+        (e.g. ``"mps"``) falls back to ``"cpu"`` rather than raising KeyError.
     storage
         IStorage adapter. Accepted for backward compatibility; not used by
         any v2 stage (v2 root ``grayscale`` reads from BlobStore, not IStorage).
@@ -1053,10 +1053,10 @@ async def run_stage(
         # success so future reads can detect staleness against V2_STAGE_VERSIONS.
         _stage_ver = _stage_dag_module.V2_STAGE_VERSIONS.get(stage_id, 1)
 
-        # Resolve the impl. Lookup failures (unknown stage / device) are
-        # programmer errors and should surface as KeyError from the registry —
-        # caller is expected to validate before now. If we did get here with
-        # a bad device, treat it as a stage failure for safety.
+        # Resolve the impl. An unknown stage_id raises KeyError (programmer
+        # error — caller must validate before now). An unknown device string
+        # now falls back to "cpu" via _DEVICE_TO_IMPL_KEY (Task 2.1), so
+        # only a missing stage_id causes KeyError here; wrap it as a stage failure.
         try:
             impl = get_stage_impl(stage_id, device)
         except KeyError as exc:
