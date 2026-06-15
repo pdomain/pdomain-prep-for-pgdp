@@ -2855,13 +2855,17 @@ async def detect_grayscale_profile(
         return rv
 
     # Detect GPU availability using the same mechanism as the stage dispatcher.
+    # cupy_available() checks whether a working CuDA/cupy install exists; but
+    # settings.gpu_backend="cpu" means the operator explicitly forces CPU even
+    # when hardware is present.  Mirror that decision here so the detector and
+    # the actual stage run agree on "will color2gray really dispatch to GPU?".
     gpu_available = False
     try:
         from pdomain_book_tools.image_processing.cupy_processing._cupy_compat import (  # pyright: ignore[reportMissingImports]
             cupy_available,
         )
 
-        gpu_available = cupy_available()
+        gpu_available = cupy_available() and settings.gpu_backend != "cpu"
     except ImportError:
         pass
 

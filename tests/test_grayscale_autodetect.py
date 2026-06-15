@@ -491,3 +491,117 @@ class TestDetectGrayscaleProfileRoute:
         body = r.json()
         # Backward-compat: the old `mode` field should still be present
         assert "mode" in body, f"Missing backward-compat 'mode' key: {body}"
+
+    def test_route_gpu_backend_cpu_overrides_cupy(self, tmp_path) -> None:
+        """When settings.gpu_backend='cpu', detector must NOT return color2gray.
+
+        Even if cupy is physically available on the machine, the operator has
+        forced CPU mode.  The detector should see gpu_available=False and return
+        best_channel (the CPU color path) for a colorful image — not color2gray.
+
+        We patch cupy_available() to True so this test exercises the
+        'gpu present but backend=cpu' branch deterministically, regardless of
+        whether cupy is actually installed in the test venv.
+        """
+        import asyncio
+        from datetime import UTC, datetime
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+        from pdomain_prep_for_pgdp.bootstrap import build_app
+        from pdomain_prep_for_pgdp.core.models import (
+            Project,
+            ProjectConfig,
+            ProjectStatus,
+        )
+        from pdomain_prep_for_pgdp.settings import Settings
+
+        settings = Settings(
+            host="127.0.0.1",
+            port=8765,
+            data_root=tmp_path / "data",
+            config_dir=tmp_path / "config",
+            storage_backend="filesystem",
+            database_url=f"sqlite:///{(tmp_path / 'state.db').as_posix()}",
+            auth_mode="none",
+            gpu_backend="cpu",  # operator forces CPU
+            dispatch_interval_seconds=0,
+        )
+
+        async def _seed() -> None:
+            db = SqliteDatabase(settings.derived_database_url)
+            await db.initialize()
+            now = datetime.now(UTC)
+            await db.put_project(
+                Project(
+                    id="proj1",
+                    owner_id="default",
+                    name="proj1",
+                    created_at=now,
+                    updated_at=now,
+                    status=ProjectStatus.processing,
+                    page_count=1,
+                    proof_page_count=1,
+                    config=ProjectConfig(book_name="proj1", source_uri=""),
+                    storage_prefix="projects/proj1/",
+                    registry_version=2,
+                )
+            )
+            await db.close()
+
+        asyncio.run(_seed())
+
+        # Strongly colorful images: would trigger color2gray if GPU were available.
+        colorful_images = [_make_colorful_image() for _ in range(3)]
+
+        # Inject a fake cupy_compat module so cupy_available() returns True even
+        # on machines without a real GPU.  The route does a local import inside a
+        # try/except so we must ensure the target module exists in sys.modules
+        # before the request is dispatched.
+        import sys
+        import types
+        from unittest.mock import MagicMock
+
+        fake_cupy_compat = types.ModuleType(
+            "pdomain_book_tools.image_processing.cupy_processing._cupy_compat"
+        )
+        fake_cupy_compat.cupy_available = MagicMock(return_value=True)  # type: ignore[attr-defined]
+
+        _compat_path = "pdomain_book_tools.image_processing.cupy_processing._cupy_compat"
+        _orig = sys.modules.get(_compat_path)
+        sys.modules[_compat_path] = fake_cupy_compat  # type: ignore[assignment]
+        try:
+            app = build_app(settings)
+            with (
+                patch(
+                    "pdomain_prep_for_pgdp.api.data.project_stages._sample_source_images",
+                    return_value=colorful_images,
+                ),
+                TestClient(app) as client,
+            ):
+                r = client.post("/api/data/projects/proj1/project-stages/grayscale/detect")
+        finally:
+            if _orig is None:
+                sys.modules.pop(_compat_path, None)
+            else:
+                sys.modules[_compat_path] = _orig
+
+        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text!r}"
+        body = r.json()
+
+        # With gpu_backend="cpu", color2gray must NOT be chosen for colorful images.
+        converter = body["config"]["converter"]
+        assert converter != "color2gray", (
+            f"Detector returned color2gray despite gpu_backend=cpu. "
+            f"converter={converter!r}, why={body.get('why')!r}"
+        )
+        # CPU color path: must be best_channel (§8a rule: color+no-GPU → best_channel).
+        assert converter == "best_channel", (
+            f"Expected best_channel for colorful+forced-CPU, got {converter!r}"
+        )
+        # backend field must reflect cpu, not gpu.
+        assert body["backend"] == "cpu", (
+            f"Expected backend='cpu' when gpu_backend=cpu, got {body['backend']!r}"
+        )
