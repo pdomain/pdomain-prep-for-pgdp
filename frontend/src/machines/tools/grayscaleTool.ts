@@ -204,6 +204,32 @@ function upsertPage(
   return pages.map((p, i) => (i === idx ? page : p));
 }
 
+/**
+ * upsertPageRecency — upsert a page but never overwrite a newer ``lastRunAt``.
+ *
+ * Used by ``mergePages`` (STAGES_LOADED from REST prefetch) to prevent a
+ * race where the REST prefetch resolves after an SSE PAGE_PUSH has already
+ * updated ``lastRunAt`` with a more recent timestamp. Without this guard,
+ * a slow prefetch response overwrites the live SSE data, and the artifact
+ * URL never cache-busts after Apply & Run.
+ *
+ * PAGE_PUSH (from SSE) still uses the plain ``upsertPage`` — SSE events
+ * carry authoritative real-time state and must always win.
+ */
+function upsertPageRecency(
+  pages: GrayscalePage[],
+  page: GrayscalePage,
+): GrayscalePage[] {
+  const idx = pages.findIndex((p) => p.id === page.id);
+  if (idx === -1) return [...pages, page];
+  const existing = pages[idx]!;
+  // Keep the existing page if it has a strictly newer lastRunAt.
+  const existingTs = existing.lastRunAt ?? -Infinity;
+  const incomingTs = page.lastRunAt ?? -Infinity;
+  const winner = incomingTs > existingTs ? page : existing;
+  return pages.map((p, i) => (i === idx ? winner : p));
+}
+
 // ---------------------------------------------------------------------------
 // Machine
 // ---------------------------------------------------------------------------
@@ -319,15 +345,16 @@ export const grayscaleToolMachine = setup({
     /**
      * `mergePages` — bulk-upsert pages delivered by STAGES_LOADED.
      * The REST prefetch may return all already-clean pages for the stage;
-     * we upsert each in turn so live SSE pushes (PAGE_PUSH) still win via
-     * lastRunAt recency.
+     * we upsert each in turn using recency-aware upsert so live SSE pushes
+     * (PAGE_PUSH) still win if they arrived before the prefetch resolved.
+     * See ``upsertPageRecency`` for the race-condition motivation.
      */
     mergePages: assign({
       pages: ({ context, event }) => {
         if (event.type !== "STAGES_LOADED") return context.pages;
         let next = context.pages;
         for (const p of event.pages) {
-          next = upsertPage(next, p);
+          next = upsertPageRecency(next, p);
         }
         return next;
       },

@@ -330,7 +330,11 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
     unsub();
   });
 
-  it("deduplicates duplicate clean events for the same page", () => {
+  it("forwards re-run events for the same page (re-runs must update lastRunAt)", () => {
+    // A re-run emits a new clean event for a page that was already clean.
+    // The bridge must forward it so the machine updates lastRunAt and the
+    // artifact URL cache-busts. Silencing re-run events was the root cause of
+    // the Apply & Run severed-chain bug (M5 browser verification catch).
     const received: ToolPagePush[] = [];
 
     const unsub = subscribePageChannelForTool({
@@ -341,7 +345,7 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
       onPagePush: (page) => received.push(page),
     });
 
-    const emit = (idx0: number) =>
+    const emit = (idx0: number, last_run_at: number) =>
       _capturedCallback!({
         type: "stage-status",
         stage_id: "grayscale",
@@ -349,13 +353,16 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
         job_id: null,
         error_message: null,
         idx0,
+        last_run_at,
       });
 
-    emit(0);
-    emit(0); // duplicate — should be ignored
+    emit(0, 1_718_000_000); // initial run
+    emit(0, 1_718_000_001); // re-run — must produce a second PAGE_PUSH with new lastRunAt
 
-    // Second event should be ignored (deduplication).
-    expect(received).toHaveLength(1);
+    // Both events must produce PAGE_PUSH (re-runs are not duplicates).
+    expect(received).toHaveLength(2);
+    expect(received[0]!.lastRunAt).toBe(1_718_000_000);
+    expect(received[1]!.lastRunAt).toBe(1_718_000_001);
     unsub();
   });
 });

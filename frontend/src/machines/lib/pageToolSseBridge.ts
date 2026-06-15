@@ -151,9 +151,14 @@ export function subscribePageChannelForTool(
       const resolvedIdx0 = event.idx0 !== undefined ? event.idx0 : 0;
       const pageIdStr = String(resolvedIdx0).padStart(4, "0");
 
-      // Deduplicate: ignore if already counted.
-      if (completedIds.has(pageIdStr)) return;
-      completedIds.add(pageIdStr);
+      // Count distinct completions for isLast detection — first-time only.
+      // Do NOT skip already-seen pages: re-runs emit a new clean event with an
+      // updated last_run_at and must produce a PAGE_PUSH so the machine updates
+      // the artifact URL (cache-bust). Skipping duplicates breaks Apply & Run.
+      const alreadyCounted = completedIds.has(pageIdStr);
+      if (!alreadyCounted) {
+        completedIds.add(pageIdStr);
+      }
 
       const doneCount = completedIds.size;
       const isLast = doneCount >= totalPages;

@@ -40,7 +40,13 @@ export function subscribeProject(
   const url = `/api/data/projects/${encodeURIComponent(projectId)}/events`;
   const es = new EventSource(url, { withCredentials: true });
 
-  es.onmessage = (evt) => {
+  // Backend emits named SSE event types:
+  //   project-snapshot, project-stage-status, project-stage-progress,
+  //   page-reorder, validation-updated
+  // When `event:` is set, the browser fires a custom event — NOT `message`.
+  // Use addEventListener for each type. See subscribeProjectPageStageChannel
+  // comment for the detailed rationale.
+  const _handleFrame = (evt: MessageEvent) => {
     try {
       const data = JSON.parse(evt.data as string) as ProjectChannelEvent;
       cb(data);
@@ -49,12 +55,27 @@ export function subscribeProject(
     }
   };
 
+  const _eventTypes = [
+    "project-snapshot",
+    "project-stage-status",
+    "project-stage-progress",
+    "page-reorder",
+    "validation-updated",
+  ];
+  for (const t of _eventTypes) {
+    es.addEventListener(t, _handleFrame);
+  }
+  es.onmessage = _handleFrame;
+
   es.onerror = (_err) => {
     // EventSource auto-reconnects on error; no manual retry needed.
     // Log at debug level if needed for diagnostics.
   };
 
   return () => {
+    for (const t of _eventTypes) {
+      es.removeEventListener(t, _handleFrame);
+    }
     es.close();
   };
 }
@@ -87,7 +108,10 @@ export function subscribePageChannel(
   const url = `/api/data/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(idx0)}/events`;
   const es = new EventSource(url, { withCredentials: true });
 
-  es.onmessage = (evt) => {
+  // Backend emits `event: stage-status` and `event: stage-progress` frames.
+  // Use addEventListener instead of onmessage — see subscribeProjectPageStageChannel
+  // comment for the detailed rationale.
+  const _handleFrame = (evt: MessageEvent) => {
     try {
       const data = JSON.parse(evt.data as string) as PageChannelEvent;
       cb(data);
@@ -96,11 +120,17 @@ export function subscribePageChannel(
     }
   };
 
+  es.addEventListener("stage-status", _handleFrame);
+  es.addEventListener("stage-progress", _handleFrame);
+  es.onmessage = _handleFrame;
+
   es.onerror = (_err) => {
     // EventSource auto-reconnects on error.
   };
 
   return () => {
+    es.removeEventListener("stage-status", _handleFrame);
+    es.removeEventListener("stage-progress", _handleFrame);
     es.close();
   };
 }
@@ -132,7 +162,16 @@ export function subscribeProjectPageStageChannel(
   const url = `/api/data/projects/${encodeURIComponent(projectId)}/page-stages/events`;
   const es = new EventSource(url, { withCredentials: true });
 
-  es.onmessage = (evt) => {
+  // The backend emits frames with `event: stage-status` (and `event: stage-progress`).
+  // When the SSE `event:` field is set to anything other than the default "message",
+  // the browser fires a custom event with that name — NOT the generic `message` event.
+  // `es.onmessage` only handles the default `message` event, so we must use
+  // `addEventListener` for each named event type the backend emits.
+  //
+  // Event types emitted by stream_project_page_stage_events:
+  //   stage-status    — stage status transitions (running → clean / failed)
+  //   stage-progress  — in-progress progress updates (optional, less critical)
+  const _handleFrame = (evt: MessageEvent) => {
     try {
       const data = JSON.parse(evt.data as string) as PageChannelEvent;
       cb(data);
@@ -141,11 +180,19 @@ export function subscribeProjectPageStageChannel(
     }
   };
 
+  es.addEventListener("stage-status", _handleFrame);
+  es.addEventListener("stage-progress", _handleFrame);
+  // Fallback: also handle the default `message` event in case the server
+  // omits the `event:` field (e.g., during development or after a refactor).
+  es.onmessage = _handleFrame;
+
   es.onerror = (_err) => {
     // EventSource auto-reconnects on error.
   };
 
   return () => {
+    es.removeEventListener("stage-status", _handleFrame);
+    es.removeEventListener("stage-progress", _handleFrame);
     es.close();
   };
 }
