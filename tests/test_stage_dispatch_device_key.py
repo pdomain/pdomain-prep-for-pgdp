@@ -40,8 +40,16 @@ def _gpu_stage() -> str:
 
 
 def _cpu_only_stage() -> str:
-    """Return a v2 stage that has NO GPU impl (cpu-only)."""
-    return "grayscale"  # not in GPU_CAPABLE_STAGES; Task 2.2 adds it later
+    """Return a v2 stage that has NO GPU impl (cpu-only).
+
+    Uses ``"crop"`` — a page-scoped stage that performs image crop/rotate
+    transforms in pure NumPy and is not in ``_GPU_CAPABLE_STAGE_IDS``.
+    ``"grayscale"`` was used here originally, but Task 2.2 added GPU support
+    for grayscale, so it would cause these assertions to fail when CuPy is
+    present.  ``"crop"`` has no GPU path and never will (it's a geometric
+    transform with negligible memory bandwidth).
+    """
+    return "crop"  # not in GPU_CAPABLE_STAGES; no GPU impl planned
 
 
 # ── normalization tests (always run, independent of CuPy availability) ──────
