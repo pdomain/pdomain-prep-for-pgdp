@@ -1011,7 +1011,7 @@ async def run_stage(
     #   per-page PageConfigOverrides (baked into cfg by _resolve_config above)
     #   > page-tier StageSettingsStore settings (sparse per-page override)
     #   > project-tier StageSettingsStore settings (save_as_default)
-    #   > all-tier AppWideStageSettings (data_root/stage_settings_all.json)
+    #   > all-tier AppWideStageSettings (backed by LocalFilePrefs / ui-prefs.json)
     #   > registry default (STAGE_SETTINGS_DEFAULTS)
     #
     # apply_stage_settings_to_config only writes the stage-settings-specific

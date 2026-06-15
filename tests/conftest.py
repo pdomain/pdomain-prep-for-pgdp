@@ -8,6 +8,11 @@ is reachable. Tests that exercise GPU-accelerated paths use
 `@pytest.mark.skipif(not gpu_available, reason=...)` so they run on
 CUDA hosts (incl. this devcontainer when present) and skip cleanly on
 CPU-only CI.
+
+`isolate_suite_data_dir` (autouse, function-scoped) sets PD_SUITE_DATA_DIR to
+a per-test tmp directory so that any `LocalFilePrefs(root=None)` call in the
+test or in route dependencies resolves to an isolated tmp path and never
+touches the real user prefs file (~/.local/share/pdomain-suite/ui-prefs.json).
 """
 
 from __future__ import annotations
@@ -54,6 +59,22 @@ def _detect_gpu() -> bool:
 
 
 gpu_available: bool = _detect_gpu()
+
+
+@pytest.fixture(autouse=True)
+def isolate_suite_data_dir(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Redirect LocalFilePrefs(root=None) to an isolated per-test tmp dir.
+
+    pd_ocr_ops.suite.paths.suite_data_dir() reads PD_SUITE_DATA_DIR first;
+    setting it here ensures every LocalFilePrefs(root=None) call — in both
+    unit tests and API route dependencies (_app_wide) — resolves to a clean
+    ephemeral directory instead of ~/.local/share/pdomain-suite/ui-prefs.json.
+
+    This is belt-and-suspenders with the explicit prefs_root= kwarg used in
+    the Task-3.1 unit tests; those tests remain unchanged.
+    """
+    suite_tmp = tmp_path_factory.mktemp("suite_data_dir")
+    monkeypatch.setenv("PD_SUITE_DATA_DIR", str(suite_tmp))
 
 
 @pytest.fixture(autouse=True)
