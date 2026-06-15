@@ -2,8 +2,10 @@
 
 Tests:
 1. _grayscale_cpu with cfg carrying grayscale_mode/params → calls to_grayscale
-2. _grayscale_cpu without cfg → fallback path (returns 2D grayscale)
+2. _grayscale_cpu missing to_grayscale → fail-loud RuntimeError (not silent fallback)
 3. apply_stage_settings_to_config correctly threads grayscale settings into cfg fields
+4. Real byte-differential: different param sets produce pixel-distinct output
+   (uses the REAL pdomain_book_tools.to_grayscale, no mocking)
 """
 
 from __future__ import annotations
@@ -144,52 +146,49 @@ class TestGrayscaleCpuWithParams:
             output_range=(12, 248),
         )
 
-    def test_output_is_2d_when_to_grayscale_not_available(self) -> None:
-        """Fallback path: cv2_convert_to_grayscale returns 2D grayscale."""
+    def test_raises_runtime_error_when_to_grayscale_missing(self) -> None:
+        """Fail-loud: RuntimeError is raised when to_grayscale is absent.
+
+        Silently falling back to the legacy cv2_convert_to_grayscale would
+        discard all four tuning params (mode/sampler_radius/gamma/output_range).
+        The pin is pdomain-book-tools >= 0.20.0 so this should never fire in
+        practice — but a bad downgrade must be loud rather than silent.
+        """
         image = make_bgr_image()
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
             if attr_name == "to_grayscale":
                 raise AttributeError("to_grayscale not in this version")
-            if attr_name == "cv2_convert_to_grayscale":
-                import cv2
-
-                def _cv2_gray(img):  # type: ignore[no-untyped-def]
-                    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-                return _cv2_gray
             raise AttributeError(f"unexpected attr: {attr_name}")
 
-        with patch(
-            "pdomain_prep_for_pgdp.core.pipeline.stage_registry._load_attr",
-            side_effect=fake_load_attr,
+        with (
+            patch(
+                "pdomain_prep_for_pgdp.core.pipeline.stage_registry._load_attr",
+                side_effect=fake_load_attr,
+            ),
+            pytest.raises(RuntimeError, match=r"pdomain-book-tools"),
         ):
-            result = _grayscale_cpu(image)
+            _grayscale_cpu(image)
 
-        assert result.ndim == 2, "fallback must return 2D (H, W) grayscale"
-        assert result.shape == (64, 64)
-
-    def test_fallback_when_to_grayscale_raises_attribute_error(self) -> None:
-        """Fallback path used when to_grayscale raises AttributeError."""
+    def test_raises_runtime_error_preserves_original_attribute_error(self) -> None:
+        """RuntimeError raised from AttributeError chains the original exc."""
         image = make_bgr_image()
-        fallback_output = np.zeros((64, 64), dtype=np.uint8)
-        mock_legacy = MagicMock(return_value=fallback_output)
 
         def fake_load_attr(module_path: str, attr_name: str) -> object:
             if attr_name == "to_grayscale":
                 raise AttributeError("not found")
-            if attr_name == "cv2_convert_to_grayscale":
-                return mock_legacy
             raise AttributeError(f"unexpected attr: {attr_name}")
 
-        with patch(
-            "pdomain_prep_for_pgdp.core.pipeline.stage_registry._load_attr",
-            side_effect=fake_load_attr,
+        with (
+            patch(
+                "pdomain_prep_for_pgdp.core.pipeline.stage_registry._load_attr",
+                side_effect=fake_load_attr,
+            ),
+            pytest.raises(RuntimeError) as exc_info,
         ):
-            result = _grayscale_cpu(image, None)
-
-        assert result is fallback_output
-        mock_legacy.assert_called_once_with(image)
+            _grayscale_cpu(image, None)
+        # __cause__ should be the original AttributeError (raised from exc)
+        assert isinstance(exc_info.value.__cause__, AttributeError)
 
     def test_no_cfg_uses_built_in_defaults(self) -> None:
         """When cfg=None, to_grayscale is called with hard-coded defaults."""
@@ -305,3 +304,93 @@ class TestApplyStageSettingsGrayscale:
         assert result.grayscale_mode == "perceptual"
         # but known denoise key should be applied
         assert result.denoise_min_component_area == 10
+
+
+# ---------------------------------------------------------------------------
+# Suite 3: Real byte-differential — params reach the real primitive
+# ---------------------------------------------------------------------------
+
+
+class TestGrayscaleRealByteDiff:
+    """Prove that different param sets produce pixel-distinct output.
+
+    Uses the REAL pdomain_book_tools.to_grayscale — no mocking of the
+    core function.  This is the committed proof that tuning parameters
+    actually reach the primitive and change the resulting image bytes,
+    not just that the call happens.
+    """
+
+    @staticmethod
+    def _make_colorful_image(h: int = 128, w: int = 128) -> np.ndarray:
+        """Return a synthetic BGR image with strong per-pixel variation.
+
+        A uniform (solid) image collapses to a single luma value, which the
+        output_range normalisation maps to the same byte regardless of mode.
+        We need spatial variation so each mode's distinct channel-weight
+        formula (BT.601 vs BT.709 linear-light) produces a *different* per-pixel
+        luma distribution.  A deterministic random array with seed 123 is
+        used so the test is reproducible across machines.
+        """
+        rng = np.random.default_rng(123)
+        return rng.integers(0, 255, (h, w, 3), dtype=np.uint8)
+
+    def test_standard_vs_perceptual_produce_different_pixels(self) -> None:
+        """standard + gamma=1.0 vs perceptual + gamma=2.2 + radius=7 differ.
+
+        Param set A (standard / fast luma):
+          mode="standard", sampler_radius=0, gamma=1.0, output_range=(0, 255)
+
+        Param set B (perceptual / gamma-aware):
+          mode="perceptual", sampler_radius=7, gamma=2.2, output_range=(0, 255)
+
+        The two modes use different channel-weight formulas (BT.601 vs BT.709
+        in linear light), so even a uniform-colour patch will yield a different
+        single luma value.  We assert pixel arrays differ AND report the mean
+        absolute difference for traceability.
+        """
+        image = self._make_colorful_image()
+
+        cfg_a = make_cfg(
+            grayscale_mode="standard",
+            grayscale_sampler_radius=0,
+            grayscale_gamma=1.0,
+            grayscale_output_range_min=0,
+            grayscale_output_range_max=255,
+        )
+        cfg_b = make_cfg(
+            grayscale_mode="perceptual",
+            grayscale_sampler_radius=7,
+            grayscale_gamma=2.2,
+            grayscale_output_range_min=0,
+            grayscale_output_range_max=255,
+        )
+
+        result_a = _grayscale_cpu(image, cfg_a)
+        result_b = _grayscale_cpu(image, cfg_b)
+
+        assert result_a.ndim == 2, f"expected 2D output, got shape {result_a.shape}"
+        assert result_b.ndim == 2, f"expected 2D output, got shape {result_b.shape}"
+        assert result_a.shape == result_b.shape, f"shape mismatch: {result_a.shape} vs {result_b.shape}"
+
+        diff = np.abs(result_a.astype(int) - result_b.astype(int))
+        mean_diff = float(diff.mean())
+        changed_pixels = int((diff > 0).sum())
+
+        # Commit the proof: params must reach the real primitive and change output.
+        # The threshold is deliberately low — even 1 changed pixel falsifies
+        # the "params are silently dropped" hypothesis.  In practice the BT.601
+        # vs BT.709 difference on our test patch is several luma counts.
+        assert changed_pixels > 0, (
+            f"PARAMS IGNORED: result_a and result_b are identical pixel-for-pixel "
+            f"(mean_diff={mean_diff:.4f}, changed_pixels={changed_pixels})"
+        )
+
+        # Log the magnitude so it's visible in verbose pytest output.
+        import sys
+
+        print(
+            f"\n  byte-diff proof: mean_abs_diff={mean_diff:.2f}, "
+            f"changed_pixels={changed_pixels}/{result_a.size} "
+            f"({100 * changed_pixels / result_a.size:.1f}%)",
+            file=sys.stderr,
+        )
