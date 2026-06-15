@@ -332,7 +332,14 @@ class TestGrayscaleParamChainE2E:
         hash_default = _compute_config_hash(cfg, "grayscale")
         assert hash_default is not None, "grayscale config hash must not be None"
 
-        cfg_tuned = cfg.model_copy(update={"grayscale_mode": "standard", "grayscale_gamma": 1.5})
+        # Task 3.2: STAGE_CONFIG_FIELDS["grayscale"] now tracks the "grayscale"
+        # field (GrayscaleConfigModel) instead of the old flat grayscale_mode/gamma
+        # fields. Produce a different config by changing the GrayscaleConfigModel.
+        from pdomain_prep_for_pgdp.core.models import GrayscaleConfigModel
+
+        cfg_tuned = cfg.model_copy(
+            update={"grayscale": GrayscaleConfigModel.from_settings({"converter": "luma_bt709"})}
+        )
         hash_tuned = _compute_config_hash(cfg_tuned, "grayscale")
         assert hash_tuned is not None
         assert hash_tuned != hash_default, (

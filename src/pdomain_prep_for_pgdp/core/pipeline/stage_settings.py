@@ -531,6 +531,14 @@ class StageSettingsStore:
         app_wide
             ``AppWideStageSettings`` instance providing the 'all' tier.
             When ``None``, the all tier is skipped.
+
+        For the ``grayscale`` stage, each tier's settings dict is passed
+        through ``migrate_grayscale_settings`` before the key-by-key merge so
+        that legacy flat dicts (``{mode: perceptual}``, etc.) stored at any
+        tier are normalised to the nested pipeline shape before resolution.
+        This ensures that a legacy project-tier dict contributes the correct
+        ``converter`` key into the merge even when a higher tier only provides
+        a subset of the full nested shape.
         """
         page_settings: dict[str, Any] | None = None
         if page_id is not None:
@@ -544,6 +552,18 @@ class StageSettingsStore:
         all_settings: dict[str, Any] | None = None
         if app_wide is not None:
             all_settings = app_wide.get(stage_id)
+
+        # Per-tier migration for the grayscale stage: normalize legacy flat dicts
+        # (e.g. {mode: perceptual}) to nested pipeline shape before the key-by-key
+        # merge, so the "converter" key is present for resolution even when a tier
+        # stored data in the old flat format.
+        if stage_id == "grayscale":
+            if page_settings is not None:
+                page_settings = migrate_grayscale_settings(page_settings)
+            if project_settings is not None:
+                project_settings = migrate_grayscale_settings(project_settings)
+            if all_settings is not None:
+                all_settings = migrate_grayscale_settings(all_settings)
 
         return resolve_effective_3tier(page_settings, project_settings, all_settings, registry_default)
 
@@ -560,6 +580,9 @@ class StageSettingsStore:
 
         Returns ``(effective, sources)`` where ``sources[key]`` is one of
         ``"page"``, ``"project"``, ``"all"``, or ``"registry"``.
+
+        Per-tier grayscale migration is applied for the same reason as in
+        ``get_effective_3tier`` — see that method's docstring for details.
         """
         page_settings: dict[str, Any] | None = None
         if page_id is not None:
@@ -573,6 +596,15 @@ class StageSettingsStore:
         all_settings: dict[str, Any] | None = None
         if app_wide is not None:
             all_settings = app_wide.get(stage_id)
+
+        # Per-tier migration for the grayscale stage (same rationale as get_effective_3tier).
+        if stage_id == "grayscale":
+            if page_settings is not None:
+                page_settings = migrate_grayscale_settings(page_settings)
+            if project_settings is not None:
+                project_settings = migrate_grayscale_settings(project_settings)
+            if all_settings is not None:
+                all_settings = migrate_grayscale_settings(all_settings)
 
         return resolve_effective_with_sources(page_settings, project_settings, all_settings, registry_default)
 
