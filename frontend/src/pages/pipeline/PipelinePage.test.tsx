@@ -203,6 +203,49 @@ describe("PipelinePage — pipeline/stages", () => {
     });
   });
 
+  it("pipeline-project-title heading shows human project name, not UUID", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      const heading = screen.getByTestId("pipeline-project-title");
+      // Should show the human name from the snapshot (MOCK_PROJECT.title = "Mock Book")
+      expect(heading.textContent).toBe(MOCK_PROJECT.title);
+      // Must NOT show the raw UUID as the heading
+      expect(heading.textContent).not.toBe(MOCK_PROJECT_ID);
+    });
+  });
+
+  it("pipeline-project-title heading falls back to projectId when projectName is empty", async () => {
+    // Snapshot with an empty title
+    const snapshot = makePipelineSnapshot();
+    const snapshotWithEmptyTitle = {
+      ...snapshot,
+      project: { ...snapshot.project, title: "" },
+    };
+    const services = makeServices({
+      fetchPipeline: vi.fn().mockResolvedValue(snapshotWithEmptyTitle),
+    });
+    renderPipeline(services);
+    await waitFor(() => {
+      const heading = screen.getByTestId("pipeline-project-title");
+      // Falls back to the project id from the URL param
+      expect(heading.textContent).toBe(MOCK_PROJECT_ID);
+    });
+  });
+
+  it("project UUID appears as secondary line below the heading", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      const band = screen.getByTestId("project-info-band");
+      const heading = screen.getByTestId("pipeline-project-title");
+      // The band contains the project id (as a secondary line, not the heading)
+      expect(band.textContent).toContain(MOCK_PROJECT_ID);
+      // The heading itself does not show the raw UUID
+      expect(heading.textContent).toBe(MOCK_PROJECT.title);
+    });
+  });
+
   it("renders tabs-band", async () => {
     const services = makeServices();
     renderPipeline(services);

@@ -387,7 +387,7 @@ function IngestBanner({ projectId }: { projectId: string }) {
 
 function ProjectInfoBand({
   projectId,
-  title,
+  projectName,
   pageCount,
   inSettings,
   onOpenSettings,
@@ -395,7 +395,8 @@ function ProjectInfoBand({
   onRunAllStale,
 }: {
   projectId: string;
-  title: string;
+  /** Human-readable project display name from PipelineSnapshot.project.title. Falls back to projectId when empty. */
+  projectName: string;
   /** Total page count sourced from pipelineShell context (PipelineSnapshot.project.page_count). */
   pageCount: number;
   inSettings: boolean;
@@ -433,7 +434,7 @@ function ProjectInfoBand({
               whiteSpace: "nowrap",
             }}
           >
-            {title}
+            {projectName || projectId}
           </h1>
           <div
             style={{
@@ -1236,7 +1237,7 @@ export function PipelinePage({
       {/* Project info band */}
       <ProjectInfoBand
         projectId={projectId}
-        title={ctx.projectId}
+        projectName={ctx.projectName}
         pageCount={ctx.pageCount}
         inSettings={inSettings}
         onOpenSettings={() => send({ type: "OPEN_SETTINGS" })}

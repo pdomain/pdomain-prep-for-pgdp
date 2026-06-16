@@ -325,6 +325,11 @@ export interface PipelineShellContext {
    * snapshot has loaded.
    */
   pageCount: number;
+  /**
+   * Human-readable project display name, sourced from ``PipelineSnapshot.project.title``.
+   * Set by ``assignAndSpawnRunners`` on boot. Empty string until the snapshot has loaded.
+   */
+  projectName: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -469,6 +474,7 @@ export const pipelineShellMachine = setup({
           currentTab: resolvedTab,
           automation,
           pageCount: snapshot.project.page_count,
+          projectName: snapshot.project.title,
         };
       },
     ),
@@ -816,6 +822,7 @@ export const pipelineShellMachine = setup({
     onCloseSettings: input.onCloseSettings,
     _inSettings: false,
     pageCount: 0,
+    projectName: "",
   }),
 
   initial: "booting",
