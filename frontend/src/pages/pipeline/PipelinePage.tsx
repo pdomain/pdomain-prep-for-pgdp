@@ -395,7 +395,7 @@ function ProjectInfoBand({
   onRunAllStale,
 }: {
   projectId: string;
-  /** Human-readable project display name from PipelineSnapshot.project.title. Falls back to projectId when empty. */
+  /** Human-readable project display name from PipelineSnapshot.project.name. Falls back to projectId when empty. */
   projectName: string;
   /** Total page count sourced from pipelineShell context (PipelineSnapshot.project.page_count). */
   pageCount: number;

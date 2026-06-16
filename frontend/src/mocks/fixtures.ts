@@ -84,7 +84,8 @@ export const MOCK_PROJECT_ID = "proj-mock-0001";
 
 export const MOCK_PROJECT: Project = {
   id: MOCK_PROJECT_ID,
-  title: "Mock Book",
+  // Use `name` to match the real wire field on GET /pipeline (not `title`).
+  name: "Mock Book",
   registry_version: 2,
   created_at: 1749513600, // 2025-06-10T00:00:00Z (deterministic literal)
   page_count: 12,

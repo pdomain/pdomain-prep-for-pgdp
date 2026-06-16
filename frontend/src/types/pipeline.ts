@@ -103,7 +103,8 @@ export interface ProjectAutomation {
 /** Project record (subset of full project model used in PipelineSnapshot). */
 export interface Project {
   id: string;
-  title: string;
+  /** Human-readable project name as returned by the wire field ``name`` on GET /pipeline. */
+  name: string;
   registry_version: number;
   created_at: number; // epoch seconds
   page_count: number;

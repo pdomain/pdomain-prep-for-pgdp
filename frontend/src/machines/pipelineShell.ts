@@ -326,7 +326,7 @@ export interface PipelineShellContext {
    */
   pageCount: number;
   /**
-   * Human-readable project display name, sourced from ``PipelineSnapshot.project.title``.
+   * Human-readable project display name, sourced from ``PipelineSnapshot.project.name``.
    * Set by ``assignAndSpawnRunners`` on boot. Empty string until the snapshot has loaded.
    */
   projectName: string;
@@ -474,7 +474,7 @@ export const pipelineShellMachine = setup({
           currentTab: resolvedTab,
           automation,
           pageCount: snapshot.project.page_count,
-          projectName: snapshot.project.title,
+          projectName: snapshot.project.name,
         };
       },
     ),

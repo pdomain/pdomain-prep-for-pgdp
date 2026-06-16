@@ -931,7 +931,7 @@ export function createMockServer(): MockServer {
       const records: ProjectRecord[] = [
         {
           id: project.id,
-          title: project.title,
+          title: project.name,
           author: "Mock Author",
           pages: project.page_count,
           totalStages: 23,
@@ -1016,7 +1016,7 @@ export function createMockServer(): MockServer {
     async fetchAttributes(_projectId) {
       return {
         bib: {
-          Title: project.title,
+          Title: project.name,
           Author: "Mock Author",
           Language: "English",
           "Original year": "1890",
