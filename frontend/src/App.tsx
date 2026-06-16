@@ -30,7 +30,7 @@
 //         Resolve when pdomain-ui's UIPrefs gains 'system' theme support.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Navigate,
   Route,
@@ -274,6 +274,26 @@ function useActiveJobs() {
   }));
 }
 
+// ── CenteredLayout ─────────────────────────────────────────────────────────────
+//
+// Applied to every route EXCEPT PipelinePage. Reproduces the former global
+// `mx-auto max-w-7xl p-4` centering box so those pages look identical to before
+// the full-bleed refactor.
+//
+// PipelinePage is rendered WITHOUT this wrapper so it fills the full width+height
+// of the AppShell main zone (the two-panel workbench needs edge-to-edge space).
+// `data-testid="centered-layout"` lets tests assert the distinction.
+function CenteredLayout({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="centered-layout"
+      className="h-full overflow-auto mx-auto max-w-7xl p-4 w-full"
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   // Phase 2.7c (#330): searchOpen moved from uiPrefs store to local React
   // state. SearchModal now accepts explicit open/onOpenChange props.
@@ -343,14 +363,57 @@ export default function App() {
                   onClose={() => setHotkeyHelpOpen(false)}
                 />
                 <AuthGuard />
-                <div className="flex-1 overflow-auto mx-auto max-w-7xl p-4 w-full">
+                {/*
+                 * Routes area — flex-1 min-h-0 lets the routes div fill the
+                 * remaining height between the modals/guards above and the
+                 * ServerInfoFooter below.
+                 *
+                 * Centered routes (/, /jobs, /import, /settings, /login) wrap
+                 * their page component in <CenteredLayout> — reproduces the
+                 * former mx-auto max-w-7xl p-4 box so those pages look identical.
+                 *
+                 * PipelinePage is NOT wrapped: it receives the full width+height
+                 * of this container so its two-panel workbench expands edge-to-edge.
+                 * overflow-hidden here (not overflow-auto) because PipelinePage
+                 * owns per-region scrolling internally; a second scroll layer
+                 * would create double-scrollbars.
+                 */}
+                <div
+                  data-testid="routes-area"
+                  className="flex-1 min-h-0 w-full overflow-hidden"
+                >
                   <Routes>
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/" element={<ProjectsPage />} />
-                    <Route path="/jobs" element={<JobsPage />} />
+                    <Route
+                      path="/login"
+                      element={
+                        <CenteredLayout>
+                          <LoginPage />
+                        </CenteredLayout>
+                      }
+                    />
+                    <Route
+                      path="/"
+                      element={
+                        <CenteredLayout>
+                          <ProjectsPage />
+                        </CenteredLayout>
+                      }
+                    />
+                    <Route
+                      path="/jobs"
+                      element={
+                        <CenteredLayout>
+                          <JobsPage />
+                        </CenteredLayout>
+                      }
+                    />
                     <Route
                       path="/projects/:projectId/import"
-                      element={<PostImportPage />}
+                      element={
+                        <CenteredLayout>
+                          <PostImportPage />
+                        </CenteredLayout>
+                      }
                     />
                     <Route
                       path="/projects/:projectId"
@@ -360,7 +423,14 @@ export default function App() {
                       path="/projects/:projectId/pipeline"
                       element={<PipelinePage />}
                     />
-                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route
+                      path="/settings"
+                      element={
+                        <CenteredLayout>
+                          <SettingsPage />
+                        </CenteredLayout>
+                      }
+                    />
                   </Routes>
                 </div>
                 {/* GAP-1: ServerInfoFooter pinned at bottom of main zone */}

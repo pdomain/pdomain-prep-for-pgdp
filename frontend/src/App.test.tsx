@@ -1,5 +1,7 @@
 // App.test.tsx — Vitest tests for App shell routing.
 // Phase 2.4: AppShell + SuiteSiblingsProvider mocks added (#266).
+// fix/pipeline-fullbleed: assert pipeline route is full-bleed (no centered-layout
+//   wrapper), while other routes still receive the centering box.
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -124,6 +126,14 @@ vi.mock("react-konva", () => ({
 vi.mock("use-image", () => ({
   __esModule: true,
   default: () => [null, "loaded"],
+}));
+
+// Mock PipelinePage so routing tests that navigate to /projects/:id/pipeline
+// don't have to set up the full XState machine + MSW pipeline fixtures. The
+// stub renders a sentinel div with data-testid="pipeline-page" — enough to
+// assert routing works and that it is NOT wrapped in a centered-layout box.
+vi.mock("./pages/pipeline/PipelinePage", () => ({
+  PipelinePage: () => <div data-testid="pipeline-page">pipeline stub</div>,
 }));
 
 import App from "./App";
@@ -297,5 +307,113 @@ describe("App: routing shell", () => {
       // Routes render inside main — project list placeholder or heading is present.
       expect(mainSlot.textContent?.length).toBeGreaterThan(0);
     });
+  });
+});
+
+// ── Full-bleed layout contract (fix/pipeline-fullbleed) ──────────────────────
+//
+// These tests assert the CenteredLayout presence/absence contract:
+//   - Centered routes (/, /jobs, /settings, /login, /import) must render their
+//     content inside a `[data-testid="centered-layout"]` box.
+//   - The pipeline route (/projects/:id/pipeline) must NOT use CenteredLayout;
+//     PipelinePage sits directly in the `routes-area` container.
+//
+// PipelinePage is mocked (stub at top of file) so these tests focus purely on
+// the routing + wrapper structure without XState machine setup.
+//
+describe("App: full-bleed vs centered layout contract", () => {
+  it("/ (ProjectsPage) renders inside centered-layout", async () => {
+    withNoProjects();
+    renderApp("/");
+    await waitFor(() => {
+      expect(screen.getByTestId("routes-area")).toBeInTheDocument();
+    });
+    const routesArea = screen.getByTestId("routes-area");
+    expect(
+      routesArea.querySelector("[data-testid='centered-layout']"),
+    ).not.toBeNull();
+  });
+
+  it("/jobs (JobsPage) renders inside centered-layout", async () => {
+    server.use(
+      http.get("/api/data/jobs", () => HttpResponse.json([])),
+      http.get("/api/server-info", () =>
+        HttpResponse.json({
+          host: "localhost",
+          port: 8765,
+          url: "http://localhost:8765",
+        }),
+      ),
+    );
+    renderApp("/jobs");
+    await waitFor(() => {
+      expect(screen.getByTestId("routes-area")).toBeInTheDocument();
+    });
+    const routesArea = screen.getByTestId("routes-area");
+    expect(
+      routesArea.querySelector("[data-testid='centered-layout']"),
+    ).not.toBeNull();
+  });
+
+  it("/settings (SettingsPage) renders inside centered-layout", async () => {
+    server.use(
+      http.get("/api/server-info", () =>
+        HttpResponse.json({
+          host: "localhost",
+          port: 8765,
+          url: "http://localhost:8765",
+        }),
+      ),
+    );
+    renderApp("/settings");
+    await waitFor(() => {
+      expect(screen.getByTestId("routes-area")).toBeInTheDocument();
+    });
+    const routesArea = screen.getByTestId("routes-area");
+    expect(
+      routesArea.querySelector("[data-testid='centered-layout']"),
+    ).not.toBeNull();
+  });
+
+  it("/projects/:id/pipeline renders WITHOUT centered-layout (full-bleed)", async () => {
+    // PipelinePage is mocked — this purely tests the route container structure.
+    server.use(
+      http.get("/api/data/projects", () => HttpResponse.json([])),
+      http.get("/api/server-info", () =>
+        HttpResponse.json({
+          host: "localhost",
+          port: 8765,
+          url: "http://localhost:8765",
+        }),
+      ),
+    );
+    renderApp("/projects/test-project-id/pipeline");
+    await waitFor(() => {
+      expect(screen.getByTestId("pipeline-page")).toBeInTheDocument();
+    });
+    const routesArea = screen.getByTestId("routes-area");
+    // Pipeline route must NOT be wrapped in a centering box.
+    expect(
+      routesArea.querySelector("[data-testid='centered-layout']"),
+    ).toBeNull();
+    // The pipeline-page sentinel is a direct child of the routes-area (no centering layer).
+    expect(
+      routesArea.querySelector("[data-testid='pipeline-page']"),
+    ).not.toBeNull();
+  });
+
+  it("routes-area has full-bleed classes (flex-1 min-h-0 w-full)", async () => {
+    withNoProjects();
+    renderApp("/");
+    await waitFor(() => {
+      expect(screen.getByTestId("routes-area")).toBeInTheDocument();
+    });
+    const routesArea = screen.getByTestId("routes-area");
+    // The routes-area container must carry full-bleed layout classes so
+    // PipelinePage (which uses height:100%) expands to fill the AppShell main zone.
+    expect(routesArea.className).toContain("flex-1");
+    expect(routesArea.className).toContain("min-h-0");
+    expect(routesArea.className).toContain("w-full");
+    expect(routesArea.className).toContain("overflow-hidden");
   });
 });
