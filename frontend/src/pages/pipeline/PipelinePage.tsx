@@ -31,9 +31,10 @@
  */
 
 import { useEffect, useMemo } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActor } from "@xstate/react";
+import { useActiveBatchJob } from "@/hooks/useActiveBatchJob";
 import {
   buildRealPipelineShellServices,
   buildRealStageRunnerServices,
@@ -314,6 +315,68 @@ function StageStrip({
           Next →
         </Button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IngestBanner — shown while unzip / thumbnails job is running or queued
+// ---------------------------------------------------------------------------
+
+/** Job types that represent "ingest in flight" (same as the retired ProjectConfigurePage). */
+const INGEST_KINDS = ["unzip", "thumbnails"];
+
+/**
+ * Shows when the current project has a live (running/queued/scheduled)
+ * unzip or thumbnails job. Auto-hides when no such job is active.
+ * Links to /jobs?project_id=<id> for full job status.
+ */
+function IngestBanner({ projectId }: { projectId: string }) {
+  const ingestBatch = useActiveBatchJob(projectId || null, INGEST_KINDS);
+  const liveJob = useMemo(
+    () => ingestBatch.jobs.find((j) => j.id === ingestBatch.jobId) ?? null,
+    [ingestBatch.jobs, ingestBatch.jobId],
+  );
+
+  if (!liveJob) return null;
+
+  const label =
+    liveJob.type === "unzip"
+      ? "Unzipping source archive…"
+      : "Creating thumbnails…";
+  const { current, total, message } = liveJob.progress;
+
+  return (
+    <div
+      data-testid="ingest-banner"
+      style={{
+        borderBottom: "1px solid var(--border-1)",
+        background: "color-mix(in oklab, #0ea5e9 6%, var(--bg-page))",
+        borderTop:
+          "1px solid color-mix(in oklab, #0ea5e9 25%, var(--border-1))",
+        padding: "10px 28px",
+      }}
+    >
+      <p
+        data-testid="ingest-banner-label"
+        style={{ fontWeight: 500, fontSize: 13, color: "var(--ink-1)" }}
+      >
+        {label}
+      </p>
+      {total > 0 && (
+        <p style={{ marginTop: 2, fontSize: 11.5, color: "var(--ink-3)" }}>
+          {current}/{total}
+          {message && ` · ${message}`}
+        </p>
+      )}
+      <p style={{ marginTop: 4, fontSize: 11.5 }}>
+        <Link
+          to={`/jobs?project_id=${encodeURIComponent(projectId)}`}
+          style={{ color: "var(--accent)", textDecoration: "underline" }}
+        >
+          Open jobs page →
+        </Link>
+      </p>
     </div>
   );
 }
@@ -1180,6 +1243,9 @@ export function PipelinePage({
         onCloseSettings={() => send({ type: "CLOSE_SETTINGS" })}
         onRunAllStale={() => send({ type: "RUN_ALL_STALE" })}
       />
+
+      {/* Ingest banner — shown while unzip / thumbnails job is live */}
+      <IngestBanner projectId={projectId} />
 
       {inSettings ? (
         /* Settings mode — replaces stage body */

@@ -1,24 +1,14 @@
-"""E2E: Ingest-in-flight banner — behavior after ProjectConfigurePage retirement.
+"""E2E: Ingest-in-flight banner on PipelinePage.
 
-RETIREMENT NOTE (2026-06-16):
-  ProjectConfigurePage has been retired. The route /projects/<id> now redirects
-  to /projects/<id>/pipeline (PipelinePage). PipelinePage does NOT have the
-  ingest-in-flight banner that showed "Creating thumbnails…" / "Unzipping source
-  archive…" + link to JobsPage.
+Strategy: insert a project + a scheduled (never-running) ingest job directly
+into the running server's SQLite, then navigate to /projects/<id>/pipeline.
+The IngestBanner component polls /api/data/jobs every 3 s and shows the
+appropriate banner when it finds a live (queued/scheduled/running) unzip or
+thumbnails job.
 
-  The two original tests below have been XFAILED rather than deleted. They
-  document the lost behaviour so it can be re-introduced in PipelinePage
-  (or as a global banner) when the product team decides where the ingest-status
-  affordance should live.
-
-  OPEN: Add ingest-in-flight detection to PipelinePage (or a global app-level
-  banner) that shows the "Unzipping / thumbnails in progress" status when a
-  project has a running/scheduled thumbnails or unzip job. The banner should
-  link to /jobs?project_id=<id>.
-
-Strategy (original): insert a project + a queued (never-running) thumbnails job
-directly into the running server's SQLite. Hitting `/projects/<id>/pipeline`
-should show the ingest-in-progress affordance.
+The job is inserted with status=scheduled so the in-process job runner does
+not pick it up mid-test and flip it to running/complete before the page
+has a chance to observe it.
 """
 
 from __future__ import annotations
@@ -141,37 +131,25 @@ def _seed(db_url: str, project_id: str, job_type: JobType) -> None:
         raise error[0]
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ProjectConfigurePage retired 2026-06-16: /projects/<id> now redirects to "
-        "PipelinePage which has no ingest-in-flight banner. "
-        "OPEN: re-introduce ingest detection in PipelinePage or as a global banner."
-    ),
-    strict=False,
-)
-def test_configure_page_shows_thumbnails_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
+def test_pipeline_page_shows_thumbnails_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
+    """Thumbnails job in flight → IngestBanner shows 'Creating thumbnails…' with jobs link."""
     project_id = "banner-thumbs"
     _seed(live_server.settings.derived_database_url, project_id, JobType.thumbnails)
 
-    page.goto(f"{live_server.base_url}/projects/{project_id}")
+    # Navigate directly to the pipeline shell route.
+    page.goto(f"{live_server.base_url}/projects/{project_id}/pipeline")
 
     expect(page.get_by_text("Creating thumbnails…")).to_be_visible(timeout=10_000)
     expect(page.get_by_role("link", name="Open jobs page →")).to_be_visible()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ProjectConfigurePage retired 2026-06-16: /projects/<id> now redirects to "
-        "PipelinePage which has no ingest-in-flight banner. "
-        "OPEN: re-introduce ingest detection in PipelinePage or as a global banner."
-    ),
-    strict=False,
-)
-def test_configure_page_shows_unzip_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
+def test_pipeline_page_shows_unzip_banner_during_ingest(live_server: LiveServer, page: _Page) -> None:
+    """Unzip job in flight → IngestBanner shows 'Unzipping source archive…' with jobs link."""
     project_id = "banner-unzip"
     _seed(live_server.settings.derived_database_url, project_id, JobType.unzip)
 
-    page.goto(f"{live_server.base_url}/projects/{project_id}")
+    # Navigate directly to the pipeline shell route.
+    page.goto(f"{live_server.base_url}/projects/{project_id}/pipeline")
 
     expect(page.get_by_text("Unzipping source archive…")).to_be_visible(timeout=10_000)
     expect(page.get_by_role("link", name="Open jobs page →")).to_be_visible()

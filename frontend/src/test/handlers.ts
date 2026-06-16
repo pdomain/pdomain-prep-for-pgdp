@@ -20,6 +20,12 @@ import type { RequestHandler } from "msw";
 export const handlers: RequestHandler[] = [
   http.get("/api/jobs", () => HttpResponse.json([])),
 
+  // useActiveBatchJob polls this endpoint (project-scoped job list).
+  // Default returns empty list so components that use the hook render
+  // without MSW "unhandled request" errors. Tests that need a live job
+  // override this handler with server.use(...).
+  http.get("/api/data/jobs", () => HttpResponse.json([])),
+
   // hifi-source: useSourcePages — pages list (empty default so SourceTool
   // exits the loading state and renders the Files tab content in tests
   // that do not need real page data).

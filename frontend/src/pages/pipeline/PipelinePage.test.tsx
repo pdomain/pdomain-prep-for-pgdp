@@ -16,6 +16,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
+import { server } from "@/test/server";
 import { PipelinePage, type PipelinePageServices } from "./PipelinePage";
 import type { PipelineShellServices } from "@/machines/pipelineShell";
 import type { ProjectSettingsServices } from "@/machines/projectSettings";
@@ -456,5 +458,117 @@ describe("PipelinePage — ProjectInfoBand stat tiles", () => {
       // The tile should contain a numeric value (page_count from MOCK_PROJECT).
       expect(tile.textContent).toMatch(/\d/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// IngestBanner — shown while unzip/thumbnails job is running or queued
+// ---------------------------------------------------------------------------
+//
+// The banner is driven by useActiveBatchJob which polls /api/data/jobs.
+// The global MSW handler returns [] by default; individual tests override
+// it with server.use(...) to inject a live ingest job.
+
+describe("PipelinePage — IngestBanner", () => {
+  it("banner is hidden when there are no active ingest jobs", async () => {
+    // Default handler returns [] so no ingest job is live.
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      // Page has finished booting (stage-strip is visible).
+      expect(screen.getByTestId("stage-strip")).toBeDefined();
+    });
+    expect(screen.queryByTestId("ingest-banner")).toBeNull();
+  });
+
+  it("banner shows 'Creating thumbnails…' for a live thumbnails job", async () => {
+    server.use(
+      http.get("/api/data/jobs", () =>
+        HttpResponse.json([
+          {
+            id: "job-thumb-1",
+            type: "thumbnails",
+            status: "running",
+            progress: { current: 3, total: 10, message: "" },
+          },
+        ]),
+      ),
+    );
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("ingest-banner")).toBeDefined();
+    });
+    expect(screen.getByTestId("ingest-banner-label").textContent).toBe(
+      "Creating thumbnails…",
+    );
+  });
+
+  it("banner shows 'Unzipping source archive…' for a live unzip job", async () => {
+    server.use(
+      http.get("/api/data/jobs", () =>
+        HttpResponse.json([
+          {
+            id: "job-unzip-1",
+            type: "unzip",
+            status: "scheduled",
+            progress: { current: 0, total: 0, message: "" },
+          },
+        ]),
+      ),
+    );
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("ingest-banner")).toBeDefined();
+    });
+    expect(screen.getByTestId("ingest-banner-label").textContent).toBe(
+      "Unzipping source archive…",
+    );
+  });
+
+  it("banner links to /jobs?project_id=<id>", async () => {
+    server.use(
+      http.get("/api/data/jobs", () =>
+        HttpResponse.json([
+          {
+            id: "job-thumb-2",
+            type: "thumbnails",
+            status: "queued",
+            progress: { current: 0, total: 0, message: "" },
+          },
+        ]),
+      ),
+    );
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("ingest-banner")).toBeDefined();
+    });
+    const link = screen.getByRole("link", { name: /open jobs page/i });
+    expect((link as HTMLAnchorElement).href).toContain(
+      `/jobs?project_id=${encodeURIComponent(MOCK_PROJECT_ID)}`,
+    );
+  });
+
+  it("banner is hidden for a completed thumbnails job", async () => {
+    server.use(
+      http.get("/api/data/jobs", () =>
+        HttpResponse.json([
+          {
+            id: "job-thumb-done",
+            type: "thumbnails",
+            status: "complete",
+            progress: { current: 10, total: 10, message: "" },
+          },
+        ]),
+      ),
+    );
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("stage-strip")).toBeDefined();
+    });
+    expect(screen.queryByTestId("ingest-banner")).toBeNull();
   });
 });
