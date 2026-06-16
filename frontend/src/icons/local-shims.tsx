@@ -11,7 +11,6 @@
  *   - Bell          — used in OpenTasksPopover
  *   - CheckCircle   — used in OpenTasksPopover
  *   - GripVertical  — used in PageRow
- *   - Download      — used in ProjectConfigurePage
  *   - FileText      — used in JobsPage
  *   - HardDrive     — used in DiskCostBanner
  *   - User          — used in UserMenu
@@ -117,24 +116,6 @@ export function GripVertical({ size = 24, className, ...rest }: IconProps) {
       <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none" />
       <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
       <circle cx="15" cy="18" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-/** Download — used for package download button. */
-export function Download({ size = 24, className, ...rest }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      {...BASE_SVG_PROPS}
-      className={className}
-      {...rest}
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   );
 }

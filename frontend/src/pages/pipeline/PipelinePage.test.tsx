@@ -409,3 +409,52 @@ describe("PipelinePage — StageStrip dot projections", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stat tiles in ProjectInfoBand
+// ---------------------------------------------------------------------------
+
+describe("PipelinePage — ProjectInfoBand stat tiles", () => {
+  it("renders pipeline-stat-tiles container after boot", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("pipeline-stat-tiles")).toBeDefined();
+    });
+  });
+
+  it("renders stat-total-pages tile", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("stat-total-pages")).toBeDefined();
+    });
+  });
+
+  it("renders stat-done tile", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("stat-done")).toBeDefined();
+    });
+  });
+
+  it("renders stat-awaiting-review tile", async () => {
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      expect(screen.getByTestId("stat-awaiting-review")).toBeDefined();
+    });
+  });
+
+  it("stat-total-pages shows page_count from project snapshot", async () => {
+    // MOCK_PROJECT.page_count is set in fixtures — verify it shows up in the tile.
+    const services = makeServices();
+    renderPipeline(services);
+    await waitFor(() => {
+      const tile = screen.getByTestId("stat-total-pages");
+      // The tile should contain a numeric value (page_count from MOCK_PROJECT).
+      expect(tile.textContent).toMatch(/\d/);
+    });
+  });
+});

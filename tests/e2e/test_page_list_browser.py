@@ -46,9 +46,23 @@ def test_react_router_subpath(page: Page) -> None:
     expect(page.locator("body")).to_be_visible()
 
 
-@pytest.mark.skip(reason="Requires a seeded project — run manually after ingest fixture")
+@pytest.mark.skip(
+    reason=(
+        "ProjectConfigurePage retired 2026-06-16: /projects/<id> now redirects "
+        "to /projects/<id>/pipeline (PipelinePage). The pages-card testid no longer "
+        "exists at this URL. Page-list is accessible via the source/page-order tools "
+        "in the pipeline shell. Update this test if a direct page-list view is "
+        "re-introduced."
+    ),
+)
 def test_page_list_renders_from_event_store(page: Page, project_id: str) -> None:
-    """After ingest, page-list renders rows loaded from the event store."""
+    """After ingest, page-list renders rows loaded from the event store.
+
+    RETIREMENT NOTE: This test navigated to /projects/<id> which previously
+    rendered ProjectConfigurePage (with a pages-card). That route now redirects
+    to PipelinePage, which does not have a pages-card. The page-order tool in the
+    pipeline shell provides page management instead.
+    """
     page.goto(f"{BASE}/projects/{project_id}")
     page.wait_for_load_state("networkidle")
     pages_card = page.locator('[data-testid="pages-card"]')

@@ -259,7 +259,7 @@ export function ProjectsPage({
     input: {
       services: resolvedServices.detail,
       onOpenProject: (projectId) => {
-        void navigate(`/projects/${projectId}`);
+        void navigate(`/projects/${projectId}/pipeline`);
       },
       onOpenActivityLog: (projectId) => {
         // Target route /projects/:id/activity is not yet built in App.tsx;

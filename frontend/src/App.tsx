@@ -31,7 +31,13 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { useHotkeys } from "react-hotkeys-hook";
 import {
   AppShell,
@@ -53,7 +59,6 @@ import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProjectsPage } from "./pages/projects/ProjectsPage";
 import { PostImportPage } from "./pages/projects/PostImportPage";
-import { ProjectConfigurePage } from "./pages/ProjectConfigurePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { PipelinePage } from "./pages/pipeline/PipelinePage";
 
@@ -349,7 +354,7 @@ export default function App() {
                     />
                     <Route
                       path="/projects/:projectId"
-                      element={<ProjectConfigurePage />}
+                      element={<Navigate to="pipeline" replace />}
                     />
                     <Route
                       path="/projects/:projectId/pipeline"

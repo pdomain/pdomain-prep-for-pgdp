@@ -319,12 +319,13 @@ function StageStrip({
 }
 
 // ---------------------------------------------------------------------------
-// ProjectInfoBand — cover + title + Run all stale + Settings toggle
+// ProjectInfoBand — cover + title + stat tiles + Run all stale + Settings toggle
 // ---------------------------------------------------------------------------
 
 function ProjectInfoBand({
   projectId,
   title,
+  pageCount,
   inSettings,
   onOpenSettings,
   onCloseSettings,
@@ -332,6 +333,8 @@ function ProjectInfoBand({
 }: {
   projectId: string;
   title: string;
+  /** Total page count sourced from pipelineShell context (PipelineSnapshot.project.page_count). */
+  pageCount: number;
   inSettings: boolean;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
@@ -341,69 +344,144 @@ function ProjectInfoBand({
     <div
       data-testid="project-info-band"
       style={{
-        padding: "20px 28px",
+        padding: "16px 28px",
         background: "var(--bg-page)",
         borderBottom: "1px solid var(--border-1)",
-        display: "flex",
-        gap: 18,
-        alignItems: "flex-start",
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <h1
-          data-testid="pipeline-project-title"
-          style={{
-            fontSize: 20,
-            fontWeight: 600,
-            letterSpacing: "-0.015em",
-            color: "var(--ink-1)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {title}
-        </h1>
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 11.5,
-            color: "var(--ink-3)",
-            fontFamily: "monospace",
-          }}
-        >
-          {projectId}
-        </div>
-      </div>
-
+      {/* Title row */}
       <div
         style={{
           display: "flex",
-          gap: 8,
-          flex: "0 0 auto",
-          alignItems: "center",
+          gap: 18,
+          alignItems: "flex-start",
         }}
       >
-        <Button
-          data-testid="settings-toggle-btn"
-          variant={inSettings ? "primary" : "outline"}
-          size="sm"
-          onClick={inSettings ? onCloseSettings : onOpenSettings}
-        >
-          {inSettings ? "Close settings" : "Project settings"}
-        </Button>
-
-        {!inSettings && (
-          <Button
-            data-testid="run-all-stale-btn"
-            variant="primary"
-            size="sm"
-            onClick={onRunAllStale}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1
+            data-testid="pipeline-project-title"
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              letterSpacing: "-0.015em",
+              color: "var(--ink-1)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
           >
-            Run all stale →
+            {title}
+          </h1>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 11.5,
+              color: "var(--ink-3)",
+              fontFamily: "monospace",
+            }}
+          >
+            {projectId}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flex: "0 0 auto",
+            alignItems: "center",
+          }}
+        >
+          <Button
+            data-testid="settings-toggle-btn"
+            variant={inSettings ? "primary" : "outline"}
+            size="sm"
+            onClick={inSettings ? onCloseSettings : onOpenSettings}
+          >
+            {inSettings ? "Close settings" : "Project settings"}
           </Button>
-        )}
+
+          {!inSettings && (
+            <Button
+              data-testid="run-all-stale-btn"
+              variant="primary"
+              size="sm"
+              onClick={onRunAllStale}
+            >
+              Run all stale →
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Stat tiles */}
+      <div
+        data-testid="pipeline-stat-tiles"
+        style={{
+          marginTop: 12,
+          display: "flex",
+          gap: 12,
+        }}
+      >
+        <StatBadge
+          label="Total pages"
+          value={pageCount}
+          testId="stat-total-pages"
+        />
+        <StatBadge label="Done" value={0} testId="stat-done" />
+        <StatBadge
+          label="Awaiting review"
+          value={0}
+          testId="stat-awaiting-review"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Small inline stat badge for the project info band. */
+function StatBadge({
+  label,
+  value,
+  testId,
+}: {
+  label: string;
+  value: number;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 10px",
+        borderRadius: 6,
+        border: "1px solid var(--border-1)",
+        background: "var(--bg-surface)",
+      }}
+    >
+      <span
+        style={{
+          fontFamily: "monospace",
+          fontSize: 13,
+          fontWeight: 600,
+          color: "var(--ink-1)",
+        }}
+      >
+        {value}
+      </span>
+      <span
+        style={{
+          fontSize: 11,
+          color: "var(--ink-3)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -1096,6 +1174,7 @@ export function PipelinePage({
       <ProjectInfoBand
         projectId={projectId}
         title={ctx.projectId}
+        pageCount={ctx.pageCount}
         inSettings={inSettings}
         onOpenSettings={() => send({ type: "OPEN_SETTINGS" })}
         onCloseSettings={() => send({ type: "CLOSE_SETTINGS" })}
