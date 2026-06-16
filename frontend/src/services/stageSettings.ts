@@ -78,7 +78,7 @@ export async function getStageSettingsResolved(
 
 /**
  * PUT saves a session-level override (not persisted as "my default").
- * @internal — Called directly by stage-settings tool surfaces at I2.
+ * Called directly by stage-settings tool surfaces.
  */
 export async function putStageSettings(
   projectId: string,
