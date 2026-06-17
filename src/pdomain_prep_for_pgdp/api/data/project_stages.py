@@ -1204,23 +1204,9 @@ async def confirm_source(
 
 
 # ─── W4 Group 2 — N-run schema + naming scheme persist ───────────────────────
-
-
-class _PageOrderRunsRequest(BaseModel):
-    """PUT /project-stages/page_order/runs request body.
-
-    ``runs`` is an ordered list of run descriptors.  Each run defines a
-    contiguous block of pages with a shared style:
-      start_idx  — 0-based index into the proof range where this run begins.
-      style      — folio number style: "roman", "arabic", or "letters".
-      number_start — first folio number in the run (1-indexed, typically 1).
-      type_code  — section type letter: "f" (frontmatter) or "p" (bodymatter).
-
-    Persisted as JSON at:
-      <data_root>/projects/<id>/stages/page_order/runs.json
-    """
-
-    runs: list[dict[str, object]]
+# NOTE: PUT /projects/{id}/project-stages/page_order/runs has been moved to
+#       api/data/page_order_runs.py (P1.8) — it now uses NumberingRunsArtifact
+#       with a NumberingRunsChanged event and also exposes GET.
 
 
 class _PageOrderNamingRequest(BaseModel):
@@ -1239,105 +1225,6 @@ class _PageOrderNamingRequest(BaseModel):
     """
 
     naming: dict[str, object]
-
-
-@router.put(
-    "/projects/{project_id}/project-stages/page_order/runs",
-    operation_id="put_page_order_runs",
-    status_code=200,
-    responses={
-        200: {"description": "N-run schema persisted.", "content": {"application/json": {}}},
-        404: {"description": "Project not found."},
-        409: {"description": "Registry version mismatch."},
-    },
-)
-async def put_page_order_runs(
-    project_id: str,
-    body: _PageOrderRunsRequest,
-    user: UserDep,
-    db: DatabaseDep,
-    settings: SettingsDep,
-    stage_events: StageEventsDep,
-) -> JSONResponse:
-    """Persist the N-run folio schema for the page_order stage.
-
-    Writes the runs list as JSON to
-    ``<data_root>/projects/<id>/stages/page_order/runs.json``.
-    Records a SettingsChange event in PrepProjectAggregate.
-    Emits a project-stage-status SSE (settings-changed sub-type).
-
-    W4 Group 2 — N-run schema persist (seam-remediation plan).
-    """
-    import json as _json
-
-    project = await db.get_project(project_id)
-    if project is None or project.owner_id != user.user_id:
-        raise HTTPException(404, "project not found")
-
-    if (rv := _check_registry(project)) is not None:
-        return rv
-
-    # Persist runs.json to the page_order stage directory.
-    stage_dir = settings.data_root / "projects" / project_id / "stages" / "page_order"
-    stage_dir.mkdir(parents=True, exist_ok=True)
-    runs_path = stage_dir / "runs.json"
-    runs_path.write_text(_json.dumps(body.runs, indent=2))
-
-    # Record SettingsChange event in PrepProjectAggregate (warn-and-continue).
-    try:
-        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
-            PrepApplication as _PrepApp,
-        )
-        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
-            PrepProjectAggregate as _PrepAgg,
-        )
-
-        _events_db = settings.data_root / "projects" / project_id / "events.db"
-        _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
-        try:
-            _proj_uuid = uuid.UUID(project_id)
-        except ValueError:
-            _proj_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
-        _agg_id = _PrepAgg.create_id(_proj_uuid)
-        try:
-            _agg: _PrepAgg = _app.repository.get(_agg_id)  # type: ignore[assignment]
-        except Exception:
-            _agg = _PrepAgg(project_id=_proj_uuid)
-        _agg.record_settings_change(
-            scope="stage",
-            stage_id="page_order",
-            before={},
-            after={"runs": body.runs},
-            actor_id=user.user_id,
-        )
-        _app.save(_agg)
-        _app.close()
-    except Exception as _e:
-        log.warning("W4 SettingsChange event failed for page_order/runs (non-fatal): %s", _e)
-
-    # Emit SSE (warn-and-continue).
-    project_key = f"project:{project_id}"
-    try:
-        await stage_events.publish(
-            project_key,
-            {
-                "type": "project-stage-status",
-                "stage_id": "page_order",
-                "status": "settings-changed",
-                "job_id": None,
-                "error_message": None,
-            },
-        )
-    except Exception as _e_sse:
-        log.warning("W4 SSE failed for page_order/runs (non-fatal): %s", _e_sse)
-
-    return JSONResponse(content={"stage_id": "page_order", "run_count": len(body.runs)})
 
 
 @router.put(

@@ -1728,68 +1728,6 @@
         }
       }
     },
-    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
-      "put": {
-        "tags": [
-          "project-stages"
-        ],
-        "summary": "Put Page Order Runs",
-        "description": "Persist the N-run folio schema for the page_order stage.\n\nWrites the runs list as JSON to\n``<data_root>/projects/<id>/stages/page_order/runs.json``.\nRecords a SettingsChange event in PrepProjectAggregate.\nEmits a project-stage-status SSE (settings-changed sub-type).\n\nW4 Group 2 \u2014 N-run schema persist (seam-remediation plan).",
-        "operationId": "put_page_order_runs",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/_PageOrderRunsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "N-run schema persisted.",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "Project not found."
-          },
-          "409": {
-            "description": "Registry version mismatch."
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/data/projects/{project_id}/project-stages/page_order/naming": {
       "put": {
         "tags": [
@@ -3167,6 +3105,111 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
+      "get": {
+        "tags": [
+          "page-order-runs"
+        ],
+        "summary": "Get Page Order Runs",
+        "description": "Return the persisted NumberingRunsArtifact for the page_order stage.\n\nReturns an empty artifact (version=1, runs=[]) if the project exists but\nno runs have been PUT yet.  Returns 404 if the project is not found or\nbelongs to a different user.",
+        "operationId": "get_page_order_runs",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "NumberingRunsArtifact; empty runs list if not yet written.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "page-order-runs"
+        ],
+        "summary": "Put Page Order Runs",
+        "description": "Persist the typed N-run folio schema for the page_order stage.\n\nValidates the body as a NumberingRunsArtifact, writes it atomically to\n``<data_root>/projects/<id>/stages/page_order/runs.json``, and records\na NumberingRunsChanged event in PrepProjectAggregate (warn-and-continue).\nEmits a project-stage-status SSE (settings-changed sub-type).\n\nP1.8 \u2014 replaces the W4 Group 2 stub (same URL, richer schema).",
+        "operationId": "put_page_order_runs",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NumberingRunsArtifact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Runs persisted; returns {stage_id, run_count}.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Invalid NumberingRunsArtifact body."
           }
         }
       }
@@ -7689,6 +7732,17 @@
         "title": "LayerColors",
         "description": "Hex color assignments for OCR layer overlays."
       },
+      "LeafRole": {
+        "type": "string",
+        "enum": [
+          "text",
+          "plate",
+          "blank",
+          "skip",
+          "cover"
+        ],
+        "title": "LeafRole"
+      },
       "ListPagesResponse": {
         "properties": {
           "pages": {
@@ -7720,6 +7774,92 @@
           "total"
         ],
         "title": "ListPagesResponse"
+      },
+      "NumberingRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "style": {
+            "$ref": "#/components/schemas/RunStyle",
+            "default": "arabic"
+          },
+          "start_mode": {
+            "$ref": "#/components/schemas/StartMode",
+            "default": "set"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "default": 1
+          },
+          "step": {
+            "type": "integer",
+            "title": "Step",
+            "default": 1
+          },
+          "role": {
+            "$ref": "#/components/schemas/LeafRole",
+            "default": "text"
+          },
+          "span": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "NumberingRun",
+        "description": "One numbering run \u2014 design-source: final/page_order/pr-data.js:41-48."
+      },
+      "NumberingRunsArtifact": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/NumberingRun"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "title": "NumberingRunsArtifact",
+        "description": "Project-scoped runs artifact (PUT body + stored JSON)."
       },
       "OcrWord": {
         "properties": {
@@ -9391,6 +9531,17 @@
         "title": "RetryJobRequest",
         "description": "Optional body for `POST /api/gpu/jobs/{id}/retry`.\n\n`payload_override`, when non-null, is shallow-merged over the original\njob's payload \u2014 keys present in the override replace the corresponding\nkeys; keys not present are preserved from the original. The original\njob is never mutated, so the audit trail stays intact."
       },
+      "RunStyle": {
+        "type": "string",
+        "enum": [
+          "roman-lower",
+          "roman-upper",
+          "arabic",
+          "alpha",
+          "none"
+        ],
+        "title": "RunStyle"
+      },
       "SearchHitResponse": {
         "properties": {
           "page_id": {
@@ -9536,6 +9687,14 @@
         "type": "object",
         "title": "StageRunRequest",
         "description": "Request body for POST .../stages/{stage_id}/run (page and project).\n\napi-v2-deltas.md \u00a73."
+      },
+      "StartMode": {
+        "type": "string",
+        "enum": [
+          "set",
+          "continue"
+        ],
+        "title": "StartMode"
       },
       "SuggestIllustrationsRequest": {
         "properties": {
@@ -10384,24 +10543,6 @@
         ],
         "title": "_PageOrderNamingRequest",
         "description": "PUT /project-stages/page_order/naming request body.\n\n``naming`` is an opaque dict that encodes the naming scheme the frontend\nhas configured (parts, digits, etc.).  The backend stores it verbatim as\nJSON at:\n  <data_root>/projects/<id>/stages/page_order/naming.json\n\nExample:\n  {\n    \"parts\": {\"seq\": true, \"type\": true, \"folio\": true},\n    \"digits\": 3\n  }"
-      },
-      "_PageOrderRunsRequest": {
-        "properties": {
-          "runs": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Runs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "runs"
-        ],
-        "title": "_PageOrderRunsRequest",
-        "description": "PUT /project-stages/page_order/runs request body.\n\n``runs`` is an ordered list of run descriptors.  Each run defines a\ncontiguous block of pages with a shared style:\n  start_idx  \u2014 0-based index into the proof range where this run begins.\n  style      \u2014 folio number style: \"roman\", \"arabic\", or \"letters\".\n  number_start \u2014 first folio number in the run (1-indexed, typically 1).\n  type_code  \u2014 section type letter: \"f\" (frontmatter) or \"p\" (bodymatter).\n\nPersisted as JSON at:\n  <data_root>/projects/<id>/stages/page_order/runs.json"
       },
       "_PersistLayoutRequest": {
         "properties": {

@@ -419,7 +419,7 @@ class TestPageOrderRunsRoute:
     """PUT /projects/{id}/project-stages/page_order/runs."""
 
     def test_put_runs_returns_200(self, tmp_path: Path) -> None:
-        """PUT page_order/runs → 200 with run count."""
+        """PUT page_order/runs → 200 with run count (NumberingRunsArtifact body)."""
         from fastapi.testclient import TestClient
 
         settings = _make_settings(tmp_path)
@@ -430,20 +430,31 @@ class TestPageOrderRunsRoute:
             r = client.put(
                 "/api/data/projects/proj1/project-stages/page_order/runs",
                 json={
+                    "version": 1,
                     "runs": [
                         {
-                            "start_idx": 0,
-                            "style": "roman",
-                            "number_start": 1,
-                            "type_code": "f",
+                            "id": "front",
+                            "label": "Front",
+                            "style": "roman-lower",
+                            "start_mode": "set",
+                            "start": 1,
+                            "step": 1,
+                            "role": "text",
+                            "span": [0, 4],
+                            "note": "",
                         },
                         {
-                            "start_idx": 5,
+                            "id": "body",
+                            "label": "Body",
                             "style": "arabic",
-                            "number_start": 1,
-                            "type_code": "p",
+                            "start_mode": "set",
+                            "start": 1,
+                            "step": 1,
+                            "role": "text",
+                            "span": [5, 9],
+                            "note": "",
                         },
-                    ]
+                    ],
                 },
             )
         assert r.status_code == 200, r.text
@@ -479,7 +490,7 @@ class TestPageOrderRunsRoute:
         assert r.status_code == 409
 
     def test_put_runs_persists_to_disk(self, tmp_path: Path) -> None:
-        """PUT page_order/runs writes runs.json to project dir."""
+        """PUT page_order/runs writes runs.json to project dir (NumberingRunsArtifact format)."""
         import json
 
         from fastapi.testclient import TestClient
@@ -487,25 +498,41 @@ class TestPageOrderRunsRoute:
         settings = _make_settings(tmp_path)
         _seed_project(settings, "proj1")
 
-        runs_payload = [
-            {"start_idx": 0, "style": "roman", "number_start": 1, "type_code": "f"},
-        ]
+        runs_payload = {
+            "version": 1,
+            "runs": [
+                {
+                    "id": "front",
+                    "label": "Front",
+                    "style": "roman-lower",
+                    "start_mode": "set",
+                    "start": 1,
+                    "step": 1,
+                    "role": "text",
+                    "span": [0, 4],
+                    "note": "",
+                },
+            ],
+        }
         app = build_app(settings)
         with TestClient(app) as client:
             r = client.put(
                 "/api/data/projects/proj1/project-stages/page_order/runs",
-                json={"runs": runs_payload},
+                json=runs_payload,
             )
         assert r.status_code == 200
 
         runs_path = settings.data_root / "projects" / "proj1" / "stages" / "page_order" / "runs.json"
         assert runs_path.exists(), "runs.json not created"
         stored = json.loads(runs_path.read_text())
-        assert len(stored) == 1
-        assert stored[0]["style"] == "roman"
+        # Stored as NumberingRunsArtifact: {version, runs: [...]}
+        assert stored["version"] == 1
+        assert len(stored["runs"]) == 1
+        assert stored["runs"][0]["id"] == "front"
+        assert stored["runs"][0]["style"] == "roman-lower"
 
-    def test_put_runs_records_settings_change_event(self, tmp_path: Path) -> None:
-        """PUT page_order/runs records SettingsChange event in events.db."""
+    def test_put_runs_records_numbering_runs_changed_event(self, tmp_path: Path) -> None:
+        """PUT page_order/runs records NumberingRunsChanged event in events.db."""
         import uuid
 
         from fastapi.testclient import TestClient
@@ -522,7 +549,22 @@ class TestPageOrderRunsRoute:
         with TestClient(app) as client:
             r = client.put(
                 "/api/data/projects/proj1/project-stages/page_order/runs",
-                json={"runs": [{"start_idx": 0, "style": "arabic", "number_start": 1, "type_code": "p"}]},
+                json={
+                    "version": 1,
+                    "runs": [
+                        {
+                            "id": "body",
+                            "label": "Body",
+                            "style": "arabic",
+                            "start_mode": "set",
+                            "start": 1,
+                            "step": 1,
+                            "role": "text",
+                            "span": [0, 4],
+                            "note": "",
+                        }
+                    ],
+                },
             )
         assert r.status_code == 200
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from .assets import router as assets_router
 from .jobs import router as jobs_router
+from .page_order_runs import router as page_order_runs_router
 from .pages import router as pages_router
 from .pipeline import router as pipeline_router
 from .project_stages import router as project_stages_router
@@ -17,6 +18,7 @@ def install_data_routes(app) -> None:  # type: ignore[no-untyped-def]
     root = APIRouter(prefix="/api/data")
     root.include_router(projects_router)
     root.include_router(project_stages_router)
+    root.include_router(page_order_runs_router)
     root.include_router(pages_router)
     root.include_router(system_defaults_router)
     root.include_router(assets_router)

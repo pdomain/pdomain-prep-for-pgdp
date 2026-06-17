@@ -240,6 +240,66 @@ class PrepProjectAggregate(Aggregate):
         Reversible via the event log (reindex can replay this event).
         """
 
+    # ── Numbering runs (P1/P2/P3 leaf+runs events) ──────────────────────────
+
+    @event("NumberingRunsChanged")
+    def record_numbering_runs_changed(
+        self,
+        before: list[dict[str, Any]],
+        after: list[dict[str, Any]],
+        actor_id: str,
+    ) -> None:
+        """Record a full-array replacement of the project's numbering runs.
+
+        ``before`` is the runs list prior to the change (empty list on first
+        write); ``after`` is the new runs list as dicts (NumberingRun.model_dump).
+        """
+
+    @event("LeafRoleSet")
+    def record_leaf_role_set(
+        self,
+        page_id: str,
+        previous_role: str | None,
+        new_role: str | None,
+        actor_id: str,
+    ) -> None:
+        """Record setting or clearing the leaf role for a page."""
+
+    @event("LeafRunSet")
+    def record_leaf_run_set(
+        self,
+        page_id: str,
+        previous_run_id: str | None,
+        new_run_id: str | None,
+        actor_id: str,
+    ) -> None:
+        """Record assigning a page to a numbering run (or clearing the assignment)."""
+
+    @event("FolioOverridden")
+    def record_folio_overridden(
+        self,
+        page_id: str,
+        label_override: str | None,
+        actor_id: str,
+    ) -> None:
+        """Record a manual folio label override for a page.
+
+        ``label_override=None`` clears a prior override (reverts to computed label).
+        """
+
+    @event("PlateTagSet")
+    def record_plate_tag_set(
+        self,
+        page_id: str,
+        plate_tag: str | None,
+        actor_id: str,
+    ) -> None:
+        """Record setting or clearing the plate-type tag for a page.
+
+        ``plate_tag`` is one of the plate sub-type strings ("b", "p", "r") or
+        ``None`` to clear the tag.
+        """
+
 
 class PrepApplication(Application[UUID]):
     """Eventsourcing application that persists PrepProjectAggregate events.
