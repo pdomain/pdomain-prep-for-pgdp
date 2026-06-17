@@ -129,6 +129,53 @@ class PageType(str, Enum):
     """
 
 
+class LeafRole(str, Enum):
+    text = "text"
+    plate = "plate"
+    blank = "blank"
+    skip = "skip"
+    cover = "cover"
+
+
+class RunStyle(str, Enum):
+    roman_lower = "roman-lower"
+    roman_upper = "roman-upper"
+    arabic = "arabic"
+    alpha = "alpha"
+    none = "none"
+
+
+class StartMode(str, Enum):
+    set = "set"
+    continue_ = "continue"  # pyright: ignore[reportAssignmentType]
+
+
+class PlateSide(str, Enum):
+    recto = "recto"
+    verso = "verso"
+
+
+class NumberingRun(ApiModel):
+    """One numbering run — design-source: final/page_order/pr-data.js:41-48."""
+
+    id: str
+    label: str = ""
+    style: RunStyle = RunStyle.arabic
+    start_mode: StartMode = StartMode.set
+    start: int = 1
+    step: int = 1
+    role: LeafRole = LeafRole.text
+    span: tuple[int, int] | None = None  # [first_scan, last_scan] inclusive, or None for interleaved (plates)
+    note: str = ""
+
+
+class NumberingRunsArtifact(ApiModel):
+    """Project-scoped runs artifact (PUT body + stored JSON)."""
+
+    version: int = 1
+    runs: list[NumberingRun] = Field(default_factory=list)
+
+
 class AlignmentOverride(str, Enum):
     default = "default"
     top = "top"
