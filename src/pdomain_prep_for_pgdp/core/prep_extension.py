@@ -17,11 +17,13 @@ from pdomain_prep_for_pgdp.core.models import (
     AlignmentOverride,
     ApiModel,
     IllustrationRegion,
+    LeafRole,
     PageConfigOverrides,
     PageOutput,
     PageProcessingStatus,
     PageSplit,
     PageType,
+    PlateSide,
 )
 
 
@@ -65,6 +67,30 @@ class PrepPageExtension(ApiModel):
     differ here so the frontend can distinguish them. None for all other
     page types (normal, blank, cover, plate_*).
     """
+
+    # ── Numbering-runs model (P1) ───────────────────────────────────────
+    leaf_role: LeafRole | None = None
+    """Page-Order leaf role (text/plate/blank/skip/cover). None = not yet
+    classified by Page Order; falls back to a page_type-derived role at read
+    time. Distinct from page_type, which is the Source layer."""
+
+    run_id: str | None = None
+    """ID of the NumberingRun this leaf belongs to. None for markers
+    (role:blank + run:None = [Blank Page] marker), plates, and skips."""
+
+    label_override: str | None = None
+    """User-supplied label that overrides the computed folio label. None =
+    use the computed label."""
+
+    plate_tag: str | None = None
+    """Free-text plate caption (e.g. "Plate VIII"). None for non-plate leaves."""
+
+    plate_side: PlateSide | None = None
+    """Recto/verso for a plate or its facing blank. Migrated from
+    plate_b/plate_r → verso, plate_p → recto. None for non-plate leaves."""
+
+    ocr_folio: str | None = None
+    """Printed folio read by OCR. P4-populated; None throughout P1-P3."""
 
     alignment: AlignmentOverride = AlignmentOverride.default
     config_overrides: PageConfigOverrides = Field(default_factory=PageConfigOverrides)
