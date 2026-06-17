@@ -48,7 +48,7 @@ def _seed(
     settings: Settings,
     project_id: str = "proj1",
     owner_id: str = "default",
-    registry_version: int = 2,
+    registry_version: int = 3,
 ) -> None:
     async def go() -> None:
         db = SqliteDatabase(settings.derived_database_url)
@@ -142,9 +142,12 @@ def test_put_runs_persists_to_disk(tmp_path: Path) -> None:
 
 
 def test_get_runs_empty_artifact_when_no_put(tmp_path: Path) -> None:
-    """GET before any PUT returns empty runs artifact (version=1, runs=[])."""
+    """GET before any PUT returns empty runs artifact (version=1, runs=[]).
+
+    Uses a current (v3) project so no auto-migration seeding occurs.
+    """
     settings = _settings(tmp_path)
-    _seed(settings)
+    _seed(settings)  # registry_version=3 (current) -> no migration seed
     app = build_app(settings)
     with TestClient(app) as client:
         got = client.get(_RUNS_URL)
@@ -152,6 +155,32 @@ def test_get_runs_empty_artifact_when_no_put(tmp_path: Path) -> None:
     data = got.json()
     assert data["runs"] == []
     assert data["version"] == 1
+
+
+def test_get_runs_auto_migrates_v2_project(tmp_path: Path) -> None:
+    """P1.9: a v2 (range-config) project auto-migrates to v3 on GET /runs.
+
+    The migration seeds front/body runs from the legacy ranges, so GET returns
+    a non-empty artifact and the project's registry_version is bumped to 3.
+    """
+    settings = _settings(tmp_path)
+    _seed(settings, registry_version=2)
+    app = build_app(settings)
+    with TestClient(app) as client:
+        got = client.get(_RUNS_URL)
+    assert got.status_code == 200, got.text
+    data = got.json()
+    # Migration seeded the front + body runs from the (default) ranges.
+    assert [r["id"] for r in data["runs"]] == ["frontmatter", "bodymatter"]
+
+    async def _check_version() -> int:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        proj = await db.get_project("proj1")
+        assert proj is not None
+        return proj.registry_version
+
+    assert asyncio.run(_check_version()) == 3
 
 
 def test_put_runs_records_numbering_runs_changed_event(tmp_path: Path) -> None:

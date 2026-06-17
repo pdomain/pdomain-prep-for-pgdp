@@ -60,11 +60,11 @@ def test_v2_project_stage_ids_exactly_8() -> None:
     assert frozenset(V2_PROJECT_STAGE_IDS) == expected
 
 
-def test_registry_version_constant_is_2() -> None:
-    """REGISTRY_VERSION constant must equal 2."""
+def test_registry_version_constant_is_3() -> None:
+    """REGISTRY_VERSION constant must equal 3 (P1.9 bumped it from 2)."""
     from pdomain_prep_for_pgdp.core.pipeline.stage_dag import REGISTRY_VERSION
 
-    assert REGISTRY_VERSION == 2
+    assert REGISTRY_VERSION == 3  # P1.9 bumped REGISTRY_VERSION from 2 → 3
 
 
 def test_v2_stage_dag_covers_all_24_stages() -> None:

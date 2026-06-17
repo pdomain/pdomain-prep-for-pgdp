@@ -179,7 +179,14 @@ def _seed_two_user_projects(settings: Settings) -> None:
 
 
 def test_reorder_pages_basic(tmp_path) -> None:
-    """Reorder [A, B, C] → [C, A, B]: idx0 becomes [0, 1, 2], prefix recomputed."""
+    """Reorder [A, B, C] → [C, A, B]: idx0 becomes [0, 1, 2].
+
+    P1.9 NOTE: prefix values are no longer recomputed by the reorder route
+    when no NumberingRun objects are seeded.  compute_project_prefixes returns
+    "" for every page in that case.  This test verifies that idx0 is updated
+    correctly; prefix value assertions are removed (they were testing v1
+    range-based numbering that no longer exists).
+    """
     settings = _settings(tmp_path)
     _seed_three_page_project(settings)
     app = build_app(settings)
@@ -189,7 +196,7 @@ def test_reorder_pages_basic(tmp_path) -> None:
         assert r.status_code == 200
         pages_before = r.json()["pages"]
         assert len(pages_before) == 3
-        # Order: A (idx0=0, prefix=p000), B (idx0=1, prefix=p001), C (idx0=2, prefix=p002)
+        # Order: A (idx0=0), B (idx0=1), C (idx0=2)
         page_ids = [f"{p['idx0']:04d}" for p in pages_before]
         # Reorder to C, A, B: ["0002", "0000", "0001"]
         new_order = [page_ids[2], page_ids[0], page_ids[1]]
@@ -207,11 +214,6 @@ def test_reorder_pages_basic(tmp_path) -> None:
         assert pages_after[0]["idx0"] == 0
         assert pages_after[1]["idx0"] == 1
         assert pages_after[2]["idx0"] == 2
-
-        # Verify prefix is recomputed (p000, p001, p002 for bodymatter)
-        assert pages_after[0]["prefix"] == "p000"
-        assert pages_after[1]["prefix"] == "p001"
-        assert pages_after[2]["prefix"] == "p002"
 
 
 def test_reorder_pages_preserves_other_fields(tmp_path) -> None:

@@ -1,4 +1,10 @@
-"""resolve_page_config + compute_prefix tests (spec 01)."""
+"""resolve_page_config tests (spec 01).
+
+P1.9 NOTE: compute_prefix (v1) was deleted.  The two tests that called it
+(test_compute_prefix_basic_numbering, test_compute_prefix_with_plate_suffix) are
+removed here.  Equivalent coverage lives in tests/test_numbering_migration.py
+(golden byte-stability) and tests/test_w4_naming_model.py (format assertions).
+"""
 
 from __future__ import annotations
 
@@ -16,7 +22,6 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     SystemDefaults,
 )
-from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
 
 def _page(idx0: int, **kwargs) -> PageRecord:
@@ -84,58 +89,6 @@ def test_blank_and_split_helpers() -> None:
     ]
     assert blank_page_idxs(pages) == [1, 2]
     assert split_source_idxs(pages) == [3]
-
-
-def test_compute_prefix_basic_numbering() -> None:
-    """Spec 01 implementation reference test.
-
-    First frontmatter page should be f001, not f000. Bodymatter starts at p000.
-    """
-    proj = ProjectConfig(
-        book_name="X",
-        source_uri="",
-        proof_start_idx0=10,
-        proof_end_idx0=30,
-        frontmatter_start_idx0=10,
-        frontmatter_end_idx0=14,
-        bodymatter_start_idx0=15,
-        bodymatter_end_idx0=30,
-        frontmatter_page_nbr_start=1,
-        bodymatter_page_nbr_start=1,
-    )
-    pages_by_idx = {i: _page(i) for i in range(10, 31)}
-    assert compute_prefix(10, proj, pages_by_idx) == "f001"
-    assert compute_prefix(14, proj, pages_by_idx) == "f005"
-    assert compute_prefix(15, proj, pages_by_idx) == "p000"
-    assert compute_prefix(5, proj, pages_by_idx) is None
-
-
-def test_compute_prefix_with_plate_suffix() -> None:
-    proj = ProjectConfig(
-        book_name="X",
-        source_uri="",
-        proof_start_idx0=0,
-        proof_end_idx0=5,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=2,
-        bodymatter_start_idx0=3,
-        bodymatter_end_idx0=5,
-    )
-    pages_by_idx = {
-        0: _page(0),
-        1: _page(1, page_type=PageType.plate_p),
-        2: _page(2),
-        3: _page(3),
-        4: _page(4, page_type=PageType.plate_b),
-        5: _page(5),
-    }
-    # Plate pages get a suffix and are not numbered.
-    p1 = compute_prefix(1, proj, pages_by_idx)
-    assert p1 is not None
-    assert p1.endswith("p")
-    p4 = compute_prefix(4, proj, pages_by_idx)
-    assert p4 is not None
-    assert p4.endswith("b")
 
 
 def test_alignment_default_resolves() -> None:

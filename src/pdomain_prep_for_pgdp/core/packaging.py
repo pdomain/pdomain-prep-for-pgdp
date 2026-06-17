@@ -111,10 +111,10 @@ async def build_package(
     illustration_count = 0
     _skip_counter: list[int] = [0]
     cover_prefix: str | None = None
-    title_prefix: str | None = None
 
-    cover_idx0 = project.config.cover_idx0
-    title_idx0 = project.config.title_idx0
+    # P1.9: cover is identified by page_type (cover_idx0/title_idx0 ranges
+    # deleted).  Title aliasing has no runs-model equivalent and is dropped.
+    from .models import PageType as _PageType
 
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for page in sorted(pages, key=lambda p: p.idx0):
@@ -132,8 +132,7 @@ async def build_package(
                 # Cover page: first reading-order output of the cover page is
                 # aliased as `cover.png` so PGDP picks it up automatically.
                 if (
-                    cover_idx0 is not None
-                    and page.idx0 == cover_idx0
+                    page.page_type == _PageType.cover
                     and output.reading_order == 0
                     and img_bytes is not None
                     and cover_prefix is None
@@ -144,9 +143,6 @@ async def build_package(
                 if output.for_zip_text_key and await storage.exists(output.for_zip_text_key):
                     txt_bytes = await storage.get_bytes(output.for_zip_text_key)
                     zf.writestr(f"{output.full_prefix}.txt", txt_bytes)
-
-            if title_idx0 is not None and page.idx0 == title_idx0:
-                title_prefix = page.prefix or page.source_stem
 
             for region in page.illustration_regions:
                 key_stem = f"{page.prefix}_{region.index:02d}"
@@ -176,8 +172,6 @@ async def build_package(
         }
         if cover_prefix is not None:
             manifest["cover_prefix"] = cover_prefix
-        if title_prefix is not None:
-            manifest["title_prefix"] = title_prefix
         zf.writestr("pgdp.json", json.dumps(manifest, indent=2))
 
     package_bytes = buf.getvalue()

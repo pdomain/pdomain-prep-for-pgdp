@@ -1,15 +1,13 @@
-"""Tests-first for cover/title page handling in `build_package`.
+"""Tests for cover page handling in `build_package`.
 
-Spec 02 has `cover_idx0` and `title_idx0` on `ProjectConfig` but no pipeline
-path consumed them yet. PGDP packages typically expect the cover image
-named `cover.png` and the title page is preserved with its normal prefix.
+P1.9 NOTE: `cover_idx0` and `title_idx0` were removed from `ProjectConfig`.
+Cover pages are now identified by `page.page_type == PageType.cover`.
+Title aliasing was also removed — this file only covers cover page behaviour.
+The two tests here verify:
 
-Locks in:
-  - when `cover_idx0` is set and the page has a proofing image, the zip
-    contains `cover.png` (in addition to the normal page entry),
-  - the manifest includes a `"cover_prefix"` field pointing at the cover
-    page's source_stem,
-  - when `cover_idx0` is None, no cover.png is written.
+  - test_cover_image_written_when_page_type_cover: page_type=PageType.cover
+    triggers cover.png alias and cover_prefix in manifest.
+  - test_no_cover_when_no_cover_page: a normal-type page produces no cover.png.
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ from pdomain_prep_for_pgdp.adapters.storage.filesystem import FilesystemStorage
 from pdomain_prep_for_pgdp.core.models import (
     PageOutput,
     PageRecord,
+    PageType,
     Project,
     ProjectConfig,
     ProjectStatus,
@@ -35,7 +34,7 @@ def _now() -> datetime:
     return datetime(2026, 5, 5, tzinfo=UTC)
 
 
-def _project(project_id: str = "pc", *, cover_idx0: int | None = None) -> Project:
+def _project(project_id: str = "pc") -> Project:
     return Project(
         id=project_id,
         owner_id="default",
@@ -48,18 +47,18 @@ def _project(project_id: str = "pc", *, cover_idx0: int | None = None) -> Projec
         config=ProjectConfig(
             book_name="cover-book",
             source_uri="",
-            cover_idx0=cover_idx0,
         ),
         storage_prefix=f"projects/{project_id}/",
     )
 
 
-def _page(project_id: str, idx0: int, prefix: str) -> PageRecord:
+def _page(project_id: str, idx0: int, prefix: str, page_type: PageType = PageType.normal) -> PageRecord:
     return PageRecord(
         project_id=project_id,
         idx0=idx0,
         prefix=prefix,
         source_stem=f"src_{idx0}",
+        page_type=page_type,
         outputs=[
             PageOutput(
                 full_prefix=prefix,
@@ -73,10 +72,14 @@ def _page(project_id: str, idx0: int, prefix: str) -> PageRecord:
 
 
 @pytest.mark.asyncio
-async def test_cover_image_written_when_cover_idx0_set(tmp_path) -> None:
+async def test_cover_image_written_when_page_type_cover(tmp_path) -> None:
+    """P1.9: cover is identified by page_type=PageType.cover, not cover_idx0."""
     storage = FilesystemStorage(root=tmp_path)
-    project = _project("pc", cover_idx0=0)
-    pages = [_page("pc", 0, "f000"), _page("pc", 1, "f001")]
+    project = _project("pc")
+    pages = [
+        _page("pc", 0, "f000", page_type=PageType.cover),
+        _page("pc", 1, "f001"),
+    ]
     for page in pages:
         for output in page.outputs:
             await storage.put_bytes(output.for_zip_image_key, f"png-{page.prefix}".encode())
@@ -101,10 +104,11 @@ async def test_cover_image_written_when_cover_idx0_set(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_cover_when_cover_idx0_is_none(tmp_path) -> None:
+async def test_no_cover_when_no_cover_page(tmp_path) -> None:
+    """When no page has page_type=PageType.cover, no cover.png is written."""
     storage = FilesystemStorage(root=tmp_path)
     project = _project("pc2")
-    pages = [_page("pc2", 0, "f000")]
+    pages = [_page("pc2", 0, "f000")]  # normal type
     for output in pages[0].outputs:
         await storage.put_bytes(output.for_zip_image_key, b"x")
         await storage.put_bytes(output.for_zip_text_key, b"x")

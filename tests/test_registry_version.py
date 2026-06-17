@@ -30,11 +30,11 @@ def test_registry_version_mismatch_error_shape() -> None:
         "project_version": 1,
         "server_version": REGISTRY_VERSION,
     }
-    assert REGISTRY_VERSION == 2
+    assert REGISTRY_VERSION == 3  # P1.9 bumped REGISTRY_VERSION from 2 → 3
 
 
-def test_new_project_row_stamped_registry_version_2(tmp_path: Path) -> None:
-    """Projects created against v2 get registry_version=2 stamped on their row."""
+def test_new_project_row_stamped_registry_version_3(tmp_path: Path) -> None:
+    """Projects created against v3 get registry_version=3 stamped on their row."""
     import asyncio
     from datetime import UTC, datetime
 
@@ -64,7 +64,7 @@ def test_new_project_row_stamped_registry_version_2(tmp_path: Path) -> None:
         await db.put_project(project)
         loaded = await db.get_project("proj-v2-test")
         assert loaded is not None
-        assert loaded.registry_version == 2
+        assert loaded.registry_version == 3  # P1.9 bumped REGISTRY_VERSION from 2 → 3
 
     asyncio.run(_run())
 

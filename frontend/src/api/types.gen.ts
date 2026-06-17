@@ -712,33 +712,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Put Page Order Runs
-         * @description Persist the N-run folio schema for the page_order stage.
-         *
-         *     Writes the runs list as JSON to
-         *     ``<data_root>/projects/<id>/stages/page_order/runs.json``.
-         *     Records a SettingsChange event in PrepProjectAggregate.
-         *     Emits a project-stage-status SSE (settings-changed sub-type).
-         *
-         *     W4 Group 2 — N-run schema persist (seam-remediation plan).
-         */
-        put: operations["put_page_order_runs"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/data/projects/{project_id}/project-stages/page_order/naming": {
         parameters: {
             query?: never;
@@ -1346,6 +1319,41 @@ export interface paths {
          *     that have no page-level override for that field. Appends a SettingsChange event.
          */
         put: operations["put_project_stage_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/data/projects/{project_id}/project-stages/page_order/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Page Order Runs
+         * @description Return the persisted NumberingRunsArtifact for the page_order stage.
+         *
+         *     Returns an empty artifact (version=1, runs=[]) if the project exists but
+         *     no runs have been PUT yet.  Returns 404 if the project is not found or
+         *     belongs to a different user.
+         */
+        get: operations["get_page_order_runs"];
+        /**
+         * Put Page Order Runs
+         * @description Persist the typed N-run folio schema for the page_order stage.
+         *
+         *     Validates the body as a NumberingRunsArtifact, writes it atomically to
+         *     ``<data_root>/projects/<id>/stages/page_order/runs.json``, and records
+         *     a NumberingRunsChanged event in PrepProjectAggregate (warn-and-continue).
+         *     Emits a project-stage-status SSE (settings-changed sub-type).
+         *
+         *     P1.8 — replaces the W4 Group 2 stub (same URL, richer schema).
+         */
+        put: operations["put_page_order_runs"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3057,6 +3065,11 @@ export interface components {
              */
             block: string;
         };
+        /**
+         * LeafRole
+         * @enum {string}
+         */
+        LeafRole: "text" | "plate" | "blank" | "skip" | "cover";
         /** ListPagesResponse */
         ListPagesResponse: {
             /** Pages */
@@ -3065,6 +3078,58 @@ export interface components {
             next_cursor?: string | null;
             /** Total */
             total: number;
+        };
+        /**
+         * NumberingRun
+         * @description One numbering run — design-source: final/page_order/pr-data.js:41-48.
+         */
+        NumberingRun: {
+            /** Id */
+            id: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** @default arabic */
+            style: components["schemas"]["RunStyle"];
+            /** @default set */
+            start_mode: components["schemas"]["StartMode"];
+            /**
+             * Start
+             * @default 1
+             */
+            start: number;
+            /**
+             * Step
+             * @default 1
+             */
+            step: number;
+            /** @default text */
+            role: components["schemas"]["LeafRole"];
+            /** Span */
+            span?: [
+                number,
+                number
+            ] | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
+         * NumberingRunsArtifact
+         * @description Project-scoped runs artifact (PUT body + stored JSON).
+         */
+        NumberingRunsArtifact: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+            /** Runs */
+            runs?: components["schemas"]["NumberingRun"][];
         };
         /** OcrWord */
         OcrWord: {
@@ -3439,7 +3504,7 @@ export interface components {
             source_zip_bytes: number;
             /**
              * Registry Version
-             * @default 2
+             * @default 3
              */
             registry_version: number;
         };
@@ -3454,50 +3519,6 @@ export interface components {
              * @default
              */
             author: string;
-            /**
-             * Proof Start Idx0
-             * @default 0
-             */
-            proof_start_idx0: number;
-            /**
-             * Proof End Idx0
-             * @default 0
-             */
-            proof_end_idx0: number;
-            /** Cover Idx0 */
-            cover_idx0: number | null;
-            /** Title Idx0 */
-            title_idx0: number | null;
-            /**
-             * Frontmatter Start Idx0
-             * @default 0
-             */
-            frontmatter_start_idx0: number;
-            /**
-             * Frontmatter End Idx0
-             * @default 0
-             */
-            frontmatter_end_idx0: number;
-            /**
-             * Bodymatter Start Idx0
-             * @default 0
-             */
-            bodymatter_start_idx0: number;
-            /**
-             * Bodymatter End Idx0
-             * @default 0
-             */
-            bodymatter_end_idx0: number;
-            /**
-             * Frontmatter Page Nbr Start
-             * @default 1
-             */
-            frontmatter_page_nbr_start: number;
-            /**
-             * Bodymatter Page Nbr Start
-             * @default 1
-             */
-            bodymatter_page_nbr_start: number;
             /**
              * Initial Crop All
              * @default [
@@ -3616,6 +3637,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * RunStyle
+         * @enum {string}
+         */
+        RunStyle: "roman-lower" | "roman-upper" | "arabic" | "alpha" | "none";
         /** SearchHitResponse */
         SearchHitResponse: {
             /** Page Id */
@@ -3685,6 +3711,11 @@ export interface components {
              */
             async: boolean;
         };
+        /**
+         * StartMode
+         * @enum {string}
+         */
+        StartMode: "set" | "continue";
         /** SuggestIllustrationsRequest */
         SuggestIllustrationsRequest: {
             /** Project Id */
@@ -4086,26 +4117,6 @@ export interface components {
             naming: {
                 [key: string]: unknown;
             };
-        };
-        /**
-         * _PageOrderRunsRequest
-         * @description PUT /project-stages/page_order/runs request body.
-         *
-         *     ``runs`` is an ordered list of run descriptors.  Each run defines a
-         *     contiguous block of pages with a shared style:
-         *       start_idx  — 0-based index into the proof range where this run begins.
-         *       style      — folio number style: "roman", "arabic", or "letters".
-         *       number_start — first folio number in the run (1-indexed, typically 1).
-         *       type_code  — section type letter: "f" (frontmatter) or "p" (bodymatter).
-         *
-         *     Persisted as JSON at:
-         *       <data_root>/projects/<id>/stages/page_order/runs.json
-         */
-        _PageOrderRunsRequest: {
-            /** Runs */
-            runs: {
-                [key: string]: unknown;
-            }[];
         };
         /**
          * _PersistLayoutRequest
@@ -5355,55 +5366,6 @@ export interface operations {
             };
         };
     };
-    put_page_order_runs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["_PageOrderRunsRequest"];
-            };
-        };
-        responses: {
-            /** @description N-run schema persisted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Project not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Registry version mismatch. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     put_page_order_naming: {
         parameters: {
             query?: never;
@@ -6437,6 +6399,98 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_page_order_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description NumberingRunsArtifact; empty runs list if not yet written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_page_order_runs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NumberingRunsArtifact"];
+            };
+        };
+        responses: {
+            /** @description Runs persisted; returns {stage_id, run_count}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid NumberingRunsArtifact body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

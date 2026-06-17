@@ -38,14 +38,17 @@ def test_manifest_version_is_2() -> None:
     assert MANIFEST_VERSION == 2
 
 
-def test_manifest_v2_marker_has_no_number(tmp_path: object) -> None:
-    """Blank leaves assigned to a run must show MARKER, not consume a counter.
+def test_manifest_v2_counted_blank_vs_marker(tmp_path: object) -> None:
+    """Counted blank (blank+run) consumes a number; marker (blank+run:None) does not.
 
-    Sequence: normal(idx0=0) → blank(idx0=1) → normal(idx0=2)
-    All assigned to an arabic run starting at 1.
-    Expected labels: "1", "[Blank Page]", "2"
-    (The blank is assigned to the run so it has run_id set, but its leaf_role
-    is LeafRole.blank — compute_labels assigns MARKER for blanks in a run.)
+    Per the numbering-runs design (docs/plans/2026-06-17-page-numbering-runs-model.md
+    §compute_labels): a ``role:blank`` leaf WITH a run is COUNTED (consumes a
+    folio); a ``role:blank`` leaf with ``run:None`` is the ``[Blank Page]``
+    marker (held out of the count).
+
+    Sequence: normal(0) → counted-blank(1, run) → marker-blank(2, run:None) →
+    normal(3, run).  Expected labels: "1", "2", "[Blank Page]", "3"
+    (the marker did NOT consume; the counted blank DID).
     """
     from pdomain_prep_for_pgdp.core.numbering import MARKER
 
@@ -53,12 +56,14 @@ def test_manifest_v2_marker_has_no_number(tmp_path: object) -> None:
     pages = [
         _page(0, PageType.normal),
         _page(1, PageType.blank),
-        _page(2, PageType.normal),
+        _page(2, PageType.blank),
+        _page(3, PageType.normal),
     ]
     leaf_assignments: dict[int, tuple[LeafRole, str | None]] = {
         0: (LeafRole.text, "body"),
-        1: (LeafRole.blank, "body"),
-        2: (LeafRole.text, "body"),
+        1: (LeafRole.blank, "body"),  # counted blank
+        2: (LeafRole.blank, None),  # [Blank Page] marker
+        3: (LeafRole.text, "body"),
     }
     raw = materialize_naming_manifest(
         project_id="p",
@@ -73,17 +78,21 @@ def test_manifest_v2_marker_has_no_number(tmp_path: object) -> None:
 
     by_idx = {e["idx0"]: e for e in manifest["pages"]}
 
-    # idx0=0: first numbered text leaf → label "1"
-    assert by_idx[0]["label"] == "1", f"expected '1' for idx0=0, got {by_idx[0]['label']!r}"
+    # idx0=0: first numbered text leaf → "1"
+    assert by_idx[0]["label"] == "1", f"got {by_idx[0]['label']!r}"
     assert by_idx[0]["run_id"] == "body"
 
-    # idx0=1: blank assigned to run → MARKER; does NOT consume counter
-    assert by_idx[1]["label"] == MARKER, f"expected MARKER for idx0=1, got {by_idx[1]['label']!r}"
+    # idx0=1: counted blank (blank + run) → consumes → "2"
+    assert by_idx[1]["label"] == "2", f"got {by_idx[1]['label']!r}"
     assert by_idx[1]["run_id"] == "body"
 
-    # idx0=2: next text leaf → "2" (not "3" — blank did not consume)
-    assert by_idx[2]["label"] == "2", f"expected '2' for idx0=2, got {by_idx[2]['label']!r}"
-    assert by_idx[2]["run_id"] == "body"
+    # idx0=2: marker (blank + run:None) → MARKER, does NOT consume
+    assert by_idx[2]["label"] == MARKER, f"got {by_idx[2]['label']!r}"
+    assert by_idx[2]["run_id"] is None
+
+    # idx0=3: next text leaf → "3" (marker did not consume; counted blank did)
+    assert by_idx[3]["label"] == "3", f"got {by_idx[3]['label']!r}"
+    assert by_idx[3]["run_id"] == "body"
 
 
 def test_manifest_v2_has_label_and_run_id_keys(tmp_path: object) -> None:

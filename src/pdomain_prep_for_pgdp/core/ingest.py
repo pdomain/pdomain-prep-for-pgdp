@@ -74,10 +74,10 @@ async def unzip_source(
 ) -> IngestResult:
     """Extract source files (or list a folder), create one PageRecord per image.
 
-    Pages land with `page_type=normal`, no thumbnail, no auto-detection. A
-    follow-up `generate_thumbnails` job creates the JPGs. Page ranges
-    (`proof_start_idx0`, `proof_end_idx0`) on the project default to 0 and
-    will be updated after the user clicks through the Configure page.
+    Pages land with `page_type=normal`, `ignore=False`, no thumbnail, no
+    auto-detection. A follow-up `generate_thumbnails` job creates the JPGs and
+    seeds a default numbering run (P1.9 — page ranges were removed; numbering
+    lives in the NumberingRun runs model).
 
     ``zip_limits`` is forwarded to ``_check_zip_limits`` when extracting a
     zip source. When ``None``, limits are read from env vars via a fresh
@@ -129,9 +129,10 @@ async def unzip_source(
             idx0=valid_idx0,
             prefix="",
             source_stem=entry.stem,
-            ignore=(
-                valid_idx0 < project.config.proof_start_idx0 or valid_idx0 > project.config.proof_end_idx0
-            ),
+            # P1.9: proof ranges deleted from ProjectConfig.  All ingested pages
+            # start in-proof (ignore=False); the user excludes pages via the
+            # Source tool (page_role back/duplicate -> page_type=skip) instead.
+            ignore=False,
             source_blob_hash=source_hash,
         )
         set_extension(ops_record, "prep", ext)
@@ -315,6 +316,19 @@ async def generate_thumbnails(
             page_agg.set_extension("prep", updated_ext_data)
         page_service.store.save_page(page_agg)
         updated_count += 1
+
+    # Seed a default numbering run so the new project is numbered out of the
+    # box (P1.9 — replaces the old default front/body ranges).  Needs a
+    # concrete data_root to reach the runs store + page extensions.
+    if data_root is not None:
+        from pathlib import Path as _Path
+
+        from pdomain_prep_for_pgdp.core.numbering_migration import seed_default_runs
+
+        try:
+            seed_default_runs(_Path(data_root), project.id)
+        except Exception as _e_seed:  # pragma: no cover - non-fatal
+            log.warning("seed_default_runs failed (non-fatal): %s", _e_seed)
 
     # Advance project to configuring — thumbnails are done.
     project = project.model_copy(

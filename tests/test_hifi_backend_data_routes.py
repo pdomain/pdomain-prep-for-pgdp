@@ -659,16 +659,20 @@ def test_insert_page_list_shows_all(tmp_path: Path) -> None:
 
 
 def test_insert_page_prefixes_consistent_after_insert(tmp_path: Path) -> None:
-    """After insert, GET /pages shows non-empty prefixes on all in-range pages.
+    """After insert, GET /pages shows correct idx0 values for all pages.
 
-    Regression test for: insert_page previously left the new page with prefix=""
-    and didn't recompute the shifted tail pages, so they could show stale prefixes.
+    P1.9 NOTE: The old test asserted non-empty prefixes after insert because
+    assign_prefixes was called as a side-effect of insert.  assign_prefixes is
+    deleted in P1.9.  Prefixes are now computed from NumberingRun objects via
+    compute_project_prefixes, which is only triggered on the reorder route.
+    With no runs seeded, all prefixes remain "" after insert.
+
+    This test now verifies the structural correctness of insert: the idx0 values
+    shift correctly, the page count is updated, and no page is ignored.
     """
     settings = _settings(tmp_path)
     project_id = "ins12"
 
-    # Seed two pages with pre-assigned prefixes so assign_prefixes can verify
-    # the shifted tail page is still in-range and gets a fresh prefix.
     pages = [
         PageRecord(project_id=project_id, idx0=0, prefix="000f001", source_stem="img0001"),
         PageRecord(project_id=project_id, idx0=1, prefix="001p001", source_stem="img0002"),
@@ -684,7 +688,7 @@ def test_insert_page_prefixes_consistent_after_insert(tmp_path: Path) -> None:
         )
         assert r.status_code == 200, r.text
 
-        # Fetch all pages and verify prefix consistency.
+        # Fetch all pages and verify structural consistency.
         r2 = client.get(f"/api/data/projects/{project_id}/pages?limit=100")
         assert r2.status_code == 200
         body = r2.json()
@@ -692,16 +696,21 @@ def test_insert_page_prefixes_consistent_after_insert(tmp_path: Path) -> None:
 
         by_idx = {p["idx0"]: p for p in body["pages"]}
 
-        # The newly inserted page at idx0=1 should have a non-empty prefix
-        # (assign_prefixes recomputes it from the updated config ranges).
-        assert by_idx[1]["prefix"] != "", (
-            "inserted page prefix must be recomputed after insert, not left empty"
+        # Three pages at idx0 [0, 1, 2].
+        assert set(by_idx.keys()) == {0, 1, 2}
+
+        # The newly inserted page at idx0=1 exists with empty prefix (no runs seeded).
+        # P1.9: prefix recomputation requires explicit runs via PUT page_order/runs +
+        # a subsequent reorder call.
+        # The inserted page gets a generated source_stem (not empty).
+        assert by_idx[1]["source_stem"] != "", "inserted page must have a source_stem"
+
+        # The shifted page (was idx0=1, now idx0=2) must retain its source_stem.
+        assert by_idx[2]["source_stem"] == "img0002", (
+            f"shifted tail page source_stem should be 'img0002', got {by_idx[2]['source_stem']!r}"
         )
 
-        # The shifted page (was idx0=1, now idx0=2) must also have a valid prefix.
-        assert by_idx[2]["prefix"] != "", "shifted tail page prefix must be recomputed after insert"
-
-        # No page should be ignore=True — all three are in-range normal pages.
+        # No page should be ignore=True.
         for page in body["pages"]:
             assert page["ignore"] is False, f"page idx0={page['idx0']} should not be ignored after insert"
 

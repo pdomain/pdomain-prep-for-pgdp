@@ -105,6 +105,128 @@ def compute_labels(leaves: list[Leaf], runs: list[NumberingRun]) -> dict[int, st
     return labels
 
 
+def compute_ordinals(leaves: list[Leaf], runs: list[NumberingRun]) -> dict[int, int]:
+    """Return ``{scan: ordinal}`` — the raw arabic number each leaf consumes.
+
+    This is the *ordinal* a leaf consumes within its run (1-based from the
+    run's effective start), independent of the run's display style.  A roman
+    front-matter leaf with ``start=1`` consumes ordinal ``1`` even though its
+    display label is ``"i"``.  Leaves that consume no number (plates, markers,
+    skips, cover, out-of-run) are absent from the returned map.
+
+    Used by :func:`compute_prefixes_from_runs` to reproduce the legacy v2
+    filename folio component (which was always arabic, regardless of the
+    section's display style).
+    """
+    runs_by_id = {r.id: r for r in runs}
+    run_pos = {r.id: i for i, r in enumerate(runs)}
+    counters: dict[str, int] = {}
+    last_number: dict[str, int] = {}
+    ordinals: dict[int, int] = {}
+
+    def effective_start(run: NumberingRun) -> int:
+        if run.start_mode is StartMode.set:
+            return run.start
+        for prev in reversed(runs[: run_pos[run.id]]):
+            if prev.style is not RunStyle.none and prev.id in last_number:
+                return last_number[prev.id] + run.step
+        return run.start
+
+    for leaf in leaves:
+        run = runs_by_id.get(leaf.run_id) if leaf.run_id else None
+        if leaf.leaf_role is LeafRole.plate or run is None:
+            continue
+        count = counters.get(run.id, 0)
+        n = effective_start(run) + count * run.step
+        counters[run.id] = count + 1
+        last_number[run.id] = n
+        ordinals[leaf.scan] = n
+
+    return ordinals
+
+
+_PLATE_SIDE_SUFFIX = {"recto": "p", "verso": "b"}
+"""Plate-side → legacy v2 filename suffix.
+
+Migration mapping (numbering_migration._ROLE_MAP):
+  plate_p → recto, plate_b/plate_r → verso.
+The legacy v2 filename suffix was the PageType letter: plate_p→"p",
+plate_b→"b", plate_r→"r".  recto unambiguously maps back to "p"; verso was
+either "b" or "r" in the legacy world.  We emit "b" for verso (the dominant
+case); an explicit per-leaf override carries the original letter when needed.
+"""
+
+
+def compute_prefixes_from_runs(
+    leaves: list[Leaf],
+    runs: list[NumberingRun],
+    *,
+    proof_start: int,
+    seq_width: int,
+    plate_suffixes: dict[int, str] | None = None,
+) -> dict[int, str | None]:
+    """Reproduce the legacy v2 ``<seq><type><folio?>`` filename prefix from runs.
+
+    This is the byte-stable replacement for ``compute_prefix_v2``.  Format
+    (CT-decided, W4 Group 2):
+
+      - ``seq``  = ``scan - proof_start``, zero-padded to ``seq_width`` digits.
+      - ``type`` = ``"e"`` (cover), or section letter (``"f"`` front / ``"p"``
+        body) optionally followed by a plate suffix.
+      - ``folio`` = the leaf's arabic ordinal within its run, 3-digit padded;
+        omitted for cover and plate leaves.
+
+    Skip leaves and leaves with no run that are not cover/plate/blank return
+    ``None`` (excluded from the package).
+
+    Args:
+        leaves: leaves in binding order.
+        runs: numbering runs (front run = smallest span-start).
+        proof_start: scan index of the first in-proof leaf (``seq`` origin).
+        seq_width: 3 (≤999 proof pages) or 4 (>999).
+        plate_suffixes: optional ``{scan: "b"|"p"|"r"}`` to preserve the exact
+            legacy plate letter; defaults to the plate-side mapping.
+
+    Returns:
+        ``{scan: prefix | None}``.
+    """
+    _suffixes = plate_suffixes or {}
+    ordinals = compute_ordinals(leaves, runs)
+
+    # Front-section span = the earliest-starting run's span; its bounds the
+    # frontmatter section.  Reproduces the legacy idx0-in-frontmatter test.
+    spans: list[tuple[int, int]] = [r.span for r in runs if r.span is not None]
+    front_span: tuple[int, int] | None = min(spans, key=lambda s: s[0]) if spans else None
+
+    def section_letter(scan: int) -> str:
+        if front_span is not None and front_span[0] <= scan <= front_span[1]:
+            return "f"
+        return "p"
+
+    out: dict[int, str | None] = {}
+    for leaf in leaves:
+        scan = leaf.scan
+        seq_str = f"{scan - proof_start:0{seq_width}d}"
+        if leaf.leaf_role is LeafRole.skip:
+            out[scan] = None
+            continue
+        if leaf.leaf_role is LeafRole.cover:
+            out[scan] = f"{seq_str}e"
+            continue
+        if leaf.leaf_role is LeafRole.plate:
+            suffix = _suffixes.get(scan, "b")
+            out[scan] = f"{seq_str}{section_letter(scan)}{suffix}"
+            continue
+        # text / blank numbered leaf — needs a consumed ordinal.
+        n = ordinals.get(scan)
+        if n is None:
+            # No run assignment and not a special role: excluded (legacy None).
+            out[scan] = None
+            continue
+        out[scan] = f"{seq_str}{section_letter(scan)}{n:03d}"
+    return out
+
+
 def reconcile(labels: dict[int, str], leaves: list[Leaf]) -> dict[int, list[str]]:
     """Derive reconciliation flags from computed labels vs OCR folios.
 

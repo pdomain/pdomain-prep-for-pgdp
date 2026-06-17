@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -45,45 +45,6 @@ def _make_clean_page(tmp_path: Path, project_id: str, page_id: str) -> None:
     txt_dir.mkdir(parents=True, exist_ok=True)
     (txt_dir / "output.txt").write_text("text\n", encoding="utf-8")
     (txt_dir / "attestation.json").write_bytes(json.dumps({"status": "clean"}).encode())
-
-
-def _make_project_cfg(
-    n_front: int = 10,
-    n_body: int = 10,
-) -> Any:
-    """Build a minimal ProjectConfig for prefix tests."""
-    from pdomain_prep_for_pgdp.core.models import ProjectConfig
-
-    total = n_front + n_body
-    return ProjectConfig(
-        book_name="Test Book",
-        source_uri="",
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=n_front - 1,
-        frontmatter_page_nbr_start=1,
-        bodymatter_start_idx0=n_front,
-        bodymatter_end_idx0=total - 1,
-        bodymatter_page_nbr_start=1,
-        proof_start_idx0=0,
-        proof_end_idx0=total - 1,
-    )
-
-
-def _make_pages_by_idx(n: int, plate_idx: int | None = None) -> dict[int, Any]:
-    """Build pages_by_idx dict for compute_prefix tests."""
-    from pdomain_prep_for_pgdp.core.models import PageRecord, PageType
-
-    result = {}
-    for i in range(n):
-        pt = PageType.plate_b if i == plate_idx else PageType.normal
-        result[i] = PageRecord(
-            project_id="test",
-            idx0=i,
-            prefix="",
-            source_stem=f"src_{i:04d}",
-            page_type=pt,
-        )
-    return result
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -290,84 +251,122 @@ class TestValidatePackageNaming:
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# 3. compute_prefix output compliance — regression guard
+# 3. compute_prefixes_from_runs output compliance — regression guard
+#
+# P1.9 NOTE: compute_prefix (v1) was deleted.  The five tests that called it
+# are ported here to use compute_prefixes_from_runs via the LegacyRanges
+# migration helper.  The behavioural intent is unchanged: verify that the
+# prefix alphabet (f/p + digits + optional b/p/r suffix) never violates PGDP
+# filename rules.
 # ────────────────────────────────────────────────────────────────────────────
 
 
+def _prefixes_via_runs(
+    n_front: int,
+    n_body: int,
+    plate_idx: int | None = None,
+    all_plates: bool = False,
+) -> dict[int, str | None]:
+    """Build prefixes using the P1.9 runs model (migration helper path)."""
+    from pdomain_prep_for_pgdp.core.models import PageType
+    from pdomain_prep_for_pgdp.core.numbering import Leaf, compute_prefixes_from_runs
+    from pdomain_prep_for_pgdp.core.numbering_migration import (
+        LegacyRanges,
+        page_type_to_leaf_role,
+        seed_runs_from_ranges,
+    )
+
+    total = n_front + n_body
+    rg = LegacyRanges(
+        proof_start_idx0=0,
+        proof_end_idx0=total - 1,
+        frontmatter_start_idx0=0,
+        frontmatter_end_idx0=n_front - 1,
+        frontmatter_page_nbr_start=1,
+        bodymatter_start_idx0=n_front,
+        bodymatter_end_idx0=total - 1,
+        bodymatter_page_nbr_start=1,
+    )
+
+    legacy_plate = {PageType.plate_b: "b", PageType.plate_p: "p", PageType.plate_r: "r"}
+    if all_plates:
+        page_types = dict.fromkeys(range(total), PageType.plate_b)
+    else:
+        page_types = {i: (PageType.plate_b if i == plate_idx else PageType.normal) for i in range(total)}
+
+    plate_suffixes = {s: legacy_plate[pt] for s, pt in page_types.items() if pt in legacy_plate}
+    runs, assign = seed_runs_from_ranges(rg, page_types)
+    leaves = [
+        Leaf(scan=s, leaf_role=page_type_to_leaf_role(page_types[s])[0], run_id=assign.get(s))
+        for s in range(total)
+    ]
+    seq_width = 4 if total > 999 else 3
+    return compute_prefixes_from_runs(
+        leaves,
+        runs,
+        proof_start=rg.proof_start_idx0,
+        seq_width=seq_width,
+        plate_suffixes=plate_suffixes,
+    )
+
+
 class TestComputePrefixCompliance:
-    """Verify that compute_prefix never emits a prefix that violates PGDP rules."""
+    """Verify that compute_prefixes_from_runs never emits a prefix violating PGDP rules."""
 
-    def test_frontmatter_prefix_f001_complies(self) -> None:
+    def test_frontmatter_prefix_f_complies(self) -> None:
         from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import validate_pgdp_filename
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
-        cfg = _make_project_cfg(n_front=10, n_body=10)
-        pages_by_idx = _make_pages_by_idx(20)
-        prefix = compute_prefix(0, cfg, pages_by_idx)
+        prefixes = _prefixes_via_runs(n_front=10, n_body=10)
+        prefix = prefixes[0]
         assert prefix is not None
-        assert prefix.startswith("f")
+        # v2 format: <seq:3><type><folio>, e.g. "000f001" — type letter 'f' is present
+        assert "f" in prefix
         assert validate_pgdp_filename(prefix, ".png") == []
         assert validate_pgdp_filename(prefix, ".txt") == []
 
     def test_bodymatter_prefix_complies(self) -> None:
         from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import validate_pgdp_filename
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
-        cfg = _make_project_cfg(n_front=10, n_body=10)
-        pages_by_idx = _make_pages_by_idx(20)
-        prefix = compute_prefix(10, cfg, pages_by_idx)
+        prefixes = _prefixes_via_runs(n_front=10, n_body=10)
+        prefix = prefixes[10]
         assert prefix is not None
-        assert prefix.startswith("p")
+        # v2 format: <seq:3><type><folio>, e.g. "010p001" — type letter 'p' is present
+        assert "p" in prefix
         assert validate_pgdp_filename(prefix, ".png") == []
         assert validate_pgdp_filename(prefix, ".txt") == []
 
     def test_plate_suffix_prefix_complies(self) -> None:
         from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import validate_pgdp_filename
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
-        cfg = _make_project_cfg(n_front=5, n_body=5)
-        pages_by_idx = _make_pages_by_idx(10, plate_idx=7)
-        prefix = compute_prefix(7, cfg, pages_by_idx)
+        prefixes = _prefixes_via_runs(n_front=5, n_body=5, plate_idx=7)
+        prefix = prefixes[7]
         assert prefix is not None
-        # plate_b suffix is "b" → e.g. "p001b"
+        # plate_b suffix is "b" → e.g. "007b"
         assert prefix.endswith("b")
         assert validate_pgdp_filename(prefix, ".png") == []
 
     def test_prefix_never_contains_ad_substring(self) -> None:
-        """Exhaustive check: compute_prefix cannot produce the 'ad' substring.
+        """Exhaustive check: prefixes cannot produce the 'ad' substring.
 
         The prefix alphabet is f/p + digits 0-9 + optional suffix b/p/r.
         None of these can form 'ad'. This test validates the assertion
         for the entire practical range (pages 0-999).
         """
         from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import validate_pgdp_filename
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
-        n = 1000
-        cfg = _make_project_cfg(n_front=500, n_body=500)
-        pages_by_idx = _make_pages_by_idx(n)
-        for i in range(n):
-            prefix = compute_prefix(i, cfg, pages_by_idx)
+        prefixes = _prefixes_via_runs(n_front=500, n_body=500)
+        for i, prefix in prefixes.items():
             if prefix is not None:
                 errs = validate_pgdp_filename(prefix, ".png")
-                assert errs == [], f"prefix {prefix!r} violates PGDP rules: {errs}"
+                assert errs == [], f"idx0={i} prefix {prefix!r} violates PGDP rules: {errs}"
 
     def test_prefix_max_length_is_within_limit(self) -> None:
-        """compute_prefix output is always ≤8 chars (max is p999b = 5 chars)."""
+        """compute_prefixes_from_runs output is always ≤8 chars."""
         from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import validate_pgdp_filename
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
-        n = 1000
-        cfg = _make_project_cfg(n_front=500, n_body=500)
         # All plate_b to hit the longest possible suffix variant
-        pages_by_idx = _make_pages_by_idx(n)
-        from pdomain_prep_for_pgdp.core.models import PageType
-
-        for k in pages_by_idx:
-            pages_by_idx[k].page_type = PageType.plate_b
-
-        for i in range(n):
-            prefix = compute_prefix(i, cfg, pages_by_idx)
+        prefixes = _prefixes_via_runs(n_front=500, n_body=500, all_plates=True)
+        for prefix in prefixes.values():
             if prefix is not None:
                 assert len(prefix) <= 8, f"prefix {prefix!r} is too long ({len(prefix)} chars)"
                 assert validate_pgdp_filename(prefix, ".png") == []

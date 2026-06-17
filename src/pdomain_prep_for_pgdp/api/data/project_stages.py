@@ -86,6 +86,7 @@ from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
 from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     RegistryVersionMismatchError,
     check_registry_version,
+    migrate_if_needed,
 )
 from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
     V2_STAGE_IMPL,
@@ -95,6 +96,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
 )
 
 if TYPE_CHECKING:
+    from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
     from pdomain_prep_for_pgdp.core.models import Project
 
 log = logging.getLogger(__name__)
@@ -143,13 +145,22 @@ def _registry_mismatch_response(exc: RegistryVersionMismatchError) -> JSONRespon
     return JSONResponse(status_code=409, content=exc.as_dict())
 
 
-def _check_registry(project: Project) -> JSONResponse | None:
-    """Return 409 JSONResponse if the project is on a legacy registry version, else None."""
+async def _check_registry(
+    project: Project,
+    db: IDatabase,
+    data_root: Path,
+) -> tuple[JSONResponse | None, Project]:
+    """Auto-migrate v2->v3 then return (409-or-None, current project).
+
+    A v2 (range-config) project is migrated to v3 (runs) in place before the
+    check; only pre-v2 (v1) projects 409.
+    """
+    project = await migrate_if_needed(project, db, data_root)
     try:
         check_registry_version(project)
-        return None
+        return None, project
     except RegistryVersionMismatchError as exc:
-        return _registry_mismatch_response(exc)
+        return _registry_mismatch_response(exc), project
 
 
 # ─── PipelineSnapshot route ───────────────────────────────────────────────────
@@ -240,8 +251,9 @@ async def get_pipeline_snapshot(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     project_stages = _lazy_init_project_stages(store, project_id)
@@ -278,8 +290,9 @@ async def list_project_stages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     rows = _lazy_init_project_stages(store, project_id)
@@ -308,8 +321,9 @@ async def get_project_stage(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     row = store.read(project_id, stage_id)
@@ -357,8 +371,9 @@ async def run_project_stage(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
 
@@ -504,8 +519,9 @@ async def run_project_ocr_batch(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Gate: at least one page must have a clean post_ocr_crop stage before
     # we bother loading the predictor.  This mirrors the early-exit in
@@ -615,8 +631,9 @@ async def get_project_stage_artifact(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     row = store.read(project_id, stage_id)
@@ -669,8 +686,9 @@ async def get_build_package_manifest(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     row = store.read(project_id, "build_package")
@@ -752,8 +770,9 @@ async def get_zip_manifest(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     row = store.read(project_id, "zip")
@@ -833,8 +852,9 @@ async def confirm_submit_check(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Mark the submit_check stage as clean in the ProjectStageStore.
     import time as _time
@@ -939,8 +959,9 @@ async def _confirm_stage_impl(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     now_ts = _time.time()
     now_iso = datetime.now(UTC).isoformat()
@@ -1260,8 +1281,9 @@ async def put_page_order_naming(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Persist naming.json to the page_order stage directory.
     stage_dir = settings.data_root / "projects" / project_id / "stages" / "page_order"
@@ -1403,8 +1425,9 @@ async def get_project_stage_pages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Fetch all page records (order by idx0).
     all_pages = list_page_records(page_service, project_id)
@@ -1465,8 +1488,9 @@ async def rerun_project_stage_pages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Mark each requested page as dirty for this stage.
     updated_rows: list[dict[str, object]] = []
@@ -1540,8 +1564,9 @@ async def get_ocr_page_tokens(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Find the text key for this page from the event store.
     all_pages = list_page_records(page_service, project_id)
@@ -1628,8 +1653,9 @@ async def scan_hyphen_candidates(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     all_pages = list_page_records(page_service, project_id)
 
@@ -1729,8 +1755,9 @@ async def get_stage_crop_pages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     all_pages = list_page_records(page_service, project_id)
     all_stages = await db.list_page_stages_by_project(project_id)
@@ -1810,8 +1837,9 @@ async def wordcheck_accept_dict(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # At I1: no real dictionary-fix data model exists. Return empty list.
     # TODO(W4-I2): implement real dictionary-fix acceptance.
@@ -1845,8 +1873,9 @@ async def wordcheck_accept_high(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # At I1: no real candidate model. Return empty list.
     # TODO(W4-I2): implement real high-confidence acceptance.
@@ -1886,8 +1915,9 @@ async def text_review_approve_low_risk(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # At I1: no real risk-scoring model. Return empty list.
     # TODO(W4-I2): implement real low-risk approval.
@@ -1932,8 +1962,9 @@ async def waive_validation_rule(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     waiver_dir = settings.data_root / "projects" / project_id / "stages" / "validation"
     waiver_dir.mkdir(parents=True, exist_ok=True)
@@ -1990,8 +2021,9 @@ async def toggle_archive_item(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     archive_dir = settings.data_root / "projects" / project_id / "stages" / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
@@ -2052,8 +2084,9 @@ async def get_text_zones_pages_aggregate(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     all_pages = list_page_records(page_service, project_id)
     all_stages = await db.list_page_stages_by_project(project_id)
@@ -2165,8 +2198,9 @@ async def redetect_text_zones_layout(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2261,8 +2295,9 @@ async def persist_text_zones_layout(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2343,8 +2378,9 @@ async def stream_project_stage_events(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     store = _get_store(settings.data_root, project_id)
     project_stages = _lazy_init_project_stages(store, project_id)
@@ -2500,8 +2536,9 @@ async def get_regex_rules(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     rules = _load_regex_rules(settings.data_root, project_id)
     counts = _regex_counts(rules)
@@ -2555,8 +2592,9 @@ async def apply_regex_rule(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     rules = _load_regex_rules(settings.data_root, project_id)
     rule_idx = next((i for i, r in enumerate(rules) if r.get("id") == rule_id), None)
@@ -2738,8 +2776,9 @@ async def detect_grayscale_profile(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Detect GPU availability using the same mechanism as the stage dispatcher.
     # cupy_available() checks whether a working CuDA/cupy install exists; but
@@ -2859,8 +2898,9 @@ async def detect_illustration_regions(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     regions = _load_illustration_regions(settings.data_root, project_id)
 
@@ -2955,8 +2995,9 @@ async def persist_illustration_region(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry(project)) is not None:
-        return rv
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     regions = _load_illustration_regions(settings.data_root, project_id)
     idx = next((i for i, r in enumerate(regions) if r.get("id") == region_id), None)

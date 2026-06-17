@@ -316,6 +316,21 @@ class SqliteDatabase:
 
         return await self._run(_go)
 
+    async def get_project_raw_config(self, project_id: str) -> dict[str, object] | None:
+        import json as _json
+
+        def _go() -> dict[str, object] | None:
+            with self._cursor() as cur:
+                _ = cur.execute("SELECT body FROM projects WHERE id = ?", (project_id,))
+                row = _fetch_optional_json_text_row(cur)
+                if not row:
+                    return None
+                body = _json.loads(row[0])
+                cfg = body.get("config")
+                return cfg if isinstance(cfg, dict) else None
+
+        return await self._run(_go)
+
     async def put_project(self, project: Project) -> None:
         body = project.model_dump_json()
         ts = project.updated_at.timestamp()

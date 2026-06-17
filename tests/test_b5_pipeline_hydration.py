@@ -200,7 +200,7 @@ def test_pipeline_snapshot_409_v1_project(tmp_path):
     body = r.json()
     assert body["error"] == "registry_version_mismatch"
     assert body["project_version"] == 1
-    assert body["server_version"] == 2
+    assert body["server_version"] == 3  # P1.9 bumped REGISTRY_VERSION from 2 → 3
 
 
 def test_pipeline_snapshot_automation_defaults(tmp_path):

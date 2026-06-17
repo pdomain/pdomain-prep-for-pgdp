@@ -185,6 +185,16 @@ def put_page_records(service: PageService, pages: list[PageRecord]) -> None:
             manual_ignore=ext.manual_ignore,  # preserve manual flag; callers that want to mutate it use update_page_extension
             page_type=rec.page_type,
             page_role=rec.page_role,
+            # Numbering-runs leaf fields (P1) are NOT on the PageRecord wire
+            # shape — preserve them from the existing extension so bulk
+            # PageRecord rewrites (reorder, prefix recompute) don't wipe the
+            # v3 migration's classification.
+            leaf_role=ext.leaf_role,
+            run_id=ext.run_id,
+            label_override=ext.label_override,
+            plate_tag=ext.plate_tag,
+            plate_side=ext.plate_side,
+            ocr_folio=ext.ocr_folio,
             alignment=rec.alignment,
             config_overrides=rec.config_overrides,
             splits=rec.splits,

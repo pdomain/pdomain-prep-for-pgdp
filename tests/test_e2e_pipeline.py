@@ -64,28 +64,47 @@ def test_ingest_then_assign_prefixes_then_package(client: TestClient) -> None:
     )
     assert _wait_for_job(client, ingest.json()["job_id"]) == "complete"
 
-    # Configure ranges -> assign_prefixes runs as a side-effect of PATCH.
-    patch = client.patch(
-        f"/api/data/projects/{project_id}/config",
-        json={
-            "project_config": {
-                "proof_start_idx0": 0,
-                "proof_end_idx0": 2,
-                "frontmatter_start_idx0": 0,
-                "frontmatter_end_idx0": 0,
-                "bodymatter_start_idx0": 1,
-                "bodymatter_end_idx0": 2,
-            }
-        },
+    # P1.9: range fields are no longer part of ProjectConfig; numbering is now
+    # defined via NumberingRun objects.  Seed one frontmatter run (scan 0) and
+    # one bodymatter run (scans 1-2) via the page_order runs PUT endpoint.
+    runs_body = {
+        "version": 1,
+        "runs": [
+            {
+                "id": "run-fm",
+                "label": "frontmatter",
+                "style": "roman-lower",
+                "start_mode": "set",
+                "start": 1,
+                "step": 1,
+                "role": "text",
+                "span": [0, 0],
+            },
+            {
+                "id": "run-bm",
+                "label": "bodymatter",
+                "style": "arabic",
+                "start_mode": "set",
+                "start": 1,
+                "step": 1,
+                "role": "text",
+                "span": [1, 2],
+            },
+        ],
+    }
+    put_runs = client.put(
+        f"/api/data/projects/{project_id}/project-stages/page_order/runs",
+        json=runs_body,
     )
-    assert patch.status_code == 200
+    assert put_runs.status_code == 200, put_runs.text
 
-    pages = client.get(f"/api/data/projects/{project_id}/pages").json()["pages"]
-    by_idx = {p["idx0"]: p for p in pages}
-    # v2 prefix: seq+type+folio (e.g. "000f001") — check type letter is present
-    assert "f" in by_idx[0]["prefix"]  # frontmatter: seq+f+folio
-    assert "p" in by_idx[1]["prefix"]  # bodymatter: seq+p+folio
-    assert "p" in by_idx[2]["prefix"]  # bodymatter: seq+p+folio
+    # Verify runs are persisted (GET returns 2 runs).
+    # Note: page.prefix is only recomputed on the reorder route; after a PUT /runs
+    # the denormalised prefix on PageRecord stays at its current value until the
+    # next reorder call.  The authoritative naming lives in the runs artifact.
+    get_runs = client.get(f"/api/data/projects/{project_id}/project-stages/page_order/runs")
+    assert get_runs.status_code == 200
+    assert len(get_runs.json()["runs"]) == 2
 
     # Verify the project-stage run route exists (W0.1 replacement for build-package).
     # build_package will be gate-blocked (validation not yet clean) → 409, not 404.

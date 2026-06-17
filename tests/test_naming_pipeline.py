@@ -1,20 +1,25 @@
-"""Tests for the naming pipeline: skip/cover PageType, naming manifest, build_package wiring.
+"""Tests for the naming pipeline: naming manifest, build_package wiring.
 
-TDD-first for:
-  1. compute_prefix with skip and cover PageType values
-  2. assign_prefixes with skip (ignore=True) and cover (c-prefix)
+P1.9 NOTE: compute_prefix (v1) and assign_prefixes were deleted.
+  - Section 1 (TestComputePrefixSkipCover) is removed; equivalent coverage in
+    tests/test_numbering_migration.py golden tests.
+  - Section 2 (assign_prefixes integration tests) is removed; assign_prefixes no
+    longer exists. Equivalent coverage: tests/test_page_order_runs_route.py.
+  - Sections 3-6 (materialize_naming_manifest, load_naming_manifest,
+    build_submission_zip, build_package_v2_cpu) are KEPT unchanged — those
+    functions still exist with the same API.
+
+Remaining TDD-first for:
   3. materialize_naming_manifest: JSON schema, skip_ids, prefix computation
   4. load_naming_manifest: present, absent, wrong version
   5. build_submission_zip: skip pages excluded from zip
   6. build_package_v2_cpu: loads manifest from disk when page_prefixes=None
-  7. Route-level: PATCH page_type=skip → page_order stale → re-run regenerates manifest
 """
 
 from __future__ import annotations
 
 import json
 import zipfile
-from datetime import UTC, datetime
 from pathlib import Path  # used at runtime (tmp_path construction)
 
 import pytest
@@ -22,37 +27,17 @@ import pytest
 from pdomain_prep_for_pgdp.core.models import (
     PageRecord,
     PageType,
-    Project,
     ProjectConfig,
-    ProjectStatus,
 )
-from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _cfg(
-    *,
-    proof_start: int = 0,
-    proof_end: int = 10,
-    fm_start: int = 0,
-    fm_end: int = 2,
-    bm_start: int = 3,
-    bm_end: int = 10,
-    fm_nbr_start: int = 1,
-    bm_nbr_start: int = 1,
-) -> ProjectConfig:
+def _cfg() -> ProjectConfig:
+    """Minimal config — range fields dropped in P1.9; naming driven by runs."""
     return ProjectConfig(
         book_name="test",
         source_uri="",
-        proof_start_idx0=proof_start,
-        proof_end_idx0=proof_end,
-        frontmatter_start_idx0=fm_start,
-        frontmatter_end_idx0=fm_end,
-        bodymatter_start_idx0=bm_start,
-        bodymatter_end_idx0=bm_end,
-        frontmatter_page_nbr_start=fm_nbr_start,
-        bodymatter_page_nbr_start=bm_nbr_start,
     )
 
 
@@ -66,224 +51,12 @@ def _page(project_id: str, idx0: int, page_type: PageType = PageType.normal) -> 
     )
 
 
-def _project(project_id: str = "p1", **cfg_kwargs) -> Project:
-    now = datetime.now(UTC)
-    return Project(
-        id=project_id,
-        owner_id="default",
-        name="t",
-        created_at=now,
-        updated_at=now,
-        status=ProjectStatus.configuring,
-        page_count=0,
-        proof_page_count=0,
-        config=ProjectConfig(book_name="t", source_uri="", **cfg_kwargs),
-        storage_prefix=f"projects/{project_id}/",
-    )
-
-
-# ─── 1. compute_prefix: skip and cover ────────────────────────────────────────
-
-
-class TestComputePrefixSkipCover:
-    def test_skip_returns_none_inside_proof_range(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=5, fm_start=0, fm_end=2, bm_start=3, bm_end=5)
-        pages = {2: _page("p", 2, PageType.skip)}
-        assert compute_prefix(2, cfg, pages) is None
-
-    def test_skip_outside_range_also_none(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=3, fm_start=0, fm_end=1, bm_start=2, bm_end=3)
-        pages = {5: _page("p", 5, PageType.skip)}
-        assert compute_prefix(5, cfg, pages) is None
-
-    def test_cover_returns_c_prefix(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=5, fm_start=0, fm_end=2, bm_start=3, bm_end=5)
-        pages = {0: _page("p", 0, PageType.cover)}
-        result = compute_prefix(0, cfg, pages)
-        assert result is not None
-        assert result.startswith("c")
-
-    def test_cover_numbered_c001(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=5, fm_start=0, fm_end=2, bm_start=3, bm_end=5)
-        pages = {0: _page("p", 0, PageType.cover)}
-        assert compute_prefix(0, cfg, pages) == "c001"
-
-    def test_multiple_cover_pages_get_sequential_c_numbers(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=5, fm_start=0, fm_end=2, bm_start=3, bm_end=5)
-        pages = {
-            0: _page("p", 0, PageType.cover),
-            1: _page("p", 1, PageType.cover),
-        }
-        assert compute_prefix(0, cfg, pages) == "c001"
-        assert compute_prefix(1, cfg, pages) == "c002"
-
-    def test_cover_does_not_consume_frontmatter_number(self) -> None:
-        """Cover page before frontmatter should not shift f001 → f002."""
-        cfg = _cfg(proof_start=0, proof_end=5, fm_start=0, fm_end=2, bm_start=3, bm_end=5)
-        pages = {
-            0: _page("p", 0, PageType.cover),
-            1: _page("p", 1, PageType.normal),  # first fm page
-            2: _page("p", 2, PageType.normal),
-        }
-        assert compute_prefix(0, cfg, pages) == "c001"
-        # Frontmatter numbering should start at f001 (cover not counted in fm run)
-        assert compute_prefix(1, cfg, pages) == "f001"
-        assert compute_prefix(2, cfg, pages) == "f002"
-
-    def test_normal_blank_unchanged(self) -> None:
-        """Ensure existing normal/blank behavior is not regressed.
-
-        The existing compute_prefix has a known off-by-one: bodymatter_page_nbr_start=1
-        produces "p000" for the first body page (not "p001"). This is preserved
-        and must not be changed by the skip/cover additions.
-        """
-        cfg = _cfg(proof_start=0, proof_end=4, fm_start=0, fm_end=1, bm_start=2, bm_end=4)
-        pages = {
-            0: _page("p", 0, PageType.normal),
-            1: _page("p", 1, PageType.blank),
-            2: _page("p", 2, PageType.normal),
-        }
-        assert compute_prefix(0, cfg, pages) == "f001"
-        assert compute_prefix(1, cfg, pages) == "f002"
-        # Known existing behavior: first bodymatter page with bm_nbr_start=1 → "p000"
-        assert compute_prefix(2, cfg, pages) == "p000"
-
-    def test_plate_suffix_unchanged(self) -> None:
-        cfg = _cfg(proof_start=0, proof_end=3, fm_start=0, fm_end=0, bm_start=1, bm_end=3)
-        pages = {
-            0: _page("p", 0, PageType.normal),
-            1: _page("p", 1, PageType.normal),
-            2: _page("p", 2, PageType.plate_p),
-            3: _page("p", 3, PageType.normal),
-        }
-        assert compute_prefix(2, cfg, pages) is not None
-        assert compute_prefix(2, cfg, pages).endswith("p")  # type: ignore[union-attr]
-
-
-# ─── 2. assign_prefixes: skip + cover ─────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_assign_prefixes_skip_gets_empty_prefix_and_ignore(tmp_path: Path) -> None:
-    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
-    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
-    from pdomain_prep_for_pgdp.settings import Settings
-    from tests.fixtures.seed_pages import seed_pages_in_store
-
-    project = _project(
-        "p1",
-        proof_start_idx0=0,
-        proof_end_idx0=3,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=1,
-        bodymatter_start_idx0=2,
-        bodymatter_end_idx0=3,
-    )
-    settings = Settings(
-        host="127.0.0.1",
-        port=8765,
-        data_root=tmp_path / "data",
-        config_dir=tmp_path / "config",
-        storage_backend="filesystem",
-        database_url=f"sqlite:///{(tmp_path / 's.db').as_posix()}",
-        auth_mode="none",
-        gpu_backend="cpu",
-        dispatch_interval_seconds=0,
-    )
-    db = SqliteDatabase(f"sqlite:///{(tmp_path / 's.db').as_posix()}")
-    await db.initialize()
-    await db.put_project(project)
-    seed_pages_in_store(
-        settings,
-        project.id,
-        [
-            _page(project.id, 0, PageType.skip),  # inside proof range — should be ignored
-            _page(project.id, 1, PageType.normal),
-            _page(project.id, 2, PageType.normal),
-            _page(project.id, 3, PageType.normal),
-        ],
-    )
-    svc = build_page_service(settings.data_root, project.id)
-    await assign_prefixes(project=project, page_service=svc)
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-    # skip page: prefix="" and ignore=True despite being inside proof range
-    assert by_idx[0].ignore is True
-    assert by_idx[0].prefix == ""
-    # normal pages: prefix non-empty and ignore=False
-    assert by_idx[1].ignore is False
-    assert by_idx[1].prefix != ""
-
-
-@pytest.mark.asyncio
-async def test_assign_prefixes_cover_gets_v2_e_prefix(tmp_path: Path) -> None:
-    """assign_prefixes uses compute_prefix_v2: cover gets seq+e (e.g. '000e'), not 'c001'."""
-    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
-    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
-    from pdomain_prep_for_pgdp.settings import Settings
-    from tests.fixtures.seed_pages import seed_pages_in_store
-
-    project = _project(
-        "p2",
-        proof_start_idx0=0,
-        proof_end_idx0=3,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=1,
-        bodymatter_start_idx0=2,
-        bodymatter_end_idx0=3,
-    )
-    settings = Settings(
-        host="127.0.0.1",
-        port=8765,
-        data_root=tmp_path / "data",
-        config_dir=tmp_path / "config",
-        storage_backend="filesystem",
-        database_url=f"sqlite:///{(tmp_path / 's.db').as_posix()}",
-        auth_mode="none",
-        gpu_backend="cpu",
-        dispatch_interval_seconds=0,
-    )
-    db = SqliteDatabase(f"sqlite:///{(tmp_path / 's.db').as_posix()}")
-    await db.initialize()
-    await db.put_project(project)
-    seed_pages_in_store(
-        settings,
-        project.id,
-        [
-            _page(project.id, 0, PageType.cover),
-            _page(project.id, 1, PageType.normal),
-            _page(project.id, 2, PageType.normal),
-            _page(project.id, 3, PageType.normal),
-        ],
-    )
-    svc = build_page_service(settings.data_root, project.id)
-    await assign_prefixes(project=project, page_service=svc)
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-    # v2: cover page at idx0=0 → seq=0 → "000e"
-    assert by_idx[0].prefix == "000e", f"expected v2 '000e', got {by_idx[0].prefix!r}"
-    assert by_idx[0].ignore is False
-    # frontmatter pages should have v2 prefix with "f" in it (e.g. "001f001")
-    assert "f" in by_idx[1].prefix, f"expected 'f' in frontmatter v2 prefix, got {by_idx[1].prefix!r}"
-
-
 # ─── 3. materialize_naming_manifest ───────────────────────────────────────────
 
 
 class TestMaterializeNamingManifest:
     def _pages_and_cfg(self) -> tuple[list[PageRecord], ProjectConfig]:
-        cfg = _cfg(
-            proof_start=0,
-            proof_end=4,
-            fm_start=0,
-            fm_end=1,
-            bm_start=2,
-            bm_end=4,
-        )
+        cfg = _cfg()
         pages = [
             _page("proj", 0, PageType.cover),
             _page("proj", 1, PageType.normal),
@@ -343,11 +116,31 @@ class TestMaterializeNamingManifest:
         )
 
     def test_normal_pages_have_v2_prefix_format(self, tmp_path: Path) -> None:
-        """v2 manifest: normal pages use seq+f/p+folio format (e.g. '001f001')."""
+        """v2 manifest: normal pages use seq+f/p+folio format (e.g. '001f001').
+
+        P1.9: prefixes require NumberingRun objects.  Pass runs + leaf_assignments
+        so the two normal pages (idx0=1,2) get non-None prefixes.
+        """
+        from pdomain_prep_for_pgdp.core.models import LeafRole, NumberingRun, RunStyle
         from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import materialize_naming_manifest
 
         pages, cfg = self._pages_and_cfg()
-        parsed = json.loads(materialize_naming_manifest("proj", pages, cfg, tmp_path))
+        # Single bodymatter run covering the two normal pages (scans 1 and 2).
+        run = NumberingRun(id="run-bm", role=LeafRole.text, style=RunStyle.arabic, start=1, span=(1, 2))
+        leaf_assignments = {
+            1: (LeafRole.text, "run-bm"),
+            2: (LeafRole.text, "run-bm"),
+        }
+        parsed = json.loads(
+            materialize_naming_manifest(
+                "proj",
+                pages,
+                cfg,
+                tmp_path,
+                runs=[run],
+                leaf_assignments=leaf_assignments,
+            )
+        )
         normal_entries = [e for e in parsed["pages"] if e["role"] == "normal"]
         for e in normal_entries:
             assert e["prefix"] is not None

@@ -43,6 +43,15 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.numbering import Leaf as _Leaf
+from pdomain_prep_for_pgdp.core.numbering import compute_prefixes_from_runs as _cpfr
+from pdomain_prep_for_pgdp.core.numbering_migration import LegacyRanges as _LegacyRanges
+from pdomain_prep_for_pgdp.core.numbering_migration import (
+    page_type_to_leaf_role as _pt2lr,
+)
+from pdomain_prep_for_pgdp.core.numbering_migration import (
+    seed_runs_from_ranges as _seed,
+)
 from pdomain_prep_for_pgdp.settings import Settings
 from tests.fixtures.seed_pages import seed_pages_in_store
 
@@ -110,264 +119,140 @@ def _seed_project(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Unit tests: compute_prefix_v2
+# Unit tests: prefix format (ported from compute_prefix_v2 → compute_prefixes_from_runs)
 # ─────────────────────────────────────────────────────────────────────────────
+#
+# P1.9: compute_prefix_v2 was deleted.  These tests now drive
+# compute_prefixes_from_runs directly with migration-seeded runs, using the
+# same frozen byte-stable expectations established during the cross-check.
+# The canonical helper pattern mirrors tests/test_numbering_migration.py.
+
+
+def _prefixes(
+    page_types: dict[int, PageType],
+    *,
+    proof_start: int = 0,
+    proof_end: int | None = None,
+    fm_start: int = 0,
+    fm_end: int | None = None,
+    bm_start: int | None = None,
+    bm_end: int | None = None,
+    fm_nbr_start: int = 1,
+    bm_nbr_start: int = 1,
+) -> dict[int, str | None]:
+    """Build LegacyRanges, seed runs, compute prefixes — canonical helper."""
+    scans = sorted(page_types)
+    n = len(scans)
+    if proof_end is None:
+        proof_end = scans[-1]
+    if fm_end is None:
+        fm_end = scans[n // 2 - 1] if n > 1 else proof_end
+    if bm_start is None:
+        bm_start = fm_end + 1
+    if bm_end is None:
+        bm_end = proof_end
+    rg = _LegacyRanges(
+        proof_start_idx0=proof_start,
+        proof_end_idx0=proof_end,
+        frontmatter_start_idx0=fm_start,
+        frontmatter_end_idx0=fm_end,
+        frontmatter_page_nbr_start=fm_nbr_start,
+        bodymatter_start_idx0=bm_start,
+        bodymatter_end_idx0=bm_end,
+        bodymatter_page_nbr_start=bm_nbr_start,
+    )
+    runs, assign = _seed(rg, page_types)
+    leaves = [_Leaf(scan=s, leaf_role=_pt2lr(page_types[s])[0], run_id=assign.get(s)) for s in scans]
+    legacy_plate = {PageType.plate_b: "b", PageType.plate_p: "p", PageType.plate_r: "r"}
+    plate_suffixes = {s: legacy_plate[pt] for s, pt in page_types.items() if pt in legacy_plate}
+    seq_width = 4 if (proof_end - proof_start + 1) > 999 else 3
+    return _cpfr(leaves, runs, proof_start=proof_start, seq_width=seq_width, plate_suffixes=plate_suffixes)
 
 
 class TestComputePrefixV2Format:
-    """compute_prefix_v2 produces <seq:3-4><type><folio?> format."""
-
-    def _make_pages(self, count: int, types: dict[int, PageType] | None = None) -> dict[int, PageRecord]:
-        """Create a mapping of idx0 -> PageRecord for testing."""
-        pages = {}
-        for i in range(count):
-            pt = (types or {}).get(i, PageType.normal)
-            pages[i] = PageRecord(
-                project_id="proj1",
-                idx0=i,
-                prefix="",
-                source_stem=f"src{i}",
-                processing_status=PageProcessingStatus.pending,
-                page_type=pt,
-            )
-        return pages
+    """Prefix format: <seq:3-4><type><folio?> — ported to compute_prefixes_from_runs."""
 
     def test_normal_page_frontmatter_format(self) -> None:
         """Normal frontmatter page: seq+f+folio (e.g. 000f001)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=4,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10)
-        result = compute_prefix_v2(0, config, pages)
-        # seq=000, type=f, folio=001
-        assert result == "000f001"
+        # proof 0..9, fm 0..4, bm 5..9
+        pts = dict.fromkeys(range(10), PageType.normal)
+        result = _prefixes(pts, proof_end=9, fm_end=4, bm_start=5, bm_end=9)
+        assert result[0] == "000f001"
 
     def test_normal_page_bodymatter_format(self) -> None:
         """Normal bodymatter page: seq+p+folio (e.g. 005p001)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=4,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10)
-        result = compute_prefix_v2(5, config, pages)
-        # seq=005, type=p, folio=001
-        assert result == "005p001"
+        pts = dict.fromkeys(range(10), PageType.normal)
+        result = _prefixes(pts, proof_end=9, fm_end=4, bm_start=5, bm_end=9)
+        assert result[5] == "005p001"
 
     def test_cover_page_uses_type_e(self) -> None:
         """Cover pages use type letter 'e' (CT decision)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=1,
-            frontmatter_end_idx0=9,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10, {0: PageType.cover})
-        result = compute_prefix_v2(0, config, pages)
-        # cover: seq=000, type=e (no folio number)
-        assert result is not None
-        assert result.startswith("000e")
+        pts = dict.fromkeys(range(10), PageType.normal)
+        pts[0] = PageType.cover
+        # cover at 0, fm starts at 1
+        result = _prefixes(pts, proof_end=9, fm_start=1, fm_end=9, bm_start=5, bm_end=9)
+        assert result[0] is not None
+        assert result[0].startswith("000e")
 
     def test_skip_page_returns_none(self) -> None:
         """Skip pages return None (excluded from package)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=9,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10, {3: PageType.skip})
-        result = compute_prefix_v2(3, config, pages)
-        assert result is None
+        pts = dict.fromkeys(range(10), PageType.normal)
+        pts[3] = PageType.skip
+        result = _prefixes(pts, proof_end=9, fm_end=4, bm_start=5, bm_end=9)
+        assert result[3] is None
 
     def test_out_of_range_page_returns_none(self) -> None:
-        """Pages outside proof range return None."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=2,
-            proof_end_idx0=8,
-            frontmatter_start_idx0=2,
-            frontmatter_end_idx0=4,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=8,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10)
-        assert compute_prefix_v2(0, config, pages) is None  # before range
-        assert compute_prefix_v2(9, config, pages) is None  # after range
+        """Pages outside proof range return None (not assigned to any run)."""
+        # proof 2..8, fm 2..4, bm 5..8; pages 0,1,9 are outside
+        pts = dict.fromkeys(range(10), PageType.normal)
+        result = _prefixes(pts, proof_start=2, proof_end=8, fm_start=2, fm_end=4, bm_start=5, bm_end=8)
+        assert result[0] is None  # before range
+        assert result[9] is None  # after range
 
     def test_plate_page_gets_plate_suffix(self) -> None:
-        """Plate pages include plate type suffix (b/p/r) after type letter."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=9,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10, {3: PageType.plate_p})
-        result = compute_prefix_v2(3, config, pages)
-        assert result is not None
-        # seq=003, type=f, plate suffix=p (no separate folio)
-        assert result.startswith("003f")
-        assert result.endswith("p")
+        """Plate pages include plate type suffix (b/p/r) — no separate folio."""
+        pts = dict.fromkeys(range(10), PageType.normal)
+        pts[3] = PageType.plate_p
+        # all 10 in fm run (proof 0..9, fm 0..9)
+        result = _prefixes(pts, proof_end=9, fm_end=9, bm_start=5, bm_end=9)
+        assert result[3] is not None
+        assert result[3].startswith("003f")
+        assert result[3].endswith("p")
 
     def test_seq_is_zero_padded_3_digits(self) -> None:
         """For small books (≤999 pages), seq is 3 zero-padded digits."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=99,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=99,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=50,
-            bodymatter_end_idx0=99,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(100)
-        result = compute_prefix_v2(12, config, pages)
-        assert result is not None
-        # seq should be "012"
-        assert result[:3] == "012"
+        pts = dict.fromkeys(range(100), PageType.normal)
+        result = _prefixes(pts, proof_end=99, fm_end=49, bm_start=50, bm_end=99)
+        assert result[12] is not None
+        assert result[12][:3] == "012"
 
     def test_folio_counter_increments(self) -> None:
         """Folio counter increments for each numbered page."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=9,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = self._make_pages(10)
-        p0 = compute_prefix_v2(0, config, pages)
-        p1 = compute_prefix_v2(1, config, pages)
-        p2 = compute_prefix_v2(2, config, pages)
-        assert p0 == "000f001"
-        assert p1 == "001f002"
-        assert p2 == "002f003"
+        pts = dict.fromkeys(range(10), PageType.normal)
+        result = _prefixes(pts, proof_end=9, fm_end=9, bm_start=5, bm_end=9)
+        assert result[0] == "000f001"
+        assert result[1] == "001f002"
+        assert result[2] == "002f003"
 
     def test_prefix_length_within_pgdp_limit(self) -> None:
         """All generated prefixes are ≤ 8 chars (PGDP naming rule)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=99,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=49,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=50,
-            bodymatter_end_idx0=99,
-            bodymatter_page_nbr_start=1,
-        )
-        types: dict[int, PageType] = {5: PageType.cover, 10: PageType.plate_p, 20: PageType.skip}
-        pages = {
-            i: PageRecord(
-                project_id="proj1",
-                idx0=i,
-                prefix="",
-                source_stem=f"src{i}",
-                processing_status=PageProcessingStatus.pending,
-                page_type=types.get(i, PageType.normal),
-            )
-            for i in range(100)
+        types: dict[int, PageType] = {
+            **dict.fromkeys(range(100), PageType.normal),
+            5: PageType.cover,
+            10: PageType.plate_p,
+            20: PageType.skip,
         }
-        for i in range(100):
-            prefix = compute_prefix_v2(i, config, pages)
+        # cover at 5 is inside fm; fm 0..49, bm 50..99
+        result = _prefixes(types, proof_end=99, fm_start=0, fm_end=49, bm_start=50, bm_end=99)
+        for scan, prefix in result.items():
             if prefix is not None:
-                assert len(prefix) <= 8, f"prefix {prefix!r} for scan {i} is too long"
+                assert len(prefix) <= 8, f"prefix {prefix!r} for scan {scan} is too long"
 
     def test_sort_order_equals_binding_order(self) -> None:
-        """Prefixes sort lexicographically in binding order (guaranteed by seq prefix)."""
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2
-
-        config = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=9,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=4,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=5,
-            bodymatter_end_idx0=9,
-            bodymatter_page_nbr_start=1,
-        )
-        pages = {
-            i: PageRecord(
-                project_id="proj1",
-                idx0=i,
-                prefix="",
-                source_stem=f"src{i}",
-                processing_status=PageProcessingStatus.pending,
-                page_type=PageType.normal,
-            )
-            for i in range(10)
-        }
-        prefixes = [compute_prefix_v2(i, config, pages) for i in range(10)]
-        non_none = [p for p in prefixes if p is not None]
-        # lexicographic sort must equal reading order
+        """Prefixes sort lexicographically in binding order (seq prefix guarantees it)."""
+        pts = dict.fromkeys(range(10), PageType.normal)
+        result = _prefixes(pts, proof_end=9, fm_end=4, bm_start=5, bm_end=9)
+        non_none = [result[i] for i in sorted(result) if result[i] is not None]
         assert non_none == sorted(non_none)
 
 
@@ -650,11 +535,12 @@ class TestPageOrderNamingRoute:
 
 
 class TestPageOrderStageWiredPath:
-    """End-to-end wired-path tests: materialize_naming_manifest → load_naming_manifest → v2 prefixes.
+    """End-to-end wired-path: materialize_naming_manifest (with runs) → load_naming_manifest.
 
-    These tests exercise the full production seam:
-      page_order stage invokes compute_prefix_v2 → JSON manifest written to disk →
-      load_naming_manifest reads it back → consumers see v2 prefixes and export_name.
+    P1.9: config-based prefix derivation was removed.  These tests now pass
+    ``runs=`` + ``leaf_assignments=`` to materialize_naming_manifest so the
+    manifest carries real v2 prefixes, mirroring the production call from
+    page_order_v2_cpu.
     """
 
     def _make_pages(
@@ -678,12 +564,38 @@ class TestPageOrderStageWiredPath:
             )
         return pages
 
-    def test_stage_output_uses_v2_prefixes(self, tmp_path: Path) -> None:
-        """page_order stage emits v2 manifest: seq+type+folio, not v1 f001/c001.
+    def _seed_runs_for_pages(
+        self,
+        page_types: dict[int, PageType],
+        *,
+        fm_end: int,
+        bm_start: int,
+        bm_end: int,
+    ):  # type: ignore[return]
+        """Seed runs via LegacyRanges helper, matching the migration seeder."""
+        from pdomain_prep_for_pgdp.core.numbering_migration import (
+            LegacyRanges,
+            page_type_to_leaf_role,
+            seed_runs_from_ranges,
+        )
 
-        Runs materialize_naming_manifest then loads the manifest via
-        load_naming_manifest.  Asserts the round-trip carries v2 prefixes.
-        """
+        scans = sorted(page_types)
+        rg = LegacyRanges(
+            proof_start_idx0=scans[0],
+            proof_end_idx0=scans[-1],
+            frontmatter_start_idx0=scans[0],
+            frontmatter_end_idx0=fm_end,
+            frontmatter_page_nbr_start=1,
+            bodymatter_start_idx0=bm_start,
+            bodymatter_end_idx0=bm_end,
+            bodymatter_page_nbr_start=1,
+        )
+        runs, assign = seed_runs_from_ranges(rg, page_types)
+        leaf_assignments = {s: (page_type_to_leaf_role(page_types[s])[0], assign.get(s)) for s in scans}
+        return runs, leaf_assignments
+
+    def test_stage_output_uses_v2_prefixes(self, tmp_path: Path) -> None:
+        """page_order stage emits v2 manifest: seq+type+folio format round-trips."""
         import json
 
         from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import (
@@ -691,31 +603,26 @@ class TestPageOrderStageWiredPath:
             materialize_naming_manifest,
         )
 
-        cfg = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=4,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=1,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=2,
-            bodymatter_end_idx0=4,
-            bodymatter_page_nbr_start=1,
+        cfg = ProjectConfig(book_name="test", source_uri="")
+        page_types = {
+            0: PageType.cover,
+            1: PageType.normal,
+            2: PageType.normal,
+            3: PageType.normal,
+            4: PageType.normal,
+        }
+        pages = self._make_pages(5, types=page_types)
+        # cover at 0, fm 1..1, bm 2..4
+        runs, leaf_assignments = self._seed_runs_for_pages(page_types, fm_end=1, bm_start=2, bm_end=4)
+        manifest_bytes = materialize_naming_manifest(
+            "proj", pages, cfg, tmp_path, runs=runs, leaf_assignments=leaf_assignments
         )
-        pages = self._make_pages(
-            5,
-            types={0: PageType.cover},
-        )
-        # Run the stage function (pure function path).
-        manifest_bytes = materialize_naming_manifest("proj", pages, cfg, tmp_path)
 
         # Write to disk to test load_naming_manifest round-trip.
         manifest_path = tmp_path / "projects" / "proj" / "stages" / "page_order" / "output.json"
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_bytes(manifest_bytes)
 
-        # Load via the manifest loader.
         manifest = load_naming_manifest(tmp_path, "proj")
         prefixes = manifest.page_prefixes()
 
@@ -738,23 +645,25 @@ class TestPageOrderStageWiredPath:
             materialize_naming_manifest,
         )
 
-        cfg = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=4,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=2,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=3,
-            bodymatter_end_idx0=4,
-            bodymatter_page_nbr_start=1,
+        cfg = ProjectConfig(book_name="test", source_uri="")
+        page_types = {
+            0: PageType.normal,
+            1: PageType.normal,
+            2: PageType.skip,
+            3: PageType.normal,
+            4: PageType.normal,
+        }
+        pages = self._make_pages(5, types=page_types)
+        runs, leaf_assignments = self._seed_runs_for_pages(page_types, fm_end=1, bm_start=2, bm_end=4)
+        manifest_bytes = materialize_naming_manifest(
+            "proj",
+            pages,
+            cfg,
+            tmp_path,
+            numeric_export=True,
+            runs=runs,
+            leaf_assignments=leaf_assignments,
         )
-        pages = self._make_pages(
-            5,
-            types={2: PageType.skip},
-        )
-        manifest_bytes = materialize_naming_manifest("proj", pages, cfg, tmp_path, numeric_export=True)
 
         manifest_path = tmp_path / "projects" / "proj" / "stages" / "page_order" / "output.json"
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -780,20 +689,18 @@ class TestPageOrderStageWiredPath:
             materialize_naming_manifest,
         )
 
-        cfg = ProjectConfig(
-            book_name="test",
-            source_uri="",
-            proof_start_idx0=0,
-            proof_end_idx0=3,
-            frontmatter_start_idx0=0,
-            frontmatter_end_idx0=1,
-            frontmatter_page_nbr_start=1,
-            bodymatter_start_idx0=2,
-            bodymatter_end_idx0=3,
-            bodymatter_page_nbr_start=1,
+        cfg = ProjectConfig(book_name="test", source_uri="")
+        page_types = {
+            0: PageType.normal,
+            1: PageType.skip,
+            2: PageType.normal,
+            3: PageType.normal,
+        }
+        pages = self._make_pages(4, types=page_types, project_id="proj2")
+        runs, leaf_assignments = self._seed_runs_for_pages(page_types, fm_end=1, bm_start=2, bm_end=3)
+        manifest_bytes = materialize_naming_manifest(
+            "proj2", pages, cfg, tmp_path, runs=runs, leaf_assignments=leaf_assignments
         )
-        pages = self._make_pages(4, types={1: PageType.skip})
-        manifest_bytes = materialize_naming_manifest("proj2", pages, cfg, tmp_path)
 
         manifest_path = tmp_path / "projects" / "proj2" / "stages" / "page_order" / "output.json"
         manifest_path.parent.mkdir(parents=True, exist_ok=True)

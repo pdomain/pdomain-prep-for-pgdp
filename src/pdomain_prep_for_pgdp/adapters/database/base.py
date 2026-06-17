@@ -64,6 +64,17 @@ class IDatabase(Protocol):
 
     async def get_project(self, project_id: str) -> Project | None: ...
 
+    async def get_project_raw_config(self, project_id: str) -> dict[str, object] | None:
+        """Return the project's RAW stored ``config`` dict, or None if absent.
+
+        Unlike ``get_project`` (which parses into ``Project`` and silently
+        drops fields removed from ``ProjectConfig``), this returns the config
+        sub-object straight from the stored JSON.  The v2->v3 numbering
+        migration relies on this to read the legacy frontmatter/bodymatter
+        range fields that were deleted from ``ProjectConfig`` in P1.9.
+        """
+        ...
+
     async def put_project(self, project: Project) -> None: ...
 
     async def delete_project(self, project_id: str) -> None: ...

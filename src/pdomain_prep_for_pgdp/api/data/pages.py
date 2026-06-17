@@ -9,6 +9,9 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
     from pdomain_prep_for_pgdp.core.models import Project
     from pdomain_prep_for_pgdp.core.pipeline.stage_settings import StageSettingsStore
     from pdomain_prep_for_pgdp.settings import Settings
@@ -62,6 +65,7 @@ from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
 from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     RegistryVersionMismatchError,
     check_registry_version,
+    migrate_if_needed,
 )
 from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_v2_stage
 from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
@@ -71,7 +75,6 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     cascade_dirty_for_config_change,
     run_stage,
 )
-from pdomain_prep_for_pgdp.core.prefix import compute_prefix
 from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
 log = logging.getLogger(__name__)
@@ -79,17 +82,26 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["pages"])
 
 
-def _check_registry_page(project: Project) -> JSONResponse | None:
-    """Return 409 JSONResponse if the project is on a legacy registry version.
+async def _check_registry_page(
+    project: Project,
+    db: IDatabase,
+    data_root: Path,
+) -> tuple[JSONResponse | None, Project]:
+    """Auto-migrate v2->v3 then return (409-or-None, current project).
 
     Page-stage routes return the same 409 shape as project-stage routes
-    per api-v2-deltas.md §1.3.
+    per api-v2-deltas.md §1.3.  A v2 (range-config) project is migrated to v3
+    (runs) in place before the check; only pre-v2 (v1) projects 409.
+
+    Returns the (possibly migrated) project so the caller can use the
+    up-to-date ``registry_version``.
     """
+    project = await migrate_if_needed(project, db, data_root)
     try:
         check_registry_version(project)
-        return None
+        return None, project
     except RegistryVersionMismatchError as exc:
-        return JSONResponse(status_code=409, content=exc.as_dict())
+        return JSONResponse(status_code=409, content=exc.as_dict()), project
 
 
 class ListPagesResponse(BaseModel):
@@ -371,6 +383,27 @@ async def reorder_pages(
     # Capture the previous order (by current idx0) for the event log.
     previous_order = sorted(pages_by_id.keys(), key=lambda pid: pages_by_id[pid].idx0)
 
+    # Build per-page leaf assignments BEFORE mutating page.idx0.  The store still
+    # holds the old idx0 keys at this point; loading after mutation would cause
+    # compute_project_prefixes to look up each page's new position against the old
+    # occupant's assignment — a stale-run_id bug for cross-run reorders.
+    # We remap {old_idx0: assignment} → {new_idx0: assignment} here, where the
+    # mapping is exactly "which old page goes to which new position".
+    from pdomain_prep_for_pgdp.core.models import LeafRole as _LeafRole
+    from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import (
+        _load_leaf_assignments,
+        compute_project_prefixes,
+    )
+
+    _, _old_assignments = _load_leaf_assignments(settings.data_root, project_id)
+    # page_id here is the old zero-padded idx0 string (e.g. "0002") — parse it
+    # to look up the assignment for the page that WAS at that position.
+    _new_idx0_assignments: dict[int, tuple[_LeafRole, str | None]] = {}
+    for _new_idx0, _pid in enumerate(body.page_ids):
+        _old_idx0 = int(_pid)
+        if _old_idx0 in _old_assignments:
+            _new_idx0_assignments[_new_idx0] = _old_assignments[_old_idx0]
+
     # Update idx0 and prefix for each page based on new order
     updated_pages: list[PageRecord] = []
     pages_by_idx: dict[int, PageRecord] = {}
@@ -378,14 +411,19 @@ async def reorder_pages(
     for new_idx0, page_id in enumerate(body.page_ids):
         page = pages_by_id[page_id]
         page.idx0 = new_idx0
-        # Build the by-idx mapping with updated idx0 for compute_prefix to work
         pages_by_idx[new_idx0] = page
         updated_pages.append(page)
 
-    # Recompute prefix for all pages using existing compute_prefix logic
+    # Recompute prefix for all pages from the runs model (P1.9 — replaces the
+    # deleted range-based compute_prefix).  Authoritative naming is still the
+    # page_order manifest; this refreshes the denormalised PageRecord.prefix.
+    # Pass the pre-built assignments (new_idx0 → (role, run_id)) so the lookup
+    # uses each page's own run_id rather than the stale previous occupant's.
+    prefix_by_idx = compute_project_prefixes(
+        settings.data_root, project_id, updated_pages, page_assignments=_new_idx0_assignments
+    )
     for page in updated_pages:
-        new_prefix = compute_prefix(page.idx0, project.config, pages_by_idx)
-        page.prefix = new_prefix or ""
+        page.prefix = prefix_by_idx.get(page.idx0) or ""
 
     # Write all updated pages to the event store in a batch
     put_page_records(page_service, updated_pages)
@@ -745,42 +783,25 @@ async def insert_page(
     proj_agg.add_page(page_id=new_page_uuid, page_index=insert_at)
     page_service.store.save_project(proj_agg)
 
-    # Bump affected config range bounds so pages shifted past a range boundary
-    # are still considered in-range, and recompute prefixes for all pages.
-    # This mirrors what reorder_pages does inline with compute_prefix.
-    # Known follow-ups NOT implemented here (parity-consistent with reorder_pages):
-    #   - Shifting page_stages rows for the inserted page.
-    #   - Atomicity / versioning of the insert + range-bump as a single transaction.
-    old_cfg = project.config
-    # Any range end >= insert_at must be shifted by 1 to remain consistent.
-    new_cfg = old_cfg.model_copy(
-        update={
-            "proof_end_idx0": old_cfg.proof_end_idx0 + 1
-            if old_cfg.proof_end_idx0 >= insert_at
-            else old_cfg.proof_end_idx0,
-            "frontmatter_end_idx0": old_cfg.frontmatter_end_idx0 + 1
-            if old_cfg.frontmatter_end_idx0 >= insert_at
-            else old_cfg.frontmatter_end_idx0,
-            "bodymatter_end_idx0": old_cfg.bodymatter_end_idx0 + 1
-            if old_cfg.bodymatter_end_idx0 >= insert_at
-            else old_cfg.bodymatter_end_idx0,
-            # Start bounds shift only when they are STRICTLY AFTER insert_at.
-            # If insert_at == start_bound, the new page is inserted at the
-            # boundary and the section should extend to include it — so the
-            # start bound stays put.  Shifting it at >= would push the start
-            # past the newly inserted page, leaving it outside any section and
-            # producing duplicate folio-1 values for two adjacent pages.
-            "proof_start_idx0": old_cfg.proof_start_idx0 + 1
-            if old_cfg.proof_start_idx0 > insert_at
-            else old_cfg.proof_start_idx0,
-            "frontmatter_start_idx0": old_cfg.frontmatter_start_idx0 + 1
-            if old_cfg.frontmatter_start_idx0 > insert_at
-            else old_cfg.frontmatter_start_idx0,
-            "bodymatter_start_idx0": old_cfg.bodymatter_start_idx0 + 1
-            if old_cfg.bodymatter_start_idx0 > insert_at
-            else old_cfg.bodymatter_start_idx0,
-        }
-    )
+    # Shift the numbering RUN spans so runs that the inserted page falls within
+    # (or after) stay aligned to the new scan indices (P1.9 — replaces the
+    # range-config bump).  A span end >= insert_at shifts +1; a span start
+    # strictly after insert_at shifts +1 (insert_at == start keeps the start so
+    # the run extends to include the new boundary page).
+    from pdomain_prep_for_pgdp.core.numbering_store import load_runs, save_runs
+
+    runs_artifact = load_runs(settings.data_root, project_id)
+    shifted_runs = []
+    for run in runs_artifact.runs:
+        if run.span is None:
+            shifted_runs.append(run)
+            continue
+        s, e = run.span
+        new_s = s + 1 if s > insert_at else s
+        new_e = e + 1 if e >= insert_at else e
+        shifted_runs.append(run.model_copy(update={"span": (new_s, new_e)}))
+    if shifted_runs != runs_artifact.runs:
+        save_runs(settings.data_root, project_id, runs_artifact.model_copy(update={"runs": shifted_runs}))
 
     # Update project page_count in the DB.
     from datetime import UTC, datetime
@@ -789,19 +810,29 @@ async def insert_page(
         update={
             "page_count": project.page_count + 1,
             "proof_page_count": project.proof_page_count + 1,
-            "config": new_cfg,
             "updated_at": datetime.now(UTC),
         }
     )
     await db.put_project(updated_project)
 
-    # Recompute prefixes for all pages now that idx0s and config bounds are final.
-    # This ensures the shifted tail pages show consistent prefixes immediately
-    # (without this, their prefix would lag until an explicit config edit).
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes as _assign_prefixes
+    # Recompute prefixes for all pages from the runs model now that idx0s and
+    # run spans are final, so shifted tail pages show consistent prefixes
+    # immediately.  Authoritative naming remains the page_order manifest.
+    from pdomain_prep_for_pgdp.core.page_service_helpers import (
+        list_page_records as _list_pages,
+    )
+    from pdomain_prep_for_pgdp.core.pipeline.steps.page_order import compute_project_prefixes
 
     try:
-        await _assign_prefixes(project=updated_project, page_service=page_service)
+        _all_pages = _list_pages(page_service, project_id)
+        _prefix_by_idx = compute_project_prefixes(settings.data_root, project_id, _all_pages)
+        _updates = []
+        for _pg in _all_pages:
+            _np = _prefix_by_idx.get(_pg.idx0) or ""
+            if _pg.prefix != _np:
+                _updates.append(_pg.model_copy(update={"prefix": _np}))
+        if _updates:
+            put_page_records(page_service, _updates)
     except Exception as _e_prefix:
         log.warning("insert_page prefix recompute failed (non-fatal): %s", _e_prefix)
 
@@ -1370,6 +1401,7 @@ async def list_page_stages(
     idx0: int,
     user: UserDep,
     db: DatabaseDep,
+    settings: SettingsDep,
     page_service: PageServiceDep,
 ) -> list[PageStageState]:
     """Return ordered per-page stage state for the v2 16-stage page DAG.
@@ -1392,8 +1424,9 @@ async def list_page_stages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -1477,8 +1510,9 @@ async def run_page_stage(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -1632,8 +1666,9 @@ async def get_page_stage_artifact(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -1717,8 +1752,9 @@ async def get_page_stage_thumbnail(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -1885,8 +1921,9 @@ async def get_page_stage_settings(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     # Page existence check only required for page-scoped stages.
     if stage_id in V2_PAGE_STAGE_IDS:
@@ -1957,8 +1994,9 @@ async def put_page_stage_settings(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     if stage_id in V2_PAGE_STAGE_IDS:
         page = get_page_record(page_service, project_id, idx0)
@@ -2015,8 +2053,9 @@ async def save_page_stage_settings_as_default(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     if stage_id in V2_PAGE_STAGE_IDS:
         page = get_page_record(page_service, project_id, idx0)
@@ -2072,8 +2111,9 @@ async def revert_page_stage_settings(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     if stage_id in V2_PAGE_STAGE_IDS:
         page = get_page_record(page_service, project_id, idx0)
@@ -2128,8 +2168,9 @@ async def reset_page_stage_settings(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     if stage_id in V2_PAGE_STAGE_IDS:
         page = get_page_record(page_service, project_id, idx0)
@@ -2222,8 +2263,9 @@ async def get_wordcheck_flags(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2282,8 +2324,9 @@ async def post_wordcheck_decisions(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2357,8 +2400,9 @@ async def post_wordlist_promotion(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     if not body.word or not body.word.strip():
         raise HTTPException(422, "word must not be empty")
@@ -2409,8 +2453,9 @@ async def get_hyphen_join_candidates(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2462,8 +2507,9 @@ async def post_hyphen_join_decisions(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2533,8 +2579,9 @@ async def get_page_stage_settings_page_tier(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2576,8 +2623,9 @@ async def put_page_stage_settings_page_tier(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2632,8 +2680,9 @@ async def delete_page_stage_settings_page_tier(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
@@ -2695,8 +2744,9 @@ async def get_page_stage_settings_resolved(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
-    if (rv := _check_registry_page(project)) is not None:
-        return rv
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
 
     page = get_page_record(page_service, project_id, idx0)
     if page is None:

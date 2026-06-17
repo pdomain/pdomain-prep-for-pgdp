@@ -1,131 +1,92 @@
-"""Tests-first for `core.assign_prefixes`.
+"""Tests for prefix assignment behavior (P1.9 port).
 
-After Step 0 ingest, `PageRecord.prefix` is empty. After Step 3 (configure)
-the user sets ranges + page types; calling `assign_prefixes` writes prefixes
-onto every page in the proof range and persists them.
+P1.9: `core.assign_prefixes` was deleted.  The prefix-assignment logic now
+lives in the runs model: ``compute_prefixes_from_runs`` driven by
+``seed_runs_from_ranges`` (migration helper).
 
-Locks in:
-  - prefix shape matches `compute_prefix_v2` (v2 format: <seq:3-4><type><folio?>),
-  - pages outside the proof range get prefix="" and ignore=True,
-  - plate pages get the correct b/p/r suffix and don't consume a number,
-  - patch is idempotent (running it twice produces the same result).
+This file ports the meaningful behavioral assertions from the deleted
+``assign_prefixes`` tests to ``compute_prefixes_from_runs`` unit tests:
+
+  - prefix shape matches v2 format: <seq:3-4><type><folio?>
+  - pages outside proof range get None prefix
+  - plate pages get the correct b/p/r suffix and don't consume a number
+  - skip pages get None prefix
+  - manual_ignore preservation is now a route-layer concern (the pure
+    compute function has no concept of "manual_ignore"); the coverage for
+    that invariant lives in tests/test_page_order_runs_route.py.
+
+Integration coverage (range-edit → re-numbering, idempotency) is provided
+by tests/test_numbering_migration.py (golden byte-stability) and
+tests/test_naming_prefix_coverage.py (config-edit scenarios now ported
+to use compute_prefixes_from_runs directly).
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import Any
 
-import pytest
-
-from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
-from pdomain_prep_for_pgdp.core.models import (
-    PageRecord,
-    PageType,
-    Project,
-    ProjectConfig,
-    ProjectStatus,
+from pdomain_prep_for_pgdp.core.models import PageType
+from pdomain_prep_for_pgdp.core.numbering import Leaf, compute_prefixes_from_runs
+from pdomain_prep_for_pgdp.core.numbering_migration import (
+    LegacyRanges,
+    page_type_to_leaf_role,
+    seed_runs_from_ranges,
 )
-from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
-from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
-from pdomain_prep_for_pgdp.settings import Settings
-from tests.fixtures.seed_pages import seed_pages_in_store
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
-def _settings(tmp_path: Path) -> Settings:
-    return Settings(
-        host="127.0.0.1",
-        port=8765,
-        data_root=tmp_path / "data",
-        config_dir=tmp_path / "config",
-        storage_backend="filesystem",
-        database_url=f"sqlite:///{(tmp_path / 's.db').as_posix()}",
-        auth_mode="none",
-        gpu_backend="cpu",
-        dispatch_interval_seconds=0,
+def _ranges(**kw: Any) -> LegacyRanges:
+    base: dict[str, Any] = {
+        "proof_start_idx0": 0,
+        "proof_end_idx0": 4,
+        "frontmatter_start_idx0": 0,
+        "frontmatter_end_idx0": 1,
+        "frontmatter_page_nbr_start": 1,
+        "bodymatter_start_idx0": 2,
+        "bodymatter_end_idx0": 4,
+        "bodymatter_page_nbr_start": 1,
+    }
+    base.update(kw)
+    return LegacyRanges(**base)
+
+
+def _prefixes_for(
+    rg: LegacyRanges,
+    page_types: dict[int, PageType],
+) -> dict[int, str | None]:
+    """Canonical helper: seed runs → compute prefixes."""
+    runs, assign = seed_runs_from_ranges(rg, page_types)
+    leaves = [
+        Leaf(scan=s, leaf_role=page_type_to_leaf_role(page_types[s])[0], run_id=assign.get(s))
+        for s in sorted(page_types)
+    ]
+    legacy_plate = {PageType.plate_b: "b", PageType.plate_p: "p", PageType.plate_r: "r"}
+    plate_suffixes = {s: legacy_plate[pt] for s, pt in page_types.items() if pt in legacy_plate}
+    seq_width = 4 if (rg.proof_end_idx0 - rg.proof_start_idx0 + 1) > 999 else 3
+    return compute_prefixes_from_runs(
+        leaves,
+        runs,
+        proof_start=rg.proof_start_idx0,
+        seq_width=seq_width,
+        plate_suffixes=plate_suffixes,
     )
 
 
-def _project(project_id: str = "p1", **config_kwargs) -> Project:
-    now = datetime.now(UTC)
-    return Project(
-        id=project_id,
-        owner_id="default",
-        name="t",
-        created_at=now,
-        updated_at=now,
-        status=ProjectStatus.configuring,
-        page_count=0,
-        proof_page_count=0,
-        config=ProjectConfig(book_name="t", source_uri="", **config_kwargs),
-        storage_prefix=f"projects/{project_id}/",
-    )
-
-
-def _page(project_id: str, idx0: int, page_type: PageType = PageType.normal) -> PageRecord:
-    return PageRecord(
-        project_id=project_id,
-        idx0=idx0,
-        prefix="",
-        source_stem=f"src_{idx0:03d}",
-        page_type=page_type,
-    )
-
-
-@pytest.fixture
-async def db(tmp_path) -> SqliteDatabase:
-    d = SqliteDatabase(f"sqlite:///{(tmp_path / 's.db').as_posix()}")
-    await d.initialize()
-    return d
-
-
-@pytest.mark.asyncio
-async def test_assign_prefixes_writes_frontmatter_and_bodymatter(db: SqliteDatabase, tmp_path: Path) -> None:
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-
-    project = _project(
-        proof_start_idx0=0,
-        proof_end_idx0=4,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=1,
-        bodymatter_start_idx0=2,
-        bodymatter_end_idx0=4,
-    )
-    await db.put_project(project)
-    pages = [_page(project.id, i) for i in range(5)]
-    settings = _settings(tmp_path)
-    seed_pages_in_store(settings, project.id, pages)
-    svc = build_page_service(settings.data_root, project.id)
-
-    n = await assign_prefixes(project=project, page_service=svc)
-    assert n == 5
-
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-    # v2 format: <seq:3><type><folio>
+def test_writes_frontmatter_and_bodymatter_v2_prefixes() -> None:
+    """v2 format: <seq:3><type><folio> — proof 0..4, fm 0..1, bm 2..4."""
+    rg = _ranges()
+    pts = dict.fromkeys(range(5), PageType.normal)
+    result = _prefixes_for(rg, pts)
     # proof_start=0, fm=0-1, bm=2-4, fm_nbr_start=1, bm_nbr_start=1
-    # idx0=0: seq=0, type=f, folio=1 → "000f001"
-    # idx0=1: seq=1, type=f, folio=2 → "001f002"
-    # idx0=2: seq=2, type=p, folio=1 → "002p001"
-    # idx0=3: seq=3, type=p, folio=2 → "003p002"
-    # idx0=4: seq=4, type=p, folio=3 → "004p003"
-    assert by_idx[0].prefix == "000f001"
-    assert by_idx[1].prefix == "001f002"
-    assert by_idx[2].prefix == "002p001"
-    assert by_idx[3].prefix == "003p002"
-    assert by_idx[4].prefix == "004p003"
-    for p in result:
-        assert p.ignore is False
+    assert result[0] == "000f001"
+    assert result[1] == "001f002"
+    assert result[2] == "002p001"
+    assert result[3] == "003p002"
+    assert result[4] == "004p003"
 
 
-@pytest.mark.asyncio
-async def test_assign_prefixes_marks_pages_outside_range_ignored(db: SqliteDatabase, tmp_path: Path) -> None:
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-
-    project = _project(
+def test_pages_outside_proof_range_get_none_prefix() -> None:
+    """Pages outside proof_start..proof_end get None (not in any run)."""
+    rg = _ranges(
         proof_start_idx0=2,
         proof_end_idx0=3,
         frontmatter_start_idx0=2,
@@ -133,135 +94,65 @@ async def test_assign_prefixes_marks_pages_outside_range_ignored(db: SqliteDatab
         bodymatter_start_idx0=3,
         bodymatter_end_idx0=3,
     )
-    await db.put_project(project)
-    settings = _settings(tmp_path)
-    seed_pages_in_store(settings, project.id, [_page(project.id, i) for i in range(5)])
-    svc = build_page_service(settings.data_root, project.id)
-
-    await assign_prefixes(project=project, page_service=svc)
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-    assert by_idx[0].ignore is True
-    assert by_idx[0].prefix == ""
-    assert by_idx[1].ignore is True
-    assert by_idx[2].ignore is False
-    assert "f" in by_idx[2].prefix  # v2: seq+f+folio (e.g. "000f001")
-    assert by_idx[3].ignore is False
-    assert "p" in by_idx[3].prefix  # v2: seq+p+folio (e.g. "001p001")
-    assert by_idx[4].ignore is True
+    pts = dict.fromkeys(range(5), PageType.normal)
+    result = _prefixes_for(rg, pts)
+    assert result[0] is None  # before proof range
+    assert result[1] is None  # before proof range
+    assert result[2] is not None  # in range, fm
+    assert "f" in result[2]
+    assert result[3] is not None  # in range, bm
+    assert "p" in result[3]
+    assert result[4] is None  # after proof range
 
 
-@pytest.mark.asyncio
-async def test_assign_prefixes_handles_plate_suffix(db: SqliteDatabase, tmp_path: Path) -> None:
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-
-    project = _project(
-        proof_start_idx0=0,
+def test_plate_suffix_and_no_folio_consumption() -> None:
+    """Plate page gets b/p/r suffix and does not consume a folio number."""
+    rg = _ranges(
         proof_end_idx0=3,
-        frontmatter_start_idx0=0,
         frontmatter_end_idx0=0,
         bodymatter_start_idx0=1,
         bodymatter_end_idx0=3,
     )
-    await db.put_project(project)
-    settings = _settings(tmp_path)
-    seed_pages_in_store(
-        settings,
-        project.id,
-        [
-            _page(project.id, 0),
-            _page(project.id, 1),
-            _page(project.id, 2, page_type=PageType.plate_p),
-            _page(project.id, 3),
-        ],
-    )
-    svc = build_page_service(settings.data_root, project.id)
-
-    await assign_prefixes(project=project, page_service=svc)
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-    # plate_p gets a "p" suffix (v2: seq+pp e.g. "002pp") and doesn't consume a body number.
-    assert by_idx[2].prefix.endswith("p")
-    # Numbering continues past the plate.
-    # v2 bodymatter normal: seq+p+folio (e.g. "001p001") — contains "p" but doesn't end with "p"
-    assert "p" in by_idx[1].prefix  # type letter present
-    assert not by_idx[1].prefix.endswith("p")  # not a plate suffix
-    assert "p" in by_idx[3].prefix
-    assert not by_idx[3].prefix.endswith("p")
+    pts = {
+        0: PageType.normal,
+        1: PageType.normal,
+        2: PageType.plate_p,
+        3: PageType.normal,
+    }
+    result = _prefixes_for(rg, pts)
+    # plate_p gets "p" suffix (seq+pp → e.g. "002pp") and doesn't consume a body number.
+    assert result[2] is not None
+    assert result[2].endswith("p")
+    # Body numbering: normal(1) gets p001, plate skips, normal(3) gets p002.
+    assert "p" in result[1]
+    assert not result[1].endswith("p")  # not a plate suffix
+    assert "p" in result[3]
+    assert not result[3].endswith("p")
 
 
-@pytest.mark.asyncio
-async def test_assign_prefixes_is_idempotent(db: SqliteDatabase, tmp_path: Path) -> None:
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
+def test_skip_page_returns_none() -> None:
+    """Skip pages get None prefix (excluded from proof package)."""
+    rg = _ranges()
+    pts = dict.fromkeys(range(5), PageType.normal)
+    pts[1] = PageType.skip
+    result = _prefixes_for(rg, pts)
+    assert result[1] is None
 
-    project = _project(
-        proof_start_idx0=0,
-        proof_end_idx0=2,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=0,
-        bodymatter_start_idx0=1,
-        bodymatter_end_idx0=2,
-    )
-    await db.put_project(project)
-    settings = _settings(tmp_path)
-    seed_pages_in_store(settings, project.id, [_page(project.id, i) for i in range(3)])
-    svc = build_page_service(settings.data_root, project.id)
 
-    await assign_prefixes(project=project, page_service=svc)
-    first = {p.idx0: p.prefix for p in list_page_records(svc, project.id)}
-    await assign_prefixes(project=project, page_service=svc)
-    second = {p.idx0: p.prefix for p in list_page_records(svc, project.id)}
+def test_idempotent_repeated_calls() -> None:
+    """compute_prefixes_from_runs is deterministic — calling twice gives same result."""
+    rg = _ranges()
+    pts = dict.fromkeys(range(5), PageType.normal)
+    first = _prefixes_for(rg, pts)
+    second = _prefixes_for(rg, pts)
     assert first == second
 
 
-@pytest.mark.asyncio
-async def test_assign_prefixes_preserves_manual_ignore(db: SqliteDatabase, tmp_path: Path) -> None:
-    """manual_ignore on an in-range normal page survives a config edit that re-runs assign_prefixes.
-
-    Regression test for: assign_prefixes previously clobbered manual soft-excludes
-    because it computed new_ignore = out_of_range OR page_type==skip and always wrote
-    it, discarding any user-set flag.
-    """
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-
-    project = _project(
-        proof_start_idx0=0,
-        proof_end_idx0=3,
-        frontmatter_start_idx0=0,
-        frontmatter_end_idx0=0,
-        bodymatter_start_idx0=1,
-        bodymatter_end_idx0=3,
-    )
-    await db.put_project(project)
-    settings = _settings(tmp_path)
-    pages = [_page(project.id, i) for i in range(4)]
-    seed_pages_in_store(settings, project.id, pages)
-    svc = build_page_service(settings.data_root, project.id)
-
-    # Run assign_prefixes once to establish clean state.
-    await assign_prefixes(project=project, page_service=svc)
-
-    # Manually set manual_ignore=True on page idx0=1 (in-range normal page).
-    from pdomain_prep_for_pgdp.core.page_service_helpers import update_page_extension
-
-    updated = update_page_extension(svc, project.id, 1, manual_ignore=True, ignore=True)
-    assert updated is not None
-    assert updated.ignore is True
-    assert updated.manual_ignore is True
-
-    # Simulate a config edit triggering assign_prefixes again (ranges unchanged here,
-    # but the key invariant is that manual_ignore must survive regardless).
-    await assign_prefixes(project=project, page_service=svc)
-
-    result = list_page_records(svc, project.id)
-    by_idx = {p.idx0: p for p in result}
-
-    # Page idx0=1 is in-range and normal → derived_ignore=False.
-    # But manual_ignore=True was set → effective ignore MUST still be True.
-    assert by_idx[1].ignore is True, "manual_ignore on an in-range normal page must survive assign_prefixes"
-    assert by_idx[1].manual_ignore is True, "manual_ignore field must be preserved by assign_prefixes"
-
-    # Other in-range pages must remain unignored (no manual override).
-    assert by_idx[0].ignore is False
-    assert by_idx[2].ignore is False
-    assert by_idx[3].ignore is False
+def test_blank_counted_in_section_folio() -> None:
+    """Blank page assigned to a run still consumes a folio number (legacy parity)."""
+    rg = _ranges()
+    pts = {0: PageType.normal, 1: PageType.normal, 2: PageType.normal, 3: PageType.blank, 4: PageType.normal}
+    result = _prefixes_for(rg, pts)
+    # blank at idx0=3 in bm gets p002 (folio consumed)
+    assert result[3] == "003p002"
+    assert result[4] == "004p003"

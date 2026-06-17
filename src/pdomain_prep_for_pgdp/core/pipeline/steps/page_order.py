@@ -26,7 +26,8 @@ The stage artifact is a JSON object with schema:
     }
 
   - ``role``: the PageType string value for the page.
-  - ``prefix``: the v2 PGDP filename prefix (from compute_prefix_v2), or null for skip pages.
+  - ``prefix``: the v2 PGDP filename prefix (from compute_prefixes_from_runs),
+    or null for skip / unassigned pages.
     Format: ``<seq:3-4><type><folio?>`` — e.g. "000f001", "003e", "012pp".
   - ``export_name``: bare numeric filename for use in the submission zip when the
     numeric-export option is enabled (e.g. "005"). Null when numeric export is off.
@@ -68,6 +69,7 @@ if TYPE_CHECKING:
         PageRecord,
         ProjectConfig,
     )
+    from pdomain_prep_for_pgdp.core.numbering import Leaf
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -81,11 +83,11 @@ Increment when the JSON schema changes in a backward-incompatible way.
 Consumers may reject manifests with an older version; the stage runner
 always regenerates on re-run.
 
-v2 (P1.7): adds ``label`` and ``run_id`` per entry, derived from
-``compute_labels`` over ``NumberingRun`` objects rather than from
-``compute_prefix_v2`` alone.  The ``prefix`` and ``export_name`` fields
-are still present and retain the same shape for backward compatibility;
-full migration to runs-derived prefixes lands in P3.1.
+v2 (P1.9): ``label`` and ``run_id`` per entry are derived from
+``compute_labels`` over ``NumberingRun`` objects, and ``prefix`` is derived
+from the SAME runs via ``compute_prefixes_from_runs`` (the byte-stable
+successor to the now-deleted ``compute_prefix_v2``).  ``export_name`` retains
+its numeric-export shape.  ProjectConfig ranges are no longer consulted.
 """
 
 
@@ -153,6 +155,24 @@ def _page_id_for_idx0(idx0: int) -> str:
     return f"{idx0:04d}"
 
 
+def _proof_start_for(leaves: list[Leaf], runs: list[NumberingRun]) -> int | None:
+    """Return the seq origin: the smallest in-proof scan, or None if none.
+
+    A scan is "in proof" iff it is assigned to a run, or it is a cover / plate
+    / blank leaf (these get a filename even without a run, except skips). Skip
+    leaves and unassigned text leaves are excluded.  This reproduces the legacy
+    ``proof_start_idx0`` origin from the runs model (after range deletion).
+    """
+    from pdomain_prep_for_pgdp.core.models import LeafRole
+
+    in_proof = [
+        leaf.scan
+        for leaf in leaves
+        if leaf.leaf_role in (LeafRole.cover, LeafRole.plate, LeafRole.blank) or leaf.run_id is not None
+    ]
+    return min(in_proof) if in_proof else None
+
+
 def materialize_naming_manifest(
     project_id: str,
     ordered_pages: list[PageRecord],
@@ -163,56 +183,57 @@ def materialize_naming_manifest(
     runs: list[NumberingRun] | None = None,
     leaf_assignments: dict[int, tuple[LeafRole, str | None]] | None = None,
 ) -> bytes:
-    """Materialize the naming manifest artifact (v2).
+    """Materialize the naming manifest artifact (v2 — runs-derived).
 
-    Computes a ``label`` and ``run_id`` per page via ``compute_labels`` over
-    the supplied ``runs`` + ``leaf_assignments``.  Also derives ``prefix`` via
-    ``compute_prefix_v2`` when ``project_config`` is available (legacy path;
-    full migration to runs-derived prefixes lands in P3.1).
+    Computes a ``label`` (styled display) and ``run_id`` per page via
+    ``compute_labels`` over the supplied ``runs`` + ``leaf_assignments``, and
+    derives the v2 filename ``prefix`` from the same runs via
+    ``compute_prefixes_from_runs`` (the byte-stable successor to the deleted
+    ``compute_prefix_v2``).  ``project_config`` is no longer used for naming —
+    it is accepted for signature compatibility only.
 
     Args:
         project_id: Project identifier (informational; not written to manifest).
         ordered_pages: Pages in reading order (caller applies PageReorder events
             before calling this).
-        project_config: ProjectConfig with range fields used by
-            ``compute_prefix_v2``.  When ``None`` the ``prefix`` field in every
-            entry is ``None`` (acceptable when only ``label``/``run_id`` are
-            needed, e.g. in tests that don't exercise the prefix path).
+        project_config: Deprecated; ignored for naming (kept for callers that
+            still pass it).
         data_root: Accepted for API compatibility (not used by this function).
         numeric_export: When True, populate ``export_name`` for each non-skip
-            page with a bare zero-padded sequence number (e.g. "005").  The
-            PGDP validator validates export_name values; consumers should use
-            export_name when it is non-None and fall back to prefix otherwise.
-        runs: ``NumberingRun`` objects used by ``compute_labels``.  When
-            ``None`` or empty, ``compute_labels`` produces empty/MARKER labels
-            (no numbering applied — stopgap until the runs-wiring lands in P1.9).
+            page with a bare zero-padded sequence number (e.g. "005").
+        runs: ``NumberingRun`` objects used by ``compute_labels`` +
+            ``compute_prefixes_from_runs``.  Empty -> every page is a marker /
+            unnumbered (no run assigned).
         leaf_assignments: ``{idx0: (leaf_role, run_id | None)}`` per page.
-            When ``None`` or a page is absent from the dict, the role is derived
-            from ``page_type_to_leaf_role(page.page_type)`` and ``run_id`` is
-            ``None``.
+            When a page is absent, the role is derived from
+            ``page_type_to_leaf_role(page.page_type)`` and ``run_id`` is None.
 
     Returns:
         UTF-8 JSON bytes of the naming manifest.
     """
-    from pdomain_prep_for_pgdp.core.models import LeafRole
-    from pdomain_prep_for_pgdp.core.numbering import Leaf, compute_labels
+    from pdomain_prep_for_pgdp.core.numbering import (
+        Leaf,
+        compute_labels,
+        compute_prefixes_from_runs,
+    )
     from pdomain_prep_for_pgdp.core.numbering_migration import page_type_to_leaf_role
+    from pdomain_prep_for_pgdp.core.prefix import export_name_for_seq
 
     _ = data_root  # available for future disk-caching
     _ = project_id  # available for future project-scoped logic
+    _ = project_config  # deprecated: naming is fully runs-derived
 
     _runs: list[NumberingRun] = runs if runs is not None else []
     _leaf_assignments: dict[int, tuple[LeafRole, str | None]] = (
         leaf_assignments if leaf_assignments is not None else {}
     )
 
-    # Build Leaf objects for compute_labels and collect stored run_id per scan.
-    # Blank leaves are always passed to compute_labels with run_id=None so they
-    # produce a MARKER label (not a consumed counter slot).  The manifest's
-    # run_id field still records the assignment's run_id for provenance.
+    # Build Leaf objects + collect stored run_id per scan.  A leaf's run_id is
+    # taken directly from the assignment: a blank WITH a run is a counted page
+    # (consumes a number), a blank WITHOUT a run is a [Blank Page] marker.
     leaves: list[Leaf] = []
-    # stored_run_id_map: the run_id from the assignment (for the manifest field)
     stored_run_id_map: dict[int, str | None] = {}
+    plate_suffixes: dict[int, str] = {}
     for page in ordered_pages:
         if page.idx0 in _leaf_assignments:
             leaf_role, assigned_run_id = _leaf_assignments[page.idx0]
@@ -220,32 +241,31 @@ def materialize_naming_manifest(
             leaf_role, _plate_side = page_type_to_leaf_role(page.page_type)
             assigned_run_id = None
         stored_run_id_map[page.idx0] = assigned_run_id
-        # Blank leaves: always None so compute_labels emits MARKER, not a number.
-        leaf_run_id = None if leaf_role is LeafRole.blank else assigned_run_id
-        leaves.append(Leaf(scan=page.idx0, leaf_role=leaf_role, run_id=leaf_run_id))
+        # Preserve the exact legacy plate filename letter from page_type.
+        _legacy_plate = {"plate_b": "b", "plate_p": "p", "plate_r": "r"}
+        if page.page_type.value in _legacy_plate:
+            plate_suffixes[page.idx0] = _legacy_plate[page.page_type.value]
+        leaves.append(Leaf(scan=page.idx0, leaf_role=leaf_role, run_id=assigned_run_id))
 
-    # Map: idx0 -> label string
+    # Styled display label per scan (roman/arabic/marker/unnumbered).
     label_map: dict[int, str] = compute_labels(leaves, _runs)
 
-    pages_by_idx = {p.idx0: p for p in ordered_pages}
-
-    # Compute prefix via legacy path when project_config is available.
-    if project_config is not None:
-        from pdomain_prep_for_pgdp.core.prefix import compute_prefix_v2, export_name_for_seq
-
-        prefix_map: dict[int, str | None] = {
-            p.idx0: compute_prefix_v2(p.idx0, project_config, pages_by_idx) for p in ordered_pages
-        }
-        total_non_skip = sum(
-            1
-            for p in ordered_pages
-            if p.idx0 >= project_config.proof_start_idx0
-            and p.idx0 <= project_config.proof_end_idx0
-            and p.page_type.value != "skip"
-        )
+    # Runs-derived v2 filename prefix per scan (replaces compute_prefix_v2).
+    proof_start = _proof_start_for(leaves, _runs)
+    if proof_start is None:
+        prefix_map: dict[int, str | None] = {p.idx0: None for p in ordered_pages}
     else:
-        prefix_map = {p.idx0: None for p in ordered_pages}
-        total_non_skip = sum(1 for p in ordered_pages if p.page_type.value != "skip")
+        max_scan = max((leaf.scan for leaf in leaves), default=proof_start)
+        seq_width = 4 if (max_scan - proof_start + 1) > 999 else 3
+        prefix_map = compute_prefixes_from_runs(
+            leaves,
+            _runs,
+            proof_start=proof_start,
+            seq_width=seq_width,
+            plate_suffixes=plate_suffixes,
+        )
+
+    total_non_skip = sum(1 for p in ordered_pages if prefix_map.get(p.idx0) is not None)
 
     entries: list[dict[str, Any]] = []
     skip_ids: list[str] = []
@@ -258,23 +278,16 @@ def materialize_naming_manifest(
         label = label_map.get(page.idx0, "")
         run_id = stored_run_id_map.get(page.idx0)
 
-        if prefix is None and project_config is not None:
+        if prefix is None:
+            # No filename -> excluded from the submission zip (skip / unassigned).
             skip_ids.append(page_id)
             export_name: str | None = None
-        elif prefix is None:
-            # project_config is None — derive skip from page_type
-            if page.page_type.value == "skip":
-                skip_ids.append(page_id)
-            export_name = None
-        elif numeric_export and project_config is not None:
-            from pdomain_prep_for_pgdp.core.prefix import export_name_for_seq
-
+        elif numeric_export:
             export_name = export_name_for_seq(non_skip_seq, total=total_non_skip)
             non_skip_seq += 1
         else:
             export_name = None
-            if prefix is not None:
-                non_skip_seq += 1
+            non_skip_seq += 1
 
         entries.append(
             {
@@ -403,40 +416,171 @@ def make_page_reorder_event(
 # ────────────────────────────────────────────────────────────────────────────
 
 
-def page_order_v2_cpu(
-    ordered_pages: list[PageRecord],
-    project_id: str,
+def _load_leaf_assignments(
     data_root: Path,
-    project_config: ProjectConfig | None = None,
+    project_id: str,
+) -> tuple[list[PageRecord], dict[int, tuple[LeafRole, str | None]]]:
+    """Load ordered PageRecords + per-page (leaf_role, run_id) from the store.
+
+    Reads each page's persisted ``PrepPageExtension`` (P1.2 fields) to recover
+    the Page-Order classification.  For pages not yet classified by Page Order
+    (``leaf_role is None``) the role falls back to
+    ``page_type_to_leaf_role(page_type)`` and ``run_id`` stays None.
+
+    Returns ``(ordered_pages, {idx0: (leaf_role, run_id)})`` sorted by idx0.
+    """
+    from pdomain_ops.pages import get_extension
+
+    from pdomain_prep_for_pgdp.core.numbering_migration import page_type_to_leaf_role
+    from pdomain_prep_for_pgdp.core.page_service_helpers import (
+        _ext_to_page_record,
+        _get_proj_page_ids,
+    )
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+    from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
+
+    service = build_page_service(data_root, project_id)
+    pages: list[PageRecord] = []
+    assignments: dict[int, tuple[LeafRole, str | None]] = {}
+    for page_uuid in _get_proj_page_ids(service, project_id):
+        try:
+            page_agg = service.store.get_page(page_uuid)
+            ext = get_extension(page_agg.record, "prep", PrepPageExtension)
+        except Exception:  # noqa: S112
+            continue
+        if ext is None:
+            continue
+        pages.append(_ext_to_page_record(ext))
+        if ext.leaf_role is not None:
+            assignments[ext.idx0] = (ext.leaf_role, ext.run_id)
+        else:
+            role, _side = page_type_to_leaf_role(ext.page_type)
+            assignments[ext.idx0] = (role, None)
+    pages.sort(key=lambda p: p.idx0)
+    return pages, assignments
+
+
+def compute_project_prefixes(
+    data_root: Path,
+    project_id: str,
+    ordered_pages: list[PageRecord],
+    *,
+    page_assignments: dict[int, tuple[LeafRole, str | None]] | None = None,
+) -> dict[int, str | None]:
+    """Return ``{idx0: v2 prefix | None}`` for ``ordered_pages`` from runs.
+
+    Loads the project's persisted NumberingRuns and per-page leaf
+    classification, then derives the runs-based v2 filename prefix for each
+    page in ``ordered_pages`` (using each page's *current* idx0 as the scan).
+
+    Used by ``reorder_pages`` / ``insert_page`` to keep the denormalised
+    ``PageRecord.prefix`` in step with the runs model.  The authoritative
+    naming is still the page_order manifest (re-run the stage); this is a
+    convenience refresh of the per-page prefix field.
+
+    Args:
+        data_root: Artifact root (used when ``page_assignments`` is None).
+        project_id: Project identifier.
+        ordered_pages: Pages in their *new* reading order, with each page's
+            ``idx0`` already updated to its new position.
+        page_assignments: Optional pre-built ``{new_idx0: (leaf_role, run_id)}``
+            map.  When supplied, this is used directly instead of loading
+            assignments from the store by the pages' current ``idx0``.
+
+            **This parameter exists specifically for ``reorder_pages``**, which
+            mutates ``page.idx0`` before calling this function.  At that point
+            the store still holds *old* idx0 keys, so looking up
+            ``assignments[page.idx0]`` would return the previous occupant's
+            run_id — a stale-position bug.  The caller must build
+            ``page_assignments`` before mutating idx0 (mapping each page's
+            new position to the assignment it carried at its old position).
+
+            When omitted (e.g. from ``insert_page``), assignments are loaded
+            from the store by current idx0, which is correct for insert because
+            existing pages' idx0 is already flushed before this call.
+
+    Pages with no run + non-special role -> None (excluded).
+    """
+    from pdomain_prep_for_pgdp.core.models import LeafRole
+    from pdomain_prep_for_pgdp.core.numbering import (
+        Leaf,
+        compute_prefixes_from_runs,
+    )
+    from pdomain_prep_for_pgdp.core.numbering_migration import page_type_to_leaf_role
+    from pdomain_prep_for_pgdp.core.numbering_store import load_runs
+
+    if page_assignments is not None:
+        assignments = page_assignments
+    else:
+        _, assignments = _load_leaf_assignments(data_root, project_id)
+    runs = load_runs(data_root, project_id).runs
+
+    leaves: list[Leaf] = []
+    plate_suffixes: dict[int, str] = {}
+    legacy_plate = {"plate_b": "b", "plate_p": "p", "plate_r": "r"}
+    for page in ordered_pages:
+        if page.idx0 in assignments:
+            role, run_id = assignments[page.idx0]
+        else:
+            role, _side = page_type_to_leaf_role(page.page_type)
+            run_id = None
+        if page.page_type.value in legacy_plate:
+            plate_suffixes[page.idx0] = legacy_plate[page.page_type.value]
+        leaves.append(Leaf(scan=page.idx0, leaf_role=role, run_id=run_id))
+
+    proof_start = _proof_start_for(leaves, runs)
+    if proof_start is None:
+        return {p.idx0: None for p in ordered_pages}
+    max_scan = max((leaf.scan for leaf in leaves), default=proof_start)
+    seq_width = 4 if (max_scan - proof_start + 1) > 999 else 3
+    _ = LeafRole  # keep import explicit for type clarity
+    return compute_prefixes_from_runs(
+        leaves,
+        runs,
+        proof_start=proof_start,
+        seq_width=seq_width,
+        plate_suffixes=plate_suffixes,
+    )
+
+
+def page_order_v2_cpu(
+    project_id: str,
+    page_ids: list[str],
+    data_root: Path,
+    book_name: str = "",
     cfg: Any = None,
 ) -> bytes:
-    """v2 page_order stage callable.
+    """v2 page_order stage callable (runner calling convention).
 
-    Takes the ordered pages list (sorted by reading_order / with any
-    PageReorder events already applied by the caller) + the ProjectConfig.
+    Loads the project's PageRecords + persisted Page-Order leaf classification
+    (``leaf_role`` / ``run_id`` from ``PrepPageExtension``) and the persisted
+    ``NumberingRunsArtifact``, then materializes the runs-derived naming
+    manifest.  Naming is fully runs-based — no ProjectConfig ranges.
 
-    Returns UTF-8 JSON bytes: the naming manifest (version, pages, skip_ids).
+    Args:
+        project_id: project identifier.
+        page_ids: ordered page ids from the runner (informational; reading
+            order is recovered from the store's ``reading_order`` / idx0).
+        data_root: artifact + store root.
+        book_name: project book name (unused by naming; accepted for signature
+            compatibility with the project-stage runner).
+        cfg: ignored.
 
-    The stage is project-scoped; the runner calls this with all pages in
-    the project's current reading order.
+    Returns:
+        UTF-8 JSON bytes of the naming manifest (version, pages, skip_ids).
     """
-    _ = cfg
+    _ = (page_ids, book_name, cfg)
 
-    if project_config is None:
-        # Fallback for callers that pass only page_ids (legacy integration path).
-        # In this case we can't compute prefixes, so we emit a minimal manifest
-        # that marks all pages as skip with null prefix.  The full runner always
-        # passes project_config.
-        raise ValueError(
-            "page_order_v2_cpu requires project_config to compute naming prefixes. "
-            "Pass project_config= from the stage runner."
-        )
+    from pdomain_prep_for_pgdp.core.numbering_store import load_runs
+
+    ordered_pages, leaf_assignments = _load_leaf_assignments(data_root, project_id)
+    runs_artifact = load_runs(data_root, project_id)
 
     return materialize_naming_manifest(
         project_id=project_id,
         ordered_pages=ordered_pages,
-        project_config=project_config,
+        project_config=None,
         data_root=data_root,
-        runs=[],
-        leaf_assignments={},
+        runs=runs_artifact.runs,
+        leaf_assignments=leaf_assignments,
     )

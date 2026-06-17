@@ -32,6 +32,7 @@ from pdomain_prep_for_pgdp.core.numbering_store import load_runs, save_runs
 from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     RegistryVersionMismatchError,
     check_registry_version,
+    migrate_if_needed,
 )
 
 log = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ async def get_page_order_runs(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
+    project = await migrate_if_needed(project, db, settings.data_root)
     try:
         check_registry_version(project)
     except RegistryVersionMismatchError as exc:
@@ -110,6 +112,7 @@ async def put_page_order_runs(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
+    project = await migrate_if_needed(project, db, settings.data_root)
     try:
         check_registry_version(project)
     except RegistryVersionMismatchError as exc:

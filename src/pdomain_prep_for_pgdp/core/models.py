@@ -70,16 +70,12 @@ class ProjectConfig(ApiModel):
     author: str = ""
     """Book author — shown in attributes panel bib section."""
 
-    proof_start_idx0: int = 0
-    proof_end_idx0: int = 0
-    cover_idx0: int | None = None
-    title_idx0: int | None = None
-    frontmatter_start_idx0: int = 0
-    frontmatter_end_idx0: int = 0
-    bodymatter_start_idx0: int = 0
-    bodymatter_end_idx0: int = 0
-    frontmatter_page_nbr_start: int = 1
-    bodymatter_page_nbr_start: int = 1
+    # P1.9: page-numbering ranges (proof_*/frontmatter_*/bodymatter_*/cover_idx0/
+    # title_idx0) were REMOVED.  Numbering now lives in the NumberingRun runs
+    # model (see core/numbering.py + the page_order/runs route).  Old projects'
+    # config blobs still carry these keys on disk; pydantic extra="ignore" drops
+    # them on load, and the v2->v3 migration reads them from the RAW config dict
+    # (core/numbering_migration.LegacyRanges) to seed runs.
 
     initial_crop_all: tuple[int, int, int, int] = (0, 0, 0, 0)
     ocr_crop_top: int = 0
@@ -116,16 +112,15 @@ class PageType(str, Enum):
     """Leaf excluded from the package entirely (cover/endpaper/divider).
 
     A skip page is not written to the submission zip — no .png, no .txt.
-    It is also excluded from all pairing checks. ``compute_prefix`` returns
-    ``None`` for skip pages (same as pages outside the proof range).
+    It is also excluded from all pairing checks.  The runs-based naming
+    (``compute_prefixes_from_runs``) returns ``None`` for skip leaves.
     """
     cover = "cover"
-    """Cover image included in the package under the ``c``-prefix series.
+    """Cover image included in the package under the ``e``-type series.
 
-    A cover page is treated like a normal page but named with the ``c``
-    type-code (e.g. ``c001``) so it sorts before the front-matter ``f``
-    pages. It does NOT consume a frontmatter or bodymatter folio number.
-    ``compute_prefix`` returns a ``c``-prefixed string for cover pages.
+    A cover leaf is named with the ``e`` type-code (e.g. ``000e``), sorts by
+    its binding-order ``seq`` prefix, and does NOT consume a numbering-run
+    folio.  The runs-based naming emits ``<seq>e`` for cover leaves.
     """
 
 
@@ -386,10 +381,10 @@ class Project(ApiModel):
     stage_artifacts_bytes: int = 0
     source_zip_bytes: int = 0
     # Registry version stamp — stage-registry-v2.md §1.
-    # 2 for all new projects; 1 for projects created before the B1 re-cut.
-    # The guard in core/pipeline/registry_version.py raises RegistryVersionMismatch
-    # (HTTP 409) for v1 projects.
-    registry_version: int = 2
+    # 3 for all new projects (runs-based numbering); 2 = pre-runs (range config);
+    # 1 = pre-B1 re-cut.  The guard in core/pipeline/registry_version.py
+    # auto-migrates v2 projects to v3 on access; v1 projects still raise 409.
+    registry_version: int = 3
 
 
 # ─── GrayscaleConfigModel (pydantic mirror of book-tools GrayscaleConfig) ────

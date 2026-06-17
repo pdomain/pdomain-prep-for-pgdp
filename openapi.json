@@ -9180,7 +9180,7 @@
           "registry_version": {
             "type": "integer",
             "title": "Registry Version",
-            "default": 2
+            "default": 3
           }
         },
         "type": "object",
@@ -9216,68 +9216,6 @@
             "type": "string",
             "title": "Author",
             "default": ""
-          },
-          "proof_start_idx0": {
-            "type": "integer",
-            "title": "Proof Start Idx0",
-            "default": 0
-          },
-          "proof_end_idx0": {
-            "type": "integer",
-            "title": "Proof End Idx0",
-            "default": 0
-          },
-          "cover_idx0": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Idx0"
-          },
-          "title_idx0": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title Idx0"
-          },
-          "frontmatter_start_idx0": {
-            "type": "integer",
-            "title": "Frontmatter Start Idx0",
-            "default": 0
-          },
-          "frontmatter_end_idx0": {
-            "type": "integer",
-            "title": "Frontmatter End Idx0",
-            "default": 0
-          },
-          "bodymatter_start_idx0": {
-            "type": "integer",
-            "title": "Bodymatter Start Idx0",
-            "default": 0
-          },
-          "bodymatter_end_idx0": {
-            "type": "integer",
-            "title": "Bodymatter End Idx0",
-            "default": 0
-          },
-          "frontmatter_page_nbr_start": {
-            "type": "integer",
-            "title": "Frontmatter Page Nbr Start",
-            "default": 1
-          },
-          "bodymatter_page_nbr_start": {
-            "type": "integer",
-            "title": "Bodymatter Page Nbr Start",
-            "default": 1
           },
           "initial_crop_all": {
             "prefixItems": [
@@ -9379,16 +9317,6 @@
           "book_name",
           "source_uri",
           "author",
-          "proof_start_idx0",
-          "proof_end_idx0",
-          "cover_idx0",
-          "title_idx0",
-          "frontmatter_start_idx0",
-          "frontmatter_end_idx0",
-          "bodymatter_start_idx0",
-          "bodymatter_end_idx0",
-          "frontmatter_page_nbr_start",
-          "bodymatter_page_nbr_start",
           "initial_crop_all",
           "ocr_crop_top",
           "ocr_crop_bottom",

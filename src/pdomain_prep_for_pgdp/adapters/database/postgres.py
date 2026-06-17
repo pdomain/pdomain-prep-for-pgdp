@@ -182,6 +182,19 @@ class PostgresDatabase:
             row = cast(_JsonTextRow | None, await cur.fetchone())
         return Project.model_validate_json(row[0]) if row else None
 
+    async def get_project_raw_config(self, project_id: str) -> dict[str, object] | None:
+        import json as _json
+
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute("SELECT body::text FROM projects WHERE id = %s", (project_id,))
+            row = cast("_JsonTextRow | None", await cur.fetchone())
+        if not row:
+            return None
+        body = _json.loads(row[0])
+        cfg = body.get("config")
+        return cfg if isinstance(cfg, dict) else None
+
     async def put_project(self, project: Project) -> None:
         conn = self._require_conn()
         body = project.model_dump_json()

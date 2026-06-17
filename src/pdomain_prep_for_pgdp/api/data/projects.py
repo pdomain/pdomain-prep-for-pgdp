@@ -213,10 +213,11 @@ async def update_project_config(
         project.name = new_name
     project.updated_at = datetime.now(UTC)
     await db.put_project(project)
-    # Re-derive prefixes whenever ranges change. Cheap (in-memory walk).
-    from pdomain_prep_for_pgdp.core.assign_prefixes import assign_prefixes
-
-    _ = await assign_prefixes(project=project, page_service=page_service)
+    # P1.9: page numbering is no longer derived from ProjectConfig ranges, so a
+    # config edit no longer recomputes prefixes.  Numbering is driven by the
+    # NumberingRuns model (PUT .../page_order/runs) and materialized by the
+    # page_order stage.
+    _ = page_service  # retained for signature/back-compat
     return UpdateConfigResponse(
         project_config=project.config,
         updated_at=project.updated_at,

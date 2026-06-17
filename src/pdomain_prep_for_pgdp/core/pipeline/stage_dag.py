@@ -28,9 +28,15 @@ from typing import Literal
 
 # Registry version constant — stage-registry-v2.md §1.
 # Stamped on the `projects.registry_version` column at project-creation time.
-# Any API access to a project whose registry_version < REGISTRY_VERSION returns
-# HTTP 409 via RegistryVersionMismatch (core/pipeline/registry_version.py).
-REGISTRY_VERSION: int = 2
+# Any API access to a project whose registry_version < REGISTRY_VERSION triggers
+# the auto re-derive migration (core/pipeline/registry_version.py +
+# core/numbering_migration.py), then proceeds.
+#
+# v3 (P1.9): page numbering moved from ProjectConfig frontmatter/bodymatter
+# RANGES to the NumberingRun runs model.  The v2->v3 migration seeds runs from
+# the (now deleted) ranges read out of the raw stored config blob and stamps
+# per-page leaf_role/run_id/plate_side.
+REGISTRY_VERSION: int = 3
 
 
 # ─── Registry v2 DAG (stage-registry-v2.md §2) ──────────────────────────────
