@@ -299,7 +299,7 @@ class TestMaterializeNamingManifest:
         pages, cfg = self._pages_and_cfg()
         result = materialize_naming_manifest("proj", pages, cfg, tmp_path)
         parsed = json.loads(result)
-        assert parsed["version"] == 1
+        assert parsed["version"] == 2
         assert "pages" in parsed
         assert "skip_ids" in parsed
 

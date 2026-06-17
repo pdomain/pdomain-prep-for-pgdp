@@ -383,9 +383,9 @@ def test_build_package_v2_cpu_deterministic_with_same_built_at(tmp_path: Path) -
     manifest_dir.mkdir(parents=True, exist_ok=True)
     import json
 
-    # Manifest format per page_order.py: version=1, pages=[{page_id, idx0, role, prefix}], skip_ids=[]
+    # Manifest format per page_order.py: version=2, pages=[{page_id, idx0, role, prefix}], skip_ids=[]
     manifest_data = {
-        "version": 1,
+        "version": 2,
         "pages": [
             {
                 "page_id": page_id,

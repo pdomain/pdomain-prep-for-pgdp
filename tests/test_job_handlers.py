@@ -96,7 +96,7 @@ async def test_build_package_handler_writes_zip(
     manifest_dir = data_root / "projects" / project.id / "stages" / "page_order"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     naming_manifest = {
-        "version": 1,
+        "version": 2,
         "pages": [
             {"page_id": "0000", "idx0": 0, "role": "normal", "prefix": "p001"},
         ],

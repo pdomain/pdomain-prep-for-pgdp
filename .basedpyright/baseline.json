@@ -742,40 +742,6 @@
                 }
             }
         ],
-        "./src/pdomain_prep_for_pgdp/cli/migrate_projects.py": [
-            {
-                "code": "reportPrivateUsage",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAny",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportPrivateUsage",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportImplicitStringConcatenation",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 57,
-                    "lineCount": 2
-                }
-            }
-        ],
         "./src/pdomain_prep_for_pgdp/cli/reindex.py": [
             {
                 "code": "reportPrivateUsage",
