@@ -61,6 +61,7 @@ class Leaf:
     scan: int
     leaf_role: LeafRole
     run_id: str | None
+    ocr_folio: str | None = None
 
 
 def compute_labels(leaves: list[Leaf], runs: list[NumberingRun]) -> dict[int, str]:
@@ -102,3 +103,26 @@ def compute_labels(leaves: list[Leaf], runs: list[NumberingRun]) -> dict[int, st
         labels[leaf.scan] = _style_label(run.style, n)
 
     return labels
+
+
+def reconcile(labels: dict[int, str], leaves: list[Leaf]) -> dict[int, list[str]]:
+    """Derive reconciliation flags from computed labels vs OCR folios.
+
+    Flags: ``duplicate`` (same computed number appears twice),
+    ``out_of_sequence`` (OCR-read folio disagrees with the computed label).
+    Markers ("[Blank Page]") and unnumbered ("—"/"") are never flagged.
+    """
+    seen: dict[str, int] = {}
+    flags: dict[int, list[str]] = {}
+    for leaf in leaves:
+        lf_flags: list[str] = []
+        computed = labels.get(leaf.scan, "")
+        if computed and computed not in (MARKER, UNNUMBERED):
+            if computed in seen:
+                lf_flags.append("duplicate")
+            else:
+                seen[computed] = leaf.scan
+            if leaf.ocr_folio and leaf.ocr_folio != computed:
+                lf_flags.append("out_of_sequence")
+        flags[leaf.scan] = lf_flags
+    return flags
