@@ -34,14 +34,45 @@
  */
 
 import { api } from "@/api/client";
+import type { components } from "@/api/types.gen";
 import type {
   PageOrderToolServices,
   Leaf,
   LeafRole,
   Run,
+  RunStyle,
   NamingScheme,
   PageOrderTotals,
 } from "@/machines/tools/pageOrderTool";
+
+type NumberingRunsArtifact = components["schemas"]["NumberingRunsArtifact"];
+type WireRunStyle = components["schemas"]["RunStyle"];
+
+// ---------------------------------------------------------------------------
+// RunStyle → wire RunStyle mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Map the machine's narrow RunStyle set to the backend wire RunStyle.
+ *
+ * Machine: "roman" | "arabic" | "none"
+ * Wire:    "roman-lower" | "roman-upper" | "arabic" | "alpha" | "none"
+ *
+ * "roman" maps to "roman-lower" (conservative default; the machine has no
+ * distinction between lower- and upper-case roman numerals, and lower-case
+ * is the PGDP convention for front-matter folios). "roman-upper" and "alpha"
+ * are not reachable from the current machine style set.
+ */
+function machineStyleToWire(style: RunStyle): WireRunStyle {
+  switch (style) {
+    case "roman":
+      return "roman-lower";
+    case "arabic":
+      return "arabic";
+    case "none":
+      return "none";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Role → PageType wire value mapping
@@ -112,18 +143,38 @@ async function persistOrder(projectId: string, scans: number[]): Promise<void> {
  * Persist the full runs array.
  *
  * W4 Group 2 — PUT /api/data/projects/{id}/project-stages/page_order/runs
+ *
+ * Maps machine Run → NumberingRun wire shape:
+ *   run.id          → id
+ *   run.label       → label
+ *   run.style       → style  (via machineStyleToWire: roman→roman-lower)
+ *   run.start.mode  → start_mode  ("set" | "continue")
+ *   run.start.value → start
+ *   run.step        → step
+ *   run.span        → span
+ *   (defaulted)     → role: "text", note: ""
  */
 async function persistRuns(projectId: string, runs: Run[]): Promise<void> {
+  const body: NumberingRunsArtifact = {
+    version: 1,
+    runs: runs.map((r) => ({
+      id: r.id,
+      label: r.label,
+      style: machineStyleToWire(r.style),
+      start_mode: r.start.mode,
+      // r.start.value is optional (not meaningful in "continue" mode);
+      // default to 1 — the backend ignores this field when start_mode is
+      // "continue", so the value is irrelevant in that branch.
+      start: r.start.value ?? 1,
+      step: r.step,
+      role: "text",
+      span: r.span,
+      note: "",
+    })),
+  };
   await api.put(
     `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/runs`,
-    {
-      runs: runs.map((r) => ({
-        start_idx: r.span[0],
-        style: r.style,
-        number_start: r.start.mode === "set" ? r.start.value : 1,
-        type_code: r.style === "arabic" ? "p" : "f",
-      })),
-    },
+    body,
   );
 }
 
