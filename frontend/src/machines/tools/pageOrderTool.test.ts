@@ -845,3 +845,103 @@ describe("resolveNeighbourRunId — multi-run blank assignment", () => {
     expect(resolved).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Suite 13 (P3.3): persist side-effects send the NEW value, not a stale one
+//
+// BUG 2 (settle empirically): two reviewers disagreed on XState v5 — does a
+// non-assign side-effect action that runs AFTER an `assign` in the same
+// transition observe the UPDATED context or the pre-assign snapshot?
+//
+// These tests assert against the OBJECT HANDED TO persistLeaf (mock call args),
+// not against final machine context — so they prove what the side-effect
+// actually saw at call time. If the side-effect saw stale context, the asserted
+// field would still hold the PRE-edit value and the test would fail.
+// ---------------------------------------------------------------------------
+
+describe("pageOrderTool — persist side-effects see NEW context (P3.3)", () => {
+  function persistLeafArg(services: PageOrderToolServices): Leaf {
+    const calls = (services.persistLeaf as ReturnType<typeof vi.fn>).mock.calls;
+    const [, leaf] = calls[0] as [string, Leaf];
+    return leaf;
+  }
+
+  it("SET_ROLE: persistLeaf receives the NEW role (not the pre-assign value)", () => {
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    // leaf currently role "text"
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [makeLeaf({ scan: 1, role: "text", runId: "body" })],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+
+    actor.send({ type: "SET_ROLE", scan: 1, role: "blank" });
+
+    expect(services.persistLeaf).toHaveBeenCalledOnce();
+    const leaf = persistLeafArg(services);
+    // The NEW value. If side-effects saw the pre-assign snapshot this is "text".
+    expect(leaf.role).toBe("blank");
+    actor.stop();
+  });
+
+  it("OVERRIDE_FOLIO: persistLeaf receives the NEW labelOverride (not stale)", () => {
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [makeLeaf({ scan: 1, role: "text", runId: "body" })],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+
+    // Select the leaf so the inspector region patches selectedLeaf
+    actor.send({ type: "SELECT_LEAF", scan: 1 });
+    actor.send({
+      type: "OVERRIDE_FOLIO",
+      patch: { labelOverride: "42" },
+    });
+
+    expect(services.persistLeaf).toHaveBeenCalledOnce();
+    const leaf = persistLeafArg(services);
+    // The NEW value — proves the full chain folio input → OVERRIDE_FOLIO →
+    // labelOverride → persistLeaf carries the override the user typed.
+    expect(leaf.labelOverride).toBe("42");
+    actor.stop();
+  });
+
+  it("OVERRIDE_FOLIO with labelOverride null clears the override (NEW value)", () => {
+    const services = makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    // leaf already carries an override "7"
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [
+        makeLeaf({ scan: 1, role: "text", runId: "body", labelOverride: "7" }),
+      ],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+
+    actor.send({ type: "SELECT_LEAF", scan: 1 });
+    actor.send({
+      type: "OVERRIDE_FOLIO",
+      patch: { labelOverride: null },
+    });
+
+    const leaf = persistLeafArg(services);
+    // Explicit clear must reach persistLeaf as null, not stale "7".
+    expect(leaf.labelOverride).toBeNull();
+    actor.stop();
+  });
+});

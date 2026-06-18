@@ -296,6 +296,60 @@ describe("persistLeaf", () => {
     ];
     expect(body["page_type"]).toBe("skip");
   });
+
+  it("PATCHes label_override when leaf carries a labelOverride", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = {
+      scan: 4,
+      role: "text",
+      runId: "body",
+      flags: [],
+      labelOverride: "7",
+    };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["label_override"]).toBe("7");
+  });
+
+  it("sends label_override: null for an explicit clear (labelOverride null)", async () => {
+    // Same model_fields_set contract as run_id: explicit null clears the
+    // override; the field must be present, not omitted.
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = {
+      scan: 4,
+      role: "text",
+      runId: "body",
+      flags: [],
+      labelOverride: null,
+    };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(Object.keys(body)).toContain("label_override");
+    expect(body["label_override"]).toBeNull();
+  });
+
+  it("sends label_override: null when labelOverride is absent (omitted field)", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = { scan: 4, role: "text", runId: "body", flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["label_override"]).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -380,6 +434,57 @@ describe("fetchFolios", () => {
     const leaf = result.leaves[0]!;
     expect(leaf.role).toBe("blank");
     expect(leaf.runId).toBe("body");
+  });
+
+  it("loads an existing label_override into leaf.labelOverride on mount", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "p007",
+          source_stem: "scan_007",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: "6",
+          label_override: "7",
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    const leaf = result.leaves[0]!;
+    // The persisted override must survive reload (severed-chain regression).
+    expect(leaf.labelOverride).toBe("7");
+    // ocrFolio stays the OCR-read value, distinct from the override.
+    expect(leaf.ocrFolio).toBe("6");
+  });
+
+  it("sets labelOverride null when label_override is absent from the record", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "p001",
+          source_stem: "scan_001",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: null,
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.leaves[0]!.labelOverride).toBeNull();
   });
 
   it("falls back to page_type-derived role when leaf_role is null", async () => {

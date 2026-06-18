@@ -104,6 +104,12 @@ export interface Leaf {
   folioLabel?: string | null;
   /** OCR-read folio from the physical page */
   ocrFolio?: string | null;
+  /**
+   * User-entered folio LABEL override (maps to backend `label_override`).
+   * Distinct from `ocrFolio` (the OCR-read value): this is the proofer's
+   * explicit correction. Null/undefined when the user has not overridden.
+   */
+  labelOverride?: string | null;
   /** Reconciliation flags */
   flags: string[];
   /** For plates: descriptive tag (e.g. "Plate VIII") */

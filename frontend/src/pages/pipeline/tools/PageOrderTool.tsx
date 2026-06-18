@@ -361,6 +361,8 @@ function LeafInspector({
   neighbourRunId,
   onClose,
   onSetRun,
+  onSetRole,
+  onOverrideFolio,
 }: {
   leaf: Leaf;
   run: Run | null;
@@ -368,10 +370,13 @@ function LeafInspector({
   neighbourRunId: string | null;
   onClose: () => void;
   onSetRun: (runId: string | null) => void;
+  onSetRole: (role: LeafRole) => void;
+  onOverrideFolio: (folio: string | null) => void;
 }) {
   return (
     <div
-      data-testid={`po-inspector-${leaf.scan}`}
+      data-testid="po-inspector"
+      data-scan={leaf.scan}
       style={{
         padding: "12px 14px",
         background: "var(--bg-surface)",
@@ -417,20 +422,62 @@ function LeafInspector({
         }}
       >
         <span style={{ color: "var(--ink-4)" }}>Role</span>
-        <span
+        <select
+          data-testid="po-inspector-role-select"
+          value={leaf.role}
+          onChange={(e) => onSetRole(e.target.value as LeafRole)}
           style={{
-            color: ROLE_TONE[leaf.role],
+            fontFamily: "inherit",
+            fontSize: 12,
             fontWeight: 600,
+            color: ROLE_TONE[leaf.role],
+            background: "transparent",
+            border: `1px solid color-mix(in oklab, ${ROLE_TONE[leaf.role]} 30%, var(--border-1))`,
+            borderRadius: 4,
+            padding: "2px 4px",
+            cursor: "pointer",
           }}
         >
-          {leaf.role}
-        </span>
+          {(["text", "plate", "blank", "skip", "cover"] as const).map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
         <span style={{ color: "var(--ink-4)" }}>Run</span>
         <span style={{ color: "var(--ink-2)" }}>{run?.label ?? "—"}</span>
-        <span style={{ color: "var(--ink-4)" }}>OCR folio</span>
-        <span style={{ fontFamily: "monospace", color: "var(--ink-1)" }}>
-          {leaf.ocrFolio ?? "—"}
-        </span>
+        <span style={{ color: "var(--ink-4)" }}>Folio override</span>
+        <input
+          data-testid="po-inspector-folio-override"
+          type="text"
+          placeholder={leaf.ocrFolio ?? "—"}
+          defaultValue={leaf.labelOverride ?? ""}
+          key={`folio-${leaf.scan}`}
+          onBlur={(e) => {
+            const val = e.target.value.trim();
+            if (val !== (leaf.labelOverride ?? "")) {
+              // Empty input clears the override (sends null); otherwise the
+              // entered string becomes the label override.
+              onOverrideFolio(val === "" ? null : val);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.currentTarget.blur();
+            }
+          }}
+          style={{
+            fontFamily: "monospace",
+            fontSize: 11,
+            color: "var(--ink-1)",
+            background: "transparent",
+            border: "1px solid var(--border-1)",
+            borderRadius: 4,
+            padding: "2px 6px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        />
         <span style={{ color: "var(--ink-4)" }}>Computed</span>
         <span
           style={{
@@ -1015,6 +1062,15 @@ export function PageOrderTool({
                 onClose={() => send({ type: "CLOSE_INSPECTOR" })}
                 onSetRun={(runId) =>
                   send({ type: "SET_RUN", scan: inspectorLeaf.scan, runId })
+                }
+                onSetRole={(role) =>
+                  send({ type: "SET_ROLE", scan: inspectorLeaf.scan, role })
+                }
+                onOverrideFolio={(folio) =>
+                  send({
+                    type: "OVERRIDE_FOLIO",
+                    patch: { labelOverride: folio },
+                  })
                 }
               />
             )}

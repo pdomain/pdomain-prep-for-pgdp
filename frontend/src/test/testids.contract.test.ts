@@ -249,6 +249,13 @@ const PGDP_REQUIRED_TESTIDS: readonly string[] = [
   "po-banner-reading", // PageOrderTool reading-folios banner
   "po-ledger", // Ledger pane
   "po-confirm-advance-btn", // Confirm + advance to next stage button
+  "po-run-spine", // Run spine summary band (all runs listed)
+  "po-inspector", // Leaf inspector panel (stable; data-scan carries per-leaf scan)
+  "po-blank-marker-toggle", // Blank counted/marker toggle (P3.2)
+  "po-blank-counted-btn", // "Counts toward #" button (P3.2)
+  "po-blank-marker-btn", // "Held out" button (P3.2)
+  "po-inspector-role-select", // Role dropdown in inspector (P3.3)
+  "po-inspector-folio-override", // Folio/label override input in inspector (P3.3)
   // ── Q. Wordcheck tool state surfaces ─────────────────────────────────────
   "wordcheck-tool-settled", // Wordcheck settled state surface
   "wordcheck-tool-confirming", // Wordcheck confirming state surface
@@ -358,6 +365,24 @@ describe("dynamic per-stage testid patterns in production source", () => {
     );
     // Pattern: data-testid={`settings-group-${item.id}`}
     expect(pipelineSrc).toContain("settings-group-");
+  });
+
+  it("po-leaf-row-${scan} dynamic pattern used in PageOrderTool", () => {
+    const pageOrderSrc = readFileSync(
+      join(SRC_DIR, "pages/pipeline/tools/PageOrderTool.tsx"),
+      "utf8",
+    );
+    // Pattern: data-testid={`po-leaf-row-${leaf.scan}`}
+    expect(pageOrderSrc).toContain("po-leaf-row-");
+  });
+
+  it("po-run-chip-${run.id} dynamic pattern used in PageOrderTool", () => {
+    const pageOrderSrc = readFileSync(
+      join(SRC_DIR, "pages/pipeline/tools/PageOrderTool.tsx"),
+      "utf8",
+    );
+    // Pattern: data-testid={`po-run-chip-${run.id}`}
+    expect(pageOrderSrc).toContain("po-run-chip-");
   });
 });
 

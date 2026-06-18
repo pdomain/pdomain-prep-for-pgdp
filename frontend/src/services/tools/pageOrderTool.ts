@@ -132,6 +132,9 @@ async function persistLeaf(projectId: string, leaf: Leaf): Promise<void> {
       // Always send run_id — explicit null clears the run; omitting preserves.
       run_id: leaf.runId ?? null,
       plate_tag: leaf.plateTag ?? null,
+      // Always send label_override — explicit null clears a prior override
+      // (same model_fields_set pattern as run_id); omitting would preserve it.
+      label_override: leaf.labelOverride ?? null,
     },
   );
 }
@@ -238,6 +241,8 @@ interface WirePageRecord {
   run_id: string | null;
   /** OCR-detected folio text from the physical page (null until page_order OCR) */
   ocr_folio: string | null;
+  /** User-entered folio label override (null until the user overrides) */
+  label_override?: string | null;
 }
 
 interface WireListPagesResponse {
@@ -283,6 +288,8 @@ async function fetchFolios(projectId: string): Promise<{
     // in P4). The old stopgap (p.prefix || null) is removed — prefix is the
     // naming-manifest output stem, not the OCR-read folio.
     ocrFolio: p.ocr_folio ?? null,
+    // P3.3: load an existing user label override so it survives reload.
+    labelOverride: p.label_override ?? null,
     flags: [],
   }));
 
