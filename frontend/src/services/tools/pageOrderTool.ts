@@ -177,12 +177,22 @@ async function persistLeaf(projectId: string, leaf: Leaf): Promise<void> {
  * Persist the new page order.
  *
  * Maps to PATCH /api/data/projects/{id}/pages/reorder
- * Body: { order: number[] } — ordered scan indices (0-based).
+ * Body: { page_ids: string[] } — ordered zero-padded 4-digit idx0 strings
+ * (e.g. ["0002", "0000", "0001"]).
+ *
+ * The backend ReorderPagesRequest expects `page_ids: list[str]` where each
+ * element is a parseable integer in string form.  The canonical format is
+ * 4-digit zero-padded: f"{idx0:04d}" — matching how existing backend tests
+ * construct page_ids and how list_pages returns idx0 values.
+ *
+ * FIX (M2): previously sent `{ order: number[] }` which 422'd on the backend
+ * (wrong field name AND wrong element type).
  */
 async function persistOrder(projectId: string, scans: number[]): Promise<void> {
+  const pageIds = scans.map((scan) => String(scan).padStart(4, "0"));
   await api.patch(
     `/api/data/projects/${encodeURIComponent(projectId)}/pages/reorder`,
-    { order: scans },
+    { page_ids: pageIds },
   );
 }
 

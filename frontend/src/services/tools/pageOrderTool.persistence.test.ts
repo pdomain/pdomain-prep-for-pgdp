@@ -563,6 +563,86 @@ describe("fetchFolios", () => {
 });
 
 // ---------------------------------------------------------------------------
+// persistOrder — sends { page_ids: string[] } (zero-padded idx0 strings)
+// ---------------------------------------------------------------------------
+//
+// Backend contract (ReorderPagesRequest):
+//   page_ids: list[str]  — zero-padded 4-digit idx0 strings, e.g. "0000", "0003"
+//   (backend parses with int(page_id), so "0003" → idx0=3)
+//
+// The machine's Leaf.scan field IS the idx0 (0-based scan index).
+// persistOrder receives scans: number[] (the new scan order) and must map
+// each scan to its zero-padded 4-digit string representation.
+//
+// BUG BEFORE FIX: sent { order: number[] } — wrong field name + wrong type.
+// CORRECT:         { page_ids: ["0000", "0003", "0001", ...] }
+
+describe("persistOrder", () => {
+  it("PATCHes { page_ids: string[] } not { order: number[] }", async () => {
+    const svc = buildRealPageOrderToolServices();
+    // scans in new order: page at idx0=2 moved to position 0, etc.
+    await svc.persistOrder("proj-1", [2, 0, 1]);
+
+    expect(mockApiPatch).toHaveBeenCalledOnce();
+    const [url, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(url).toBe("/api/data/projects/proj-1/pages/reorder");
+    // Must use the field name the backend expects: page_ids
+    expect(Object.keys(body)).toContain("page_ids");
+    expect(Object.keys(body)).not.toContain("order");
+    // Each element must be a zero-padded 4-digit string
+    expect(body["page_ids"]).toEqual(["0002", "0000", "0001"]);
+  });
+
+  it("zero-pads single-digit idx0 to 4 chars", async () => {
+    const svc = buildRealPageOrderToolServices();
+    await svc.persistOrder("proj-1", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["page_ids"]).toEqual([
+      "0000",
+      "0001",
+      "0002",
+      "0003",
+      "0004",
+      "0005",
+      "0006",
+      "0007",
+      "0008",
+      "0009",
+    ]);
+  });
+
+  it("zero-pads large idx0 values correctly", async () => {
+    const svc = buildRealPageOrderToolServices();
+    // A 200-page book with pages at positions like 99, 100, 199
+    await svc.persistOrder("proj-1", [199, 100, 99]);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["page_ids"]).toEqual(["0199", "0100", "0099"]);
+  });
+
+  it("encodes the project id in the URL", async () => {
+    const svc = buildRealPageOrderToolServices();
+    await svc.persistOrder("abc/def", [0, 1]);
+
+    const [url] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(url).toBe("/api/data/projects/abc%2Fdef/pages/reorder");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // fetchFolios — reads PERSISTED runs (the severed-chain fix)
 // ---------------------------------------------------------------------------
 
