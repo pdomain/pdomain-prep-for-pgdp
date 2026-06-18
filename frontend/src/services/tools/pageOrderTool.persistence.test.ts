@@ -25,7 +25,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { api } from "@/api/client";
 import { buildRealPageOrderToolServices } from "./pageOrderTool";
-import type { Run } from "@/machines/tools/pageOrderTool";
+import type { Run, Leaf } from "@/machines/tools/pageOrderTool";
 import type { components } from "@/api/types.gen";
 
 type NumberingRunsArtifact = components["schemas"]["NumberingRunsArtifact"];
@@ -41,6 +41,8 @@ vi.mock("@/api/client", () => ({
 }));
 
 const mockApiPut = vi.mocked(api.put);
+const mockApiPatch = vi.mocked(api.patch);
+const mockApiGet = vi.mocked(api.get);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -193,5 +195,215 @@ describe("persistRuns", () => {
     expect(url).toBe(
       "/api/data/projects/abc%2Fdef/project-stages/page_order/runs",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// persistLeaf — sends leaf_role + run_id
+// ---------------------------------------------------------------------------
+
+describe("persistLeaf", () => {
+  it("PATCHes leaf_role and run_id for a blank leaf with no run", async () => {
+    const svc = buildRealPageOrderToolServices();
+    // Do not include plateTag at all — exactOptionalPropertyTypes forbids
+    // assigning explicit `undefined` to an optional property typed as `string`.
+    const leaf: Leaf = { scan: 3, role: "blank", runId: null, flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    expect(mockApiPatch).toHaveBeenCalledOnce();
+    const [url, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(url).toBe("/api/data/projects/proj-1/pages/3");
+    // leaf_role must be sent as the wire enum value matching machine role
+    expect(body).toMatchObject({ leaf_role: "blank", run_id: null });
+  });
+
+  it("sends explicit run_id: null for a marker leaf (runId === null)", async () => {
+    // CRITICAL: explicit null clears the run assignment; omitting it preserves
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = { scan: 0, role: "text", runId: null, flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    // run_id must be present as explicit null, not missing/undefined
+    expect(Object.keys(body)).toContain("run_id");
+    expect(body["run_id"]).toBeNull();
+  });
+
+  it("sends run_id as the string value when leaf has a run assigned", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = { scan: 5, role: "text", runId: "body", flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["run_id"]).toBe("body");
+    expect(body["leaf_role"]).toBe("text");
+  });
+
+  it("sends plate_tag when leaf has a plateTag", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = {
+      scan: 10,
+      role: "plate",
+      runId: null,
+      flags: [],
+      plateTag: "Plate VIII",
+    };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["plate_tag"]).toBe("Plate VIII");
+    expect(body["leaf_role"]).toBe("plate");
+  });
+
+  it("sends plate_tag: null when leaf has no plateTag", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = { scan: 7, role: "text", runId: "body", flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["plate_tag"]).toBeNull();
+  });
+
+  it("still sends page_type for backward compatibility", async () => {
+    const svc = buildRealPageOrderToolServices();
+    const leaf: Leaf = { scan: 2, role: "skip", runId: null, flags: [] };
+
+    await svc.persistLeaf("proj-1", leaf);
+
+    const [, body] = mockApiPatch.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body["page_type"]).toBe("skip");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchFolios — reads ocr_folio not prefix
+// ---------------------------------------------------------------------------
+
+describe("fetchFolios", () => {
+  it("builds leaves reading ocr_folio from the page record, not prefix", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "003p002",
+          source_stem: "scan_003",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: "7",
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.leaves).toHaveLength(1);
+    const leaf = result.leaves[0]!;
+    // ocrFolio must come from ocr_folio field, NOT prefix
+    expect(leaf.ocrFolio).toBe("7");
+    // must NOT be the prefix value
+    expect(leaf.ocrFolio).not.toBe("003p002");
+  });
+
+  it("sets ocrFolio to null when ocr_folio is null (not the prefix)", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "f001",
+          source_stem: "scan_001",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: null,
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    const leaf = result.leaves[0]!;
+    // stopgap was: ocrFolio: p.prefix || null — would have given "f001" here
+    // correct: ocrFolio is null because ocr_folio is null
+    expect(leaf.ocrFolio).toBeNull();
+  });
+
+  it("reads leaf_role and run_id from the page record", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "blank",
+          prefix: "",
+          source_stem: "scan_000",
+          leaf_role: "blank",
+          run_id: "body",
+          ocr_folio: null,
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    const leaf = result.leaves[0]!;
+    expect(leaf.role).toBe("blank");
+    expect(leaf.runId).toBe("body");
+  });
+
+  it("falls back to page_type-derived role when leaf_role is null", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "plate_p",
+          prefix: "",
+          source_stem: "scan_000",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: null,
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    const leaf = result.leaves[0]!;
+    // leaf_role is null → fall back to page_type "plate_p" → role "plate"
+    expect(leaf.role).toBe("plate");
   });
 });

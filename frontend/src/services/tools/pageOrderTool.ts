@@ -112,17 +112,27 @@ function pageTypeToRole(pageType: string): LeafRole {
 /**
  * Persist leaf metadata for a single page.
  *
- * Maps the design-layer role to a PageType and PATCHes the page record.
+ * PATCHes the page record with leaf_role, run_id, page_type, and plate_tag.
  * Route: PATCH /api/data/projects/{id}/pages/{idx0}
- * Body: { page_type: PageType }
  *
  * The leaf's ``scan`` field is the 0-based scan index (idx0).
+ *
+ * run_id is ALWAYS included in the body (even when null). The backend uses
+ * model_fields_set: explicit null clears the run assignment (marker), while
+ * omitting it would preserve the existing value. For the marker-toggle (P3.2)
+ * to work correctly, null must be sent explicitly when the leaf has no run.
  */
 async function persistLeaf(projectId: string, leaf: Leaf): Promise<void> {
   const pageType = roleToPageType(leaf.role);
   await api.patch(
     `/api/data/projects/${encodeURIComponent(projectId)}/pages/${leaf.scan}`,
-    { page_type: pageType },
+    {
+      page_type: pageType,
+      leaf_role: leaf.role,
+      // Always send run_id — explicit null clears the run; omitting preserves.
+      run_id: leaf.runId ?? null,
+      plate_tag: leaf.plateTag ?? null,
+    },
   );
 }
 
@@ -222,6 +232,12 @@ interface WirePageRecord {
   page_type: string;
   prefix: string;
   source_stem: string;
+  /** Persisted leaf role (null until a role is explicitly set on the page) */
+  leaf_role: string | null;
+  /** Persisted run assignment (null until the leaf is assigned to a run) */
+  run_id: string | null;
+  /** OCR-detected folio text from the physical page (null until page_order OCR) */
+  ocr_folio: string | null;
 }
 
 interface WireListPagesResponse {
@@ -255,12 +271,18 @@ async function fetchFolios(projectId: string): Promise<{
 
   const leaves: Leaf[] = (raw.pages ?? []).map((p) => ({
     scan: p.idx0,
-    role: pageTypeToRole(p.page_type),
-    runId: null,
+    // Use persisted leaf_role when available; fall back to page_type-derived role.
+    role:
+      p.leaf_role !== null && p.leaf_role !== undefined
+        ? (p.leaf_role as Leaf["role"])
+        : pageTypeToRole(p.page_type),
+    // Use persisted run_id (null means no run assigned yet).
+    runId: p.run_id ?? null,
     folioLabel: null,
-    // W5.5: ocrFolio from the page prefix (best available at initial load;
-    // real folio detection arrives via the page_order artifact at I1).
-    ocrFolio: p.prefix || null,
+    // P2.2: ocrFolio from the real ocr_folio field (null until page_order OCR
+    // in P4). The old stopgap (p.prefix || null) is removed — prefix is the
+    // naming-manifest output stem, not the OCR-read folio.
+    ocrFolio: p.ocr_folio ?? null,
     flags: [],
   }));
 
