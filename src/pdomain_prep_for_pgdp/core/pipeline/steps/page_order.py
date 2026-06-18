@@ -211,6 +211,7 @@ def materialize_naming_manifest(
     Returns:
         UTF-8 JSON bytes of the naming manifest.
     """
+    from pdomain_prep_for_pgdp.core.models import LeafRole
     from pdomain_prep_for_pgdp.core.numbering import (
         Leaf,
         compute_labels,
@@ -233,6 +234,7 @@ def materialize_naming_manifest(
     # (consumes a number), a blank WITHOUT a run is a [Blank Page] marker.
     leaves: list[Leaf] = []
     stored_run_id_map: dict[int, str | None] = {}
+    stored_leaf_role_map: dict[int, LeafRole] = {}
     plate_suffixes: dict[int, str] = {}
     for page in ordered_pages:
         if page.idx0 in _leaf_assignments:
@@ -241,6 +243,7 @@ def materialize_naming_manifest(
             leaf_role, _plate_side = page_type_to_leaf_role(page.page_type)
             assigned_run_id = None
         stored_run_id_map[page.idx0] = assigned_run_id
+        stored_leaf_role_map[page.idx0] = leaf_role
         # Preserve the exact legacy plate filename letter from page_type.
         _legacy_plate = {"plate_b": "b", "plate_p": "p", "plate_r": "r"}
         if page.page_type.value in _legacy_plate:
@@ -279,8 +282,12 @@ def materialize_naming_manifest(
         run_id = stored_run_id_map.get(page.idx0)
 
         if prefix is None:
-            # No filename -> excluded from the submission zip (skip / unassigned).
-            skip_ids.append(page_id)
+            # Distinguish skip (dropped from package) from marker (kept in order,
+            # unnumbered).  A [Blank Page] marker has role:blank + run:None →
+            # label=MARKER, prefix=None; it belongs in the scan sequence but
+            # carries no filename.  Only genuine skip-role leaves go in skip_ids.
+            if stored_leaf_role_map.get(page.idx0) is LeafRole.skip:
+                skip_ids.append(page_id)
             export_name: str | None = None
         elif numeric_export:
             export_name = export_name_for_seq(non_skip_seq, total=total_non_skip)
