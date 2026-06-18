@@ -37,6 +37,7 @@ from pdomain_prep_for_pgdp.core.models import (
     Job,
     JobStatus,
     JobType,
+    LeafRole,
     OcrWord,
     PageConfigOverrides,
     PageProcessingStatus,
@@ -45,6 +46,7 @@ from pdomain_prep_for_pgdp.core.models import (
     PageStageState,
     PageStageStatus,
     PageType,
+    PlateSide,
     StageRunRequest,
 )
 from pdomain_prep_for_pgdp.core.ocr_artifacts import load_words_from_storage, words_key_for
@@ -127,6 +129,26 @@ class UpdatePageRequest(BaseModel):
     splits: list[PageSplit] | None = None
     illustration_regions: list[IllustrationRegion] | None = None
     ignore: bool | None = None
+
+    # ── Numbering-runs leaf fields (P2.3) ────────────────────────────────────
+    leaf_role: LeafRole | None = None
+    """Page-Order leaf role. Omit to leave unchanged; send null to clear."""
+
+    run_id: str | None = None
+    """ID of the NumberingRun. Send null to clear (make a marker).
+    Null-vs-omitted: only applied when ``run_id`` appears in the JSON body
+    (tracked via ``model_fields_set``). Omitting this field leaves the
+    existing run_id unchanged.
+    """
+
+    label_override: str | None = None
+    """User-supplied folio label. Send null to revert to computed label."""
+
+    plate_tag: str | None = None
+    """Free-text plate caption. Send null to clear."""
+
+    plate_side: PlateSide | None = None
+    """Recto/verso for a plate. Send null to clear."""
 
 
 class InsertPageRequest(BaseModel):
@@ -290,6 +312,12 @@ def _ext_to_page_record(ext: PrepPageExtension) -> PageRecord:
         manual_ignore=ext.manual_ignore,
         page_type=ext.page_type,
         page_role=ext.page_role,
+        leaf_role=ext.leaf_role,
+        run_id=ext.run_id,
+        label_override=ext.label_override,
+        plate_tag=ext.plate_tag,
+        plate_side=ext.plate_side,
+        ocr_folio=ext.ocr_folio,
         alignment=ext.alignment,
         config_overrides=ext.config_overrides,
         splits=ext.splits,
@@ -501,6 +529,9 @@ async def update_page(
     previous_page_type = page.page_type
     previous_page_role = page.page_role
     previous_ignore = page.ignore
+    # Capture previous leaf-field values for event emission.
+    previous_leaf_role = page.leaf_role
+    previous_run_id = page.run_id
     if "config_overrides" in updated_fields and body.config_overrides is not None:
         page.config_overrides = body.config_overrides
     if "page_type" in updated_fields:
@@ -524,6 +555,20 @@ async def update_page(
     if "ignore" in updated_fields and body.ignore is not None:
         page.ignore = body.ignore
         new_manual_ignore = body.ignore
+    # Apply leaf fields (null-vs-omitted: check model_fields_set, not value).
+    # run_id=None is MEANINGFUL (clears run, making the page a marker), so we
+    # must only apply it when "run_id" appears in the JSON body — model_fields_set
+    # tracks this correctly. Same applies to the other nullable leaf fields.
+    if "leaf_role" in updated_fields:
+        page.leaf_role = body.leaf_role
+    if "run_id" in updated_fields:
+        page.run_id = body.run_id
+    if "label_override" in updated_fields:
+        page.label_override = body.label_override
+    if "plate_tag" in updated_fields:
+        page.plate_tag = body.plate_tag
+    if "plate_side" in updated_fields:
+        page.plate_side = body.plate_side
     update_kwargs: dict[str, Any] = {
         "config_overrides": page.config_overrides,
         "page_type": page.page_type,
@@ -535,6 +580,17 @@ async def update_page(
     }
     if new_manual_ignore is not None:
         update_kwargs["manual_ignore"] = new_manual_ignore
+    # Include any leaf fields that were explicitly set in the request.
+    if "leaf_role" in updated_fields:
+        update_kwargs["leaf_role"] = page.leaf_role
+    if "run_id" in updated_fields:
+        update_kwargs["run_id"] = page.run_id
+    if "label_override" in updated_fields:
+        update_kwargs["label_override"] = page.label_override
+    if "plate_tag" in updated_fields:
+        update_kwargs["plate_tag"] = page.plate_tag
+    if "plate_side" in updated_fields:
+        update_kwargs["plate_side"] = page.plate_side
     updated = update_page_extension(
         page_service,
         project_id,
@@ -582,6 +638,37 @@ async def update_page(
             _agg.record_page_ignore_set(
                 page_id=page_id_str,
                 ignore=body.ignore,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        # Leaf-field events (P2.3): emit when the field was explicitly sent AND changed.
+        if "leaf_role" in updated_fields and page.leaf_role != previous_leaf_role:
+            _agg.record_leaf_role_set(
+                page_id=page_id_str,
+                previous_role=previous_leaf_role.value if previous_leaf_role is not None else None,
+                new_role=page.leaf_role.value if page.leaf_role is not None else None,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if "run_id" in updated_fields and page.run_id != previous_run_id:
+            _agg.record_leaf_run_set(
+                page_id=page_id_str,
+                previous_run_id=previous_run_id,
+                new_run_id=page.run_id,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if "label_override" in updated_fields:
+            _agg.record_folio_overridden(
+                page_id=page_id_str,
+                label_override=page.label_override,
+                actor_id=user.user_id,
+            )
+            _events_to_append = True
+        if "plate_tag" in updated_fields:
+            _agg.record_plate_tag_set(
+                page_id=page_id_str,
+                plate_tag=page.plate_tag,
                 actor_id=user.user_id,
             )
             _events_to_append = True

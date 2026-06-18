@@ -3314,6 +3314,16 @@ export interface components {
             splits: components["schemas"]["PageSplit-Output"][];
             /** Illustration Regions */
             illustration_regions: components["schemas"]["IllustrationRegion-Output"][];
+            leaf_role: components["schemas"]["LeafRole"] | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Label Override */
+            label_override: string | null;
+            /** Plate Tag */
+            plate_tag: string | null;
+            plate_side: components["schemas"]["PlateSide"] | null;
+            /** Ocr Folio */
+            ocr_folio: string | null;
             /** Source Key */
             source_key: string | null;
             /** Thumbnail Key */
@@ -3458,6 +3468,11 @@ export interface components {
          * @enum {string}
          */
         PageType: "normal" | "blank" | "plate_b" | "plate_p" | "plate_r" | "skip" | "cover";
+        /**
+         * PlateSide
+         * @enum {string}
+         */
+        PlateSide: "recto" | "verso";
         /** Project */
         Project: {
             /** Id */
@@ -3926,6 +3941,14 @@ export interface components {
             illustration_regions?: components["schemas"]["IllustrationRegion-Input"][] | null;
             /** Ignore */
             ignore?: boolean | null;
+            leaf_role?: components["schemas"]["LeafRole"] | null;
+            /** Run Id */
+            run_id?: string | null;
+            /** Label Override */
+            label_override?: string | null;
+            /** Plate Tag */
+            plate_tag?: string | null;
+            plate_side?: components["schemas"]["PlateSide"] | null;
         };
         /** UpdatePageTextRequest */
         UpdatePageTextRequest: {

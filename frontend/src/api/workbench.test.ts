@@ -62,6 +62,13 @@ function makePage(overrides: Partial<PageRecord> = {}): PageRecord {
     },
     splits: [],
     illustration_regions: [],
+    // Numbering-runs leaf fields (P2.3).
+    leaf_role: null,
+    run_id: null,
+    label_override: null,
+    plate_tag: null,
+    plate_side: null,
+    ocr_folio: null,
     source_key: "projects/prj_abc123/source/scan_0005.png",
     thumbnail_key: null,
     processed_image_key: null,

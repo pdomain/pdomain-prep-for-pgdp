@@ -295,6 +295,25 @@ class PageRecord(ApiModel):
     splits: list[PageSplit] = Field(default_factory=list)
     illustration_regions: list[IllustrationRegion] = Field(default_factory=list)
 
+    # ── Numbering-runs leaf fields (P1/P2) ──────────────────────────────────
+    leaf_role: LeafRole | None = None
+    """Page-Order leaf role. None = not yet classified by Page Order."""
+
+    run_id: str | None = None
+    """ID of the NumberingRun this leaf belongs to. None for markers/plates/skips."""
+
+    label_override: str | None = None
+    """User-supplied label overriding the computed folio label. None = use computed."""
+
+    plate_tag: str | None = None
+    """Free-text plate caption (e.g. "Plate VIII"). None for non-plate leaves."""
+
+    plate_side: PlateSide | None = None
+    """Recto/verso for a plate or its facing blank. None for non-plate leaves."""
+
+    ocr_folio: str | None = None
+    """Printed folio read by OCR. P4-populated; None throughout P1-P3."""
+
     source_key: str | None = None
     thumbnail_key: str | None = None
     processed_image_key: str | None = None

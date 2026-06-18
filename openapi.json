@@ -8583,6 +8583,70 @@
             "type": "array",
             "title": "Illustration Regions"
           },
+          "leaf_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeafRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "label_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Override"
+          },
+          "plate_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate Tag"
+          },
+          "plate_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlateSide"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ocr_folio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Folio"
+          },
           "source_key": {
             "anyOf": [
               {
@@ -8763,6 +8827,12 @@
           "config_overrides",
           "splits",
           "illustration_regions",
+          "leaf_role",
+          "run_id",
+          "label_override",
+          "plate_tag",
+          "plate_side",
+          "ocr_folio",
           "source_key",
           "thumbnail_key",
           "processed_image_key",
@@ -9118,6 +9188,14 @@
           "cover"
         ],
         "title": "PageType"
+      },
+      "PlateSide": {
+        "type": "string",
+        "enum": [
+          "recto",
+          "verso"
+        ],
+        "title": "PlateSide"
       },
       "Project": {
         "properties": {
@@ -10070,6 +10148,59 @@
               }
             ],
             "title": "Ignore"
+          },
+          "leaf_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeafRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "label_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Override"
+          },
+          "plate_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plate Tag"
+          },
+          "plate_side": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlateSide"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
