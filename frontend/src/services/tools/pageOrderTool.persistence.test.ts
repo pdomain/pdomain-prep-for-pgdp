@@ -487,6 +487,55 @@ describe("fetchFolios", () => {
     expect(result.leaves[0]!.labelOverride).toBeNull();
   });
 
+  it("loads an existing plate_tag into leaf.plateTag on mount (M1)", async () => {
+    // M1 regression: persistLeaf SENDS plate_tag but fetchFolios never read it
+    // back, so a plate caption was lost on reload.
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "plate_p",
+          prefix: "",
+          source_stem: "scan_000",
+          leaf_role: "plate",
+          run_id: null,
+          ocr_folio: null,
+          plate_tag: "Plate VIII",
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.leaves[0]!.plateTag).toBe("Plate VIII");
+  });
+
+  it("sets plateTag undefined when plate_tag is absent from the record (M1)", async () => {
+    mockApiGet.mockResolvedValueOnce({
+      pages: [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "p001",
+          source_stem: "scan_001",
+          leaf_role: null,
+          run_id: null,
+          ocr_folio: null,
+        },
+      ],
+      total: 1,
+      next_cursor: null,
+    });
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.leaves[0]!.plateTag).toBeUndefined();
+  });
+
   it("falls back to page_type-derived role when leaf_role is null", async () => {
     mockApiGet.mockResolvedValueOnce({
       pages: [

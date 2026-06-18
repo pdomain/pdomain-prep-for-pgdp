@@ -277,6 +277,8 @@ interface WirePageRecord {
   ocr_folio: string | null;
   /** User-entered folio label override (null until the user overrides) */
   label_override?: string | null;
+  /** Plate caption (e.g. "Plate VIII"); null until a plate tag is set */
+  plate_tag?: string | null;
 }
 
 interface WireListPagesResponse {
@@ -333,6 +335,11 @@ async function fetchFolios(projectId: string): Promise<{
     ocrFolio: p.ocr_folio ?? null,
     // P3.3: load an existing user label override so it survives reload.
     labelOverride: p.label_override ?? null,
+    // M1: load a persisted plate caption so it survives reload (persistLeaf
+    // sends plate_tag; without reading it back the caption was lost on reload).
+    // plateTag is an optional string (exactOptionalPropertyTypes) — omit the
+    // key entirely when absent rather than assigning undefined.
+    ...(p.plate_tag != null ? { plateTag: p.plate_tag } : {}),
     flags: [],
   }));
 

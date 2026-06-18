@@ -385,6 +385,13 @@ async def reorder_pages(
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
 
+    # Auto-migrate v2 (range-config) → v3 (runs) BEFORE reading runs / computing
+    # prefixes.  Without this, compute_project_prefixes runs over empty runs and
+    # wipes every page's prefix to "".  v1 projects still 409 here.
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
     # Validate: must have correct count
     if len(body.page_ids) != project.page_count:
         raise HTTPException(
@@ -521,6 +528,15 @@ async def update_page(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # Auto-migrate v2 (range-config) → v3 (runs) BEFORE writing leaf fields.
+    # Without this, the leaf_role/run_id write lands on a still-v2 project and
+    # the next stage route's migrate_project_to_v3 re-derives from page_type and
+    # clobbers the user's edit.  v1 projects still 409 here.
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
+
     page = get_page_record(page_service, project_id, idx0)
     if page is None:
         raise HTTPException(404, "page not found")
@@ -807,6 +823,13 @@ async def insert_page(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # Auto-migrate v2 (range-config) → v3 (runs) BEFORE shifting run spans /
+    # recomputing prefixes.  Without this, compute_project_prefixes runs over
+    # empty runs and wipes every page's prefix to "".  v1 projects still 409.
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     # Validate insert position: 0 … page_count (inclusive — can append at end).
     if insert_at < 0 or insert_at > project.page_count:
@@ -1294,6 +1317,7 @@ async def split_page(
     user: UserDep,
     db: DatabaseDep,
     page_service: PageServiceDep,
+    settings: SettingsDep,
 ) -> SplitPageResponse:
     """Create N sibling child pages by splitting a parent page.
 
@@ -1310,6 +1334,13 @@ async def split_page(
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+
+    # Auto-migrate v2 (range-config) → v3 (runs) BEFORE creating split children,
+    # so child leaf classification / numbering derives from the migrated runs
+    # rather than a still-v2 project.  v1 projects still 409 here.
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv  # type: ignore[return-value]  # pyright: ignore[reportReturnType]
 
     # ── Event-store path ──────────────────────────────────────────────────
     from pdomain_ops.pages import get_extension as _ops_get_ext
