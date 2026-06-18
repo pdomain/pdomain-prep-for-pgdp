@@ -99,6 +99,22 @@ def _create_project_api(base_url: str, name: str) -> str:
     return resp.json()["project"]["id"]
 
 
+def _put_runs(base_url: str, project_id: str, runs: list[dict[str, object]]) -> None:
+    """PUT a NumberingRunsArtifact through the REAL runs route.
+
+    This is the write side of the persisted-runs chain. Seeding runs through it
+    (rather than reaching into numbering_store directly) verifies the same
+    PUT → store path the frontend `persistRuns` uses, so the V test below
+    exercises PUT → store → GET → fetchFolios → render end-to-end.
+    """
+    resp = httpx.put(
+        f"{base_url}/api/data/projects/{project_id}/project-stages/page_order/runs",
+        json={"version": 1, "runs": runs},
+        timeout=10,
+    )
+    assert resp.status_code == 200, f"put runs failed: {resp.status_code} {resp.text}"
+
+
 def _patch_leaf(base_url: str, project_id: str, idx0: int, *, leaf_role: str, run_id: str | None) -> None:
     """PATCH a page's leaf_role + run_id through the REAL update route.
 
@@ -148,12 +164,11 @@ def _open_page_order(live_server: LiveServer, page: Page, project_id: str) -> li
     """
     page_errors: list[str] = []
     page.on("pageerror", lambda exc: page_errors.append(str(exc)))
-    # Use a tall desktop viewport so the inspector's right-rail controls (the
-    # blank marker toggle) do not overlap the run-spine band at the bottom of
-    # the flex column. At the default 720px height the run-spine sits over the
-    # lower part of the inspector and intercepts pointer events on the marker
-    # button (a layering wrinkle, not a wiring break).
-    page.set_viewport_size({"width": 1400, "height": 1100})
+    # Standard laptop viewport. The earlier 1400x1100 workaround is no longer
+    # needed: the inspector cell now scrolls within its grid track (minHeight:0
+    # + overflow) and the run-spine reserves its own height (flexShrink:0), so
+    # the spine no longer overlaps the inspector's marker button at 720px.
+    page.set_viewport_size({"width": 1280, "height": 720})
     page.goto(
         f"{live_server.base_url}/projects/{project_id}/pipeline?stage=page_order",
         wait_until="load",
@@ -358,3 +373,127 @@ def test_v3_folio_override_persists_across_reload(live_server: LiveServer, page:
     _select_leaf(page, _FIRST_TEXT_SCAN)
     folio_input_after = page.locator('[data-testid="po-inspector-folio-override"]')
     expect(folio_input_after).to_have_value(override_value, timeout=15_000)
+
+
+# ---------------------------------------------------------------------------
+# V.4 — persisted RUN STRUCTURE/STYLE survives reload (the severed-chain fix)
+# ---------------------------------------------------------------------------
+#
+# This is the case the prior agent could NOT write: fetchFolios ignored
+# persisted runs and always rebuilt a single default `body` run, so a
+# front-matter-roman / body-arabic split was lost on reload. With FIX 1
+# (fetchFolios GETs the runs endpoint and maps wire → machine) it round-trips:
+# PUT runs → store → GET runs → fetchFolios → computeLabels → render.
+#
+# NOTE ON UI SCOPE (reported): there is no run-STYLE editor control in the UI
+# yet. The run-spine renders run chips and an "+ Add run" button; clicking a
+# chip dispatches EDIT_RUN (highlight only) but no surface dispatches SET_STYLE
+# / SET_START, so a user cannot create a roman front run by clicking. The
+# machine supports it (the `editing` state handles SET_STYLE/SET_START) — the
+# React surface just doesn't wire a picker. That UI gap is SEPARATE from the
+# severed-chain fix proven here. We therefore seed the run split through the
+# REAL PUT route (the same route `persistRuns` calls) and assert the persisted
+# roman front run renders roman folios (i, ii) after a full reload.
+
+# Two front-matter leaves (roman) followed by two body leaves (arabic).
+_FRONT_RUN = "front"
+_SPLIT_SEED_LEAVES: list[tuple[PageType, str, str]] = [
+    (PageType.normal, "text", _FRONT_RUN),  # scan 0 → roman "i"
+    (PageType.normal, "text", _FRONT_RUN),  # scan 1 → roman "ii"
+    (PageType.normal, "text", _BODY_RUN),  # scan 2 → arabic "1"
+    (PageType.normal, "text", _BODY_RUN),  # scan 3 → arabic "2"
+]
+
+
+def _seed_run_split_project(live_server: LiveServer, name: str) -> str:
+    """Seed a project with a roman front run + arabic body run, persisted via PUT.
+
+    Leaves 0-1 belong to a roman ``front`` run, leaves 2-3 to an arabic ``body``
+    run. The runs artifact is persisted through the real PUT route so the reload
+    must read it back via fetchFolios for the roman labels to render.
+    """
+    project_id = _create_project_api(live_server.base_url, name)
+
+    records = [
+        PageRecord(
+            project_id=project_id,
+            idx0=idx0,
+            prefix=f"p{idx0:04d}",
+            source_stem=f"img{idx0:04d}",
+            page_type=page_type,
+            processing_status=PageProcessingStatus.pending,
+        )
+        for idx0, (page_type, _role, _run) in enumerate(_SPLIT_SEED_LEAVES)
+    ]
+    seed_pages_in_store(live_server.settings.data_root, project_id, records, project_name=name)
+
+    for idx0, (_page_type, role, run_id) in enumerate(_SPLIT_SEED_LEAVES):
+        _patch_leaf(live_server.base_url, project_id, idx0, leaf_role=role, run_id=run_id)
+
+    # Persist the run split through the REAL PUT route.
+    _put_runs(
+        live_server.base_url,
+        project_id,
+        [
+            {
+                "id": _FRONT_RUN,
+                "label": "Front matter",
+                "style": "roman-lower",
+                "start_mode": "set",
+                "start": 1,
+                "step": 1,
+                "role": "text",
+                "span": [0, 1],
+                "note": "",
+            },
+            {
+                "id": _BODY_RUN,
+                "label": "Body",
+                "style": "arabic",
+                "start_mode": "set",
+                "start": 1,
+                "step": 1,
+                "role": "text",
+                "span": [2, 3],
+                "note": "",
+            },
+        ],
+    )
+    return project_id
+
+
+def test_v4_persisted_run_split_survives_reload(live_server: LiveServer, page: Page) -> None:
+    """A persisted roman-front / arabic-body run split round-trips through reload.
+
+    Proves the closed loop: PUT runs → store → GET runs → fetchFolios → render.
+    Before FIX 1, fetchFolios discarded the persisted split and rebuilt a single
+    default body run, so the front leaves rendered arabic "1"/"2" instead of the
+    persisted roman "i"/"ii". The assertion below would fail under that bug.
+    """
+    project_id = _seed_run_split_project(live_server, "PageOrder Run Split Persist")
+    page_errors = _open_page_order(live_server, page, project_id)
+
+    # First load: the front leaves render roman (proves the GET wired through).
+    expect(page.locator('[data-testid="po-computed-0"]')).to_have_text("i", timeout=15_000)
+    expect(page.locator('[data-testid="po-computed-1"]')).to_have_text("ii", timeout=10_000)
+    # Body leaves render arabic.
+    expect(page.locator('[data-testid="po-computed-2"]')).to_have_text("1", timeout=10_000)
+
+    # Two run chips render in the spine (front + body), not a single default body.
+    expect(page.locator('[data-testid="po-run-chip-front"]')).to_be_visible(timeout=10_000)
+    expect(page.locator('[data-testid="po-run-chip-body"]')).to_be_visible(timeout=10_000)
+
+    # Full reload — fresh navigation, not an SPA transition.
+    page.goto(
+        f"{live_server.base_url}/projects/{project_id}/pipeline?stage=page_order",
+        wait_until="load",
+    )
+    expect(page.locator('[data-testid="po-run-spine"]')).to_be_visible(timeout=20_000)
+
+    # The persisted run split SURVIVED: roman front leaves still render roman.
+    expect(page.locator('[data-testid="po-computed-0"]')).to_have_text("i", timeout=15_000)
+    expect(page.locator('[data-testid="po-computed-1"]')).to_have_text("ii", timeout=10_000)
+    expect(page.locator('[data-testid="po-computed-2"]')).to_have_text("1", timeout=10_000)
+    expect(page.locator('[data-testid="po-run-chip-front"]')).to_be_visible(timeout=10_000)
+
+    assert page_errors == [], f"Page JS errors: {page_errors}"

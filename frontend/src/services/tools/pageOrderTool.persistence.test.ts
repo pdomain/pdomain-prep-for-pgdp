@@ -512,3 +512,275 @@ describe("fetchFolios", () => {
     expect(leaf.role).toBe("plate");
   });
 });
+
+// ---------------------------------------------------------------------------
+// fetchFolios — reads PERSISTED runs (the severed-chain fix)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mock both GETs fetchFolios performs, in call order:
+ *   1. GET .../pages   → the page list
+ *   2. GET .../runs    → the NumberingRunsArtifact
+ *
+ * The default vi.mock returns the EMPTY-pages shape for any un-`Once`'d call,
+ * so the runs GET must be mocked explicitly here or it would resolve to a
+ * pages-shaped object (runs === undefined → default body run fallback).
+ */
+function mockPagesThenRuns(pages: unknown[], runsArtifact: unknown): void {
+  mockApiGet
+    .mockResolvedValueOnce({ pages, total: pages.length, next_cursor: null })
+    .mockResolvedValueOnce(runsArtifact);
+}
+
+describe("fetchFolios — persisted runs", () => {
+  it("maps a front(roman)+body(arabic) runs artifact to two machine runs", async () => {
+    mockPagesThenRuns(
+      [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s0",
+          leaf_role: "text",
+          run_id: "front",
+          ocr_folio: null,
+        },
+        {
+          idx0: 1,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s1",
+          leaf_role: "text",
+          run_id: "body",
+          ocr_folio: null,
+        },
+      ],
+      {
+        version: 1,
+        runs: [
+          {
+            id: "front",
+            label: "Front matter",
+            style: "roman-lower",
+            start_mode: "set",
+            start: 1,
+            step: 1,
+            role: "text",
+            span: [0, 0],
+            note: "",
+          },
+          {
+            id: "body",
+            label: "Body",
+            style: "arabic",
+            start_mode: "set",
+            start: 1,
+            step: 1,
+            role: "text",
+            span: [1, 1],
+            note: "",
+          },
+        ],
+      },
+    );
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.runs).toHaveLength(2);
+    const [front, body] = result.runs;
+    expect(front!.id).toBe("front");
+    expect(front!.style).toBe("roman"); // roman-lower → roman
+    expect(front!.label).toBe("Front matter");
+    expect(front!.start).toEqual({ mode: "set", value: 1 });
+    expect(front!.step).toBe(1);
+    expect(front!.span).toEqual([0, 0]);
+
+    expect(body!.id).toBe("body");
+    expect(body!.style).toBe("arabic");
+    expect(body!.span).toEqual([1, 1]);
+  });
+
+  it("collapses wire roman-upper and alpha to machine roman / none (lossy)", async () => {
+    mockPagesThenRuns(
+      [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s0",
+          leaf_role: "text",
+          run_id: "r1",
+          ocr_folio: null,
+        },
+      ],
+      {
+        version: 1,
+        runs: [
+          {
+            id: "r1",
+            label: "Upper",
+            style: "roman-upper",
+            start_mode: "set",
+            start: 1,
+            step: 1,
+            role: "text",
+            span: [0, 0],
+            note: "",
+          },
+          {
+            id: "r2",
+            label: "Alpha",
+            style: "alpha",
+            start_mode: "set",
+            start: 1,
+            step: 1,
+            role: "text",
+            span: [0, 0],
+            note: "",
+          },
+        ],
+      },
+    );
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    expect(result.runs[0]!.style).toBe("roman"); // roman-upper → roman
+    expect(result.runs[1]!.style).toBe("none"); // alpha → none (lossy fallback)
+  });
+
+  it("maps continue start_mode and a null span to the full leaf range", async () => {
+    mockPagesThenRuns(
+      [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s0",
+          leaf_role: "text",
+          run_id: "r1",
+          ocr_folio: null,
+        },
+        {
+          idx0: 1,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s1",
+          leaf_role: "text",
+          run_id: "r1",
+          ocr_folio: null,
+        },
+        {
+          idx0: 2,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s2",
+          leaf_role: "text",
+          run_id: "r1",
+          ocr_folio: null,
+        },
+      ],
+      {
+        version: 1,
+        runs: [
+          {
+            id: "r1",
+            label: "All",
+            style: "arabic",
+            start_mode: "continue",
+            start: 5,
+            step: 2,
+            role: "text",
+            span: null,
+            note: "",
+          },
+        ],
+      },
+    );
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    const run = result.runs[0]!;
+    expect(run.start).toEqual({ mode: "continue", value: 5 });
+    expect(run.step).toBe(2);
+    // null wire span → full [0, leafCount-1]
+    expect(run.span).toEqual([0, 2]);
+  });
+
+  it("falls back to a single default body run when the artifact has no runs", async () => {
+    mockPagesThenRuns(
+      [
+        {
+          idx0: 0,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s0",
+          leaf_role: "text",
+          run_id: null,
+          ocr_folio: null,
+        },
+        {
+          idx0: 1,
+          page_type: "normal",
+          prefix: "",
+          source_stem: "s1",
+          leaf_role: "text",
+          run_id: null,
+          ocr_folio: null,
+        },
+      ],
+      { version: 1, runs: [] },
+    );
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    // Empty persisted runs → default body run covering all leaves.
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]!.id).toBe("body");
+    expect(result.runs[0]!.style).toBe("arabic");
+    expect(result.runs[0]!.span).toEqual([0, 1]);
+  });
+
+  it("falls back to the default body run when the runs GET fails", async () => {
+    mockApiGet
+      .mockResolvedValueOnce({
+        pages: [
+          {
+            idx0: 0,
+            page_type: "normal",
+            prefix: "",
+            source_stem: "s0",
+            leaf_role: "text",
+            run_id: null,
+            ocr_folio: null,
+          },
+        ],
+        total: 1,
+        next_cursor: null,
+      })
+      .mockRejectedValueOnce(new Error("runs endpoint 500"));
+
+    const svc = buildRealPageOrderToolServices();
+    const result = await svc.fetchFolios("proj-1");
+
+    // A failing runs GET degrades to the default run, not a thrown error.
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0]!.id).toBe("body");
+  });
+
+  it("GETs the runs endpoint with the encoded project id", async () => {
+    mockPagesThenRuns([], { version: 1, runs: [] });
+
+    const svc = buildRealPageOrderToolServices();
+    await svc.fetchFolios("abc/def");
+
+    // Second GET call is the runs endpoint.
+    const runsCall = mockApiGet.mock.calls[1]!;
+    expect(runsCall[0]).toBe(
+      "/api/data/projects/abc%2Fdef/project-stages/page_order/runs",
+    );
+  });
+});

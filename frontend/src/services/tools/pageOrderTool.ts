@@ -74,6 +74,40 @@ function machineStyleToWire(style: RunStyle): WireRunStyle {
   }
 }
 
+/**
+ * Inverse of machineStyleToWire: collapse the wider wire RunStyle set down to
+ * the machine's narrow {roman, arabic, none}.
+ *
+ * LOSSINESS (reported): the wire distinguishes case + alpha that the machine
+ * cannot represent —
+ *   "roman-lower" → "roman"
+ *   "roman-upper" → "roman"   (case distinction collapses; the machine renders
+ *                              lower-case roman only)
+ *   "alpha"       → "none"    (the machine has no alphabetic numbering style;
+ *                              fall back to "none" rather than mis-rendering as
+ *                              arabic/roman — REPORT this if alpha runs appear)
+ *   "arabic"      → "arabic"
+ *   "none"        → "none"
+ *
+ * Round-trip note: a run persisted as "roman-upper" reloads as "roman" and, if
+ * re-persisted, would write back "roman-lower". This is acceptable because the
+ * machine never originates a "roman-upper"/"alpha" run today (machineStyleToWire
+ * only ever emits roman-lower/arabic/none), so the only way a roman-upper/alpha
+ * value enters the store is an out-of-band/seeded PUT.
+ */
+function wireStyleToMachine(style: WireRunStyle): RunStyle {
+  switch (style) {
+    case "roman-lower":
+    case "roman-upper":
+      return "roman";
+    case "arabic":
+      return "arabic";
+    case "alpha":
+    case "none":
+      return "none";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Role → PageType wire value mapping
 // ---------------------------------------------------------------------------
@@ -258,9 +292,18 @@ interface WireListPagesResponse {
  * Calls GET /api/data/projects/{id}/pages (up to 500 pages per request).
  *
  * Transforms the flat page list into:
- *   - leaves: one Leaf per page (role from page_type, ocrFolio from prefix)
- *   - runs: single default body run (at I1, replace with a real runs endpoint)
+ *   - leaves: one Leaf per page (role from page_type, ocrFolio from ocr_folio)
+ *   - runs: the PERSISTED runs read back from the page_order runs endpoint
+ *     (GET .../project-stages/page_order/runs → NumberingRunsArtifact). When
+ *     the project has no persisted runs (new project), falls back to a single
+ *     default body run covering all pages.
  *   - totals: derived from the page count
+ *
+ * Closing the persistRuns(PUT) → runs GET → fetchFolios → render loop is what
+ * makes a user's front-matter-roman / body-arabic run split survive a reload.
+ * Before this, fetchFolios always rebuilt the default body run and silently
+ * discarded persisted run structure/style (the severed chain caught by the V
+ * browser milestone).
  *
  * See DIVERGENCES.md §W5.5-fetchFolios.
  */
@@ -293,8 +336,12 @@ async function fetchFolios(projectId: string): Promise<{
     flags: [],
   }));
 
-  // Default body run covering all pages (placeholder until a real runs
-  // endpoint is available — see DIVERGENCES.md §W5.5-fetchFolios).
+  // Read the PERSISTED runs back so a user's run structure/style survives a
+  // reload. Maps each wire NumberingRun → machine Run (inverse of persistRuns).
+  const persistedRuns = await fetchPersistedRuns(projectId, leaves.length);
+
+  // Default body run covering all pages — used ONLY when the project has no
+  // persisted runs yet (new project). A non-empty persisted set always wins.
   const defaultRun: Run = {
     id: "body",
     label: "Body",
@@ -304,6 +351,15 @@ async function fetchFolios(projectId: string): Promise<{
     span: [0, Math.max(0, leaves.length - 1)],
   };
 
+  let runs: Run[];
+  if (persistedRuns.length > 0) {
+    runs = persistedRuns;
+  } else if (leaves.length > 0) {
+    runs = [defaultRun];
+  } else {
+    runs = [];
+  }
+
   const totals: PageOrderTotals = {
     total: leaves.length,
     scanned: leaves.length,
@@ -312,11 +368,55 @@ async function fetchFolios(projectId: string): Promise<{
     duplicates: 0,
   };
 
-  return {
-    leaves,
-    runs: leaves.length > 0 ? [defaultRun] : [],
-    totals,
-  };
+  return { leaves, runs, totals };
+}
+
+/**
+ * GET the persisted NumberingRunsArtifact and map each wire NumberingRun to a
+ * machine Run (the inverse of persistRuns).
+ *
+ * Returns an empty array when no runs are persisted (new project) — the caller
+ * then falls back to the default body run. Also returns empty (rather than
+ * throwing) if the runs GET fails, so a transient runs-endpoint error degrades
+ * to the default run instead of breaking the whole tool mount.
+ *
+ * Wire → machine field mapping:
+ *   id         ← id
+ *   label      ← label
+ *   style      ← wireStyleToMachine(style)   (roman-lower/upper→roman, etc.)
+ *   start.mode ← start_mode
+ *   start.value← start
+ *   step       ← step
+ *   span       ← span (wire may be null → fall back to full [0, leafCount-1])
+ */
+async function fetchPersistedRuns(
+  projectId: string,
+  leafCount: number,
+): Promise<Run[]> {
+  let artifact: NumberingRunsArtifact;
+  try {
+    artifact = await api.get<NumberingRunsArtifact>(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/runs`,
+    );
+  } catch {
+    // Runs endpoint unavailable — degrade to the default run (caller's fallback).
+    return [];
+  }
+
+  const wireRuns = artifact.runs ?? [];
+  return wireRuns.map((wr): Run => {
+    // Wire span is [number, number] | null; the machine span is non-null.
+    // A null span (legacy/seeded "covers everything") maps to the full range.
+    const span: [number, number] = wr.span ?? [0, Math.max(0, leafCount - 1)];
+    return {
+      id: wr.id,
+      label: wr.label,
+      style: wireStyleToMachine(wr.style),
+      start: { mode: wr.start_mode, value: wr.start },
+      step: wr.step,
+      span,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

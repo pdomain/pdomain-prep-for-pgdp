@@ -385,6 +385,14 @@ function LeafInspector({
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        // The inspector is a grid cell in a height-constrained row. Without
+        // minHeight:0 a grid/flex item keeps its auto min-height and its content
+        // overflows the track, spilling DOWN over the run-spine band that
+        // follows in flow (which then paints on top and steals the marker
+        // button's clicks). minHeight:0 + overflow lets the content scroll
+        // inside the cell instead of overlapping the spine.
+        minHeight: 0,
+        overflow: "auto",
       }}
     >
       <div
@@ -698,6 +706,13 @@ export function PageOrderTool({
         padding: 16,
         flex: 1,
         minHeight: 0,
+        // Scroll the whole tool when it is taller than the available height.
+        // Without this, at short viewports (e.g. 1280×720) the ledger's
+        // minHeight forces it taller than the column, and the run-spine band
+        // (rendered after it in flow) bleeds UP over the ledger's lower rows —
+        // intercepting clicks on the inspector's marker button. Scrolling the
+        // column keeps the spine below the ledger instead of overlapping it.
+        overflow: "auto",
       }}
     >
       {/* Banner */}
@@ -928,7 +943,14 @@ export function PageOrderTool({
                 borderRadius: 8,
                 overflow: "auto",
                 flex: 1,
-                minHeight: 200,
+                // minHeight:0 (not a fixed 200) so the ledger shrinks with its
+                // grid track at short viewports and scrolls its rows internally
+                // (overflow:auto above). A hard minHeight forced the ledger
+                // taller than the column's free space, so it overflowed DOWN
+                // into the run-spine band and the spine painted over the
+                // inspector's marker button, stealing its clicks. See the
+                // page-order-tool root's overflow note.
+                minHeight: 0,
               }}
             >
               {/* Table header */}
@@ -1088,6 +1110,12 @@ export function PageOrderTool({
               gap: 8,
               flexWrap: "wrap",
               alignItems: "center",
+              // Always reserve this band's own height in the flex column so it
+              // is never squeezed into (and overlapped by) the inspector grid
+              // above. Pairs with the inspector's minHeight:0/overflow so the
+              // two bands stack cleanly at short viewport heights (was worked
+              // around with a 1400×1100 viewport in the e2e — now unnecessary).
+              flexShrink: 0,
             }}
           >
             <span
