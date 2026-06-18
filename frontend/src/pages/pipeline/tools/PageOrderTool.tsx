@@ -22,6 +22,7 @@ import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
   pageOrderToolMachine,
+  resolveNeighbourRunId,
   type Leaf,
   type Run,
   type LeafRole,
@@ -258,14 +259,115 @@ function LeafRow({
 // Inspector panel
 // ---------------------------------------------------------------------------
 
+/**
+ * Counted/marker toggle for blank leaves.
+ *
+ * Design ref: run-leaf.jsx:295-304 — "Counts toward #" / "Held out" control.
+ * Only shown for blank-role leaves. Dispatches SET_RUN with runId=null (marker)
+ * or runId=<neighbourRunId> (counted).
+ *
+ * The target run is resolved from the blank's NEIGHBOURS (nearest preceding
+ * leaf with a non-null runId, then nearest following, then falls back to
+ * runs[0]) via `resolveNeighbourRunId`. This means a blank in the body
+ * region always joins the body run, not a front-matter roman run.
+ */
+function BlankMarkerToggle({
+  leaf,
+  neighbourRunId,
+  onSetRun,
+}: {
+  leaf: Leaf;
+  /** The run the blank should join when toggled to counted — resolved from neighbours. */
+  neighbourRunId: string | null;
+  onSetRun: (runId: string | null) => void;
+}) {
+  const isCounted = leaf.runId !== null;
+  return (
+    <div
+      data-testid="po-blank-marker-toggle"
+      style={{ display: "flex", flexDirection: "column", gap: 6 }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          color: "var(--ink-4)",
+        }}
+      >
+        Page count
+      </span>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          type="button"
+          aria-pressed={isCounted}
+          data-testid="po-blank-counted-btn"
+          onClick={() => {
+            if (!isCounted && neighbourRunId) onSetRun(neighbourRunId);
+          }}
+          disabled={!neighbourRunId}
+          style={{
+            flex: 1,
+            padding: "5px 8px",
+            borderRadius: 6,
+            border: isCounted
+              ? "1px solid color-mix(in oklab, var(--exact) 50%, var(--border-1))"
+              : "1px solid var(--border-1)",
+            background: isCounted
+              ? "color-mix(in oklab, var(--exact) 10%, transparent)"
+              : "transparent",
+            color: isCounted ? "var(--exact)" : "var(--ink-3)",
+            fontSize: 11,
+            fontWeight: isCounted ? 600 : 500,
+            cursor: neighbourRunId ? "pointer" : "not-allowed",
+          }}
+        >
+          Counts toward #
+        </button>
+        <button
+          type="button"
+          aria-pressed={!isCounted}
+          data-testid="po-blank-marker-btn"
+          onClick={() => {
+            if (isCounted) onSetRun(null);
+          }}
+          style={{
+            flex: 1,
+            padding: "5px 8px",
+            borderRadius: 6,
+            border: !isCounted
+              ? "1px solid color-mix(in oklab, var(--ink-3) 50%, var(--border-1))"
+              : "1px solid var(--border-1)",
+            background: !isCounted
+              ? "color-mix(in oklab, var(--ink-3) 10%, transparent)"
+              : "transparent",
+            color: !isCounted ? "var(--ink-2)" : "var(--ink-4)",
+            fontSize: 11,
+            fontWeight: !isCounted ? 600 : 500,
+            cursor: "pointer",
+          }}
+        >
+          Held out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LeafInspector({
   leaf,
   run,
+  neighbourRunId,
   onClose,
+  onSetRun,
 }: {
   leaf: Leaf;
   run: Run | null;
+  /** Run id resolved from this blank's neighbours — used by the blank marker toggle to restore counted state. */
+  neighbourRunId: string | null;
   onClose: () => void;
+  onSetRun: (runId: string | null) => void;
 }) {
   return (
     <div
@@ -348,6 +450,14 @@ function LeafInspector({
           </>
         )}
       </div>
+      {/* Blank marker toggle — only for blank-role leaves (D2: P3.2) */}
+      {leaf.role === "blank" && (
+        <BlankMarkerToggle
+          leaf={leaf}
+          neighbourRunId={neighbourRunId}
+          onSetRun={onSetRun}
+        />
+      )}
       {leaf.flags.length > 0 && (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {leaf.flags.map((f) => (
@@ -897,7 +1007,15 @@ export function PageOrderTool({
                     ? (runById.get(inspectorLeaf.runId) ?? null)
                     : null
                 }
+                neighbourRunId={resolveNeighbourRunId(
+                  ctx.leaves,
+                  inspectorLeaf.scan,
+                  ctx.runs,
+                )}
                 onClose={() => send({ type: "CLOSE_INSPECTOR" })}
+                onSetRun={(runId) =>
+                  send({ type: "SET_RUN", scan: inspectorLeaf.scan, runId })
+                }
               />
             )}
           </div>

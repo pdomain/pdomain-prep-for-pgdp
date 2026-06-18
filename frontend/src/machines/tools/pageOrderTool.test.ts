@@ -20,6 +20,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createActor } from "xstate";
 import {
   pageOrderToolMachine,
+  resolveNeighbourRunId,
   type PageOrderToolInput,
   type PageOrderToolServices,
   type Leaf,
@@ -684,5 +685,163 @@ describe("pageOrderTool — emitOrderChanged (W5.3)", () => {
     actor.send({ type: "DRAG_OVER", scan: 2, after: true });
     expect(() => actor.send({ type: "DROP", scan: 2 })).not.toThrow();
     actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 11 (P3.2): inspector marker toggle — SET_RUN with runId: null
+// ---------------------------------------------------------------------------
+
+describe("pageOrderTool — marker toggle (P3.2)", () => {
+  function enterWorkspaceWithBlank(services?: PageOrderToolServices) {
+    const svc = services ?? makeServices();
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services: svc }),
+    });
+    actor.start();
+    // blank leaf scan=5, currently counted (runId="body")
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [makeLeaf({ scan: 5, role: "blank", runId: "body" })],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+    return actor;
+  }
+
+  it("SET_RUN with runId: null clears the run from a blank leaf (marker)", () => {
+    const services = makeServices();
+    const actor = enterWorkspaceWithBlank(services);
+
+    actor.send({ type: "SET_RUN", scan: 5, runId: null });
+
+    const leaf = actor.getSnapshot().context.leaves.find((l) => l.scan === 5);
+    expect(leaf?.runId).toBeNull();
+    // folioLabel becomes [Blank Page] when no run is assigned
+    expect(leaf?.folioLabel).toBe("[Blank Page]");
+    actor.stop();
+  });
+
+  it("SET_RUN null calls persistLeaf with run_id null (marker chain)", () => {
+    const services = makeServices();
+    const actor = enterWorkspaceWithBlank(services);
+
+    actor.send({ type: "SET_RUN", scan: 5, runId: null });
+
+    expect(services.persistLeaf).toHaveBeenCalledOnce();
+    const [, leaf] = (services.persistLeaf as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [string, import("./pageOrderTool").Leaf];
+    expect(leaf.runId).toBeNull();
+    actor.stop();
+  });
+
+  it("SET_RUN with a run id assigns the leaf to counted (clears marker)", () => {
+    const services = makeServices();
+    // Start with a marker (runId: null)
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    actor.send({
+      type: "FOLIOS_DONE",
+      leaves: [makeLeaf({ scan: 5, role: "blank", runId: null })],
+      runs: [makeRun()],
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
+    });
+
+    actor.send({ type: "SET_RUN", scan: 5, runId: "body" });
+
+    const leaf = actor.getSnapshot().context.leaves.find((l) => l.scan === 5);
+    expect(leaf?.runId).toBe("body");
+    // When assigned to the body run, folioLabel should be a computed number
+    expect(leaf?.folioLabel).not.toBe("[Blank Page]");
+    expect(services.persistLeaf).toHaveBeenCalledOnce();
+    actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suite 12 (P3.2 fix): resolveNeighbourRunId — multi-run correctness
+// ---------------------------------------------------------------------------
+
+describe("resolveNeighbourRunId — multi-run blank assignment", () => {
+  // Book layout:
+  //   scans 0–1  → front run (roman)
+  //   scan  2    → text leaf, body run (arabic)
+  //   scan  3    → blank leaf (being toggled)  ← the target
+  //   scan  4–5  → text leaves, body run
+  //
+  // The "front" run happens to be runs[0], which is what the old code always
+  // returned. The fix must return "body" for scan 3 (it has body neighbours
+  // both before and after it).
+
+  const frontRun: Run = makeRun({
+    id: "front",
+    label: "Front matter",
+    style: "roman",
+    span: [0, 1],
+  });
+  const bodyRun: Run = makeRun({
+    id: "body",
+    label: "Body",
+    style: "arabic",
+    span: [2, 5],
+  });
+  const runs: Run[] = [frontRun, bodyRun]; // front is runs[0]
+
+  const leaves: Leaf[] = [
+    makeLeaf({ scan: 0, role: "text", runId: "front" }),
+    makeLeaf({ scan: 1, role: "text", runId: "front" }),
+    makeLeaf({ scan: 2, role: "text", runId: "body" }),
+    makeLeaf({ scan: 3, role: "blank", runId: null }), // ← blank being toggled
+    makeLeaf({ scan: 4, role: "text", runId: "body" }),
+    makeLeaf({ scan: 5, role: "text", runId: "body" }),
+  ];
+
+  it("blank at scan 3 (body region) resolves to body run, NOT front run", () => {
+    const resolved = resolveNeighbourRunId(leaves, 3, runs);
+    // Nearest preceding leaf with a runId is scan 2 → "body"
+    expect(resolved).toBe("body");
+    // Explicitly confirm it is NOT the first run in the array
+    expect(resolved).not.toBe("front");
+  });
+
+  it("blank at scan 1 (front region) resolves to front run", () => {
+    // Replace scan 1 with a blank (runId: null) to test front-region case
+    const leavesWithFrontBlank: Leaf[] = leaves.map((l) =>
+      l.scan === 1 ? { ...l, role: "blank", runId: null } : l,
+    );
+    const resolved = resolveNeighbourRunId(leavesWithFrontBlank, 1, runs);
+    // Nearest preceding = scan 0 → "front"
+    expect(resolved).toBe("front");
+  });
+
+  it("blank at scan 0 (no preceding) falls back to following neighbour → front run", () => {
+    // scan 0 has no preceding leaf; nearest following with a runId is scan 1 (front)
+    const leavesWithLeadingBlank: Leaf[] = leaves.map((l) =>
+      l.scan === 0 ? { ...l, role: "blank", runId: null } : l,
+    );
+    const resolved = resolveNeighbourRunId(leavesWithLeadingBlank, 0, runs);
+    expect(resolved).toBe("front");
+  });
+
+  it("falls back to runs[0] when no leaf has a runId", () => {
+    const noRunLeaves: Leaf[] = [
+      makeLeaf({ scan: 1, role: "blank", runId: null }),
+      makeLeaf({ scan: 2, role: "blank", runId: null }),
+    ];
+    const resolved = resolveNeighbourRunId(noRunLeaves, 1, runs);
+    // No neighbours have a runId → falls back to runs[0]
+    expect(resolved).toBe("front");
+  });
+
+  it("returns null when runs array is empty and no leaf has a runId", () => {
+    const noRunLeaves: Leaf[] = [
+      makeLeaf({ scan: 1, role: "blank", runId: null }),
+      makeLeaf({ scan: 2, role: "blank", runId: null }),
+    ];
+    const resolved = resolveNeighbourRunId(noRunLeaves, 1, []);
+    // No neighbours have a runId and runs is empty → null
+    expect(resolved).toBeNull();
   });
 });

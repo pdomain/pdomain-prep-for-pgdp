@@ -257,7 +257,7 @@ export type PageOrderToolEvent =
   | { type: "TOGGLE_SCAN"; scan: number }
   | { type: "OPEN_DROPDOWN"; scan: number; kind: "role" | "run" }
   | { type: "SET_ROLE"; scan: number; role: LeafRole }
-  | { type: "SET_RUN"; scan: number; runId: string }
+  | { type: "SET_RUN"; scan: number; runId: string | null }
   | { type: "SET_LENS"; value: LensKind }
   | { type: "SET_VIEW"; value: ViewKind }
   | { type: "DRAG_START"; scan: number }
@@ -452,6 +452,38 @@ function moveScans(
 
   const insertAt = dropTarget.after ? insertIdx + 1 : insertIdx;
   return [...rest.slice(0, insertAt), ...moving, ...rest.slice(insertAt)];
+}
+
+/**
+ * Resolve which run a blank leaf should join when toggled to "counted".
+ *
+ * Strategy: pick the nearest PRECEDING leaf (by array / scan order) that has a
+ * non-null runId. If none precedes, use the nearest FOLLOWING leaf's runId. If
+ * neither exists, fall back to `runs[0]?.id ?? null` (single-run or empty
+ * project).
+ *
+ * This ensures that a blank in the middle of the body run is assigned to the
+ * body run, not to a front-matter (roman) run that happens to come first in the
+ * runs array.
+ */
+export function resolveNeighbourRunId(
+  leaves: Leaf[],
+  scan: number,
+  runs: Run[],
+): string | null {
+  const idx = leaves.findIndex((l) => l.scan === scan);
+  if (idx === -1) return runs[0]?.id ?? null;
+
+  // Search backwards for the nearest preceding leaf with a runId
+  for (let i = idx - 1; i >= 0; i--) {
+    if (leaves[i]!.runId !== null) return leaves[i]!.runId;
+  }
+  // Search forwards for the nearest following leaf with a runId
+  for (let i = idx + 1; i < leaves.length; i++) {
+    if (leaves[i]!.runId !== null) return leaves[i]!.runId;
+  }
+  // Nothing found — fall back to first run
+  return runs[0]?.id ?? null;
 }
 
 function patchLeafByScan(
