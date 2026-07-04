@@ -10,6 +10,7 @@
 [tools]
 node = "24"     # Active LTS
 python = "3.13"
+pnpm = "11"     # Frontend package manager; frontend/pnpm-lock.yaml is canonical
 
 # uv is intentionally NOT managed by mise. The shared devcontainer image
 # installs uv system-wide at /usr/local/bin/uv, and mise's aqua-backed
