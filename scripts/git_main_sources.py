@@ -27,7 +27,7 @@ def flip_sources(text: str, owner: str, siblings: list[str]) -> str:
     """
     for sib in siblings:
         pattern = re.compile(rf"(?m)^{re.escape(sib)}\s*=\s*\{{[^}}]*\}}\s*$")
-        replacement = f'{sib} = {{ git = "https://github.com/{owner}/{sib}.git", branch = "main" }}'
+        replacement = f'{sib} = {{ git = "https://github.com/{owner}/{sib}.git", branch = "master" }}'
         text, count = pattern.subn(replacement, text)
         if count == 0:
             raise ValueError(f"no [tool.uv.sources] entry found for {sib!r} to flip")

@@ -69,7 +69,7 @@ jobs:
           gh pr create \
             --title "chore: weekly dep refresh" \
             --body "$(printf 'Automated weekly refresh:\n- GitHub Actions SHA pins\n- Python deps (uv lock --upgrade)\n- npm deps (pnpm/npm update)\n\nAuto-merge armed — merges when CI passes.')" \
-            --base main \
+            --base master \
             --head "$BRANCH" \
             --label dep-refresh
           gh pr merge --auto --rebase
