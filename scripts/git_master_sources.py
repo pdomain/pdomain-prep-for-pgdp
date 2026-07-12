@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Flip pd-* ``[tool.uv.sources]`` entries to each sibling's git ``main``.
+"""Flip pd-* ``[tool.uv.sources]`` entries to each sibling's git ``master``.
 
-Transient helper for ``ci-against-main.sh``. Pure text transform so it is
+Transient helper for ``ci-against-master.sh``. Pure text transform so it is
 unit-testable; the orchestrator backs up and restores the file, so this never
 needs to preserve formatting beyond producing valid TOML.
 """
@@ -14,7 +14,7 @@ import tomllib
 
 
 def flip_sources(text: str, owner: str, siblings: list[str]) -> str:
-    """Return *text* with each sibling's uv source rewritten to git ``main``.
+    """Return *text* with each sibling's uv source rewritten to git ``master``.
 
     Args:
         text: Full ``pyproject.toml`` contents.
@@ -38,7 +38,7 @@ def flip_sources(text: str, owner: str, siblings: list[str]) -> str:
 def _main(argv: list[str]) -> int:
     if len(argv) < 3:
         print(
-            "usage: git_main_sources.py <pyproject.toml> <owner> <sibling>...",
+            "usage: git_master_sources.py <pyproject.toml> <owner> <sibling>...",
             file=sys.stderr,
         )
         return 2
@@ -48,7 +48,7 @@ def _main(argv: list[str]) -> int:
     flipped = flip_sources(original, owner, siblings)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(flipped)
-    print(f"flipped {len(siblings)} pd-* source(s) to git main in {path}")
+    print(f"flipped {len(siblings)} pd-* source(s) to git master in {path}")
     return 0
 
 

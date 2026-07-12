@@ -4,7 +4,7 @@
 # Repo-local scripts/do-release.sh files configure these variables, then call
 # pdomain_release_main:
 #   RELEASE_REPO              owner/repo, used only for final release URL text
-#   RELEASE_BRANCH            release branch, defaults to main
+#   RELEASE_BRANCH            release branch, defaults to master
 #   RELEASE_PREFLIGHT         command run before tagging, defaults to make ci-slow
 #   RELEASE_VERSION_SOURCE    tags or uv, defaults to tags
 #   RELEASE_VERSION_FILES     files committed for RELEASE_VERSION_SOURCE=uv
@@ -81,13 +81,13 @@ pdomain_release_main() {
     echo ""
     echo "Running preflight: $RELEASE_PREFLIGHT"
     echo ""
-    if [ "${VALIDATE_AGAINST_MAIN:-0}" = "1" ]; then
-        if [ -x ./scripts/ci-against-main.sh ]; then
+    if [ "${VALIDATE_AGAINST_MASTER:-0}" = "1" ]; then
+        if [ -x ./scripts/ci-against-master.sh ]; then
             echo ""
-            echo "VALIDATE_AGAINST_MAIN=1: validating against sibling main first..."
-            ./scripts/ci-against-main.sh
+            echo "VALIDATE_AGAINST_MASTER=1: validating against sibling master first..."
+            ./scripts/ci-against-master.sh
         else
-            echo "WARNING: VALIDATE_AGAINST_MAIN=1 set but scripts/ci-against-main.sh not found; skipping." >&2
+            echo "WARNING: VALIDATE_AGAINST_MASTER=1 set but scripts/ci-against-master.sh not found; skipping." >&2
         fi
     fi
     if ! sh -c "$RELEASE_PREFLIGHT"; then

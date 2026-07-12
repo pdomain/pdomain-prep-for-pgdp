@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.git_main_sources import flip_sources
+from scripts.git_master_sources import flip_sources
 
 _SRC = """\
 [tool.uv.sources]

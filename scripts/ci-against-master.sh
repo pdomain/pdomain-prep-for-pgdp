@@ -21,14 +21,14 @@ for marker in \
     .venv/.pdomain-local-mode \
     .venv/.pdomain-dev-local; do
     if [ -f "$marker" ]; then
-        echo "ERROR: leave local-dev mode before ci-against-main ($marker)" >&2
+        echo "ERROR: leave local-dev mode before ci-against-master ($marker)" >&2
         exit 1
     fi
 done
 
 if ! git diff HEAD --quiet -- pyproject.toml uv.lock; then
     echo "ERROR: pyproject.toml/uv.lock have uncommitted changes." >&2
-    echo "       Commit or stash them before running ci-against-main." >&2
+    echo "       Commit or stash them before running ci-against-master." >&2
     exit 1
 fi
 
@@ -48,15 +48,15 @@ restore() {
 }
 trap restore EXIT
 
-echo "Flipping pd-* sources to git main: ${PY_SIBLINGS[*]}"
-uv run --no-sync python scripts/git_main_sources.py pyproject.toml "$OWNER" "${PY_SIBLINGS[@]}"
+echo "Flipping pd-* sources to git master: ${PY_SIBLINGS[*]}"
+uv run --no-sync python scripts/git_master_sources.py pyproject.toml "$OWNER" "${PY_SIBLINGS[@]}"
 
-echo "Locking against sibling main (captures current SHAs)..."
+echo "Locking against sibling master (captures current SHAs)..."
 uv lock
 uv sync
 
-echo "Running preflight against sibling main: $PREFLIGHT"
+echo "Running preflight against sibling master: $PREFLIGHT"
 sh -c "$PREFLIGHT"
 
 echo ""
-echo "✅ ci-against-main passed — validated against sibling main."
+echo "✅ ci-against-master passed — validated against sibling master."

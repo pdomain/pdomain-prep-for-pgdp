@@ -19,7 +19,7 @@ else
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
         run run-cpu frontend-install \
         frontend-build frontend-dev frontend-test frontend-knip openapi-export update-pdomain-deps upgrade-pdomain-book-tools \
-        release-patch release-minor release-major _do-release ci-slow ci-against-main docker-build docker-run \
+        release-patch release-minor release-major _do-release ci-slow ci-against-master docker-build docker-run \
         mise-download mise-trust-worktrees mise-setup mise-doctor upgrade-deps
 
 # ---------------------------------------------------------------------------
@@ -316,8 +316,8 @@ ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-bu
 
 ci-slow: ci build test-slow ## Full pre-flight for releases (CI + wheel build + slow packaging tests)
 
-ci-against-main: ## Validate against pd-* siblings' latest main, then revert (transient)
-	@./scripts/ci-against-main.sh
+ci-against-master: ## Validate against pd-* siblings' latest master, then revert (transient)
+	@./scripts/ci-against-master.sh
 
 # ─── local-dev workflow (spec #362) ─────────────────────────────────────────
 
