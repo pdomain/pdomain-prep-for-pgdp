@@ -584,7 +584,7 @@ make release-major
 
 The release script runs release preflight, creates the annotated `vX.Y.Z` tag,
 pushes `main` and the exact tag, then dispatches
-`.github/workflows/release.yml` with `gh workflow run release.yml --ref main -f
+`.github/workflows/release.yml` with `gh workflow run release.yml --ref master -f
 tag=vX.Y.Z`.
 
 `.github/workflows/release.yml` is `workflow_dispatch` only. It checks out the

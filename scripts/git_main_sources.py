@@ -20,7 +20,7 @@ def flip_sources(text: str, owner: str, siblings: list[str]) -> str:
         text: Full ``pyproject.toml`` contents.
         owner: GitHub org/owner (e.g. ``"pdomain"``).
         siblings: pd-* package names whose ``[tool.uv.sources]`` entry should
-            be flipped from a registry index to ``{ git = ..., branch = "main" }``.
+            be flipped from a registry index to ``{ git = ..., branch = "master" }``.
 
     Raises:
         ValueError: if a requested sibling has no ``[tool.uv.sources]`` entry.
