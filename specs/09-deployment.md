@@ -40,10 +40,10 @@ workbench reruns until the DAG is re-run).
 
 ```
 # Linux / macOS
-$ curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
+$ curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
 
 # Windows (PowerShell)
-PS> irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.ps1 | iex
+PS> irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.ps1 | iex
 
 $ pgdp-prep
 GPU detected: NVIDIA GeForce RTX 4070 (12 GB)
@@ -573,7 +573,7 @@ attached to the Fargate task: **~$15/month** + GPU usage.
 
 ## CI/CD
 
-Releases are started from a clean, up-to-date `main` branch with the local
+Releases are started from a clean, up-to-date `master` branch with the local
 release targets:
 
 ```sh
@@ -583,7 +583,7 @@ make release-major
 ```
 
 The release script runs release preflight, creates the annotated `vX.Y.Z` tag,
-pushes `main` and the exact tag, then dispatches
+pushes `master` and the exact tag, then dispatches
 `.github/workflows/release.yml` with `gh workflow run release.yml --ref master -f
 tag=vX.Y.Z`.
 

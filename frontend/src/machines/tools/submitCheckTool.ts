@@ -154,11 +154,9 @@ export const submitCheckToolMachine = setup({
      * have uploaded the zip to their dpscans folder on pgdp.net.
      * CT 2026-06-11: replaces async liveSubmit invoke with inline assignment.
      */
-    assignSubmittedNow: assign(
-      (): Partial<SubmitCheckToolContext> => ({
-        submittedAt: new Date().toISOString(),
-      }),
-    ),
+    assignSubmittedNow: assign((): Partial<SubmitCheckToolContext> => ({
+      submittedAt: new Date().toISOString(),
+    })),
     assignError: assign(
       (_args, params: { error: unknown }): Partial<SubmitCheckToolContext> => ({
         error:

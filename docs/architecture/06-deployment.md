@@ -8,7 +8,7 @@ vs what still needs work.
 **Status:** ✅ shippable.
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
 pgdp-prep
 ```
 

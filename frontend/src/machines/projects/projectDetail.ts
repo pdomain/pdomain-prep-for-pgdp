@@ -71,8 +71,7 @@ export interface ProjectDetailContext {
   onRespawnActivity: ((projectId: string) => void) | undefined;
   onRespawnAttributes: ((projectId: string) => void) | undefined;
   onRespawnManage:
-    | ((projectId: string, isArchived: boolean) => void)
-    | undefined;
+    ((projectId: string, isArchived: boolean) => void) | undefined;
   onStopChildren: (() => void) | undefined;
   onRefreshRail: (() => void) | undefined;
   onStartCreateFlow: (() => void) | undefined;

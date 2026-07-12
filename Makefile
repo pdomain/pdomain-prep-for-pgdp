@@ -463,7 +463,7 @@ release-major: ## Release: bump major, run ci-slow, tag, push (e.g. v0.4.2 → v
 	@$(MAKE) --no-print-directory _do-release BUMP=major
 
 # scripts/do-release.sh handles repo-state guards, runs the ci-slow pre-flight,
-# creates a three-component tag, and pushes main + tag.
+# creates a three-component tag, and pushes master + tag.
 # Pass FORCE=1 to skip the repo-state guards (pre-flight still runs).
 # Pass SKIP_PUSH=1 to create the tag locally without pushing.
 _do-release:

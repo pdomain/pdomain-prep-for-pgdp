@@ -56,8 +56,7 @@ export interface ManageActionsContext {
   error: string | null;
   services: ManageActionsServices;
   onMutated:
-    | ((action: ManageAction, result: ManageActionResult) => void)
-    | undefined;
+    ((action: ManageAction, result: ManageActionResult) => void) | undefined;
 }
 
 // ---------------------------------------------------------------------------

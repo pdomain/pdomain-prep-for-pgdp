@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Validate this repo against its pd-* siblings' latest GitHub `main`.
+# Validate this repo against its pd-* siblings' latest GitHub `master`.
 #
 # Transient: backs up pyproject.toml + uv.lock, flips pd-* uv sources to
-# git+main (locking each sibling's current main SHA for a reproducible run),
+# git+master (locking each sibling's current master SHA for a reproducible run),
 # runs the release preflight, then ALWAYS restores the two files and re-syncs.
 # Leaves zero committed churn. Refuses to run in local-dev mode.
 #

@@ -50,12 +50,7 @@ export function SourceStepSettings({
   onChangeSetting,
 }: {
   settingsState:
-    | "default"
-    | "modified"
-    | "preset"
-    | "saving"
-    | "reverting"
-    | "resetting";
+    "default" | "modified" | "preset" | "saving" | "reverting" | "resetting";
   draft: Record<string, unknown> | null;
   presetId: string | null;
   /** True while a settings service call is in flight (saving/reverting/resetting). */

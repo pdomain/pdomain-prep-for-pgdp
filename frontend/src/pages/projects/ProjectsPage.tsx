@@ -1173,8 +1173,7 @@ function AttributesTabPanel({
             // comments is a string, shown as body text
           } else {
             const raw = attrFields[section] as
-              | Record<string, string>
-              | undefined;
+              Record<string, string> | undefined;
             if (raw) fieldEntries = Object.entries(raw);
           }
         }
@@ -1672,9 +1671,7 @@ function ManageRow({
 // ---------------------------------------------------------------------------
 
 type Step =
-  | { kind: "form" }
-  | { kind: "zipping" }
-  | { kind: "uploading"; pct: number };
+  { kind: "form" } | { kind: "zipping" } | { kind: "uploading"; pct: number };
 
 type UploadMode = "zip" | "folder";
 

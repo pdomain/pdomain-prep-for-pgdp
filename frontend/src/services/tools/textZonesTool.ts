@@ -119,13 +119,11 @@ async function applySplit(
     prefix: pageId,
     state: "split",
   };
-  const children = (result.children ?? []).map(
-    (child): ZonePageRow => ({
-      idx: child.idx0 ?? pageId,
-      prefix: child.idx0 ?? pageId,
-      state: "clean",
-    }),
-  );
+  const children = (result.children ?? []).map((child): ZonePageRow => ({
+    idx: child.idx0 ?? pageId,
+    prefix: child.idx0 ?? pageId,
+    state: "clean",
+  }));
   // SplitResult.childRows must be a 2-tuple; pad/trim to ensure this.
   const childA: ZonePageRow = children[0] ?? {
     idx: `${pageId}a`,

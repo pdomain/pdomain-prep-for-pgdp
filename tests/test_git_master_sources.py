@@ -1,4 +1,4 @@
-"""Unit tests for the git-main [tool.uv.sources] rewriter."""
+"""Unit tests for the git-master [tool.uv.sources] rewriter."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ some-other = { index = "elsewhere" }
 """
 
 
-def test_flip_single_sibling_to_git_main() -> None:
+def test_flip_single_sibling_to_git_master() -> None:
     out = flip_sources(_SRC, "pdomain", ["pdomain-book-tools"])
     assert (
         'pdomain-book-tools = { git = "https://github.com/pdomain/'

@@ -62,13 +62,7 @@ import { resolveToolSlot } from "./toolSlot";
 // ---------------------------------------------------------------------------
 
 type RunnerStateValue =
-  | "notrun"
-  | "queued"
-  | "running"
-  | "clean"
-  | "flagged"
-  | "stale"
-  | "error";
+  "notrun" | "queued" | "running" | "clean" | "flagged" | "stale" | "error";
 
 function dotColor(state: RunnerStateValue): string {
   switch (state) {

@@ -69,7 +69,7 @@ const ARCHIVED_1 = makeProject({
 });
 
 function makeManageServices(
-  spy?: ReturnType<typeof vi.fn>,
+  spy?: ManageActionsServices["runManageAction"],
 ): ManageActionsServices {
   const runManageAction =
     spy ??
@@ -82,7 +82,7 @@ function makeManageServices(
 
 function makeServices(
   projects: ProjectRecord[],
-  manageSpy?: ReturnType<typeof vi.fn>,
+  manageSpy?: ManageActionsServices["runManageAction"],
 ): ProjectsPageServices {
   return {
     rail: { fetchProjects: vi.fn().mockResolvedValue(projects) },

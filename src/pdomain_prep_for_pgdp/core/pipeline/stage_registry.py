@@ -800,7 +800,7 @@ def _text_postprocess_cpu(text_bytes: object, cfg: StageConfig = None) -> str:
 # (inverted binary). `denoise_binary` in pdomain-book-tools expects text=0/bg=255.
 # The impl inverts, calls denoise_binary, inverts back.
 #
-# Requires: pdomain-book-tools local main (not in pinned v0.17.1 release).
+# Requires: pdomain-book-tools local master (not in pinned v0.17.1 release).
 # See B2 commit for DEP APPROACH details.
 
 
@@ -855,7 +855,7 @@ def _denoise_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:
 # If fewer than min_textlines are found, DewarpResult.confidence=0 and
 # GeometryTransform.identity is returned → identity pass-through.
 #
-# Requires: pdomain-book-tools local main (geometry_correction package).
+# Requires: pdomain-book-tools local master (geometry_correction package).
 
 
 def _dewarp_cpu(image: ImageArray, cfg: StageConfig = None) -> ImageArray:

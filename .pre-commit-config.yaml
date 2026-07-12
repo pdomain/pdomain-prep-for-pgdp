@@ -2,11 +2,11 @@ default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
-    rev: v0.9.0
+    rev: 4fd4fcef9cf0a3c95b61c76de4a2b1a0bb0666fc  # frozen: v0.9.0
     hooks:
     -   id: pre-commit-update
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
@@ -42,7 +42,7 @@ repos:
         args: [--fix]
         stages: [manual]
 -   repo: https://github.com/jorisroovers/gitlint
-    rev: v0.19.1
+    rev: acc9d9de6369b76d22cb4167029d2035e8730b98  # frozen: v0.19.1
     hooks:
     -   id: gitlint
         stages: [commit-msg]
@@ -70,8 +70,8 @@ repos:
         # mise-trust-worktrees trusts generated worktree roots so this can use
         # the project tool versions from mise.toml without per-worktree prompts.
         entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
-          exec mise exec -- npx tsc -b --noEmit; else exec npx tsc -b --noEmit;
-          fi'
+          exec mise exec -- pnpm exec tsc -b --noEmit; else exec pnpm exec tsc
+          -b --noEmit; fi'
         language: system
         files:
           ^frontend/(src/.*\.(ts|tsx)|tsconfig.*\.json|package(-lock)?\.json|vite\.config\.ts)$
@@ -80,7 +80,7 @@ repos:
         name: frontend eslint
         description: ESLint flat-config check for the React SPA.
         entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
-          exec mise exec -- npm run --silent lint; else exec npm run --silent
+          exec mise exec -- pnpm run --silent lint; else exec pnpm run --silent
           lint; fi'
         language: system
         # Match what eslint actually lints: SPA source, the flat config
@@ -94,7 +94,7 @@ repos:
         name: frontend prettier --check
         description: Prettier format check for the React SPA.
         entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
-          exec mise exec -- npm run --silent format:check; else exec npm run
+          exec mise exec -- pnpm run --silent format:check; else exec pnpm run
           --silent format:check; fi'
         language: system
         # Prettier covers a broader file set than ESLint (CSS, JSON,

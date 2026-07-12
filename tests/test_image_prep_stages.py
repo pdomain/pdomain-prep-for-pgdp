@@ -7,10 +7,10 @@ TDD tests for:
 
 Spec: docs/specs/stage-registry-v2.md §2 (table rows 06-08)
 
-All tests use UV_NO_SYNC mode (editable pdomain-book-tools local main installed
+All tests use UV_NO_SYNC mode (editable pdomain-book-tools local master installed
 in worktree venv; see DEP APPROACH in B2 commit message).
 
-Availability: denoise and dewarp require pdomain-book-tools >=0.18.0 (local main),
+Availability: denoise and dewarp require pdomain-book-tools >=0.18.0 (local master),
 which includes the geometry_correction and updated image_processing modules.
 When only the published wheel (0.17.x) is installed, these tests skip cleanly.
 """
@@ -24,7 +24,7 @@ import pytest
 
 # Skip all denoise/dewarp tests when the required pdomain-book-tools sub-modules
 # are not available (i.e. the published 0.17.x wheel is installed instead of
-# the local editable main). post_transform_crop tests still run.
+# the local editable master). post_transform_crop tests still run.
 _HAS_GEOMETRY_CORRECTION = importlib.util.find_spec("pdomain_book_tools.geometry_correction") is not None
 _HAS_DENOISE = importlib.util.find_spec("pdomain_book_tools.image_processing") is not None
 
@@ -36,7 +36,7 @@ def _require_geometry_correction() -> None:
     if not _HAS_GEOMETRY_CORRECTION:
         pytest.skip(
             "pdomain_book_tools.geometry_correction not available — "
-            "install editable pdomain-book-tools (>=0.18 local main)"
+            "install editable pdomain-book-tools (>=0.18 local master)"
         )
 
 

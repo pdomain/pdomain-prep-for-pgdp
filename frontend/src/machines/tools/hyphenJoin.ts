@@ -31,12 +31,7 @@ import { setup, assign, fromPromise } from "xstate";
 // ---------------------------------------------------------------------------
 
 export type HyphenCaseStatus =
-  | "joined"
-  | "validated"
-  | "undecided"
-  | "flagged"
-  | "crosspage"
-  | "mismatch";
+  "joined" | "validated" | "undecided" | "flagged" | "crosspage" | "mismatch";
 
 export type HyphenCaseKind = "auto" | "crosspage" | "manual" | "mismatch";
 

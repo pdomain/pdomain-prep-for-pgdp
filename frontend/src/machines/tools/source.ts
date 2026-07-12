@@ -250,9 +250,7 @@ export type ThumbnailsRegionEvent =
   | { type: "REGENERATE" };
 
 export type SourceToolEvent =
-  | FilesRegionEvent
-  | ThumbnailsRegionEvent
-  | StageSettingsEvent;
+  FilesRegionEvent | ThumbnailsRegionEvent | StageSettingsEvent;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -410,15 +408,13 @@ export const sourceToolMachine = setup({
      */
     markAllThumbed: assign({
       files: ({ context }: { context: SourceToolContext }) =>
-        context.files.map(
-          (f): FileRow =>
-            f.state === "pending" ? { ...f, state: "ready" } : f,
+        context.files.map((f): FileRow =>
+          f.state === "pending" ? { ...f, state: "ready" } : f,
         ),
       _thumbsDone: () => true as const,
       totals: ({ context }: { context: SourceToolContext }) => {
-        const files = context.files.map(
-          (f): FileRow =>
-            f.state === "pending" ? { ...f, state: "ready" } : f,
+        const files = context.files.map((f): FileRow =>
+          f.state === "pending" ? { ...f, state: "ready" } : f,
         );
         return recount(files);
       },

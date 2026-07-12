@@ -33,11 +33,7 @@ import type { StageSettingsServices } from "./stageSettings";
 // ---------------------------------------------------------------------------
 
 export type SuspectType =
-  | "dictFail"
-  | "stealth"
-  | "runeTranspose"
-  | "digitSub"
-  | "common";
+  "dictFail" | "stealth" | "runeTranspose" | "digitSub" | "common";
 
 export interface Suspect {
   id: string;

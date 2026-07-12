@@ -50,11 +50,7 @@ export interface Color2GrayParams {
 
 /** Converter algorithm union — matches backend GrayscaleConfig converter field. */
 export type GrayscaleConverter =
-  | "luma"
-  | "luma_bt709"
-  | "lab_l"
-  | "color2gray"
-  | "best_channel";
+  "luma" | "luma_bt709" | "lab_l" | "color2gray" | "best_channel";
 
 /** Channel selection union — matches backend GrayscaleConfig channel field. */
 export type GrayscaleChannel = "green" | "red" | "blue" | "auto";

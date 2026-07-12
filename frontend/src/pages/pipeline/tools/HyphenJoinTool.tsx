@@ -812,12 +812,7 @@ function HyphenOverviewTab({
 // ---------------------------------------------------------------------------
 
 type HyphenTab =
-  | "overview"
-  | "queue"
-  | "joined"
-  | "mismatch"
-  | "workbench"
-  | "settings";
+  "overview" | "queue" | "joined" | "mismatch" | "workbench" | "settings";
 
 function HyphenTabBar({
   active,

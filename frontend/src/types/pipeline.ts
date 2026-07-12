@@ -33,11 +33,7 @@ export type PageStageStatus =
  * @see api-v2-deltas.md §3
  */
 export type ProjectStageStatus =
-  | "not_run"
-  | "running"
-  | "clean"
-  | "dirty"
-  | "failed";
+  "not_run" | "running" | "clean" | "dirty" | "failed";
 
 // ---------------------------------------------------------------------------
 // Page-scoped stage state
@@ -271,9 +267,7 @@ export type ProjectChannelEvent =
   | ValidationUpdatedEvent;
 
 export type PageChannelEvent =
-  | PageSnapshotEvent
-  | StageStatusEvent
-  | StageProgressEvent;
+  PageSnapshotEvent | StageStatusEvent | StageProgressEvent;
 
 // ---------------------------------------------------------------------------
 // Projects list API (GET /api/projects)
@@ -352,11 +346,7 @@ export interface AttributeRecord {
 // ---------------------------------------------------------------------------
 
 export type ManageAction =
-  | "clean"
-  | "archive"
-  | "saveCopy"
-  | "delete"
-  | "restore";
+  "clean" | "archive" | "saveCopy" | "delete" | "restore";
 
 export interface ManageActionResult {
   action: ManageAction;

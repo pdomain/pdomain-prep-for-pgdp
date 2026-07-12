@@ -74,22 +74,18 @@ function adaptReport(report: BackendValidationReport): {
   counts: ValidationCounts;
 } {
   const rules: ValidationRule[] = [
-    ...report.blockers.map(
-      (b): ValidationRule => ({
-        id: b.code,
-        name: b.code,
-        level: "error",
-        detail: b.message + (b.page_id ? ` (page ${b.page_id})` : ""),
-      }),
-    ),
-    ...report.warnings.map(
-      (w): ValidationRule => ({
-        id: w.code,
-        name: w.code,
-        level: "warn",
-        detail: w.message + (w.page_id ? ` (page ${w.page_id})` : ""),
-      }),
-    ),
+    ...report.blockers.map((b): ValidationRule => ({
+      id: b.code,
+      name: b.code,
+      level: "error",
+      detail: b.message + (b.page_id ? ` (page ${b.page_id})` : ""),
+    })),
+    ...report.warnings.map((w): ValidationRule => ({
+      id: w.code,
+      name: w.code,
+      level: "warn",
+      detail: w.message + (w.page_id ? ` (page ${w.page_id})` : ""),
+    })),
   ];
   const counts: ValidationCounts = {
     pass: rules.length === 0 ? 1 : 0,

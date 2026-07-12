@@ -79,7 +79,7 @@ To revert to the pinned tag:
 
 ```sh
 make uninstall-local
-curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
 ```
 
 ## Frontend dev

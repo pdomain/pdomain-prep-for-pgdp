@@ -132,9 +132,7 @@ export interface ProgressPushEvent {
 
 /** Union of all events the sseActor emits to the parent machine. */
 export type SseMachineEvent =
-  | StatusPushEvent
-  | StagePushEvent
-  | ProgressPushEvent;
+  StatusPushEvent | StagePushEvent | ProgressPushEvent;
 
 // ---------------------------------------------------------------------------
 // Subscription function interface

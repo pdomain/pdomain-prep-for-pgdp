@@ -4,7 +4,7 @@ set -e
 # Install pgdp-prep as a standalone tool using uv.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
 #
 # This script downloads the prebuilt wheel attached to the latest GitHub
 # Release and runs `uv tool install` against it. The wheel ships with the

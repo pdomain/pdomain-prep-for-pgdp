@@ -44,11 +44,7 @@ import { setup, assign, fromPromise } from "xstate";
 export type IllustrationKind = "plate" | "lineart" | "initial" | "figure";
 export type IllustrationStatus = "extracted" | "review" | "flagged";
 export type GalleryFilter =
-  | "all"
-  | "plates"
-  | "lineart"
-  | "initials"
-  | "figures";
+  "all" | "plates" | "lineart" | "initials" | "figures";
 
 export interface IllustrationRegion {
   id: string;

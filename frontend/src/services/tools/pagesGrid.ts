@@ -45,16 +45,14 @@ async function fetchPages(
   const data = await api.get<{ pages: BackendCropPage[] }>(
     `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/crop-pages`,
   );
-  return data.pages.map(
-    (p): CropPageRow => ({
-      pageId: p.pageId,
-      n: p.n,
-      thumbUrl: p.thumbUrl,
-      flags: p.flags,
-      bbox: p.bbox ?? null,
-      skewDeg: p.skewDeg ?? null,
-    }),
-  );
+  return data.pages.map((p): CropPageRow => ({
+    pageId: p.pageId,
+    n: p.n,
+    thumbUrl: p.thumbUrl,
+    flags: p.flags,
+    bbox: p.bbox ?? null,
+    skewDeg: p.skewDeg ?? null,
+  }));
 }
 
 /**

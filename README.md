@@ -13,10 +13,10 @@ all three; only the storage / database / auth / GPU adapters change.
 
 ```sh
 # Linux / macOS
-curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.ps1 | iex
 
 pgdp-prep
 ```
