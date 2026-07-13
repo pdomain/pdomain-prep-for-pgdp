@@ -43,6 +43,15 @@ Fargate container — only the storage / database / auth / GPU adapters change.
         └──────────┘         └──────────┘    │Modal scaffold  │
                                               │Shared container│
                                               └────────────────┘
+
+        Page lifecycle (local, per project)
+        ┌─────────────────────────────────────────────────────┐
+        │ pdomain-ops PagesApplication + LocalPageStore       │
+        │ .pd-pages/events.db + content-addressed blobs/      │
+        ├─────────────────────────────────────────────────────┤
+        │ PrepProjectAggregate workflow history              │
+        │ events.db                                           │
+        └─────────────────────────────────────────────────────┘
 ```
 
 The wheel ships everywhere. The same code runs in every shape; only adapter
@@ -132,9 +141,18 @@ the FastAPI app. Everything in `core/` and `api/` is shape-agnostic.
 |---|---|---|
 | `SystemDefaults` | DB row keyed by `owner_id` | One per user (managed mode); admin row is fallback. |
 | `Project` (incl. config + pipeline state) | DB row | Stored as JSON-document column. |
-| `PageRecord` (one per page, per project) | DB row | One row per `(project_id, idx0)`. |
+| Generic page lifecycle and prep display order | Per-project pdomain-ops event store | `.pd-pages/events.db`; shared `PageAggregate` records carry `PrepPageExtension.idx0`. `ProjectAggregate.page_ids` retains membership in insertion order. |
+| Prep workflow history | Per-project app-local event store | `events.db`; `PrepProjectAggregate` records stage runs, review and gate decisions, settings changes, and workflow audit events such as `PageReorder`. |
+| Page image and thumbnail bytes | Per-project pdomain-ops BlobStore | Content-addressed files under `.pd-pages/blobs/`. |
 | `Job` | DB row | Status / progress / payload. |
 | Source images, thumbnails, processed PNGs, OCR text, illustrations, zip | `IStorage` | Filesystem in local mode; S3 in managed. Spec-08 storage layout. |
 
-The whole user-visible state for a project is reconstructible from
-`projects.body` + `pages.body[*]` + the storage tree. Jobs are append-only.
+Project configuration, stage rows, jobs, and other application records remain
+in `IDatabase`. Generic page lifecycle is reconstructed from the pdomain-ops
+event store plus BlobStore. Prep reads its display order by sorting the
+namespaced `PrepPageExtension.idx0` stored on each shared Page aggregate; a
+reorder mutates those extension values without rewriting generic
+`PageRecord.page_index` or `ProjectAggregate.page_ids`. Prep workflow history
+replays from the separate app-local event store, where reorder also appends a
+`PageReorder` audit event. Legacy page-row adapters still exist at some API and
+migration boundaries; they are not the authoritative lifecycle store.

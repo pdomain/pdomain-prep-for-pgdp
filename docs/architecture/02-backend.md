@@ -86,6 +86,39 @@ Every method is `async def`. Implementations:
   while the local-first push lands. `tests/test_postgres_adapter.py`
   `importorskip`s psycopg cleanly.
 
+### Page lifecycle service (`core/page_store_factory.py`)
+
+Page lifecycle does not use the `IDatabase` page-row contract as its source of
+truth. `build_page_service(data_root, project_id)` creates a project-local
+service from pdomain-ops:
+
+- `PagesApplication` with SQLite persistence at
+  `<data_root>/projects/<project_id>/.pd-pages/events.db`;
+- `LocalPageStore` for page and project aggregates;
+- `BlobStore` rooted at the same `.pd-pages` directory.
+
+Ingest creates `PageAggregate` and `ProjectAggregate` events and writes source
+and thumbnail bytes through BlobStore. Page mutations use helpers that load,
+change, and save aggregates so replay remains authoritative. Prep-specific
+JSON-safe state lives in the `prep` PageRecord extension.
+
+This pdomain-ops store owns generic Page and Project aggregate state. Prep's
+current display order is the namespaced `PrepPageExtension.idx0` stored on each
+shared Page aggregate and sorted by `list_page_records()`.
+`ProjectAggregate.page_ids` remains the membership list in insertion order, and
+reorder does not rewrite generic `PageRecord.page_index`.
+
+The pdomain-ops store is separate from the app-local project `events.db`, where
+`PrepProjectAggregate` records workflow history such as `PageReorder`, stage
+runs, review decisions, gate confirmations, and settings changes. A reorder
+mutates each Page aggregate's prep extension and separately records the
+workflow event in the prep aggregate.
+
+`IDatabase` remains application-owned for project configuration, pipeline stage
+rows, jobs, search, and compatibility/migration boundaries. This is a split
+ownership model, not a wholesale replacement of the application database.
+Remote PageStore and networked blob transports do not ship here.
+
 ### `IAuth` (`adapters/auth/base.py`)
 
 ```python

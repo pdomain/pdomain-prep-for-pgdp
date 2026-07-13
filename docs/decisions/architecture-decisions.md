@@ -150,6 +150,38 @@ direct-URL deps in `pyproject.toml` (would burn the PyPI bridge).
 
 Agent-memory reference: `release_strategy_self_hosted_index.md`.
 
+## AD-11. Shared page state; app-local workflow history
+
+Page identity, provenance, extensions, and other generic lifecycle state use
+pdomain-ops `PageRecord`, aggregates, `PagesApplication`, `LocalPageStore`, and
+BlobStore. Each project stores this state in `.pd-pages/events.db` and
+`.pd-pages/blobs/`.
+
+Prep display order remains app-specific. Shared Page aggregates persist the
+namespaced `PrepPageExtension.idx0`, and prep sorts pages by that value.
+`ProjectAggregate.page_ids` remains membership in insertion order, while
+generic `PageRecord.page_index` is not rewritten by reorder.
+
+Prep-domain workflow history remains app-local. `PrepProjectAggregate` uses the
+separate project `events.db` for events such as `PageReorder`, stage runs,
+review decisions, gate confirmations, and settings changes. A reorder updates
+the prep extension values on shared Page aggregates and records the workflow
+event locally.
+
+Project configuration, pipeline stage rows, jobs, search, and remaining
+compatibility boundaries stay in prep's `IDatabase`. This split avoids
+duplicating the shared lifecycle model without forcing prep's application DAG
+or job schema into pdomain-ops. It also describes what actually shipped: the
+legacy database was not deleted wholesale.
+
+Evidence: `src/pdomain_prep_for_pgdp/core/page_store_factory.py`,
+`src/pdomain_prep_for_pgdp/core/pipeline/prep_aggregate.py`,
+`src/pdomain_prep_for_pgdp/api/data/pages.py`,
+`src/pdomain_prep_for_pgdp/core/ingest.py`,
+`src/pdomain_prep_for_pgdp/core/page_service_helpers.py`,
+`tests/test_page_store_factory.py`, `tests/test_reorder_pages_route.py`, and
+`_tbd/ocr-container-docs/plans/2026-06-01-page-split-prep-for-pgdp.md`.
+
 ---
 
 ## How decisions get added here

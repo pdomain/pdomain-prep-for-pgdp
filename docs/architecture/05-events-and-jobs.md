@@ -1,5 +1,41 @@
 # 05 — Events, Jobs, and the In-Process Queue
 
+## Two durable event stores
+
+Generic Page and Project aggregate state is persisted through pdomain-ops
+`PageAggregate`, `ProjectAggregate`, and `PagesApplication`. Each project owns
+one `.pd-pages/events.db` and content-addressed BlobStore. Ingest, split,
+rotation, and extension updates change these aggregates through the page-service
+boundary instead of treating a mutable database page row as event history.
+
+Prep display order is app-specific state inside this shared persistence layer.
+Each Page aggregate carries `PrepPageExtension.idx0`, and page listing sorts by
+that field. Reorder rewrites those extension values. It does not reorder
+`ProjectAggregate.page_ids`, which remains membership in insertion order, or
+rewrite generic `PageRecord.page_index`.
+
+Prep workflow history uses a separate app-local store at the project-level
+`events.db`. Its `PrepProjectAggregate` records `PageReorder`, stage run and
+settings history, review decisions, gate confirmations, and other prep-domain
+events. `PageReorder` is workflow audit history; the current prep display order
+comes from the extension values on the shared Page aggregates.
+
+Prep-specific PageRecord fields remain namespaced in the `prep` extension. The
+application database still owns pipeline stage rows, job state, search, project
+configuration, and compatibility boundaries. Job progress events described
+below are transient SSE coordination; they are distinct from both durable event
+stores.
+
+Evidence: `src/pdomain_prep_for_pgdp/core/page_store_factory.py`,
+`src/pdomain_prep_for_pgdp/core/page_service_helpers.py`,
+`src/pdomain_prep_for_pgdp/core/pipeline/prep_aggregate.py`,
+`src/pdomain_prep_for_pgdp/api/data/pages.py`,
+`src/pdomain_prep_for_pgdp/core/ingest.py`,
+`src/pdomain_prep_for_pgdp/core/split_ops.py`, `tests/test_page_store_factory.py`,
+`tests/test_reorder_pages_route.py`, and `tests/test_w4_confirm_routes.py`.
+Salvaged source:
+`_tbd/ocr-container-docs/plans/2026-06-01-page-split-prep-for-pgdp.md`.
+
 The system has three coordination layers, each solving a different problem:
 
 | Layer | Where | What it serialises |
