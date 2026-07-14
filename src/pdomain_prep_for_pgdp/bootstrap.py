@@ -266,6 +266,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         events=job_events,
         stage_events=stage_events,
         data_root=settings.data_root,
+        job_handler_timeout_seconds=settings.job_handler_timeout_seconds,
     )
 
     @asynccontextmanager

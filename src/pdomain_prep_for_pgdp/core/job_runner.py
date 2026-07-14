@@ -70,6 +70,7 @@ class InProcessJobRunner:
         poll_interval: float = 1.0,
         max_concurrency: int = 1,
         data_root: Path | None = None,
+        job_handler_timeout_seconds: float | None = 900.0,
     ) -> None:
         self._db: IDatabase = database
         self._storage: IStorage = storage
@@ -80,6 +81,7 @@ class InProcessJobRunner:
         self._stage_events: StageEventBroker | None = stage_events
         self._poll: float = poll_interval
         self._max_concurrency: int = max(1, max_concurrency)
+        self._job_handler_timeout_seconds: float | None = job_handler_timeout_seconds
         # Jobs that handed themselves off to the dispatcher; _run_one should
         # NOT mark them complete on the way out — the dispatcher's completion
         # callback owns that transition.
@@ -260,9 +262,26 @@ class InProcessJobRunner:
             handler = _HANDLERS.get(job.type)
             if handler is None:
                 raise NotImplementedError(f"no handler for job type {job.type.value}")
-            await handler(self, job)
+            if self._job_handler_timeout_seconds is None:
+                await handler(self, job)
+            else:
+                await asyncio.wait_for(handler(self, job), timeout=self._job_handler_timeout_seconds)
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            # NOTE: cancelling this await only detaches the coroutine from the
+            # event loop -- it does NOT kill an underlying OS thread if the
+            # handler was mid-``anyio.to_thread.run_sync`` (e.g. a CPU-bound
+            # stage callable). That thread keeps running until it finishes or
+            # the process exits; the job is marked failed and this slot is
+            # released regardless, so the runner isn't wedged either way.
+            log.error(
+                "job %s handler timed out after %ss",
+                job.id,
+                self._job_handler_timeout_seconds,
+            )
+            await self._mark_failed(job, f"job handler timed out after {self._job_handler_timeout_seconds}s")
+            return
         except Exception as e:
             log.exception("job %s failed", job.id)
             await self._mark_failed(job, str(e))

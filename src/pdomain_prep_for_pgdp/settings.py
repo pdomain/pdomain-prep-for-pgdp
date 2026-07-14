@@ -85,6 +85,21 @@ class Settings(BaseSettings):
     dispatch_interval_seconds: int = 0
     """0 = immediate (local/self-hosted). 300 = managed-mode batch flush."""
 
+    job_handler_timeout_seconds: float | None = 900.0
+    """Wall-clock bound on a single job handler's dispatch inside `InProcessJobRunner._run_one`.
+
+    A hung handler wedges the job and holds a concurrency slot forever without
+    this bound. `None` disables the timeout (unbounded — pre-fix behaviour).
+    Override: ``PGDP_JOB_HANDLER_TIMEOUT_SECONDS``.
+
+    Cancelling the `asyncio.wait_for` await only stops the coroutine from the
+    event loop's perspective — it does not kill the underlying OS thread when
+    the handler is mid-``anyio.to_thread.run_sync`` (e.g. inside a CPU-bound
+    stage callable). That thread keeps running in the background until it
+    finishes or the process exits; the job is marked failed and the
+    concurrency slot is released immediately regardless.
+    """
+
     # ── Thumbnail generation (Step 2) ────────────────────────────────────────
     thumbnail_workers: int | None = None
     """Worker-process count for Step-2 thumbnail generation.
