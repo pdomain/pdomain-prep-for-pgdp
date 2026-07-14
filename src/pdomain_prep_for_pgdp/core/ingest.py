@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast
 
+import anyio.to_thread
+
 from .models import (
     Project,
     ProjectStatus,
@@ -411,6 +413,24 @@ def _check_zip_limits(raw: bytes, limits: _ZipLimitsProto) -> None:
                 )
 
 
+def _read_zip_entries(raw: bytes) -> list[tuple[str, bytes]]:
+    """Decompress every image-extension entry in ``raw`` into memory.
+
+    Synchronous and CPU-bound — dispatched via ``anyio.to_thread.run_sync``
+    so the event loop isn't blocked while large archives decompress.
+    """
+    entries: list[tuple[str, bytes]] = []
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename
+            if _ext_lower(name) not in _IMAGE_EXTS:
+                continue
+            entries.append((name, zf.read(info)))
+    return entries
+
+
 async def _enumerate_zip(
     storage: IStorage,
     source_key: str,
@@ -428,6 +448,7 @@ async def _enumerate_zip(
     else:
         resolved = limits
     _check_zip_limits(raw, resolved)
+    zip_entries = await anyio.to_thread.run_sync(_read_zip_entries, raw)
     out: list[_SourceEntry] = []
     # Track stems that have already been assigned to detect sanitisation
     # collisions (e.g. ``a/img.jpg`` and ``a__img.jpg`` both map to
@@ -437,35 +458,27 @@ async def _enumerate_zip(
     # is only reached in the pathological case where the sanitised stems
     # themselves clash.
     seen_stems: set[str] = set()
-    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-        for info in zf.infolist():
-            if info.is_dir():
-                continue
-            name = info.filename
-            ext = _ext_lower(name)
-            if ext not in _IMAGE_EXTS:
-                continue
-            data = zf.read(info)
-            stem = _stem_from_zip_path(name)
-            # Resolve sanitisation collisions with a deterministic counter
-            # suffix so no entry is silently overwritten.
-            if stem in seen_stems:
-                counter = 2
+    for name, data in zip_entries:
+        stem = _stem_from_zip_path(name)
+        # Resolve sanitisation collisions with a deterministic counter
+        # suffix so no entry is silently overwritten.
+        if stem in seen_stems:
+            counter = 2
+            candidate = f"{stem}_{counter}"
+            while candidate in seen_stems:
+                counter += 1
                 candidate = f"{stem}_{counter}"
-                while candidate in seen_stems:
-                    counter += 1
-                    candidate = f"{stem}_{counter}"
-                log.warning(
-                    "ZIP stem collision: %r already used; remapping %r → %r",
-                    stem,
-                    name,
-                    candidate,
-                )
-                stem = candidate
-            seen_stems.add(stem)
-            target_key = f"projects/{project_id}/source/{stem}{ext}"
-            await storage.put_bytes(target_key, data)
-            out.append(_SourceEntry(key=target_key, stem=stem, bytes_=data))
+            log.warning(
+                "ZIP stem collision: %r already used; remapping %r → %r",
+                stem,
+                name,
+                candidate,
+            )
+            stem = candidate
+        seen_stems.add(stem)
+        target_key = f"projects/{project_id}/source/{stem}{_ext_lower(name)}"
+        await storage.put_bytes(target_key, data)
+        out.append(_SourceEntry(key=target_key, stem=stem, bytes_=data))
     out.sort(key=lambda e: e.stem)
     return out
 
