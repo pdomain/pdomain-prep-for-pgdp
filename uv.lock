@@ -1612,24 +1612,26 @@ wheels = [
 
 [[package]]
 name = "pdomain-ops"
-version = "0.11.0"
+version = "0.11.2"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "eventsourcing" },
     { name = "fastapi" },
     { name = "filelock" },
     { name = "httpx" },
+    { name = "httpx2" },
     { name = "packaging" },
     { name = "pdomain-book-tools" },
     { name = "platformdirs" },
     { name = "pydantic" },
+    { name = "starlette" },
     { name = "tomli" },
     { name = "tomli-w" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.11.0/pdomain_ops-0.11.0.tar.gz", hash = "sha256:d1e786ca955b6e4af5bb1da71eaa5d3f7aa4a2dc68134d048c7f1a028c12d5f7" }
+sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.11.2/pdomain_ops-0.11.2.tar.gz", hash = "sha256:c0561b4e0a00081078d5204c014d54648bd8446f64ddcbb63f46b45c253a2775" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.11.0/pdomain_ops-0.11.0-py3-none-any.whl", hash = "sha256:1efd32fd436fdd8f4c808ce554486cd127b06fab036866ce9eb68327be708f8c" },
+    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.11.2/pdomain_ops-0.11.2-py3-none-any.whl", hash = "sha256:0d310ef9b78b294fcd29d410cd555149efc1a654eb70bf7a4412a29e7a3602a1" },
 ]
 
 [[package]]
@@ -1702,7 +1704,7 @@ requires-dist = [
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
     { name = "nvidia-nvimgcodec-cu12", marker = "extra == 'cuda'", specifier = ">=0.3" },
     { name = "pdomain-book-tools", specifier = ">=0.21.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-ops", specifier = ">=0.11.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-ops", specifier = ">=0.11.2", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.5" },
