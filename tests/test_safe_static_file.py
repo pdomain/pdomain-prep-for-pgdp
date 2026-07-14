@@ -41,9 +41,23 @@ def fake_static(tmp_path: Path) -> Path:
 def test_app(fake_static: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Build a FastAPI app that mounts the fake static dir."""
 
-    # Monkeypatch resources.files so _mount_static_frontend resolves to fake_static.
+    # Monkeypatch resources.files so _mount_static_frontend resolves to
+    # fake_static. bootstrap.build_app() also reads the bundled
+    # pdomain-suite.json fragment (_build_suite_app()) via the same
+    # resources.files() call — joinpath("pdomain-suite.json") delegates to
+    # the real (pre-patch) package resources so that read stays live.
+    # `bootstrap_mod.resources` IS the `importlib.resources` module object
+    # (not a copy), so the real `.files` must be captured before patching —
+    # patching it in place and then calling it "unpatched" would recurse.
+    real_files = bootstrap_mod.resources.files
+
+    def _joinpath(name: str) -> object:
+        if name == "static":
+            return MagicMock(__str__=lambda self: str(fake_static))
+        return real_files("pdomain_prep_for_pgdp").joinpath(name)
+
     fake_traversable = MagicMock()
-    fake_traversable.joinpath.return_value = MagicMock(__str__=lambda self: str(fake_static))
+    fake_traversable.joinpath.side_effect = _joinpath
     monkeypatch.setattr(bootstrap_mod.resources, "files", lambda _pkg: fake_traversable)
 
     settings = Settings(

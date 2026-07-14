@@ -29,6 +29,7 @@ from pdomain_prep_for_pgdp.api.dependencies import (
     StorageDep,
     UserDep,
 )
+from pdomain_prep_for_pgdp.core.device_resolution import resolve_job_device
 from pdomain_prep_for_pgdp.core.models import (
     V2_PAGE_STAGE_IDS,
     V2_PROJECT_STAGE_IDS,
@@ -1655,6 +1656,7 @@ async def run_page_stage(
                 "page_id": page_id,
                 "stage_id": stage_id,
                 "data_root": str(settings.data_root),
+                "device": resolve_job_device(),
             },
         )
         await db.put_job(job)
@@ -1678,6 +1680,7 @@ async def run_page_stage(
             project_id=project_id,
             page_id=page_id,
             stage_id=stage_id,
+            device=resolve_job_device(),
             # Root stage `ingest_source` reads bytes from IStorage at the
             # page's source_key; pass through unconditionally so the runner
             # has them when it needs them (other stages ignore both).

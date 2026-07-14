@@ -146,6 +146,30 @@ def test_run_project_stage_job_enqueued_with_correct_type(tmp_path: Path) -> Non
     )
 
 
+def test_run_project_stage_job_payload_includes_resolved_device(tmp_path: Path) -> None:
+    """The enqueued job payload's device reflects the app's compute-device pref.
+
+    Before the fix, run_project_stage never set payload["device"] at all, so
+    every handler read fell through to the "cpu" default regardless of the
+    user's preference.
+    """
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    LocalFilePrefs().write_app("pdomain-prep-for-pgdp", {"compute_device": "cuda"})
+
+    settings = _settings(tmp_path)
+    _seed_project(settings, "proj1")
+    app = build_app(settings)
+    from fastapi.testclient import TestClient
+
+    stage_id = "source"
+    with TestClient(app) as client:
+        r = client.post(f"/api/data/projects/proj1/project-stages/{stage_id}/run")
+    assert r.status_code == 202
+    body = r.json()
+    assert body["payload"]["device"] == "cuda"
+
+
 def test_run_project_stage_job_drains_and_stage_reaches_terminal(tmp_path: Path) -> None:
     """Enqueue a run_project_stage job, drain the runner, assert stage row changes.
 

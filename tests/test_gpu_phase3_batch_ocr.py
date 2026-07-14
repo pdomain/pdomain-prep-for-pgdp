@@ -1007,3 +1007,41 @@ def test_run_project_ocr_batch_route_payload_includes_batch_knobs(tmp_path: Path
         await db.close()
 
     asyncio.run(_check_payload())
+
+
+def test_run_project_ocr_batch_route_payload_includes_resolved_device(tmp_path: Path) -> None:
+    """The enqueued job payload's device reflects the app's compute-device pref.
+
+    Locks in the fix for the "OCR always runs cpu" bug: the route used to
+    hardcode device="cpu" regardless of the user's preference.
+    """
+    import asyncio
+
+    from fastapi.testclient import TestClient
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    from pdomain_prep_for_pgdp.adapters.database.sqlite import SqliteDatabase
+    from pdomain_prep_for_pgdp.bootstrap import build_app
+
+    LocalFilePrefs().write_app("pdomain-prep-for-pgdp", {"compute_device": "cuda"})
+
+    settings, project_id = _build_wiring_fixtures(tmp_path)
+    _seed_clean_post_ocr_crop(settings, project_id, ["0000"])
+
+    app = build_app(settings)
+    with TestClient(app) as client:
+        r = client.post(f"/api/data/projects/{project_id}/page-stages/ocr/run-batch")
+
+    assert r.status_code == 202
+    body = r.json()
+    job_id = body["id"]
+
+    async def _check_payload() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        job = await db.get_job(job_id)
+        assert job is not None
+        assert job.payload["device"] == "cuda"
+        await db.close()
+
+    asyncio.run(_check_payload())

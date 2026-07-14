@@ -7,9 +7,12 @@ Picks the storage / database / auth / GPU adapter at startup based on
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
+import json
 import logging
 import os
 import platform
+import sys
 from contextlib import asynccontextmanager
 from importlib import resources
 from pathlib import Path
@@ -31,6 +34,7 @@ from .api.data import install_data_routes
 from .api.gpu import install_gpu_routes
 from .api.middleware.error_handler import install_error_handlers
 from .api.middleware.request_id import RequestIdMiddleware
+from .api.middleware.suite_auth import SuiteAuthMiddleware
 from .core.logging_config import configure_logging
 from .dispatcher.batched import BatchDispatcher
 from .dispatcher.immediate import ImmediateDispatcher
@@ -38,6 +42,8 @@ from .settings import Settings
 
 if TYPE_CHECKING:
     from pdomain_ops.gpu import GPUBackend
+    from pdomain_ops.suite.prefs import PrefsAdapter
+    from pdomain_ops.suite.types import InstalledApp
 
     from .adapters.auth.base import IAuth
     from .adapters.database.base import IDatabase
@@ -173,6 +179,55 @@ def build_dispatcher(settings: Settings, gpu: GPUBackend) -> IDispatcher:
     return ImmediateDispatcher(gpu)
 
 
+def _build_suite_app() -> InstalledApp:
+    """Build the `InstalledApp` descriptor this process registers under.
+
+    Reads the bundled `pdomain-suite.json` fragment and fills in the two
+    runtime-only fields, `binary` and `version`, so `mount_routes()` mounts
+    device/prefs/update routes under our real `app_id` instead of the
+    "unknown" default it falls back to when `suite_app=None`.
+    """
+    from pdomain_ops.suite.types import InstalledApp
+
+    pkg = "pdomain_prep_for_pgdp"
+    raw = resources.files(pkg).joinpath("pdomain-suite.json").read_text(encoding="utf-8")
+    fragment = cast("dict[str, object]", json.loads(raw))
+    try:
+        version = importlib.metadata.version(pkg)
+    except importlib.metadata.PackageNotFoundError:
+        version = "0.0.0"
+    return InstalledApp.model_validate({**fragment, "binary": sys.executable, "version": version})
+
+
+def _migrate_unknown_app_prefs(prefs: PrefsAdapter, app_id: str) -> None:
+    """One-time migration: recover a compute-device pref stranded under "unknown".
+
+    Before this fix, `mount_routes()` was called with no `suite_app`, so
+    `mount_device_routes()` defaulted to `app_id="unknown"` — any
+    compute-device preference a user set persisted under `apps["unknown"]`
+    instead of `apps[app_id]`. Copy it over so existing installs don't
+    silently lose the setting. `PrefsAdapter` (pdomain_ops.suite.prefs)
+    exposes no delete primitive — only `read`/`write_common`/`write_app` —
+    so the stray `compute_device` key is cleared from the "unknown" section
+    rather than the section being removed outright.
+    """
+    snapshot = prefs.read()
+    unknown_section = snapshot.apps.get("unknown")
+    if not unknown_section:
+        return
+    stray_device = unknown_section.get("compute_device")
+    if not stray_device:
+        return
+    real_section = dict(snapshot.apps.get(app_id) or {})
+    if real_section.get("compute_device"):
+        return  # real app key already has an explicit device — don't clobber it
+    real_section["compute_device"] = stray_device
+    prefs.write_app(app_id, real_section)
+    cleared_unknown = dict(unknown_section)
+    del cleared_unknown["compute_device"]
+    prefs.write_app("unknown", cleared_unknown)
+
+
 # ─── FastAPI assembly ────────────────────────────────────────────────────────
 
 
@@ -211,6 +266,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         events=job_events,
         stage_events=stage_events,
         data_root=settings.data_root,
+        job_handler_timeout_seconds=settings.job_handler_timeout_seconds,
     )
 
     @asynccontextmanager
@@ -276,6 +332,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app.state.dispatcher = dispatcher
     app.state.job_runner = job_runner
 
+    # Suite routes (mounted below) have no per-route auth of their own;
+    # guard mutating methods at the middleware layer instead of per-route
+    # DI — see SuiteAuthMiddleware's docstring for why.
+    app.add_middleware(SuiteAuthMiddleware)
+
     install_error_handlers(app, debug=settings.debug)
     install_auth_routes(app, auth_mode=settings.auth_mode)
     cast(_InstallRouteFn, install_data_routes)(app)
@@ -300,6 +361,12 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     # Mounts installed/launch, prefs/common/apps, icons, device, and update
     # routes under /api/suite/ and /api/icons/.
     #
+    # suite_app=_build_suite_app() mounts device/prefs/update routes under our
+    # real app_id ("pdomain-prep-for-pgdp") instead of the "unknown" default
+    # mount_routes() falls back to with no suite_app — see its docstring.
+    # _migrate_unknown_app_prefs() recovers any compute-device preference
+    # stranded under "unknown" by that pre-fix behaviour.
+    #
     # Post-mount patches:
     # 1. pdomain-prep-for-pgdp requires explicit operation_id on every schema-visible
     #    route (test_operation_ids_explicit.py). pdomain-ops uses auto-generated
@@ -312,7 +379,10 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     from fastapi.routing import APIRoute
     from pdomain_ops import SuiteAdapters, mount_routes  # pyright: ignore[reportMissingTypeStubs]
 
-    mount_routes(app, SuiteAdapters.local())
+    suite_adapters = SuiteAdapters.local()
+    suite_app = _build_suite_app()
+    _migrate_unknown_app_prefs(suite_adapters.prefs, suite_app.app_id)
+    mount_routes(app, suite_adapters, suite_app=suite_app)
 
     # Explicit operation_id map for suite routes (snake_case, globally unique).
     suite_op_ids: dict[tuple[str, str], str] = {
