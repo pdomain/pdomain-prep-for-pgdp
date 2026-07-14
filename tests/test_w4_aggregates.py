@@ -239,6 +239,45 @@ class TestBatchedRerunRoute:
         rows = body["rows"]
         assert len(rows) == 2
 
+    def test_rerun_enqueues_one_run_page_stage_job_per_page(self, tmp_path: Path) -> None:
+        """POST rerun enqueues N run_page_stage jobs (one per requested page_id).
+
+        Before the fix, the route marked page_stage rows dirty but never
+        called db.put_job despite its docstring claiming it enqueues a job —
+        the rerun UI action silently no-opped.
+        """
+        from fastapi.testclient import TestClient
+
+        from pdomain_prep_for_pgdp.core.models import JobType
+
+        settings = _make_settings(tmp_path)
+        _seed_project(settings, "proj1", page_count=3)
+
+        app = build_app(settings)
+        with TestClient(app) as client:
+            r = client.post(
+                "/api/data/projects/proj1/project-stages/ocr/rerun",
+                json={"page_ids": ["0001", "0002"]},
+            )
+        assert r.status_code == 200, r.text
+
+        async def _check_jobs() -> None:
+            db = SqliteDatabase(settings.derived_database_url)
+            await db.initialize()
+            jobs = await db.list_recent_jobs("default", 20)
+            rerun_jobs = [j for j in jobs if j.type == JobType.run_page_stage]
+            assert len(rerun_jobs) == 2, f"expected 2 run_page_stage jobs, found {len(rerun_jobs)}"
+            page_ids = {j.payload["page_id"] for j in rerun_jobs}
+            assert page_ids == {"0001", "0002"}
+            for job in rerun_jobs:
+                assert job.project_id == "proj1"
+                assert job.payload["stage_id"] == "ocr"
+                assert job.payload["data_root"] == str(settings.data_root)
+                assert "device" in job.payload
+            await db.close()
+
+        asyncio.run(_check_jobs())
+
     def test_rerun_404_on_missing_project(self, tmp_path: Path) -> None:
         """POST rerun → 404 for unknown project."""
         from fastapi.testclient import TestClient

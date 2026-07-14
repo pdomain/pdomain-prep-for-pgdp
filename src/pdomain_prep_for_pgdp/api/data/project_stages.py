@@ -1494,7 +1494,13 @@ async def rerun_project_stage_pages(
     if _rv is not None:
         return _rv
 
-    # Mark each requested page as dirty for this stage.
+    # Resolved once and reused for every job in the batch — the compute
+    # device preference doesn't change mid-request.
+    device = resolve_job_device()
+
+    # Mark each requested page as dirty for this stage and enqueue its
+    # run_page_stage job, mirroring the async per-page route (pages.py
+    # run_page_stage's `?async=true` branch).
     updated_rows: list[dict[str, object]] = []
     for i, page_id in enumerate(body.page_ids):
         # Mark dirty in page_stages.
@@ -1506,6 +1512,21 @@ async def rerun_project_stage_pages(
                 status=PageStageStatus.dirty,
             )
         )
+        job = Job(
+            id=uuid.uuid4().hex,
+            project_id=project_id,
+            owner_id=user.user_id,
+            type=JobType.run_page_stage,
+            status=JobStatus.queued,
+            payload={
+                "project_id": project_id,
+                "page_id": page_id,
+                "stage_id": stage_id,
+                "data_root": str(settings.data_root),
+                "device": device,
+            },
+        )
+        await db.put_job(job)
         updated_rows.append(
             {
                 "idx": page_id,
