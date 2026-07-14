@@ -88,30 +88,27 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
   load: async () => {
     // Try real backend first (pdomain-ocr-ops GET /api/suite/prefs).
     try {
-      const res = await fetch("/api/suite/prefs");
-      if (res.ok) {
-        // pdomain-ocr-ops returns: {"common": {"theme": "dark", "density": "normal",
-        //   "font_scale": 1.0, ...}, "apps": {...}}
-        const body = (await res.json()) as {
-          common?: { theme?: string; density?: string; font_scale?: number };
-        };
-        const common = body.common ?? {};
-        const rawTheme = common.theme;
-        const theme: "dark" | "light" =
-          rawTheme === "dark" || rawTheme === "light" ? rawTheme : "light";
-        const rawDensity = common.density;
-        const density: "compact" | "normal" | "comfortable" =
-          rawDensity === "compact" || rawDensity === "comfortable"
-            ? rawDensity
-            : "normal";
-        return {
-          theme,
-          density,
-          fontScale: common.font_scale ?? 1.0,
-        };
-      }
+      // pdomain-ocr-ops returns: {"common": {"theme": "dark", "density": "normal",
+      //   "font_scale": 1.0, ...}, "apps": {...}}
+      const body = await api.get<{
+        common?: { theme?: string; density?: string; font_scale?: number };
+      }>("/api/suite/prefs");
+      const common = body.common ?? {};
+      const rawTheme = common.theme;
+      const theme: "dark" | "light" =
+        rawTheme === "dark" || rawTheme === "light" ? rawTheme : "light";
+      const rawDensity = common.density;
+      const density: "compact" | "normal" | "comfortable" =
+        rawDensity === "compact" || rawDensity === "comfortable"
+          ? rawDensity
+          : "normal";
+      return {
+        theme,
+        density,
+        fontScale: common.font_scale ?? 1.0,
+      };
     } catch {
-      // Network error or backend unavailable — fall through to localStorage.
+      // Network error, non-2xx, or backend unavailable — fall through to localStorage.
     }
     // Fallback: seed from localStorage bare string (Phase 2.5 format).
     let theme: "dark" | "light" = "light";
@@ -128,15 +125,11 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
   persistCommon: async (prefs) => {
     // Write to backend (pdomain-ocr-ops PUT /api/suite/prefs/common).
     try {
-      await fetch("/api/suite/prefs/common", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        // pdomain-ocr-ops CommonUIPrefs uses snake_case: font_scale.
-        body: JSON.stringify({
-          theme: prefs.theme,
-          density: prefs.density,
-          font_scale: prefs.fontScale,
-        }),
+      // pdomain-ocr-ops CommonUIPrefs uses snake_case: font_scale.
+      await api.put("/api/suite/prefs/common", {
+        theme: prefs.theme,
+        density: prefs.density,
+        font_scale: prefs.fontScale,
       });
     } catch {
       // Backend unreachable — fall through to localStorage mirror.
@@ -155,11 +148,7 @@ const UI_PREFS_CONFIG: UIPrefsConfig = {
   persistApp: async (appPrefs) => {
     // Write app-specific prefs to backend (pdomain-ocr-ops PUT /api/suite/prefs/apps/{id}).
     try {
-      await fetch("/api/suite/prefs/apps/pdomain-prep-for-pgdp", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(appPrefs),
-      });
+      await api.put("/api/suite/prefs/apps/pdomain-prep-for-pgdp", appPrefs);
     } catch {
       // Backend unreachable — no localStorage mirror for app prefs.
     }
@@ -196,9 +185,7 @@ function adaptInstalledApp(raw: OcrOpsInstalledApp): InstalledApp {
 
 async function fetchInstalled(): Promise<InstalledApp[]> {
   try {
-    const res = await fetch("/api/suite/installed");
-    if (!res.ok) return [];
-    const apps = (await res.json()) as OcrOpsInstalledApp[];
+    const apps = await api.get<OcrOpsInstalledApp[]>("/api/suite/installed");
     return apps.filter((a) => a.enabled).map(adaptInstalledApp);
   } catch {
     return [];
@@ -207,14 +194,9 @@ async function fetchInstalled(): Promise<InstalledApp[]> {
 
 async function postLaunch(id: string): Promise<LaunchResult> {
   try {
-    const res = await fetch(
-      `/api/suite/launch?app_id=${encodeURIComponent(id)}`,
-      {
-        method: "POST",
-      },
-    );
-    if (!res.ok) return { kind: "requires-host-config", siblingId: id };
-    return (await res.json()) as LaunchResult;
+    return await api.post<LaunchResult>("/api/suite/launch", undefined, {
+      query: { app_id: id },
+    });
   } catch {
     return { kind: "requires-host-config", siblingId: id };
   }
