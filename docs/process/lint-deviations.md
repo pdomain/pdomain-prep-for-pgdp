@@ -618,16 +618,32 @@ wraps a native `<input>` but is opaque to the rule.
 - `frontend/src/components/ui/Dialog.tsx:88`
 - `frontend/src/components/ui/AlertDialog.tsx` (lines 80, 82, 84, 86)
 - `frontend/src/components/ui/Select.tsx:75`
+- `frontend/src/pages/pipeline/tools/SourceToolFiles.tsx` (the `applyFilter`
+  and `applySearch` helper exports)
 
-**Justification.** These files export both React components and non-component
-values (context, hooks, or helper constants) from the same module.
-`react-refresh` requires component-only exports to enable fast-refresh
-boundaries; splitting the exports into separate files would fragment the
-module organization without meaningful benefit.
+**Justification.** The Radix UI aliases are forward-ref components, but the
+rule cannot infer that through assignments such as `DialogTitle =
+RadixDialog.Title`. `SourceToolFiles.tsx` also exports two pure helpers that its
+tests import. Splitting those helpers into a one-use module would fragment the
+source tool without improving its fast-refresh boundary.
 
 ---
 
-### 37. `@typescript-eslint/no-useless-constructor` — ESLint
+### 37. Source insert-divider pointer handling — ESLint
+
+**Suppression form:** `// eslint-disable-next-line
+jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions`
+inline.
+
+**Files:** `frontend/src/pages/pipeline/tools/SourceToolFiles.tsx` (`InsertDivider`).
+
+**Justification.** The divider is a hover-only pointer affordance between file
+cards. Keyboard users perform the same insertion through the adjacent toolbar
+button, so making every gap focusable would add duplicate tab stops.
+
+---
+
+### 38. `@typescript-eslint/no-useless-constructor` — ESLint
 
 **Suppression form:** `// eslint-disable-next-line @typescript-eslint/no-useless-constructor` inline.
 
