@@ -44,7 +44,7 @@ out of the published install.
 | Auth | None | API key | JWT |
 | AWS required | No | No | Yes |
 
-See [`specs/09-deployment.md`](specs/09-deployment.md) for the full breakdown.
+See [deployment architecture](docs/architecture/06-deployment.md) for the full breakdown.
 
 ## Architecture
 
@@ -58,8 +58,11 @@ Single FastAPI process serving:
 | `/cdn/*` | Local image files (filesystem mode only) |
 | `/api/auth/*` | Identity (none / api-key / JWT) |
 
-See [`specs/00-overview.md`](specs/00-overview.md) for the high-level picture
-and the rest of `specs/` for the details.
+See [the architecture overview](docs/architecture/01-overview.md) for the high-level picture
+and [the documentation index](docs/README.md) for current detail.
+
+Contributors should also read [development setup](DEVELOPMENT.md),
+[agent guidance](AGENTS.md), and the [changelog](CHANGELOG.md).
 
 ## How to run (from a checkout)
 

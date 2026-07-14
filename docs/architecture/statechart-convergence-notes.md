@@ -1,7 +1,6 @@
 # Statechart Convergence — Implementation Notes
 
-**Plan:** `docs/plans/2026-06-10-statechart-convergence.md`
-**Spec:** `docs/specs/2026-06-10-statechart-convergence-design.md`
+**Lifecycle record:** [migration decisions](../context/decisions.md)
 **Shipped:** 2026-06-11
 
 This document records what landed, every known canvas/statechart divergence,
@@ -18,8 +17,10 @@ plan; the plan's checkbox trail is the commit-by-commit record.
 
 - `core/pipeline/stage_registry.py` re-cut to exactly 24 stages, each with a
   `scope` field (`page` | `project`), launcher group, upstream deps, and
-  folded-micro-step list. Authoritative table: `docs/specs/stage-registry-v2.md`.
-- `REGISTRY_VERSION = 2` constant stamped on every new project row
+  folded-micro-step list. Current authority: [pipeline architecture](03-pipeline.md)
+  and `core/pipeline/stage_registry.py`.
+- The design shipped with registry version 2. Current code uses registry version 3,
+  which adds the page-numbering runs model and migration.
   (`projects.registry_version`). A v1-project access returns HTTP 409
   `{"error": "registry_version_mismatch", "project_version": 1, "server_version": 2}`.
 - `core/pipeline/project_stages.py` — new dual-write store for the 8 project-scoped

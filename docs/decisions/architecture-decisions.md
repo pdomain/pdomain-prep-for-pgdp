@@ -13,7 +13,7 @@ diverge in code.
 
 ## AD-1. Pipeline task model — per-page stage DAG (locked 2026-05-07)
 
-Authoritative spec: [`docs/specs/pipeline-task-model.md`](../specs/pipeline-task-model.md).
+Current authority: [pipeline architecture](../architecture/03-pipeline.md).
 
 The pipeline is a 22-stage per-page DAG. Each stage is independently
 runnable, individually inspectable, and tracked in the `page_stages`
@@ -191,4 +191,4 @@ shape we're going with, full stop,"** write it here in the same
 voice as the entries above (1–2 paragraphs, link to the spec,
 state any consequent constraints). Do not duplicate the spec — link
 to it. Do not put implementation status here — that belongs in
-`docs/plans/roadmap.md` or `docs/archive/plans/roadmap-shipped.md`.
+[the roadmap](../plans/roadmap.md) or [migration decisions](../context/decisions.md).

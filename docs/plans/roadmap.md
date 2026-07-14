@@ -1,6 +1,6 @@
 # 08 — Roadmap
 
-> Shipped items live in `docs/archive/plans/roadmap-shipped.md`. Locked architecture
+> Shipped lifecycle records live in [migration decisions](../context/decisions.md). Locked architecture
 > decisions live in `architecture/architecture-decisions.md`. This file is the
 > **forward** view of open work.
 
@@ -13,10 +13,10 @@ under "Deferred — remote / cloud mode" at the bottom.
 
 - Statechart convergence (2026-06-11) — 24-stage v2 registry, 28 XState v5
   machines, TOOL_REGISTRY, SSE channels wired, legacy surfaces removed. See
-  `docs/plans/2026-06-10-statechart-convergence.md` and
+  [statechart convergence notes](../architecture/statechart-convergence-notes.md) and
   `docs/architecture/statechart-convergence-notes.md`.
 - Pipeline task-model M1–M6 — fully shipped (see
-  `docs/archive/plans/roadmap-shipped.md` §P0.5).
+  [migration decisions](../context/decisions.md)).
 - §13a Radix primitives — fully shipped.
 - §9a soft-delete / restore — shipped.
 - §9a-followup Word-delete Undo UI — shipped (2026-05-22, server-side
@@ -33,7 +33,7 @@ under "Deferred — remote / cloud mode" at the bottom.
 - §P1.2 Crop/rotate review pass — shipped (2026-05-16, CropsGridPage canvas_map grid).
 - §P3.1 compute_prefix frontmatter numbering — shipped (f001 start; 2026-05-16).
 - Backend quality hardening (42 findings) — fully shipped (2026-05-16);
-  see `docs/archive/plans/2026-05-16-backend-quality-hardening.md`.
+  see [migration decisions](../context/decisions.md).
 
 ---
 
@@ -49,7 +49,7 @@ Items that prevent a user from completing a real book end-to-end in
 ## P1 — UX completeness
 
 > All P1 items shipped. See "Reference for finished work" above and
-> `docs/archive/plans/roadmap-shipped.md`.
+> [migration decisions](../context/decisions.md).
 
 ---
 
@@ -162,4 +162,4 @@ CPU path dominates after storage I/O.
    "Deferred" section unless the user explicitly revives it.
 4. TDD-first when possible; the test recipe is in `docs/architecture/07-testing.md`.
 5. When you finish an item, **move it out** of this file into
-   `docs/archive/plans/roadmap-shipped.md` with a condensed summary + commit SHAs.
+   [migration decisions](../context/decisions.md) with a condensed summary and commit SHAs.

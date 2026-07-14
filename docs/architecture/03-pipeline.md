@@ -3,7 +3,7 @@
 > **Authoritative spec:** the pipeline is a per-page DAG of named
 > stages, defined in
 > [`../specs/pipeline-task-model.md`](../specs/pipeline-task-model.md)
-> and described stage-by-stage in `specs/02-pipeline-steps.md`. M1–M6
+> and described stage-by-stage below. M1–M6
 > are all shipped (see `../archive/plans/roadmap-shipped.md`); per AD-7,
 > `STAGE_IMPL[stage_id][device]` in `core/pipeline/stage_registry.py`
 > is the only execution path. This doc is a code-level guide to where

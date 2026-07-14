@@ -338,8 +338,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             continue
         for method in route.methods or []:
             key = (method.upper(), route.path)
-            if key in suite_op_ids and route.operation_id is None:
+            if key in suite_op_ids:
                 route.operation_id = suite_op_ids[key]
+                route.unique_id = suite_op_ids[key]
 
     if settings.mode != "gpu_worker_only":
         from .api.env_js import install_env_js
@@ -370,6 +371,12 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                     name="cdn",
                 )
         _mount_static_frontend(app, settings)
+
+    schema = app.openapi()
+    for (method, path), operation_id in suite_op_ids.items():
+        operation = schema.get("paths", {}).get(path, {}).get(method.lower())
+        if operation is not None:
+            operation["operationId"] = operation_id
 
     return app
 

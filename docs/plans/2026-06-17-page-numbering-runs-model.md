@@ -3,8 +3,8 @@ title: Page-numbering Runs Model — implementation plan (P1–P3)
 status: ready
 created: 2026-06-17
 author: ConcaveTrillion
-spec: docs/specs/2026-06-15-page-numbering-runs-model.md
-design-source: docs/plans/design_handoff_pgdp_app/final/page_order/ + statecharts/tool-page-order.yaml
+spec: docs/architecture/03-pipeline.md
+design-source: git history for the retired statechart handoff package
 repo: pdomain-prep-for-pgdp
 ---
 
@@ -279,7 +279,7 @@ The heart of the stage. Test-first per repo TDD-first rule.
   ```python
   """Pure numbering-runs engine — mirrors statechart computeLabels/reconcile.
 
-  design-source: docs/plans/design_handoff_pgdp_app/statecharts/tool-page-order.yaml
+  design-source: git history for the retired statechart handoff package
   (actions.computeLabels / actions.reconcile) and final/page_order/pr-data.js.
   No I/O — labels are always derived, never stored truth.
   """

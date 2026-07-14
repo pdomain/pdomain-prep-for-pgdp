@@ -49,7 +49,7 @@ Defaults at startup (no env vars set):
 
 ### Disk-cost implication of every-intermediate stage persistence
 
-Per `docs/specs/pipeline-task-model.md` Q3 (locked), every stage of every
+Per the [pipeline architecture](03-pipeline.md), every stage of every
 page persists its output to disk on every run — roughly **16× source-page
 footprint per page**. A 500-page book at 2 MB/source-page is ~16 GB of
 stage artifacts under `~/pgdp-projects/<id>/pages/`. Configure

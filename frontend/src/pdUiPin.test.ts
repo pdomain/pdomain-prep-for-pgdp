@@ -47,9 +47,8 @@ describe("@pdomain/pdomain-ui pin (meta #293)", () => {
     const isSemver = /^\^?\d+\.\d+\.\d+/.test(pin ?? "");
     expect(isSemver).toBe(true);
     // Floor: must be at least 0.4.0 (utility dock API).
-    const isSufficientVersion = /^\^(?:0\.(?:[4-9]|[1-9]\d+)\.\d+|[1-9]\d*\.)/.test(
-      pin ?? "",
-    );
+    const isSufficientVersion =
+      /^\^(?:0\.(?:[4-9]|[1-9]\d+)\.\d+|[1-9]\d*\.)/.test(pin ?? "");
     expect(isSufficientVersion).toBe(true);
   });
 });

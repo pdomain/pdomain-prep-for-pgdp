@@ -56,3 +56,18 @@ def test_operation_ids_are_unique() -> None:
     ids = [r.operation_id for r in _api_routes() if r.operation_id is not None]
     duplicates = [op for op, count in Counter(ids).items() if count > 1]
     assert not duplicates, f"Duplicate operation_ids: {duplicates}"
+
+
+def test_suite_routes_keep_stable_operation_ids() -> None:
+    expected = {
+        ("GET", "/api/suite/installed"): "suite_list_installed",
+        ("POST", "/api/suite/launch"): "suite_launch_app",
+        ("GET", "/api/suite/prefs"): "suite_get_prefs",
+        ("PUT", "/api/suite/prefs/common"): "suite_put_prefs_common",
+        ("PUT", "/api/suite/prefs/apps/{app_id}"): "suite_put_prefs_app",
+        ("GET", "/api/icons/{size}"): "suite_get_icon",
+    }
+    schema_paths = build_app().openapi()["paths"]
+    actual = {(method, path): schema_paths[path][method.lower()]["operationId"] for method, path in expected}
+
+    assert actual == expected

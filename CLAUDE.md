@@ -4,10 +4,10 @@ Web app that converts a folder/zip of scanned book images into a PGDP-ready
 submission package. Single Python wheel ships everywhere — solo proofer on a
 laptop, small-team self-hosted, or hosted multi-tenant.
 
-Architecture: `specs/00-overview.md`. Full spec set (`specs/00`–`specs/09`)
-is the **source of truth**; it encodes an already-applied refactor proposal
-(`specs/REFACTOR-PROPOSAL.md`) — treat 00–09 as canonical and the proposal
-as historical context.
+Architecture starts at [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md).
+The former root `specs/00`–`specs/09` set described the initial design but diverged
+from the shipped registry, statechart, API, and persistence models. Current
+architecture, generated OpenAPI, code, and tests are authoritative.
 
 ## Quick orientation
 
@@ -23,8 +23,8 @@ as historical context.
   Canonical reference: `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307-540`.
 - **Pipeline stages:** 24 v2 stages in `core/pipeline/stage_registry.py` (16
   page-scoped, 8 project-scoped). Canonical stage table and registry contract:
-  `docs/specs/stage-registry-v2.md`. The older step IDs (0/1/2/4/4.5/6/7/8/10)
-  used in `specs/02-pipeline-steps.md` are v1 references and are superseded.
+  [pipeline architecture](docs/architecture/03-pipeline.md). Older numbered
+  step IDs are historical v1 references and are superseded.
   Each stage has its own XState v5 machine in `frontend/src/machines/`; the
   registry of stage_id → React surface component is in
   `frontend/src/pages/pipeline/toolSlot.tsx` (`TOOL_REGISTRY`).
@@ -95,7 +95,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
 - **Pipeline task-model refactor:** per-page stage DAG + dirty propagation +
   splits-as-sibling-pages. No new `JobType.batch_*` values; no new sub-steps
   in `core/pipeline/process_page.py` monolith. Spec:
-  `docs/specs/pipeline-task-model.md`.
+  [pipeline architecture](docs/architecture/03-pipeline.md).
 - **Dual-write contract:** every stage write = transaction across on-disk
   artifact + `page_stages` DB row. `pgdp-prep reindex` is source-of-truth
   arbiter. Never bypass.

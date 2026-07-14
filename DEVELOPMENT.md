@@ -228,7 +228,7 @@ CI does not depend on mise; it pins versions in the workflow file directly.
 
 ## Roadmap
 
-[`docs/08-roadmap.md`](docs/08-roadmap.md) tracks what's coming, in priority
+[`docs/plans/roadmap.md`](docs/plans/roadmap.md) tracks what's coming, in priority
 order. Highlights:
 
 - **P0:** Modal app S3 wiring, Postgres adapter, install.sh exercise.

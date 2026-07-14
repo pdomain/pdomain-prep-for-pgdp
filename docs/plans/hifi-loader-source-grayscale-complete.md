@@ -8,8 +8,8 @@ shipped: 2026-06-14 (origin/main 6fa6673; deferred items 0aa532f)
 
 # Hi-fi redesign: Loader + Source + Grayscale — complete pass
 
-Authoritative design package: `docs/plans/design_handoff_pgdp_app/` (`final/<stage>/<stage>.jsx`
-= look; `statecharts/` = behavior). Spec: `docs/specs/2026-06-10-statechart-convergence-design.md`.
+Current design authority is [statechart convergence architecture](../architecture/statechart-convergence-notes.md);
+the retired canvas package remains available in git history.
 
 ## Locked decisions (CT, 2026-06-14)
 
