@@ -64,6 +64,7 @@ from pdomain_prep_for_pgdp.api.dependencies import (
     StorageDep,
     UserDep,
 )
+from pdomain_prep_for_pgdp.core.device_resolution import resolve_job_device
 from pdomain_prep_for_pgdp.core.models import (
     V2_PAGE_STAGE_IDS,
     V2_PROJECT_STAGE_IDS,
@@ -460,6 +461,7 @@ async def run_project_stage(
         status=JobStatus.queued,
         payload={
             "stage_id": stage_id,
+            "device": resolve_job_device(),
         },
     )
     await db.put_job(job)
@@ -540,7 +542,7 @@ async def run_project_ocr_batch(
         )
 
     job_id = uuid.uuid4().hex
-    device = "cpu"
+    device = resolve_job_device()
     payload: dict[str, object] = {
         "device": device,
         "batch_size": settings.ocr_batch_size,

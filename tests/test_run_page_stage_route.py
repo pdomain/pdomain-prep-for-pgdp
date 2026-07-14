@@ -175,6 +175,61 @@ def test_run_stage_route_grayscale_happy_path(
     assert body["input_hash"] is not None
 
 
+def test_run_stage_route_sync_passes_resolved_device_to_run_stage(
+    seeded_client: tuple[TestClient, Settings],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The synchronous run path threads resolve_job_device() into run_stage().
+
+    Before the fix, run_stage's device kwarg was left at its "cpu" default
+    regardless of the user's compute-device preference.
+    """
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    LocalFilePrefs().write_app("pdomain-prep-for-pgdp", {"compute_device": "cuda"})
+
+    client, _ = seeded_client
+
+    import pdomain_prep_for_pgdp.api.data.pages as pages_mod
+
+    captured: dict[str, object] = {}
+    real_run_stage = pages_mod.run_stage
+
+    async def _spy_run_stage(*args: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return await real_run_stage(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pages_mod, "run_stage", _spy_run_stage)
+
+    r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run")
+    assert r.status_code == 200, r.text
+    assert captured["device"] == "cuda"
+
+
+def test_run_stage_route_async_payload_includes_resolved_device(
+    seeded_client: tuple[TestClient, Settings],
+) -> None:
+    """The async (?async=true) run path resolves the device into the job payload."""
+    from pdomain_ops.suite.prefs import LocalFilePrefs
+
+    LocalFilePrefs().write_app("pdomain-prep-for-pgdp", {"compute_device": "cuda"})
+
+    client, settings = seeded_client
+    r = client.post("/api/data/projects/m2s4/pages/0/stages/grayscale/run?async=true")
+    assert r.status_code == 202, r.text
+    job_id = r.json()["id"]
+
+    async def _check() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        job = await db.get_job(job_id)
+        assert job is not None
+        assert job.payload["device"] == "cuda"
+        await db.close()
+
+    asyncio.run(_check())
+
+
 def test_run_stage_route_returns_409_when_dependencies_not_met(
     seeded_client: tuple[TestClient, Settings],
 ) -> None:
