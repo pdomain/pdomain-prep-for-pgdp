@@ -72,7 +72,7 @@ export function SelectTrigger({
   );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- Radix Select.Value is a forwardRef component, but the rule cannot infer that through this alias.
 export const SelectValue = RadixSelect.Value;
 
 export type SelectContentProps = Omit<
