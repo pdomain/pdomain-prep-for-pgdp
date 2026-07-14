@@ -105,10 +105,20 @@ def test_unknown_api_path_is_404_json_not_index(tmp_path, monkeypatch) -> None:
     fake_static.mkdir()
     (fake_static / "index.html").write_text('<div id="root"></div>')
 
+    # `_bootstrap.resources` IS the `importlib.resources` module object (not a
+    # copy), so the real `.files` must be captured before patching it in
+    # place — delegating through the patched name would recurse.
+    real_files = _resources.files
+
     class _FakePkg:
         def joinpath(self, name: str):
-            assert name == "static"
-            return fake_static
+            if name == "static":
+                return fake_static
+            # bootstrap.build_app() also reads the bundled pdomain-suite.json
+            # fragment (_build_suite_app()) via resources.files() — delegate
+            # to the real package resources for any name other than "static"
+            # so that read stays live instead of asserting it away.
+            return real_files("pdomain_prep_for_pgdp").joinpath(name)
 
     monkeypatch.setattr(_bootstrap, "resources", _resources, raising=True)
     monkeypatch.setattr(_bootstrap.resources, "files", lambda _pkg: _FakePkg(), raising=True)
