@@ -569,3 +569,29 @@ Fully-local, mostly rules:
 **Language routing:**
 [GlotLID](https://huggingface.co/cis-lmu/glotlid) · [lingua-py](https://github.com/pemistahl/lingua-py) ·
 [Detecting Latin 2510.19585](https://arxiv.org/abs/2510.19585)
+## Goal
+
+Identify evidence-backed ways to flag likely OCR scannos for human review without silently rewriting text.
+
+## Method
+
+The report synthesizes cited primary sources, repositories, datasets, and
+model cards, and marks claims that could not be verified.
+
+## Evidence
+
+The evidence is the cited material and license checks embedded in the findings above. No benchmark was run in this repository.
+
+## Conclusions
+
+A flag-only combination of confusion sets, context checks, and OCR confidence
+is the best-supported direction; ML remains an optional candidate generator.
+
+## Next steps
+
+Validate the proposed signals on representative project text, measure reviewer
+usefulness, and keep accepted changes inside the current `wordcheck` stage.
+
+## What this does NOT establish
+
+This research does not prove production accuracy, complete historical-language coverage, or safe automatic correction.

@@ -113,3 +113,28 @@ by `dev-local` / `install-local` (`Makefile` lines 301–311).
 
 - Workspace decision recorded in agent-memory under
   `.claude/agent-memory/<agent>/` for each pdomain-* repo.
+
+## Trigger
+
+Use this flow when upgrading dependencies after `make dev-local`,
+`make install-local`, or `make local-setup` installed a sibling dependency
+editably.
+
+## Preconditions
+
+The sibling checkout exists, the repository setup has completed, and the
+contributor knows whether the editable dependency must be preserved.
+
+## Steps
+
+Run the repository's dev-local-aware upgrade target described above. Then
+restore the editable sibling through the documented local install target if
+needed.
+
+## Verification
+
+Confirm the installed dependency resolves to the sibling checkout and run the repository's required CI gate.
+
+## Rollback
+
+Restore `uv.lock` from the current branch and rerun the repository setup target, then reinstall the editable sibling.

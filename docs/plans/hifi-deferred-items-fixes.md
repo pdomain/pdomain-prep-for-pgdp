@@ -44,3 +44,20 @@ Two parallel worktrees (grayscale fidelity / source roles) → recombine onto an
 integration branch → live-verify on the 233-page sample (real before/after images;
 back/duplicate survive reload; chips render) → ff-merge to main → push (CT-authorized
 for this arc) → cleanup.
+
+
+## Goal
+
+Retain the unshipped high-fidelity UI fixes listed above as deferred work.
+
+## Architecture
+
+Changes belong in the current React/XState frontend and generated API client rather than the retired design-handoff structure.
+
+## Tech Stack
+
+React 19, TypeScript, XState v5, TanStack Query, Konva, and the existing design tokens remain the stack.
+
+## Global Constraints
+
+Preserve keyboard access, current route contracts, generated types, and the single tool-registry ownership model.

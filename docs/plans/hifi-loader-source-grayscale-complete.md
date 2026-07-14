@@ -114,3 +114,20 @@ book-tools primitive: release + bump prep dep per workspace release flow.
 - Explicit worktrees for parallel same-repo agents (pass absolute path; don't rely on isolation flag).
 - Every mutating route appends its event(s) — event log stays system of record.
 - Commit footer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+
+
+## Goal
+
+Preserve the remaining loader, source-preview, and grayscale completion work identified above.
+
+## Architecture
+
+Build on the current React pages, FastAPI routes, page-service boundary, and registry-version 3 pipeline.
+
+## Tech Stack
+
+React 19, TypeScript, FastAPI, Pydantic, OpenAPI generation, and pdomain-book-tools remain the stack.
+
+## Global Constraints
+
+Keep page identity stable, avoid duplicate execution paths, and verify frontend and backend contracts together.

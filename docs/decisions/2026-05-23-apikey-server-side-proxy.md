@@ -97,3 +97,21 @@ dependency.
 - CORS hardening — restrict `allow_origins` from `["*"]` to
   configured trusted origins (separate issue).
 - Observability — log failed login attempts.
+
+## Context
+
+Browser API-key authentication had exposed a bearer token through `/env.js`;
+the safe interim removal also broke browser authentication.
+
+## Decision
+
+Use a server-issued, HMAC-signed, HTTP-only session cookie while retaining
+bearer authentication for non-browser clients.
+
+## Consequences
+
+The browser no longer receives the upstream bearer token. The server owns session validation, expiry, and logout behavior.
+
+## Supersedes / Superseded-by
+
+This decision supersedes bearer-token injection through `/env.js`. No later decision supersedes it.

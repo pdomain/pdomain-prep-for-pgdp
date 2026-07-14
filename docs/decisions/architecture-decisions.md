@@ -200,3 +200,21 @@ voice as the entries above (1–2 paragraphs, link to the spec,
 state any consequent constraints). Do not duplicate the spec — link
 to it. Do not put implementation status here — that belongs in
 [the roadmap](../plans/roadmap.md) or [migration decisions](../context/decisions.md).
+## Context
+
+The entries above consolidate architecture choices that had been mixed into implementation roadmaps.
+
+## Decision
+
+Treat each numbered architecture decision above as binding until a later,
+explicit decision supersedes it.
+
+## Consequences
+
+Implementation plans may execute these choices but must not silently redefine
+them. Proposed changes require a new decision with evidence.
+
+## Supersedes / Superseded-by
+
+This collection supersedes the decision portions of retired planning
+documents. Individual entries identify later changes where one exists.

@@ -1073,3 +1073,20 @@ Checks performed on this plan before marking it ready.
 2. Spec §5 lists run styles `roman-lower/roman-upper/arabic/alpha/none`, but the existing **frontend** machine (`pageOrderTool.ts:69`) only has `roman/arabic/none`. The plan adopts the **design-source** five-value `RunStyle` on the backend (P1.1) and notes the frontend `RunStyle` is a narrower set — P2 maps the machine's `arabic|roman|none` onto the backend enum (`roman`→`roman-lower`); a full alpha/roman-upper picker is left to a follow-up (not P1–P3 blocking).
 3. Spec says runs live "on the project aggregate" as an entity; the codebase persists project-scoped artifacts as **JSON files under `projects/{id}/stages/page_order/`** with an event-sourced dual-write (the `page_order` manifest pattern). The plan mirrors that exactly (`numbering_store.py` + `NumberingRunsChanged` event) rather than inventing a new aggregate-embedded list.
 4. `plate_b/p/r`→`plate_side` mapping is not stated in the spec (OQ-2 left open). Derived from `config_resolver.py:98,111` (plate_b/r grouped with blank = facing-blank/verso; plate_p = image/recto) and `run-leaf.jsx:224` (`side = role==='blank' ? 'verso' : 'recto'`). Stated explicitly in P1.5 and pinned by a migration test.
+
+
+## Goal
+
+Complete the remaining page-numbering runs behavior described above without reviving superseded registry-v2 assumptions.
+
+## Architecture
+
+Use the current registry-version 3 project model, page extensions, and existing page-order execution boundary.
+
+## Tech Stack
+
+The work uses the FastAPI/Pydantic backend, event-sourced page records, SQLite adapters, and the React frontend.
+
+## Global Constraints
+
+Preserve stable page identity, sibling-page split behavior, generated OpenAPI, and migration coverage for older projects.

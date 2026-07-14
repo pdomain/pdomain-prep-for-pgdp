@@ -29,3 +29,20 @@ alone; add it only with the visible Compute panel.
 - The app does not perform compute warmup unless there is a visible Compute
   settings panel consuming the result.
 - Focused frontend tests cover panel registration and startup warmup.
+
+
+## Goal
+
+Preserve the remaining compute-settings panel work described above as an active backlog.
+
+## Architecture
+
+The work extends the existing React settings surfaces and current backend settings contract; it does not introduce a second configuration path.
+
+## Tech Stack
+
+React 19, TypeScript, TanStack Query, FastAPI, and the generated OpenAPI client remain the implementation stack.
+
+## Global Constraints
+
+Keep settings compatible with the three-tier resolver, generated API types, and existing persistence behavior.

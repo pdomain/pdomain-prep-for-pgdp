@@ -171,3 +171,20 @@ CPU path dominates after storage I/O.
 4. TDD-first when possible; the test recipe is in `docs/architecture/07-testing.md`.
 5. When you finish an item, **move it out** of this file into
    [migration decisions](../context/decisions.md) with a condensed summary and commit SHAs.
+
+
+## Goal
+
+Prioritize the repository's open product and engineering work while keeping shipped history out of the active queue.
+
+## Architecture
+
+Roadmap items extend the current local-first architecture documented in `docs/architecture/`; retired specs do not define new work.
+
+## Tech Stack
+
+The current FastAPI, Python 3.13, React 19, XState v5, SQLite/filesystem, and optional adapter stack applies.
+
+## Global Constraints
+
+Local-first work stays ahead of remote deployment, generated OpenAPI remains the contract, and removed fan-out paths must not return.

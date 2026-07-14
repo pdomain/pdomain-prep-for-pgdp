@@ -46,3 +46,20 @@ Two CT directives (2026-06-15):
 - OC-1: **all** default in `pdomain-ops` prefs (app-global) vs a global row in `StageSettingsStore`. (Recommend prefs.)
 - OC-2: shared model now covers all tunable stages; only grayscale exposes per-page UI initially (others later)?
 - OC-3: GPU auto-selected when available (PD_GPU_BACKEND), with CPU fallback — confirm default is "use GPU if present".
+
+
+## Goal
+
+Track the remaining GPU grayscale and shared-settings work described above.
+
+## Architecture
+
+Extend the current stage registry and resolved three-tier settings flow; do not create a parallel pipeline.
+
+## Tech Stack
+
+Python 3.13, Pydantic, the stage registry, pdomain-book-tools, CuPy where available, and React settings controls form the stack.
+
+## Global Constraints
+
+CPU behavior remains the reference path, optional GPU dependencies must stay guarded, and resolved settings must be identical across devices.
