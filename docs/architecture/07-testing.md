@@ -1,5 +1,13 @@
 # 07 — Testing
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** selecting or running repository verification gates.
+- **Search terms:** tests, CI, pytest, Vitest, Playwright.
+
 ## What's covered
 
 130 test files in `tests/` collecting ~805 tests (run

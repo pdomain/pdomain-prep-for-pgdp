@@ -1,10 +1,18 @@
 # 03 — Pipeline
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** changing pipeline stages, dependencies, or execution.
+- **Search terms:** pipeline, stage registry, DAG, OCR, artifacts.
+
 > **Authoritative spec:** the pipeline is a per-page DAG of named
 > stages, defined in
-> [`../specs/pipeline-task-model.md`](../specs/pipeline-task-model.md)
+> [Current state](../context/current-state.md)
 > and described stage-by-stage below. M1–M6
-> are all shipped (see `../archive/plans/roadmap-shipped.md`); per AD-7,
+> are all shipped (see [migration decisions](../context/decisions.md)); per AD-7,
 > `STAGE_IMPL[stage_id][device]` in `core/pipeline/stage_registry.py`
 > is the only execution path. This doc is a code-level guide to where
 > each stage's implementation lives today and how OCR mirrors
@@ -12,8 +20,8 @@
 
 ## Stage-to-code map
 
-The canonical spec describes 22 per-page stages plus project-level
-orchestration tasks. Today's code lives at:
+The registry defines 24 stages plus project-level orchestration tasks.
+Today's code lives at:
 
 | Stage / task | Code |
 |---|---|
@@ -28,7 +36,7 @@ orchestration tasks. Today's code lives at:
 | `ocr` | `core/ocr.py` (mirrors pdomain-ocr-cli) |
 | `text_postprocess` | `core/text_postprocess.py` |
 | `text_review` (gate) | `PATCH /api/data/projects/{id}/pages/{idx0}/text` (edit), `DELETE .../words` + `POST .../words/restore` (word edits), then attest via `text_review` stage run |
-| `project.build_package` | `core/packaging.py`; parks in `awaiting_review` job state when any proof-range page is un-attested, auto-resumes when the gate clears (canonical spec Q7) |
+| `project.build_package` | `core/packaging.py`; parks in `awaiting_review` job state when any proof-range page is un-attested, then resumes when the gate clears |
 
 ## Step 0 — `ingest_source`
 
@@ -74,7 +82,7 @@ When the user requests a single stage with `mode=from`, the runner cascades
 to descendants by walking `stage_dag.py`'s parent→child graph and re-running
 every reachable dirty stage. Eager dirty propagation on a single-stage run
 marks every downstream `clean`/`failed` row `dirty` synchronously
-(canonical spec Q4).
+(the current downstream-dirty invariant).
 
 For `page_type ∈ {blank, plate_b, plate_r}` the registry short-circuits to
 `blank_proof.create_blank_proof` (canonical-aspect blank PNG) — this is the
@@ -89,7 +97,7 @@ only call path so wiring it would be additive.
 ## Stage `ocr_crop` — crop for OCR
 
 Uniform OCR border crop (project-wide top/bottom/left/right) applied to
-the proofing image. With splits as sibling pages (canonical spec Q6),
+the proofing image. With splits represented as sibling pages,
 each child page runs its own `ocr_crop` independently — the legacy
 "yield one crop per split" inner loop is gone. Each page (root or
 split-child) produces exactly one `ocr_image` artifact.
@@ -168,7 +176,7 @@ Written to `projects/<id>/for_zip/<book_name>.zip` via `IStorage.put_bytes`.
 
 ## Configuration resolution
 
-Spec 01 says the pipeline never reads raw config layers — only a resolved
+The pipeline never reads raw config layers — only a resolved
 flat object. `core/config_resolver.py`:
 
 ```python

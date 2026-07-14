@@ -1,8 +1,18 @@
 # Lint-rule Deviations — pdomain-prep-for-pgdp
 
-Standing suppressions and per-file rule overrides in this repo.
-Each entry records: the rule, the tool, the file(s) affected, and
-the justification. Update this file whenever a new suppression is added.
+## Agent Index
+
+- **Kind:** process
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** adding or reviewing a lint or type-check suppression.
+- **Search terms:** Ruff, basedpyright, suppression, noqa, pyright ignore.
+
+This guide records configured deviations and the rationale classes used by
+source-local suppressions. It is not a line-by-line inventory: use
+`rg -n 'noqa|type: ignore|pyright: ignore' src tests scripts` for the current
+inline sites. Update this guide when a configured deviation or rationale class
+changes.
 
 ---
 
@@ -149,11 +159,10 @@ incrementally on new code only.
 
 **Suppression form:** `# noqa: T201` inline.
 
-**Files:** `src/pdomain_prep_for_pgdp/__main__.py` — three call sites:
+**Files:** `src/pdomain_prep_for_pgdp/__main__.py` — two call sites:
 
-- line 147: CLI fallback notice when browser cannot open.
-- line 209: `--version` flag; version output goes to stdout by convention.
-- line 242: startup banner `Listening on <url>`; intentionally goes to stdout.
+- browser fallback notice when the browser cannot open.
+- `--version` output, which goes to stdout by convention.
 
 **Justification.** These are user-facing CLI messages. Using a logger would
 route them through the structured logging pipeline and away from stdout,
@@ -168,6 +177,10 @@ breaking the convention for version flags and startup notices.
 **Files:**
 
 - `src/pdomain_prep_for_pgdp/core/ingest.py` — `ZipImageEntryNotFound(LookupError)`
+- `src/pdomain_prep_for_pgdp/core/pipeline/steps/page_order.py` — `MissingNamingManifest(RuntimeError)`
+- `src/pdomain_prep_for_pgdp/core/pipeline/stage_runner.py` —
+  `StageDependenciesNotMet(RuntimeError)`, `StageOutputUnsupported(RuntimeError)`,
+  and `StageRunFailed(RuntimeError)`
 - `src/pdomain_prep_for_pgdp/core/pipeline/stage_registry.py` — `StageNotImplemented(RuntimeError)`
 
 **Justification.** These exception names are intentionally non-`Error`
@@ -182,7 +195,7 @@ marker, not a runtime error). The names are more descriptive than the
 
 **Suppression form:** `# noqa: ERA001` inline.
 
-**Files:** `src/pdomain_prep_for_pgdp/core/models.py` (3 occurrences, lines 417, 420, 423)
+**Files:** `src/pdomain_prep_for_pgdp/core/models.py` (three occurrences in the `JobType` payload comments)
 
 **Justification.** These are inline payload-schema comments for the
 `JobType` enum variants — they document what `payload` dict structure each
@@ -195,7 +208,7 @@ awaiting deletion.
 
 **Suppression form:** `# noqa: E731` inline.
 
-**Files:** `tests/test_stage_runner.py:88`
+**Files:** `tests/test_stage_runner.py` (`coerce` in the stage-runner coercion test)
 
 **Justification.** A single-expression `lambda` is assigned to `coerce` to
 mirror, inline, the exact coercion expression used inside `run_stage` — the
@@ -293,7 +306,8 @@ dependencies:
   during type-checking.
 
 basedpyright does not accept `# type: ignore[import-not-found]` (a mypy
-code); `# pyright: ignore[reportMissingImports]` is the correct form.
+code); all current missing-import suppressions use
+`# pyright: ignore[reportMissingImports]` instead.
 
 ---
 

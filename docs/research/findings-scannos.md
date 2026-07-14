@@ -1,5 +1,13 @@
 # Findings — Scannos, OCR stealth-misses, and the tooling to catch them
 
+## Agent Index
+
+- **Kind:** research
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** changing scanno detection or evaluating deferred OCR-error ideas.
+- **Search terms:** scannos, OCR errors, WordCheck, confusion sets.
+
 > Research report for the **Scannocheck** stage of `pdomain-prep-for-pgdp`.
 > Date: 2026-06-02 · v2 (two research rounds). Author: research synthesis (Claude Code).
 >

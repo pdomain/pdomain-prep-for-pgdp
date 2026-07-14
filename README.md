@@ -90,24 +90,12 @@ dive is in [`docs/`](docs/).
 End users do not need Node, npm, or mise — the published wheel ships with
 the prebuilt SPA bundle.
 
-## Specs
+## Architecture and API contract
 
-The build is driven by the specs in [`specs/`](specs/) — Pydantic models in
-spec 08 are the source of truth for all request/response shapes; the
-TypeScript frontend types are generated from `/openapi.json`.
-
-| Spec | Topic |
-|---|---|
-| 00 | Overview |
-| 01 | Three-tier configuration model |
-| 02 | Pipeline steps |
-| 03 | UI layout |
-| 04 | GPU acceleration |
-| 05 | Illustration extraction |
-| 06 | Page workbench |
-| 07 | API design |
-| 08 | Data models |
-| 09 | Deployment |
+The [architecture documentation](docs/architecture/01-overview.md) describes
+the shipped system. Pydantic models and the generated `/openapi.json` define
+request and response shapes; the TypeScript frontend types are generated from
+that OpenAPI document.
 
 ## License
 

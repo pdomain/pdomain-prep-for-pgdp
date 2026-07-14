@@ -1,5 +1,13 @@
 # 01 — Architecture Overview
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** orienting to the system or tracing its main components.
+- **Search terms:** architecture overview, FastAPI, pipeline, adapters.
+
 ## What this app does
 
 Take a folder or zip of scanned book images (e.g. an Internet Archive scan)
@@ -112,7 +120,7 @@ src/pdomain_prep_for_pgdp/
 
 ## What changes between deployment shapes
 
-Per spec 09, **only adapter selection** changes:
+Across deployment shapes, **only adapter selection** changes:
 
 | Layer | Local | Self-hosted | Managed |
 |---|---|---|---|

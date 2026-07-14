@@ -731,12 +731,9 @@ class ProjectStageState(ApiModel):
 
 # ─── v2 schema additions on Project ──────────────────────────────────────────
 #
-# registry_version is stamped at project-creation time (REGISTRY_VERSION = 2
-# for new projects). The guard in core/pipeline/registry_version.py raises
-# RegistryVersionMismatch (HTTP 409) for v1 projects.
-# Default=2 so existing code paths that construct Project(...) without
-# this field produce v2 rows; callers that load v1 rows from the DB pass
-# registry_version=1 explicitly.
+# registry_version is stamped at project-creation time (REGISTRY_VERSION = 3
+# for new projects). Mutating routes migrate version 2 projects before use;
+# the guard in core/pipeline/registry_version.py rejects other mismatches.
 
 
 # ─── OCR ─────────────────────────────────────────────────────────────────────

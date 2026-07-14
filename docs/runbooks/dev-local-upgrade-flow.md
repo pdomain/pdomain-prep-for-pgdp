@@ -1,5 +1,13 @@
 # `dev-local`-aware `upgrade-deps`
 
+## Agent Index
+
+- **Kind:** runbook
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** upgrading dependencies after installing a sibling project editably.
+- **Search terms:** dev-local, upgrade-deps, editable dependency, uv sync.
+
 ## Applicability
 
 **Applicable.** This repo has a `dev-local` workflow: `make dev-local`,

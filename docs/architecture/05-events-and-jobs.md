@@ -1,5 +1,13 @@
 # 05 — Events, Jobs, and the In-Process Queue
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** changing persistence, jobs, queues, or event delivery.
+- **Search terms:** events, jobs, queue, event store, page aggregate.
+
 ## Two durable event stores
 
 Generic Page and Project aggregate state is persisted through pdomain-ops
@@ -52,8 +60,8 @@ Plus the orchestration layer:
 
 ## `SingleExecutor`
 
-Spec 07 §"in-process queue" mandates a single GPU thread with a 200ms batch
-window. `SingleExecutor` wraps `concurrent.futures.ThreadPoolExecutor(max_workers=1)`:
+`SingleExecutor` uses one GPU thread with a 200ms batch window. It wraps
+`concurrent.futures.ThreadPoolExecutor(max_workers=1)`:
 
 ```python
 class Priority(IntEnum):
@@ -122,7 +130,6 @@ Live `JobType` values (`core/models.py`):
 unzip                          # extract source archive
 thumbnails                     # generate per-page thumbnails (ProcessPool, AD-9)
 run_page_stage                 # async per-page stage run (?async=true on POST .../stages/{id}/run)
-project_run_dirty              # project fan-out: run every dirty stage on every page (M5)
 project_run_stage_all_pages    # project fan-out: run one stage on every page
 build_package                  # zip + parks in awaiting_review if proof-range page un-attested (Q7)
 ```
@@ -134,7 +141,6 @@ poll → claim queued job → mark running + emit progress
                  unzip? → core.ingest.ingest_source(progress_cb=...)
                  thumbnails? → walk pages + generate (ProcessPool)
                  run_page_stage? → StageRunner.run(stage_id, page, device)
-                 project_run_dirty? → walk pages × dirty stages × StageRunner.run
                  project_run_stage_all_pages? → walk pages × one stage × StageRunner.run
                  build_package? → core.packaging.build_package
                        │            (parks awaiting_review if proof-page un-attested)

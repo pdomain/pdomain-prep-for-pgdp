@@ -1,7 +1,15 @@
 # 08 — Roadmap
 
+## Agent Index
+
+- **Kind:** plan
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** selecting open product or engineering work.
+- **Search terms:** roadmap, open work, deferred work, priorities.
+
 > Shipped lifecycle records live in [migration decisions](../context/decisions.md). Locked architecture
-> decisions live in `architecture/architecture-decisions.md`. This file is the
+> decisions live in [architecture decisions](../decisions/architecture-decisions.md). This file is the
 > **forward** view of open work.
 
 **Local-first priority (locked 2026-05-07 — see AD-4 in

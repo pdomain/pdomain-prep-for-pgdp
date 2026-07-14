@@ -29,8 +29,8 @@ generated OpenAPI.
 
 ## Active
 
-- Reconcile the lint-deviation catalogue with every current inline and configured Ruff, ESLint, and basedpyright
-  suppression.
+- Keep configured lint deviations and suppression rationale classes current. Inline suppressions remain
+  source-local and are found by repository search rather than duplicated as a brittle line-by-line inventory.
 - Keep the roadmap aligned with shipped GPU grayscale support and registry version 3.
 - Maintain the current `wordcheck` stage; scanno research may improve its flagging but does not create a separate stage.
 

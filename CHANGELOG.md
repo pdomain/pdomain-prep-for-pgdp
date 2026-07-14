@@ -1,5 +1,13 @@
 # Changelog
 
+## Agent Index
+
+- **Kind:** process
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** checking released and unreleased behavior changes.
+- **Search terms:** changelog, releases, unreleased changes.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).

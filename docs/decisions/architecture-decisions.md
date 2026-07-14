@@ -1,5 +1,13 @@
 # Architecture decisions (locked)
 
+## Agent Index
+
+- **Kind:** decision
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** evaluating a change to a locked architecture choice.
+- **Search terms:** architecture decisions, locked decisions, topology, data model.
+
 This file collects pipeline / topology / data-model decisions that are
 **already locked** and are not actionable implementation items. Moved out
 of `docs/plans/roadmap.md` so the roadmap can stay focused on open work.

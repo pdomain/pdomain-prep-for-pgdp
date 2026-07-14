@@ -1,5 +1,13 @@
 # Statechart Convergence — Implementation Notes
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** changing canvas tools or the XState registry integration.
+- **Search terms:** statechart, XState, canvas, tool registry, convergence.
+
 **Lifecycle record:** [migration decisions](../context/decisions.md)
 **Shipped:** 2026-06-11
 
@@ -113,7 +121,9 @@ the component (F4-8 divergence). Legacy mock `setTimeout` seams removed.
 
 ## Canvas and statechart divergences
 
-The detailed per-divergence ledger is `frontend/src/machines/DIVERGENCES.md`.
+The detailed per-divergence ledger stays beside the machines at
+`frontend/src/machines/DIVERGENCES.md`; this architecture document preserves
+the durable changed-direction summary for retrieval.
 Summary by section:
 
 ### Core (stageRunner / imageStageReview / pageWorkbench) — #1–#10, reconcile-todo, compare-context-omission

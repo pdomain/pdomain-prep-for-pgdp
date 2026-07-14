@@ -83,7 +83,7 @@ def _seed_project(settings: Settings, owner_id: str = "default") -> None:
 
 def _png_bytes(w: int, h: int) -> bytes:
     """Encode a synthetic w x h white PNG via cv2 (matches `_make_thumbnail_bytes`'s decoder)."""
-    import cv2  # type: ignore[import-not-found]
+    import cv2
 
     img = np.full((h, w, 3), 255, dtype=np.uint8)
     ok, buf = cv2.imencode(".png", img)

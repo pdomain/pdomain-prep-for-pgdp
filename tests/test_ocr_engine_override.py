@@ -159,7 +159,7 @@ def test_tesseract_image_to_data_failure_sets_words_error(
     # Create a tiny real image so PIL.Image.open succeeds.
     img_path = tmp_path / "test.png"
     try:
-        from PIL import Image  # type: ignore[import-not-found]
+        from PIL import Image
 
         img = Image.new("L", (10, 10), color=255)
         img.save(img_path)

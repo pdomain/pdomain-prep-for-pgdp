@@ -1,5 +1,13 @@
 # Writing Style
 
+## Agent Index
+
+- **Kind:** process
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** writing or editing reader-facing prose.
+- **Search terms:** writing style, readability, documentation.
+
 Use this style for docs, reports, issue text, PR text, and user-facing copy.
 
 ## Goal

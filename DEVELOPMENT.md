@@ -188,7 +188,7 @@ pdomain-prep-for-pgdp/
 ├── frontend/               # React 19 + Vite + TS + Konva + TanStack Query
 ├── tests/                  # pytest (128 tests)
 ├── docs/                   # architecture writeup
-├── specs/                  # design specs (source of truth)
+├── docs/architecture/       # current architecture
 ├── pyproject.toml          # backend deps + extras + console script
 ├── mise.toml               # optional pinned tool versions
 ├── Makefile                # dev workflows
@@ -197,19 +197,19 @@ pdomain-prep-for-pgdp/
 └── .github/workflows/      # CI and dispatch-based release workflows
 ```
 
-## Spec ↔ implementation map
+## Architecture ↔ implementation map
 
-| Spec | Code |
+| Area | Code |
 |---|---|
-| 01 — Configuration | `core/{models,config_resolver,prefix,assign_prefixes}.py` |
-| 02 — Pipeline | `core/{ingest,pipeline/,ocr,illustrations,text_postprocess,packaging}.py` |
-| 03 — UI layout | `frontend/src/pages/*.tsx` |
-| 04 — GPU | `adapters/gpu/*.py` |
-| 05 — Illustrations | `core/illustrations.py` |
-| 06 — Workbench | `frontend/src/pages/PageWorkbenchPage.tsx` |
-| 07 — API | `api/{auth,data,gpu}/*.py`, `api/cdn.py`, `api/env_js.py` |
-| 08 — Data models | `core/models.py` |
-| 09 — Deployment | `Dockerfile`, `install.sh`, `Makefile`, `.github/workflows/` |
+| Configuration | `core/{models,config_resolver,prefix,assign_prefixes}.py` |
+| Pipeline | `core/{ingest,pipeline/,ocr,illustrations,text_postprocess,packaging}.py` |
+| UI layout | `frontend/src/pages/*.tsx` |
+| GPU | `adapters/gpu/*.py` |
+| Illustrations | `core/illustrations.py` |
+| Workbench | `frontend/src/pages/PageWorkbenchPage.tsx` |
+| API | `api/{auth,data,gpu}/*.py`, `api/cdn.py`, `api/env_js.py` |
+| Data models | `core/models.py` |
+| Deployment | `Dockerfile`, `install.sh`, `Makefile`, `.github/workflows/` |
 
 See [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md) for the full module tour.
 

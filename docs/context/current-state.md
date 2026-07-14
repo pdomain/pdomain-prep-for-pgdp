@@ -26,10 +26,10 @@ execution documents after preserving their durable content. The migration includ
   The affected page-text test passed alone and in five repeated parallel runs. No deterministic defect was
   established.
 - GPU and remote-backend behavior is not covered as deeply as the CPU, filesystem, and SQLite path in default CI.
-- The lint-suppression catalogue requires reconciliation against current source before it can truthfully claim
-  completeness.
-- Some statechart convergence notes describe registry v2, but the current registry version is 3. Current code
-  and generated schemas take precedence until the architecture text is reconciled.
+- Some tests intentionally construct registry-version 2 projects to verify automatic migration to the current
+  registry version 3. New projects are stamped with version 3.
+- The lint-deviation guide records configured deviations and rationale classes. It does not duplicate every
+  source-local suppression and line number; repository search is the authoritative inline inventory.
 
 ## Verification
 

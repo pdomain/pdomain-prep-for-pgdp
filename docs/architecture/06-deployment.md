@@ -1,7 +1,15 @@
 # 06 — Deployment
 
-Spec 09 lays out three shapes. This doc tracks what's actually shippable today
-vs what still needs work.
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** packaging or deploying the application.
+- **Search terms:** deployment, local install, container, cloud.
+
+This document tracks the three deployment shapes and separates shipped paths
+from deferred work.
 
 ## Local — `pgdp-prep`
 
@@ -41,8 +49,8 @@ Defaults at startup (no env vars set):
 | `auth_mode` | `none` |
 | `gpu_backend` | auto-detect (`local` if cupy importable, else `mps` on macOS arm64, else `cpu`) |
 | `dispatch_interval_seconds` | `0` (immediate) |
-| `stage_write_pool_size` | `min(cpu_count(), 4)` (canonical spec Q8) |
-| `stage_write_queue_cap` | `4 × stage_write_pool_size` (canonical spec Q8) |
+| `stage_write_pool_size` | `min(cpu_count(), 4)` |
+| `stage_write_queue_cap` | `4 × stage_write_pool_size` |
 | `reconcile_interval_seconds` | `1800` (30 min) — periodic dual-write reconciler |
 
 `__main__.py` opens a browser tab on start unless `--no-browser` is passed.
@@ -108,7 +116,7 @@ remote / cloud mode" while local-first lands:
 - **install.sh end-to-end** has never been exercised against a clean
   shell with internet (roadmap §D3).
 
-Cost estimate (per spec 09): with 100 books/month, ~$70/month total. Modal
+The historical planning estimate for 100 books/month was ~$70/month total. Modal
 GPU charges are ~$2/book; rest is Fargate (~$10) + Aurora (~$45) + S3 (~$5).
 
 ## CI
@@ -126,7 +134,7 @@ publish a container image for this repo.
 
 ## Frontend bundling
 
-Spec 09 — the SPA lives inside the Python wheel:
+The SPA lives inside the Python wheel:
 
 1. `vite build` writes to `frontend/dist/`.
 2. CI copies that into `src/pdomain_prep_for_pgdp/static/`.

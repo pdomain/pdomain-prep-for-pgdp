@@ -1,8 +1,16 @@
 # 02 — Backend
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** changing bootstrap, adapters, routes, or backend concurrency.
+- **Search terms:** backend, FastAPI, bootstrap, adapters, concurrency.
+
 > **Pipeline task-model (locked 2026-05-07, M6 shipped 2026-05-15):**
 > the canonical pipeline is the per-page stage DAG specified in
-> [`../specs/pipeline-task-model.md`](../specs/pipeline-task-model.md).
+> [Pipeline architecture](03-pipeline.md).
 > Per AD-7, `STAGE_IMPL[stage_id][device]` (`core/pipeline/stage_registry.py`)
 > is the only execution path. `CpuBackend`, `LocalBackend`,
 > `process_page_cpu`, and the `JobType.batch_*` values have been
@@ -205,7 +213,7 @@ and their `batch_*` `JobType` values have been deleted.
 | `POST /api/gpu/suggest-splits` | Workbench helper. |
 | `POST /api/gpu/extract-illustration` / `/suggest-illustrations` | Workbench helpers. |
 | `GET /api/gpu/jobs` / `GET /api/gpu/jobs/{id}` | List + fetch jobs (delegated to data router). |
-| `POST /api/gpu/jobs` | Submit a project-level job. Live types: `unzip`, `thumbnails`, `build_package`, `run_page_stage`, `project_run_dirty`, `project_run_stage_all_pages`. |
+| `POST /api/gpu/jobs` | Submit a project-level job. Live types: `unzip`, `thumbnails`, `build_package`, `run_page_stage`, `project_run_stage_all_pages`. |
 | `DELETE /api/gpu/jobs/{id}` | Cancel. |
 | `POST /api/gpu/jobs/{id}/retry` | Create a fresh `queued` copy of an `error`/`cancelled` job. |
 | `GET /api/gpu/jobs/{id}/events` | SSE — first frame is a snapshot, subsequent come from the broker (no polling). Includes `stage_id` / `page_id` for per-stage events. |
@@ -234,7 +242,6 @@ PATCH  /api/data/projects/{project_id}/pages/reorder
 Project-level orchestration (also on the data router):
 
 ```
-POST   /api/data/projects/{project_id}/run-dirty       # project_run_dirty job
 POST   /api/data/projects/{project_id}/build-package   # build_package job (parks in awaiting_review if any proof-range page is un-attested)
 POST   /api/data/projects/{project_id}/archive         # soft-delete (hide from default listings)
 POST   /api/data/projects/{project_id}/unarchive

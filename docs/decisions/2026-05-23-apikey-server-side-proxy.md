@@ -3,6 +3,14 @@
 Date: 2026-05-23
 Status: decided
 
+## Agent Index
+
+- **Kind:** decision
+- **Status:** active
+- **Last verified:** 2026-07-14
+- **Read when:** changing API-key browser authentication or session cookies.
+- **Search terms:** API key, session cookie, authentication, HMAC.
+
 ## Threat model
 
 Before commit `a27f62c`, `/env.js` emitted the upstream bearer token

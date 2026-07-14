@@ -1,5 +1,13 @@
 # 04 — Frontend
 
+## Agent Index
+
+- **Kind:** architecture
+- **Status:** built
+- **Last verified:** 2026-07-14
+- **Read when:** changing the React application or its API contract.
+- **Search terms:** frontend, React, routes, XState, OpenAPI.
+
 ## Stack
 
 - React 19 + Vite + TypeScript (`frontend/`).

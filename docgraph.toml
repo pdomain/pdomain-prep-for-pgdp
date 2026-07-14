@@ -7,7 +7,9 @@ mode = "git"
 convention = "agent-index"
 freshness_days = 30
 include = ['**/*.md']
-exclude = ['agent/**', 'agents/**', 'skills/**', 'prompts/**', '.claude/**', '.codex/**', '.cursor/**', '.docgraph/**']
+# Code-adjacent frontend notes are maintained with their source and are not part
+# of the reader-facing documentation graph.
+exclude = ['agent/**', 'agents/**', 'skills/**', 'prompts/**', '.claude/**', '.codex/**', '.cursor/**', '.docgraph/**', 'frontend/src/machines/DIVERGENCES.md', 'frontend/src/services/README.md']
 
 # Non-md files scanned for reverse references to indexed markdown docs.
 # Default hard-excludes (.git, .venv, node_modules, .worktrees, dot-dirs) always apply.
