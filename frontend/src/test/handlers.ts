@@ -20,6 +20,20 @@ import type { RequestHandler } from "msw";
 export const handlers: RequestHandler[] = [
   http.get("/api/jobs", () => HttpResponse.json([])),
 
+  // Task 7 (fix/frontend-suite-auth): App.test.tsx's AppShell/SuiteSiblingsProvider
+  // mocks now actually invoke uiPrefsConfig.load() and fetchInstalled() on mount
+  // (previously they were unreachable pass-throughs). Every App render now fires
+  // GET /api/suite/prefs and GET /api/suite/installed; default them here so tests
+  // that don't care about suite wiring don't hit "unhandled request" errors. Tests
+  // asserting on these routes override with server.use(...).
+  http.get("/api/suite/prefs", () =>
+    HttpResponse.json({
+      common: { theme: "light", density: "normal", font_scale: 1.0 },
+      apps: {},
+    }),
+  ),
+  http.get("/api/suite/installed", () => HttpResponse.json([])),
+
   // useActiveBatchJob polls this endpoint (project-scoped job list).
   // Default returns empty list so components that use the hook render
   // without MSW "unhandled request" errors. Tests that need a live job

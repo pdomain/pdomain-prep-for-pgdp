@@ -2,13 +2,41 @@
 // Phase 2.4: AppShell + SuiteSiblingsProvider mocks added (#266).
 // fix/pipeline-fullbleed: assert pipeline route is full-bleed (no centered-layout
 //   wrapper), while other routes still receive the centering box.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { http, HttpResponse } from "msw";
 import { server } from "./test/server";
-import type * as React from "react";
+import * as React from "react";
+
+// Task 7 (fix/frontend-suite-auth) RED-TEAM NOTE: the original mocks below
+// stubbed AppShell/SuiteSiblingsProvider as pure pass-throughs that never
+// invoked uiPrefsConfig.load()/fetchInstalled()/postLaunch — those functions
+// were unreachable from a mounted <App/>, so an MSW spy had nothing to
+// intercept. `suiteMockState` captures the real config objects App.tsx
+// passes in, and the mocks below actually invoke load()/fetchInstalled()
+// on mount (mirroring what the real @pdomain/pdomain-ui/shell package does —
+// see node_modules/@pdomain/pdomain-ui/dist/SuiteSiblingsContext-*.js `Z()`
+// and shell.js `N()`) so tests can assert on the outgoing requests, and
+// exposes persistCommon/persistApp/postLaunch for direct invocation from
+// tests (those only fire on user interaction in the real component, which
+// these lightweight mocks don't render UI for).
+const suiteMockState = vi.hoisted(() => ({
+  uiPrefsConfig: undefined as
+    | {
+        load: () => Promise<unknown>;
+        persistCommon: (prefs: unknown) => Promise<void>;
+        persistApp: (prefs: unknown) => Promise<void>;
+      }
+    | undefined,
+  suiteSiblings: undefined as
+    | {
+        fetchInstalled: () => Promise<unknown>;
+        postLaunch: (id: string) => Promise<unknown>;
+      }
+    | undefined,
+}));
 
 // Task #155 (s0-c): Mock @pdomain/pdomain-ui/shell so AppShell renders a
 // transparent pass-through in jsdom — no Zustand store setup, no real
@@ -24,6 +52,7 @@ vi.mock("@pdomain/pdomain-ui/shell", () => ({
     headerActions,
     main,
     children,
+    uiPrefsConfig,
   }: {
     appId?: string;
     appDisplayName?: string;
@@ -34,17 +63,30 @@ vi.mock("@pdomain/pdomain-ui/shell", () => ({
     children?: React.ReactNode;
     launcherSlot?: string;
     deployMode?: string;
-    uiPrefsConfig?: unknown;
-  }) => (
-    <div data-testid="pdomain-ui-app-shell">
-      <div data-testid="pdomain-ui-app-shell-header">
-        {header}
-        {headerActions}
+    uiPrefsConfig?: {
+      load: () => Promise<unknown>;
+      persistCommon: (prefs: unknown) => Promise<void>;
+      persistApp: (prefs: unknown) => Promise<void>;
+    };
+  }) => {
+    suiteMockState.uiPrefsConfig = uiPrefsConfig;
+    // Real AppShell (see Ke()/Re() in dist/createApiUpdateConfig-*.js) calls
+    // uiPrefsConfig.load() as soon as the shell mounts. Reproduce that here
+    // so App.tsx's load() implementation is actually exercised.
+    React.useEffect(() => {
+      void uiPrefsConfig?.load();
+    }, [uiPrefsConfig]);
+    return (
+      <div data-testid="pdomain-ui-app-shell">
+        <div data-testid="pdomain-ui-app-shell-header">
+          {header}
+          {headerActions}
+        </div>
+        <div data-testid="pdomain-ui-app-shell-main">{main}</div>
+        {children}
       </div>
-      <div data-testid="pdomain-ui-app-shell-main">{main}</div>
-      {children}
-    </div>
-  ),
+    );
+  },
   AppHeader: ({
     appName,
     onSearchClick,
@@ -62,11 +104,24 @@ vi.mock("@pdomain/pdomain-ui/shell", () => ({
     </div>
   ),
   SuiteSiblingsProvider: ({
+    value,
     children,
   }: {
-    value?: unknown;
+    value?: {
+      fetchInstalled: () => Promise<unknown>;
+      postLaunch: (id: string) => Promise<unknown>;
+    };
     children?: React.ReactNode;
-  }) => <>{children}</>,
+  }) => {
+    suiteMockState.suiteSiblings = value;
+    // Real SuiteSiblingsProvider (see N() in dist/shell.js) calls
+    // fetchInstalled() as soon as it mounts. Reproduce that here so
+    // App.tsx's fetchInstalled() implementation is actually exercised.
+    React.useEffect(() => {
+      void value?.fetchInstalled();
+    }, [value]);
+    return <>{children}</>;
+  },
   // Other exports that App.tsx imports as types — provide no-op values so
   // TypeScript import side-effects compile cleanly.
 }));
@@ -137,6 +192,7 @@ vi.mock("./pages/pipeline/PipelinePage", () => ({
 }));
 
 import App from "./App";
+import { setAuthToken } from "./api/client";
 
 // App.tsx uses useMatch/useNavigate/useLocation which require a Router context.
 // In production, main.tsx wraps App in <BrowserRouter>. Tests use MemoryRouter.
@@ -415,5 +471,117 @@ describe("App: full-bleed vs centered layout contract", () => {
     expect(routesArea.className).toContain("min-h-0");
     expect(routesArea.className).toContain("w-full");
     expect(routesArea.className).toContain("overflow-hidden");
+  });
+});
+
+// ── Task 7 (fix/frontend-suite-auth) ─────────────────────────────────────────
+//
+// App.tsx's UIPrefsConfig/SuiteSiblings callbacks used to hit /api/suite/*
+// with raw fetch() and no Authorization header. Once the backend suite-auth
+// middleware (Task 1) lands, those calls 401 under apikey/jwt. These tests
+// assert every /api/suite/* call goes through the authenticated `api` client
+// (Bearer token from localStorage via getAuthToken()). Default test AUTH_MODE
+// is "none", which — unlike "apikey" — does NOT null the token, so a Bearer
+// assertion is reachable without stubbing __ENV__.
+describe("App: /api/suite/* calls carry Authorization", () => {
+  afterEach(() => {
+    setAuthToken(null);
+  });
+
+  it("GET /api/suite/prefs carries Authorization: Bearer <token>", async () => {
+    setAuthToken("suite-token-prefs");
+    let seenAuth: string | null = null;
+    server.use(
+      http.get("/api/suite/prefs", ({ request }) => {
+        seenAuth = request.headers.get("Authorization");
+        return HttpResponse.json({
+          common: { theme: "light", density: "normal", font_scale: 1.0 },
+          apps: {},
+        });
+      }),
+    );
+    withNoProjects();
+    renderApp();
+    await waitFor(() => {
+      expect(seenAuth).toBe("Bearer suite-token-prefs");
+    });
+  });
+
+  it("GET /api/suite/installed carries Authorization: Bearer <token>", async () => {
+    setAuthToken("suite-token-installed");
+    let seenAuth: string | null = null;
+    server.use(
+      http.get("/api/suite/installed", ({ request }) => {
+        seenAuth = request.headers.get("Authorization");
+        return HttpResponse.json([]);
+      }),
+    );
+    withNoProjects();
+    renderApp();
+    await waitFor(() => {
+      expect(seenAuth).toBe("Bearer suite-token-installed");
+    });
+  });
+
+  it("PUT /api/suite/prefs/common carries Authorization: Bearer <token>", async () => {
+    setAuthToken("suite-token-common");
+    let seenAuth: string | null = null;
+    server.use(
+      http.put("/api/suite/prefs/common", ({ request }) => {
+        seenAuth = request.headers.get("Authorization");
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    withNoProjects();
+    renderApp();
+    await waitFor(() => {
+      expect(suiteMockState.uiPrefsConfig).toBeDefined();
+    });
+    await suiteMockState.uiPrefsConfig?.persistCommon({
+      theme: "dark",
+      density: "normal",
+      fontScale: 1.0,
+    });
+    expect(seenAuth).toBe("Bearer suite-token-common");
+  });
+
+  it("PUT /api/suite/prefs/apps/{id} carries Authorization: Bearer <token>", async () => {
+    setAuthToken("suite-token-app");
+    let seenAuth: string | null = null;
+    server.use(
+      http.put("/api/suite/prefs/apps/:appId", ({ request }) => {
+        seenAuth = request.headers.get("Authorization");
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    withNoProjects();
+    renderApp();
+    await waitFor(() => {
+      expect(suiteMockState.uiPrefsConfig).toBeDefined();
+    });
+    await suiteMockState.uiPrefsConfig?.persistApp({ someKey: "someValue" });
+    expect(seenAuth).toBe("Bearer suite-token-app");
+  });
+
+  it("POST /api/suite/launch carries Authorization: Bearer <token>", async () => {
+    setAuthToken("suite-token-launch");
+    let seenAuth: string | null = null;
+    let seenAppId: string | null = null;
+    server.use(
+      http.post("/api/suite/launch", ({ request }) => {
+        const url = new URL(request.url);
+        seenAuth = request.headers.get("Authorization");
+        seenAppId = url.searchParams.get("app_id");
+        return HttpResponse.json({ kind: "requires-host-config" });
+      }),
+    );
+    withNoProjects();
+    renderApp();
+    await waitFor(() => {
+      expect(suiteMockState.suiteSiblings).toBeDefined();
+    });
+    await suiteMockState.suiteSiblings?.postLaunch("some-sibling-app");
+    expect(seenAuth).toBe("Bearer suite-token-launch");
+    expect(seenAppId).toBe("some-sibling-app");
   });
 });
