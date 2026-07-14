@@ -12,13 +12,13 @@
 
 - React 19 + Vite + TypeScript (`frontend/`).
 - TanStack Query v5 for server state.
-- react-konva 19 for the workbench canvas.
+- react-konva 19, used by the word-bbox marquee-select overlay
+  (`WordBboxOverlay`, `lib/marquee.ts`) inside the text-review tool tab.
 - react-router v7 for routing.
 - Tailwind for styling.
-- `frontend/src/api/client.ts` is a thin typed `fetch` wrapper that reads
-  the auth token from `getAuthToken()` (localStorage first, then
-  `(globalThis as any).__ENV__.API_TOKEN` — `globalThis` rather than
-  `window` so the module imports cleanly in jsdom tests).
+- `frontend/src/api/client.ts` is a thin typed `fetch` wrapper. Its auth
+  behavior differs by `__ENV__.AUTH_MODE` — see "Auth in the SPA" below;
+  it does not always attach a Bearer token.
 - `frontend/src/api/types.ts` is regenerated from `/openapi.json` via
   `make openapi-export` (`openapi-typescript`). The committed `openapi.json`
   at repo root is the contract source; `tests/test_openapi_spec_committed.py`
@@ -26,60 +26,101 @@
 
 ## Pages
 
+The former per-page routes (`ProjectConfigurePage`, `PageWorkbenchPage`,
+`TextReviewPage`, `CropsGridPage`, `ProjectReviewQueuePage`, `ProjectListPage`)
+are gone — the design-handoff statechart work (F3/F4/F5) consolidated
+per-page review and per-stage editing into a single `/projects/:id/pipeline`
+route (`PipelinePage`) with a stage strip and per-stage **tool tabs**. Each
+stage's UI is a `ToolSlotComponent` registered by `stageId` in
+`TOOL_REGISTRY` (`frontend/src/pages/pipeline/toolSlot.tsx`) — e.g.
+`SourceTool`, `GrayscaleTool`, `PagesGridTool`, `ImageStageReviewTool`,
+`TextZonesTool`, `OcrTool`, `PageOrderTool`, `CanvasMapTool`,
+`IllustrationsTool`, `WordcheckTool`, `HyphenJoinTool`, `TextReviewTool`,
+`RegexTool`, `ValidationTool`, `ProofPackTool`, `BuildPackageTool`,
+`ZipTool`, `SubmitCheckTool`, `ArchiveTool` — `resolveToolSlot(stageId)`
+falls back to a visible placeholder for any unregistered stage. This table
+is verified against the `<Routes>` block in `App.tsx` (currently
+`App.tsx:367-416`); all routes except `/projects/:projectId/pipeline` are
+wrapped in `CenteredLayout`, which the pipeline route skips to run
+full-bleed.
+
 | Path | Component | What it does |
 |---|---|---|
-| `/` | `ProjectListPage` | List + create + delete. Create flow: POST project → XHR PUT zip → POST ingest → poll job → navigate. |
-| `/projects/:id` | `ProjectConfigurePage` | Inline rename, Book Settings ranges + layout-confidence slider, RunPipelinePanel + ProjectJobsFeed, BulkActions (page_type/alignment/re-process), PageGrid (thumbnails + status pills + select-to-bulk). Pages list uses `useInfiniteQuery` + `next_cursor`. |
-| `/projects/:id/pages/:idx0` | `PageWorkbenchPage` | Konva canvas with view/split/illustration modes. Drag to create rectangles; click to select; Konva Transformer + drag to resize/move (rotate handle shipped #100; flip blocked per roadmap P2.1). Right side: `StageChainRail` (per-stage chips with inline thumbnails, M3), `ArtifactViewer` (side-by-side compare), `StageControlsPanel` (filters `ResolvedPageConfig` to fields the selected stage reads, served by `GET /api/data/pipeline/stages/{stage_id}/fields`). Per-page stage run via `POST .../stages/{stage_id}/run` (optional `?async=true` for slow stages — `run_page_stage` `JobType`). |
-| `/projects/:id/pages/:idx0/review` | `TextReviewPage` | Split-pane: image left, editable textarea right. Split-suffix dropdown when the page has splits. Save → `PATCH /api/data/projects/{id}/pages/{idx0}/text`. Re-OCR → `POST .../stages/ocr/run` against the page. Word-delete: `DELETE .../words` (hard or soft-flag); restore via `POST .../words/restore`. |
-| `/projects/:id/crops` | `CropsGridPage` | Per-project grid of OCR-crop thumbnails for batch crop review. |
-| `/projects/:id/review` | `ProjectReviewQueuePage` | Filtered list of pages with `?review_needed=true` (any non-complete output or processing_error). |
-| `/jobs` | `JobsPage` | Last 50 jobs across the owner. Status pill, type, project link, progress, error message. Cancel button (live status), Retry button (terminal error/cancelled). Auto-refreshes every 5s. |
+| `/login` | `LoginPage` | Renders one of two flows by `__ENV__.AUTH_MODE`. **jwt:** OIDC PKCE — generates a verifier + S256 challenge, redirects to `${JWT_ISSUER}/authorize`, handles the callback (`?code=&state=`), exchanges the code at `${JWT_ISSUER}/token`, calls `setAuthToken(...)`, navigates back. **apikey:** a plain API-key input form; submit calls `loginWithApiKey()`, which `POST`s to `/api/auth/session` and relies on the server-set httpOnly session cookie (the raw key never touches `localStorage`). |
+| `/` | `ProjectsPage` | F3 projects surface: 320px left rail (project list, Active/Archived tabs, search + sort) driving a `projectDetail` XState machine for the right pane (activity / attributes / manage tabs). Create-project flow (ported from the retired `ProjectListPage`) lives here: POST project → XHR PUT zip → POST ingest → poll job → navigate. |
+| `/jobs` | `JobsPage` | Jobs list with a filter `ToggleGroup` (All / Running / Queued / Done / Errored / Awaiting review), auto-refreshing every 5s via `useQuery({ refetchInterval: 5000 })`. Each row: type + id, progress bar, status badge, logs button, and a "more" menu (copy job ID, cancel, retry). |
+| `/projects/:projectId/import` | `PostImportPage` | Post-import surface driven by the `postImport` machine, covering two scenarios: **Pa** (redirected) — index was fast, so the user lands on the new project's pipeline view while thumbnails generate; **Pb** (anchored) — index was slow, so the user stays on the projects list with a `JobsDrawer` overlay tracking import progress. |
+| `/projects/:projectId` | — | `<Navigate to="pipeline" replace />` — redirects to the pipeline route; not a rendered page. |
+| `/projects/:projectId/pipeline` | `PipelinePage` | F4 pipeline shell (full-bleed, no `CenteredLayout`). Orchestrated by `pipelineShellMachine`, whose `runners` array holds one stageRunner actor per stage; the stage strip renders dots as projections of runner snapshots. Renders the stage strip + tabs + the resolved tool slot for the active stage, or swaps in a `ProjectSettings` panel when in settings mode. Accepts an optional `?stage=<stageId>` query param. |
 | `/settings` | `SettingsPage` | Full SystemDefaults editor (image processing, OCR, layout, scannos, hyphenation). Save / Export / Import / Reset buttons. |
-| `/login` | `LoginPage` | OIDC PKCE flow. Generates verifier + S256 challenge, redirects to `${JWT_ISSUER}/authorize`, handles the callback (`?code=&state=`), exchanges code at `${JWT_ISSUER}/token`, calls `setAuthToken(...)`, navigates back. |
 
 ## Auth in the SPA
 
-`api/client.ts`:
+`__ENV__.AUTH_MODE` (injected by `env.js` at runtime) selects one of three
+modes. Requests do **not** always carry a Bearer token — only jwt mode does.
+Verified against `frontend/src/api/client.ts` and `App.tsx`.
 
-- `getAuthToken()` reads `localStorage["pgdp.api_token"]` first, then
-  `window.__ENV__.API_TOKEN` (so apikey mode works without a login page).
-- `setAuthToken(token | null)` writes/clears the storage key.
-- Every request adds `Authorization: Bearer <token>` if a token exists.
+**`none` mode** — no auth at all. `getAuthToken()` still checks
+`localStorage`/`__ENV__.API_TOKEN` as a fallback (see jwt mode below) but
+nothing sets those in none mode, so requests carry neither a cookie nor a
+header. `UserMenu` renders `null`.
 
-`App.tsx` mounts an `AuthGuard` that:
+**`apikey` mode** — httpOnly session cookie, no token ever touches JS:
 
-- In JWT mode, eagerly redirects to `/login` if there's no token (and the
-  current path isn't `/login`).
+- `loginWithApiKey(key)` (`LoginPage`'s apikey form) `POST`s `{ api_key }`
+  to `/api/auth/session` with `credentials: "include"`; the server responds
+  with an httpOnly `SameSite=Strict` session cookie.
+- `getAuthToken()` returns `null` **by design** whenever `AUTH_MODE ===
+  "apikey"` — the code comment is explicit: "the bearer is never exposed to
+  JS." So the `Authorization` header is never set in this mode.
+- Every `request()` call sets `credentials: "include"` unconditionally,
+  which is what actually carries the session — the browser attaches the
+  httpOnly cookie automatically; the app never reads or stores it.
+- `logout()` calls `POST /api/auth/session/logout` (`credentials:
+  "include"`) to clear the cookie server-side.
+
+**`jwt` mode** — Bearer token, no cookie dependency:
+
+- `LoginPage` runs the OIDC PKCE flow (see the Pages table) and calls
+  `setAuthToken(token)`, which writes `localStorage["pgdp.api_token"]`.
+- `getAuthToken()` reads that key first, then falls back to
+  `__ENV__.API_TOKEN`.
+- `request()` adds `Authorization: Bearer <token>` whenever `getAuthToken()`
+  returns non-null — in practice this only fires in jwt mode, since apikey
+  mode forces `null` and none mode has nothing populating the token.
+- `request()` still sets `credentials: "include"` (harmless in this mode —
+  there is no session cookie to send).
+
+`App.tsx` mounts an `AuthGuard` that is a no-op outside jwt mode:
+
+- Eagerly redirects to `/login` if there's no token and the current path
+  isn't `/login` (checked via `env.AUTH_MODE !== "jwt"` guard).
 - Subscribes to the TanStack QueryCache; any cached query that 401s
   triggers a redirect to `/login`.
 
-`AuthBadge` in the nav:
+`UserMenu` (`frontend/src/components/shell/UserMenu.tsx`, replacing the
+former `AuthBadge`/`ProfileDropdown` split) in the header:
 
-- In `none` mode, hidden.
-- In `apikey` mode, fetches `/api/auth/me` and shows `user_id` as a pill.
-- In `jwt` mode, decodes the JWT `sub` claim and shows it; "Sign out"
-  button clears the token, calls `queryClient.clear()`, navigates to `/login`.
+- In `none` mode, renders `null`.
+- In `apikey` and `jwt` modes, fetches `/api/auth/me` and shows `user_id`.
+- In `apikey` mode, shows an "apikey mode" badge with no sign-out action.
+- In `jwt` mode, adds a "Sign out" item that calls `logout()`, clears the
+  stored token, calls `queryClient.clear()`, and navigates to `/login`.
 
-## Workbench canvas — drag-create + drag-resize
+## Workbench canvas — superseded
 
-`PageWorkbenchPage` has three modes (`view` / `split` / `illustration`).
-
-**Drawing:** in non-view modes, mousedown → mousemove → mouseup on the Stage
-captures a screen-space rectangle. On mouseup it converts back to source-image
-coords (via the same `scale` factor used to render the image) and:
-
-- `split` → `handleAddSplit` → `commitOverrides.mutate({ splits: [...splits, next] })`
-- `illustration` → `handleAddRegion` → `commitOverrides.mutate({ illustration_regions: [...regions, next] })`
-
-**Editing existing rects:** every Rect registers itself in a `Map<key, Konva.Rect>`
-by ref. The Transformer (`react-konva` `Transformer` with `rotateEnabled=false`,
-`flipEnabled=false`, `boundBoxFunc` enforcing 8×8 minimum) is attached to the
-selected rect's node via `tr.nodes([node])`. `onDragEnd` and `onTransformEnd`
-both compute new coords via `rectFromNode(node, scale)` and call the
-matching mutation. After transform we reset `scaleX`/`scaleY` to 1 and write
-the scaled values into `width`/`height` so the Pydantic source-of-truth
-matches what's drawn.
+**Stale — flagged, not fully re-verified.** This section previously described
+a standalone `PageWorkbenchPage` with Konva `Transformer` drag-create/
+drag-resize for split and illustration regions. That page and its
+`handleAddSplit`/`handleAddRegion`/`commitOverrides` flow no longer exist in
+`frontend/src/` (folded away with the other per-page routes — see "Pages"
+above). The one remaining Konva-backed interaction is the word-bbox
+marquee-select overlay (`WordBboxOverlay` + `lib/marquee.ts`, partial-overlap
+selection over OCR word bounding boxes) inside the `text_review` tool tab
+(`TextReviewTool`). A full description of current per-stage region-editing UX
+(crop/split/illustration equivalents inside `PagesGridTool`,
+`ImageStageReviewTool`, `CanvasMapTool`, `IllustrationsTool`) needs its own
+verification pass — out of scope for this fix.
 
 ## Job progress UX
 
