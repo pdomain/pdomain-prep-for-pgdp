@@ -99,11 +99,30 @@ SecurityDep = Annotated[HTTPAuthorizationCredentials | None, Depends(_security)]
 AuthDep = Annotated[IAuth, Depends(get_auth)]
 
 
-async def get_user(
+def extract_bearer_token(request: Request) -> str | None:
+    """Parse the Bearer token out of the Authorization header, if present."""
+    header = request.headers.get("Authorization")
+    if not header:
+        return None
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token
+
+
+async def resolve_user_context(
     request: Request,
-    creds: SecurityDep,
-    auth: AuthDep,
+    auth: IAuth,
+    *,
+    bearer_token: str | None,
 ) -> UserContext:
+    """Shared auth check: apikey-cookie-first, then Bearer `auth.verify()`.
+
+    Used by both the `get_user` dependency (per-route DI) and
+    `SuiteAuthMiddleware` (a method+path-prefix guard for mutating
+    `/api/suite/*` routes — pdomain-ops mounts those behind an opaque
+    included router that per-route dependency injection cannot reach).
+    """
     # In apikey mode: check session cookie first, then fall back to Bearer.
     # This lets browser clients use the httpOnly cookie (no JS-visible secret)
     # while non-browser callers (scripts/CI) continue to work with Bearer.
@@ -115,7 +134,7 @@ async def get_user(
 
             return UserContext()
     try:
-        return await auth.verify(creds.credentials if creds else None)
+        return await auth.verify(bearer_token)
     except HTTPException:
         raise
     except (ConnectionError, TimeoutError, OSError) as e:
@@ -125,6 +144,14 @@ async def get_user(
     except Exception as e:
         log.exception("unexpected error in auth dependency")
         raise HTTPException(status_code=500, detail="unexpected authentication error") from e
+
+
+async def get_user(
+    request: Request,
+    creds: SecurityDep,
+    auth: AuthDep,
+) -> UserContext:
+    return await resolve_user_context(request, auth, bearer_token=creds.credentials if creds else None)
 
 
 UserDep = Annotated[UserContext, Depends(get_user)]

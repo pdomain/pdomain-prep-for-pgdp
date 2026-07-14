@@ -31,6 +31,7 @@ from .api.data import install_data_routes
 from .api.gpu import install_gpu_routes
 from .api.middleware.error_handler import install_error_handlers
 from .api.middleware.request_id import RequestIdMiddleware
+from .api.middleware.suite_auth import SuiteAuthMiddleware
 from .core.logging_config import configure_logging
 from .dispatcher.batched import BatchDispatcher
 from .dispatcher.immediate import ImmediateDispatcher
@@ -275,6 +276,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app.state.gpu_backend = gpu
     app.state.dispatcher = dispatcher
     app.state.job_runner = job_runner
+
+    # Suite routes (mounted below) have no per-route auth of their own;
+    # guard mutating methods at the middleware layer instead of per-route
+    # DI — see SuiteAuthMiddleware's docstring for why.
+    app.add_middleware(SuiteAuthMiddleware)
 
     install_error_handlers(app, debug=settings.debug)
     install_auth_routes(app, auth_mode=settings.auth_mode)
