@@ -101,14 +101,30 @@ async def _seed_clean_stage(settings, project_id, page_id, stage_id, payload):
     await db.initialize()
     try:
         await db.init_page_stages_for_page(project_id, page_id)
-        await commit_stage_artifact(
-            data_root=settings.data_root,
-            database=db,
-            project_id=project_id,
-            page_id=page_id,
-            stage_id=stage_id,
-            artifact_bytes=payload,
-        )
+        if stage_id == "wordcheck":
+            # wordcheck is flags+text compound: flags for UI, output.txt for pack path.
+            from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
+                commit_stage_artifacts_multi,
+            )
+
+            await commit_stage_artifacts_multi(
+                data_root=settings.data_root,
+                database=db,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                files={"flags.json": payload, "output.txt": b"seeded page text\n"},
+                primary_filename="output.txt",
+            )
+        else:
+            await commit_stage_artifact(
+                data_root=settings.data_root,
+                database=db,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                artifact_bytes=payload,
+            )
     finally:
         await db.close()
 

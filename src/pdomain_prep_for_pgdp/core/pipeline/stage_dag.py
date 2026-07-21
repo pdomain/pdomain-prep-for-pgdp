@@ -193,14 +193,15 @@ _V2_STAGE_DAG_TABLE: tuple[V2Stage, ...] = (
         input_type="image_bytes",
         output_type="words+text",
     ),
-    # wordcheck: new stage (scanno/word-list checking split from text_postprocess)
+    # wordcheck: scanno flags + text pass-through for the pack DAG.
+    # flags.json is the UI side product; output.txt is UTF-8 page prose for hyphen_join.
     V2Stage(
         id="wordcheck",
         scope="page",
         group="Text",
         depends_on=("ocr",),
         input_type="words+text",
-        output_type="text",
+        output_type="flags+text",
     ),
     # hyphen_join: new stage
     V2Stage(

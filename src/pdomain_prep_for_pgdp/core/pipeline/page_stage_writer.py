@@ -92,6 +92,7 @@ OUTPUT_EXT_BY_TYPE: Final[dict[str, str]] = {
 COMPOUND_OUTPUT_TYPES: Final[frozenset[str]] = frozenset(
     {
         "words+text",  # ocr -> {words.json, raw.txt}
+        "flags+text",  # wordcheck -> {flags.json, output.txt}
         "hi_res_crops",  # extract_illustrations -> N crops
         "text+attestation",  # text_review -> {output.txt, attestation.json}
     }
@@ -100,8 +101,10 @@ COMPOUND_OUTPUT_TYPES: Final[frozenset[str]] = frozenset(
 # Primary filename for each compound-output type — this is the file the
 # DB `artifact_key` column points to (spec §"Filesystem layout").
 # Callers can index this to get the primary name without hardcoding it.
+# For flags+text, primary is page text (pack / hyphen_join path); flags are a UI side product.
 COMPOUND_PRIMARY_FILENAME: Final[dict[str, str]] = {
     "words+text": "words.json",
+    "flags+text": "output.txt",
     "hi_res_crops": "crops.json",
     "text+attestation": "output.txt",
 }

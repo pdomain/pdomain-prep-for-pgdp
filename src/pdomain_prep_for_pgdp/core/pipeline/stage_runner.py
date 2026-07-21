@@ -20,8 +20,8 @@ and the eager dirty cascade that follows on success.
    sees the transition immediately.
 3. Load each parent's clean artifact off disk. For image-typed parents,
    decode bytes → ndarray. For json-typed parents, parse. For compound-
-   output parents (e.g. `ocr`), scan the stage dir and return the first
-   `output.*` file.
+   output parents (e.g. `ocr`, `wordcheck`), load **by consumer need**
+   (`words.json` vs `raw.txt` / `output.txt`), not a blind `output.*` scan.
 4. Look up `STAGE_IMPL[stage_id][device]` (cpu by default).
 5. Call it with the loaded input(s).
 6. Encode the output and dual-write:
@@ -407,6 +407,45 @@ def _require_compound_output(value: StageArtifact, *, stage_id: str) -> Compound
     return result
 
 
+def _compound_stage_dir(
+    data_root: Path,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+) -> Path:
+    return data_root / "projects" / project_id / "pages" / page_id / "stages" / stage_id
+
+
+def _read_compound_file(
+    stage_dir: Path,
+    *,
+    parent_stage_id: str,
+    filename: str,
+) -> bytes:
+    """Read one named file from a compound stage directory, or raise dep-not-met."""
+    path = stage_dir / filename
+    if not path.is_file():
+        raise StageDependenciesNotMet(
+            parent_stage_id,
+            [f"{parent_stage_id}: compound artifact {filename!r} missing at {stage_dir}"],
+        )
+    return path.read_bytes()
+
+
+def _preferred_text_filenames(parent_output_type: str) -> tuple[str, ...]:
+    """Filenames to try (in order) when a consumer needs UTF-8 page text."""
+    primary = COMPOUND_PRIMARY_FILENAME.get(parent_output_type)
+    # Prefer explicit text products; never prefer words/flags JSON for text consumers.
+    ordered: list[str] = []
+    for name in (primary, "output.txt", "raw.txt"):
+        if name is not None and name not in ordered and not name.endswith(".json"):
+            ordered.append(name)
+    # last resort: primary even if json (should not happen for text consumers)
+    if primary is not None and primary not in ordered:
+        ordered.append(primary)
+    return tuple(ordered)
+
+
 async def _load_parent_artifact(
     *,
     data_root: Path,
@@ -414,20 +453,22 @@ async def _load_parent_artifact(
     page_id: str,
     parent_stage_id: str,
     write_executor: StageWriteExecutor | None = None,
+    consumer_input_type: str | None = None,
 ) -> StageArtifact:
     """Load a parent stage's clean artifact, decoded into the runner's
     canonical in-memory type.
 
-    Dispatch is on the parent's `Stage.output_type`:
+    Dispatch is on the parent's `Stage.output_type`, refined by the
+    consumer's `input_type` for compound parents (load-by-consumer-need):
 
     - Image types (`image`, `gray`, `binary`, `image_bytes`): PNG/JPEG bytes
       decoded to numpy.ndarray via cv2.imdecode.
     - JSON types (`bbox`, `page_attrs`, `illustration_regions`): JSON text
       file parsed to a Python object (list/dict).
-    - Compound-output parents (`words+text`, `hi_res_crops`,
-      `text+attestation`): `stage_artifact_path` raises for these, so we
-      look in the stage directory for the first `output.*` file (fallback
-      for when the multi-artifact writer seeds a primary text/json file).
+    - Compound-output parents: pick the named file the consumer needs
+      (e.g. ``words.json`` for wordcheck, ``output.txt`` / ``raw.txt`` for
+      text stages). Never feed flags JSON into a text consumer or ``raw.txt``
+      into a words consumer.
     - Other types: return raw bytes; the impl must handle them.
     """
     # Resolve parent stage output type from v2 DAG.
@@ -466,17 +507,44 @@ async def _load_parent_artifact(
                 return cached
 
     if _parent_output_type in COMPOUND_OUTPUT_TYPES:
-        # Compound-output stages write multiple files; the single-file writer
-        # refuses to produce a canonical path for them. Look in the stage
-        # directory for the first `output.*` file to support downstream
-        # stages that consume their text output (e.g. text_postprocess
-        # consuming the text artifact from ocr).
-        stage_dir = data_root / "projects" / project_id / "pages" / page_id / "stages" / parent_stage_id
-        output_files: list[Path] = []
-        if stage_dir.exists():
-            output_files = sorted(
-                path for path in stage_dir.iterdir() if path.is_file() and path.name.startswith("output.")
+        stage_dir = _compound_stage_dir(data_root, project_id, page_id, parent_stage_id)
+        if not stage_dir.exists():
+            raise StageDependenciesNotMet(
+                parent_stage_id,
+                [f"{parent_stage_id}: compound artifact directory missing at {stage_dir}"],
             )
+
+        # Load-by-consumer-need: pick the right named file for the consumer.
+        want = consumer_input_type or ""
+        if want in {"words", "words+text"} and _parent_output_type == "words+text":
+            # Single-blob words consumers get words.json; dual-load (words + text)
+            # is handled in _load_inputs_for_stage.
+            return _read_compound_file(stage_dir, parent_stage_id=parent_stage_id, filename="words.json")
+        if want == "text":
+            for filename in _preferred_text_filenames(_parent_output_type):
+                candidate = stage_dir / filename
+                if candidate.is_file():
+                    return candidate.read_bytes()
+            raise StageDependenciesNotMet(
+                parent_stage_id,
+                [
+                    f"{parent_stage_id}: no text artifact among "
+                    f"{_preferred_text_filenames(_parent_output_type)} at {stage_dir}"
+                ],
+            )
+
+        # Default: primary file for this compound type (never a blind output.* scan
+        # that could pick the wrong product when multiple files exist).
+        primary = COMPOUND_PRIMARY_FILENAME.get(_parent_output_type)
+        if primary is not None:
+            primary_path = stage_dir / primary
+            if primary_path.is_file():
+                return primary_path.read_bytes()
+
+        # Legacy fallback: first output.* (older dual-write shapes).
+        output_files = sorted(
+            path for path in stage_dir.iterdir() if path.is_file() and path.name.startswith("output.")
+        )
         if not output_files:
             raise StageDependenciesNotMet(
                 parent_stage_id,
@@ -501,6 +569,54 @@ async def _load_parent_artifact(
         return _decode_json_output(raw, _parent_output_type)
     # Fall back to raw bytes for unknown types; the impl must handle them.
     return raw
+
+
+async def _load_inputs_for_stage(
+    *,
+    data_root: Path,
+    project_id: str,
+    page_id: str,
+    stage_id: str,
+    parent_stage_ids: tuple[str, ...],
+    consumer_input_type: str,
+    write_executor: StageWriteExecutor | None = None,
+) -> list[StageArtifact]:
+    """Load parent artifacts for ``stage_id`` by consumer need.
+
+    Special case: consumer ``input_type == "words+text"`` with a single
+    ``words+text`` parent (OCR) expands to two positional inputs:
+    ``words.json`` then ``raw.txt``.
+    """
+    # OCR → wordcheck: both products from one compound parent.
+    if (
+        consumer_input_type == "words+text"
+        and len(parent_stage_ids) == 1
+        and get_v2_stage(parent_stage_ids[0]).output_type == "words+text"
+    ):
+        parent_id = parent_stage_ids[0]
+        stage_dir = _compound_stage_dir(data_root, project_id, page_id, parent_id)
+        if not stage_dir.exists():
+            raise StageDependenciesNotMet(
+                parent_id,
+                [f"{parent_id}: compound artifact directory missing at {stage_dir}"],
+            )
+        words = _read_compound_file(stage_dir, parent_stage_id=parent_id, filename="words.json")
+        text = _read_compound_file(stage_dir, parent_stage_id=parent_id, filename="raw.txt")
+        return [words, text]
+
+    artifacts: list[StageArtifact] = []
+    for parent_id in parent_stage_ids:
+        artifacts.append(
+            await _load_parent_artifact(
+                data_root=data_root,
+                project_id=project_id,
+                page_id=page_id,
+                parent_stage_id=parent_id,
+                write_executor=write_executor,
+                consumer_input_type=consumer_input_type,
+            )
+        )
+    return artifacts
 
 
 async def _cascade_dirty(
@@ -1096,21 +1212,18 @@ async def run_stage(
                 artifact_ndarray=_v2root_ndarray_cache,
             )
         else:
-            # Load parents.
-            # Load all page-scoped parents. Single-parent passes the bare
-            # artifact; multi-parent passes positional args in _v2_page_deps order.
-            parent_artifacts: list[StageArtifact] = []
-
-            for parent_id in _v2_page_deps:
-                parent_artifacts.append(
-                    await _load_parent_artifact(
-                        data_root=data_root,
-                        project_id=project_id,
-                        page_id=page_id,
-                        parent_stage_id=parent_id,
-                        write_executor=write_executor,
-                    )
-                )
+            # Load parents by consumer need (words vs text products from compounds).
+            # Single-parent passes the bare artifact; multi-parent / dual OCR
+            # products pass positional args for the impl.
+            parent_artifacts = await _load_inputs_for_stage(
+                data_root=data_root,
+                project_id=project_id,
+                page_id=page_id,
+                stage_id=stage_id,
+                parent_stage_ids=_v2_page_deps,
+                consumer_input_type=stage.input_type,
+                write_executor=write_executor,
+            )
 
             output = _call_impl(impl, parent_artifacts, cfg)
 

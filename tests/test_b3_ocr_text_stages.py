@@ -429,8 +429,8 @@ def test_wordcheck_v2_impl_registered() -> None:
     assert result is not None
 
 
-def test_wordcheck_v2_output_is_bytes() -> None:
-    """wordcheck v2 impl returns bytes (JSON flag report)."""
+def test_wordcheck_v2_output_is_compound_flags_and_text() -> None:
+    """wordcheck v2 impl returns flags.json + output.txt (flags+text compound)."""
     from pdomain_prep_for_pgdp.core.pipeline.stage_registry import get_v2_stage_impl
 
     fn = get_v2_stage_impl("wordcheck", "cpu")
@@ -444,10 +444,14 @@ def test_wordcheck_v2_output_is_bytes() -> None:
             },
         ]
     ).encode()
+    page_text = b"teh is a scanno\n"
 
-    result = fn(words_json)
-    assert isinstance(result, bytes)
-    parsed = json.loads(result.decode("utf-8"))
+    result = fn(words_json, page_text)
+    assert isinstance(result, dict)
+    assert "flags.json" in result
+    assert "output.txt" in result
+    assert result["output.txt"] == page_text
+    parsed = json.loads(result["flags.json"].decode("utf-8"))
     assert "flags" in parsed
 
 

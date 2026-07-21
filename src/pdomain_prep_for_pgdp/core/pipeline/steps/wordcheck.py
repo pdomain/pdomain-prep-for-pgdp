@@ -266,18 +266,25 @@ _DEFAULT_BAD_WORDS: frozenset[str] = frozenset(
 )
 
 
-def wordcheck_v2_cpu(words_json: bytes, cfg: Any = None) -> bytes:
-    """v2 wordcheck stage callable.
+def wordcheck_v2_cpu(
+    words_json: bytes,
+    page_text: object = None,
+    cfg: Any = None,
+) -> dict[str, bytes]:
+    """v2 wordcheck stage callable (compound flags+text).
 
-    Takes words.json bytes (list of OcrWord dicts) and returns a JSON bytes
-    artifact containing the flag report:
-        {"flags": [...], "flagged_count": int, "total_words": int}
+    Takes OCR ``words.json`` bytes and optional UTF-8 page text (OCR ``raw.txt``).
+    Returns a multi-artifact dict:
 
-    cfg may expose bad_words and good_words sets for project-specific lists.
-    Default: uses _DEFAULT_BAD_WORDS with no good_words.
+    - ``flags.json`` — flag report for the workbench:
+        ``{"flags": [...], "flagged_count": int, "total_words": int}``
+    - ``output.txt`` — pass-through page prose for hyphen_join → pack (never flags JSON)
 
-    Words are NEVER silently dropped — only flagged. Deleted words (OcrWord.deleted=True)
-    are skipped from flag generation (they were already reviewed).
+    ``cfg`` may expose ``wordcheck_bad_words`` / ``wordcheck_good_words`` sets.
+    Default: uses ``_DEFAULT_BAD_WORDS`` with no good_words.
+
+    Words are NEVER silently dropped — only flagged. Deleted words
+    (``OcrWord.deleted=True``) are skipped from flag generation.
     """
     # Extract word lists from config if available
     bad_words: set[str] = set(_DEFAULT_BAD_WORDS)
@@ -301,4 +308,17 @@ def wordcheck_v2_cpu(words_json: bytes, cfg: Any = None) -> bytes:
         "flagged_count": len(flags),
         "total_words": total,
     }
-    return json.dumps(result).encode("utf-8")
+    flags_bytes = json.dumps(result).encode("utf-8")
+
+    # Pass through OCR page text; never substitute flags JSON as package text.
+    if isinstance(page_text, (bytes, bytearray)):
+        text_bytes = bytes(page_text)
+    elif isinstance(page_text, str):
+        text_bytes = page_text.encode("utf-8")
+    elif page_text is None:
+        text_bytes = b""
+    else:
+        # Defensive: unexpected second positional (e.g. cfg mis-wired) → empty text.
+        text_bytes = b""
+
+    return {"flags.json": flags_bytes, "output.txt": text_bytes}

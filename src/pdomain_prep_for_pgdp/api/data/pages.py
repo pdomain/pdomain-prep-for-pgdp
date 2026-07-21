@@ -1510,6 +1510,23 @@ def _page_id_for_idx0(idx0: int) -> str:
     return f"{idx0:04d}"
 
 
+def _read_wordcheck_flags_bytes(data_root: Path, project_id: str, page_id: str) -> bytes:
+    """Load wordcheck flags JSON from the compound stage directory.
+
+    Wordcheck is ``flags+text``: primary ``output.txt`` is page prose for the
+    pack path; UI flags live in sibling ``flags.json``. Prefer that file;
+    fall back to a legacy single-file ``output.json`` if present.
+    """
+    stage_dir = data_root / "projects" / project_id / "pages" / page_id / "stages" / "wordcheck"
+    flags_path = stage_dir / "flags.json"
+    if flags_path.is_file():
+        return flags_path.read_bytes()
+    legacy = stage_dir / "output.json"
+    if legacy.is_file():
+        return legacy.read_bytes()
+    raise HTTPException(404, "wordcheck artifact missing on disk")
+
+
 @router.get(
     "/projects/{project_id}/pages/{idx0}/stages",
     response_model=list[PageStageState],
@@ -2397,11 +2414,7 @@ async def get_wordcheck_flags(
     if row is None or row.status != "clean":
         raise HTTPException(404, "wordcheck stage has no clean artifact")
 
-    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "wordcheck")
-    if not artifact_path.exists():
-        raise HTTPException(404, "wordcheck artifact missing on disk")
-
-    raw = artifact_path.read_bytes()
+    raw = _read_wordcheck_flags_bytes(settings.data_root, project_id, page_id)
     try:
         data = json.loads(raw.decode("utf-8"))
     except Exception as exc:
@@ -2458,11 +2471,7 @@ async def post_wordcheck_decisions(
     if row is None or row.status != "clean":
         raise HTTPException(404, "wordcheck stage has no clean artifact")
 
-    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "wordcheck")
-    if not artifact_path.exists():
-        raise HTTPException(404, "wordcheck artifact missing on disk")
-
-    raw = artifact_path.read_bytes()
+    raw = _read_wordcheck_flags_bytes(settings.data_root, project_id, page_id)
     try:
         data = json.loads(raw.decode("utf-8"))
     except Exception as exc:
