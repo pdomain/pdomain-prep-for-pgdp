@@ -37,6 +37,8 @@
     "docs/archive/**",
     // Audit reports — generated reference dumps, not prose docs.
     // Long lines in finding descriptions are expected.
-    "docs/audit/**"
+    "docs/audit/**",
+    // Issue report template — placeholders are not reader prose.
+    "docs/issues/TEMPLATE.md"
   ]
 }

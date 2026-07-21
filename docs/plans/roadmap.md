@@ -4,9 +4,9 @@
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-07-21
 - **Read when:** selecting open product or engineering work.
-- **Search terms:** roadmap, open work, deferred work, priorities.
+- **Search terms:** roadmap, open work, deferred work, priorities, pipeline completion.
 
 > Shipped lifecycle records live in [migration decisions](../context/decisions.md). Locked architecture
 > decisions live in [architecture decisions](../decisions/architecture-decisions.md). This file is the
@@ -45,32 +45,56 @@ under "Deferred — remote / cloud mode" at the bottom.
 
 ---
 
-## P0 — Daily-use blockers
+## Active pipeline work (2026-07-21)
 
-Items that prevent a user from completing a real book end-to-end in
-`make run` today.
+Historical P0–P3 UX tickets and the statechart/registry convergence are
+shipped (see "Reference for finished work"). That does **not** mean a
+proofer can finish a real book end-to-end on `make run` without further
+engineering.
 
-> All P0 items shipped. See "Reference for finished work" above.
+**Authoritative forward queue:**
+[Pipeline completion review and continuation plan](2026-07-21-pipeline-completion-review.md)
+
+Summary of remaining blockers (detail and evidence in that plan +
+[docs/issues](../issues/README.md)):
+
+- **Wordcheck / text-chain artifact contract** (flags JSON vs UTF-8 text DAG) and OCR compound parent-load (`output.*` only)
+- Pack job kwargs mismatch (validation → zip → submit_check)
+- Text-review attestation never becomes clean on disk
+- Shell runs only page `0000` for most page stages
+- OCR / wordcheck / text_review UI live queues incomplete
+- Illustrations extract + package path incomplete
+- Regex stage not full text postprocess
+
+## P0 — Daily-use blockers (historical)
+
+Items that prevented a user from completing a real book end-to-end in
+`make run` during the early rollout.
+
+> Historical P0 UX tickets shipped. Live pipeline depth blockers moved to
+> [completion plan](2026-07-21-pipeline-completion-review.md) Wave 0.
 
 ---
 
-## P1 — UX completeness
+## P1 — UX completeness (historical)
 
-> All P1 items shipped. See "Reference for finished work" above and
-> [migration decisions](../context/decisions.md).
-
----
-
-## P2 — Polish / nice-to-have
-
-> All P2 items shipped. See "Reference for finished work" above.
+> Historical P1 items shipped. See "Reference for finished work" above and
+> [migration decisions](../context/decisions.md). Further hi-fi work is in
+> the completion plan Waves 1–2.
 
 ---
 
-## P3 — Pipeline depth
+## P2 — Polish / nice-to-have (historical)
+
+> Historical P2 items shipped. See "Reference for finished work" above.
+
+---
+
+## P3 — Pipeline depth (historical)
 
 > P3.1 (compute_prefix frontmatter) shipped — moved to "Reference for finished work".
-> No remaining open P3 items.
+> Remaining pipeline depth work is tracked in the
+> [completion plan](2026-07-21-pipeline-completion-review.md).
 
 ---
 
