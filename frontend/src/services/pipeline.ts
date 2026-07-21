@@ -8,13 +8,12 @@
  *
  * At I1, these replace the stub "not yet wired (I1)" placeholders in PipelinePage.tsx.
  *
- * ## Page-stage run strategy (I1)
+ * ## Page-stage run strategy (W0.4)
  *
- * The `runStage` service uses the synchronous run path (async=false).
- * The backend runs the stage in-process and returns the final PageStageState.
- * The sseActor receives STAGE_PUSH events in parallel; reconcile() handles
- * any race between the HTTP response and SSE push. For long-running stages
- * (OCR, ~30s) this blocks until complete — async mode is the I2 optimisation.
+ * Page-scoped stages (except OCR) list all project pages and POST
+ * ``project-stages/{stageId}/rerun`` so every page gets a ``run_page_stage``
+ * job. OCR uses ``page-stages/ocr/run-batch``. SSE reconcile drives terminal
+ * chip status.
  *
  * ## Project-stage run strategy (I1)
  *
@@ -43,11 +42,7 @@ import type {
   ProjectSettingsValues,
   DestructiveAction,
 } from "@/machines/projectSettings";
-import type {
-  PipelineSnapshot,
-  PageStageState,
-  ProjectStageState,
-} from "@/mocks/types";
+import type { PipelineSnapshot, ProjectStageState } from "@/mocks/types";
 import { STAGE_DEFS } from "@/machines/pipelineShell";
 
 // ---------------------------------------------------------------------------
@@ -88,14 +83,9 @@ async function fetchPipeline(projectId: string): Promise<PipelineSnapshot> {
  * sequential per-page OCR calls with one GPU predictor forward-pass.
  * Always async; SSE reconcile drives the machine to the final state.
  *
- * For other page-scoped stages: uses pageIdx=0 (first page) as the canonical
- * page for the stage run. Full multi-page orchestration is the I2 work.
- *
- * DIVERGENCE NOTE (I1): StageRunner is conceptually project-level for the
- * pipeline shell (run all pages of a stage). The current backend has per-page
- * run routes. At I1 we use the project-stage run route for project-scoped
- * stages, the batch route for OCR, and page 0 as a placeholder for other
- * page-scoped stages.
+ * For other page-scoped stages (W0.4): list all pages and POST
+ * .../project-stages/{stageId}/rerun with every page_id so the shell
+ * fans out run_page_stage jobs (not hard-coded page 0000 only).
  */
 async function runStage(
   projectId: string,
@@ -137,32 +127,24 @@ async function runStage(
     }
   }
 
-  // Other page-scoped stages: POST .../pages/0000/stages/{stageId}/run (sync)
-  // Uses idx0=0 as placeholder — full per-page orchestration is I2.
+  // Other page-scoped stages (W0.4): fan-out via batched project-stage rerun.
+  // Backend enqueues run_page_stage jobs for each page_id (not page 0000 only).
   try {
-    const result = await api.post<
-      PageStageState | { status: number; id: string }
-    >(
-      `/api/data/projects/${encodeURIComponent(projectId)}/pages/0000/stages/${encodeURIComponent(stageId)}/run`,
-      request ? { force: request.force } : null,
+    const listed = await api.get<{
+      pages: { idx0: number }[];
+      next_cursor?: string | null;
+    }>(`/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=500`);
+    const pageIds = (listed.pages ?? []).map((p) =>
+      String(p.idx0).padStart(4, "0"),
     );
-
-    // Synchronous path returns PageStageState; translate to RunStageOutcome.
-    if ("stage_id" in result) {
-      const row = result;
-      if (row.status === "failed") {
-        return {
-          status: "error",
-          message: row.error_message ?? "Stage failed",
-        };
-      }
-      if (row.status === "flagged") {
-        return { status: "flagged", flaggedPages: [] };
-      }
-      return { status: "clean" };
+    if (pageIds.length === 0) {
+      return { status: "error", message: "project has no pages to run" };
     }
-
-    // Async path (202 Job) — treat as running; SSE delivers final status.
+    await api.post(
+      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/rerun`,
+      { page_ids: pageIds },
+    );
+    // Async jobs — SSE / chip rail reconcile final status.
     return { status: "running" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
