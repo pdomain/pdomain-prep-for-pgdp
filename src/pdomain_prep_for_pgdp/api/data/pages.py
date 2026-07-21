@@ -1297,13 +1297,78 @@ async def restore_page_words(
 
 
 class SplitPageRequest(BaseModel):
-    bbox: tuple[int, int, int, int]  # x, y, w, h in parent source-image coords
+    """Request body for POST .../pages/{idx0}/split.
+
+    Provide either ``bbox`` (same crop for every child) or ``bboxes`` (one crop
+    per suffix). When ``normalized`` is true, coordinates are fractions of the
+    parent source image size in [0, 1] and are converted to pixel integers
+    server-side (requires a parent source blob).
+    """
+
+    bbox: tuple[float, float, float, float] | None = None
+    bboxes: list[tuple[float, float, float, float]] | None = None
     split_at_stage: str
     suffixes: list[str]  # one suffix per child, e.g. ["a", "b"]
+    normalized: bool = False
 
 
 class SplitPageResponse(BaseModel):
     children: list[PageRecord]
+
+
+def _resolve_split_pixel_bboxes(
+    *,
+    body: SplitPageRequest,
+    page_service: PageServiceDep,
+    parent_source_blob_hash: str | None,
+) -> list[tuple[int, int, int, int]]:
+    """Normalize SplitPageRequest geometry to integer pixel bboxes per child."""
+    if not body.suffixes:
+        raise HTTPException(422, "suffixes must not be empty")
+    if body.bboxes is not None and body.bbox is not None:
+        raise HTTPException(422, "provide either bbox or bboxes, not both")
+    if body.bboxes is None and body.bbox is None:
+        raise HTTPException(422, "bbox or bboxes is required")
+    if body.bboxes is not None and len(body.bboxes) != len(body.suffixes):
+        raise HTTPException(
+            422,
+            f"bboxes length {len(body.bboxes)} must match suffixes length {len(body.suffixes)}",
+        )
+
+    raw_boxes: list[tuple[float, float, float, float]]
+    if body.bboxes is not None:
+        raw_boxes = list(body.bboxes)
+    elif body.bbox is not None:
+        raw_boxes = [body.bbox] * len(body.suffixes)
+    else:
+        raise HTTPException(422, "bbox or bboxes is required")
+
+    if not body.normalized:
+        return [(int(x), int(y), int(w), int(h)) for x, y, w, h in raw_boxes]
+
+    if parent_source_blob_hash is None:
+        raise HTTPException(
+            422,
+            "normalized split requires parent source image (ingest source first)",
+        )
+    import cv2  # pyright: ignore[reportMissingImports]
+    import numpy as np  # pyright: ignore[reportMissingImports]
+
+    src_bytes = page_service.blobs.read(parent_source_blob_hash)
+    arr = np.frombuffer(src_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise HTTPException(422, "could not decode parent source image for normalized split")
+    img_h = int(img.shape[0])
+    img_w = int(img.shape[1])
+    out: list[tuple[int, int, int, int]] = []
+    for x, y, w, h in raw_boxes:
+        px = round(x * img_w)
+        py = round(y * img_h)
+        pw = max(1, round(w * img_w))
+        ph = max(1, round(h * img_h))
+        out.append((px, py, pw, ph))
+    return out
 
 
 @router.post(
@@ -1366,6 +1431,17 @@ async def split_page(
     if parent_page_uuid is None or parent_ext is None:
         raise HTTPException(404, "page not found")
 
+    try:
+        pixel_bboxes = _resolve_split_pixel_bboxes(
+            body=body,
+            page_service=page_service,
+            parent_source_blob_hash=parent_ext.source_blob_hash,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(422, f"invalid split geometry: {exc}") from exc
+
     child_records = split_page_in_store(
         service=page_service,
         project_id=project_id,
@@ -1373,7 +1449,7 @@ async def split_page(
         parent_idx0=parent_ext.idx0,
         parent_prefix=parent_ext.prefix,
         parent_source_stem=parent_ext.source_stem,
-        bbox=body.bbox,
+        bboxes=pixel_bboxes,
         split_at_stage=body.split_at_stage,
         suffixes=body.suffixes,
         parent_source_blob_hash=parent_ext.source_blob_hash,

@@ -9694,24 +9694,61 @@
       "SplitPageRequest": {
         "properties": {
           "bbox": {
-            "prefixItems": [
+            "anyOf": [
               {
-                "type": "integer"
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
               },
               {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "integer"
+                "type": "null"
               }
             ],
-            "type": "array",
-            "maxItems": 4,
-            "minItems": 4,
             "title": "Bbox"
+          },
+          "bboxes": {
+            "anyOf": [
+              {
+                "items": {
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array",
+                  "maxItems": 4,
+                  "minItems": 4
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bboxes"
           },
           "split_at_stage": {
             "type": "string",
@@ -9723,15 +9760,20 @@
             },
             "type": "array",
             "title": "Suffixes"
+          },
+          "normalized": {
+            "type": "boolean",
+            "title": "Normalized",
+            "default": false
           }
         },
         "type": "object",
         "required": [
-          "bbox",
           "split_at_stage",
           "suffixes"
         ],
-        "title": "SplitPageRequest"
+        "title": "SplitPageRequest",
+        "description": "Request body for POST .../pages/{idx0}/split.\n\nProvide either ``bbox`` (same crop for every child) or ``bboxes`` (one crop\nper suffix). When ``normalized`` is true, coordinates are fractions of the\nparent source image size in [0, 1] and are converted to pixel integers\nserver-side (requires a parent source blob)."
       },
       "SplitPageResponse": {
         "properties": {

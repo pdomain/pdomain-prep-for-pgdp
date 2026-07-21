@@ -3713,19 +3713,39 @@ export interface components {
             /** Total Image Count */
             total_image_count: number;
         };
-        /** SplitPageRequest */
+        /**
+         * SplitPageRequest
+         * @description Request body for POST .../pages/{idx0}/split.
+         *
+         *     Provide either ``bbox`` (same crop for every child) or ``bboxes`` (one crop
+         *     per suffix). When ``normalized`` is true, coordinates are fractions of the
+         *     parent source image size in [0, 1] and are converted to pixel integers
+         *     server-side (requires a parent source blob).
+         */
         SplitPageRequest: {
             /** Bbox */
-            bbox: [
+            bbox?: [
                 number,
                 number,
                 number,
                 number
-            ];
+            ] | null;
+            /** Bboxes */
+            bboxes?: [
+                number,
+                number,
+                number,
+                number
+            ][] | null;
             /** Split At Stage */
             split_at_stage: string;
             /** Suffixes */
             suffixes: string[];
+            /**
+             * Normalized
+             * @default false
+             */
+            normalized: boolean;
         };
         /** SplitPageResponse */
         SplitPageResponse: {

@@ -83,7 +83,8 @@ def split_page_in_store(
     parent_idx0: int,
     parent_prefix: str,
     parent_source_stem: str,
-    bbox: tuple[int, int, int, int],
+    bbox: tuple[int, int, int, int] | None = None,
+    bboxes: list[tuple[int, int, int, int]] | None = None,
     split_at_stage: str,
     suffixes: list[str],
     parent_source_blob_hash: str | None = None,
@@ -93,33 +94,47 @@ def split_page_in_store(
     Each child gets its own UUID PageAggregate. The parent's ProjectAggregate gains
     each child via ProjectAggregate.add_page. All children inherit the parent's project.
 
+    Crop geometry:
+    - ``bboxes`` (preferred for multi-column): one ``(x, y, w, h)`` per suffix.
+    - ``bbox`` alone: same crop applied to every child (legacy / single-region).
+
     When ``parent_source_blob_hash`` is provided (the production path — the route
     reads it off the parent's ``PrepPageExtension``), each child's source image is
-    cropped from the parent's source blob to ``bbox`` at split time and stored as
-    the child's own ``source_blob_hash``. This makes the v2 ``grayscale`` root
-    uniform: both normal pages and split children simply read their own
+    cropped from the parent's source blob to that child's bbox at split time and
+    stored as the child's own ``source_blob_hash``. This makes the v2 ``grayscale``
+    root uniform: both normal pages and split children simply read their own
     ``source_blob_hash`` (option B — crop at split time). When the parent has no
     source blob yet (``None`` — e.g. a split issued before ingest, or a bare
     unit-test parent), the child's ``source_blob_hash`` is left ``None`` and
     ``grayscale`` will report the missing-source dependency just like an
     un-ingested root page.
     """
+    if bboxes is not None:
+        if len(bboxes) != len(suffixes):
+            raise ValueError(f"bboxes length {len(bboxes)} must match suffixes length {len(suffixes)}")
+        child_bboxes = list(bboxes)
+    elif bbox is not None:
+        child_bboxes = [bbox] * len(suffixes)
+    else:
+        raise ValueError("split requires bbox or bboxes")
+
     project_uuid = _to_uuid(project_id)
     proj_agg = service.store.get_project(project_uuid)
-
-    child_source_hash: str | None = None
-    if parent_source_blob_hash is not None:
-        child_source_hash = _crop_source_blob(
-            service=service,
-            parent_source_blob_hash=parent_source_blob_hash,
-            bbox=bbox,
-        )
 
     children: list[OpsPageRecord] = []
     # Children start at page_index = current max + 1
     current_max_index = len(proj_agg.record.page_ids)
 
     for i, suffix in enumerate(suffixes):
+        child_bbox = child_bboxes[i]
+        child_source_hash: str | None = None
+        if parent_source_blob_hash is not None:
+            child_source_hash = _crop_source_blob(
+                service=service,
+                parent_source_blob_hash=parent_source_blob_hash,
+                bbox=child_bbox,
+            )
+
         child_page_id = _uuid.uuid4()
         child_record = OpsPageRecord(
             page_id=child_page_id,
@@ -132,7 +147,7 @@ def split_page_in_store(
             prefix=f"{parent_prefix}{suffix}",
             source_stem=parent_source_stem,
             parent_page_id=str(parent_page_id),
-            source_crop_bbox=bbox,
+            source_crop_bbox=child_bbox,
             split_index=i + 1,
             split_at_stage=split_at_stage,
             split_suffix=suffix,
