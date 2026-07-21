@@ -574,24 +574,27 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     artifact_filename = _ARTIFACT_FILES.get(stage_id, "output.json")
     artifact_path = artifact_dir / artifact_filename
 
-    # Build kwargs for the callable — project-scoped stages share a common signature
-    # but each may accept only a subset. We pass common kwargs and let the impl ignore extras.
-    call_kwargs: dict[str, object] = {
-        "project_id": project_id,
-        "page_ids": page_ids,
-        "data_root": data_root,
-        "book_name": project.config.book_name if project.config else "",
-        "cfg": None,
-    }
-    # W0.5 — built_at: pass started_at ISO timestamp for deterministic builds.
-    if stage_id in ("build_package", "zip"):
-        call_kwargs["built_at"] = started_at_iso
+    # W0.2 / B2: per-stage kwargs adapter — load parent artifacts and pass only
+    # parameters the callable accepts (Python does not ignore unexpected kwargs).
+    from .pipeline.project_stage_kwargs import (
+        build_project_stage_call_kwargs,
+    )
 
     start_ms = started_at_dt.timestamp() * 1000
     error_message: str | None = None
     artifact_key: str | None = None
 
     try:
+        call_kwargs = build_project_stage_call_kwargs(
+            stage_id=stage_id,
+            impl_callable=impl_callable,  # type: ignore[arg-type]
+            project_id=project_id,
+            page_ids=page_ids,
+            data_root=data_root,
+            book_name=project.config.book_name if project.config else "",
+            started_at_iso=started_at_iso,
+            cfg=None,
+        )
         # Run in a thread pool to avoid blocking the async event loop (W0.3).
         # result is StageArtifact (bytes | ImageArray | str | …); we write
         # bytes directly and ignore non-bytes outputs for project stages.
