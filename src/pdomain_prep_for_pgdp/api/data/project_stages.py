@@ -999,6 +999,37 @@ async def _confirm_stage_impl(
             actor_id=user.user_id,
         )
 
+        # W0.3: text_review confirm also rewrites each page's attestation.json
+        # so validation's unattested_text_review rule clears without hand-seeding.
+        if stage_id == "text_review":
+            from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+            from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+            from pdomain_prep_for_pgdp.core.pipeline.text_review_attestation import (
+                TextReviewAttestError,
+                attest_text_review_page,
+            )
+
+            page_service = build_page_service(settings.data_root, project_id)
+            pages = list_page_records(page_service, project_id)
+            for page in pages:
+                page_id = f"{page.idx0:04d}"
+                try:
+                    await attest_text_review_page(
+                        data_root=settings.data_root,
+                        database=db,
+                        project_id=project_id,
+                        page_id=page_id,
+                        actor_id=user.user_id,
+                        note="project-wide text_review confirm",
+                        attested_at=now_iso,
+                    )
+                except TextReviewAttestError as _att_err:
+                    log.warning(
+                        "text_review confirm: skip page %s (no output yet): %s",
+                        page_id,
+                        _att_err,
+                    )
+
     # Record ReviewDecision event in PrepProjectAggregate (warn-and-continue).
     try:
         from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (

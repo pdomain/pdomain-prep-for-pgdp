@@ -4892,6 +4892,78 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_review/attest": {
+      "post": {
+        "tags": [
+          "pages"
+        ],
+        "summary": "Attest Text Review",
+        "description": "Mark this page's text_review as attested clean (dual-write attestation.json).\n\nValidation requires ``attestation.status == \"clean\"``. Running the stage\nalone writes empty ``{}``; this route rewrites the attestation while\npreserving ``output.txt``. Spec: W0.3 / pipeline completion B3.",
+        "operationId": "attest_text_review",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idx0",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idx0"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TextReviewAttestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/wordlist-promotion": {
       "post": {
         "tags": [
@@ -9983,6 +10055,24 @@
           "hyphenation_join_list"
         ],
         "title": "SystemDefaults"
+      },
+      "TextReviewAttestRequest": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "TextReviewAttestRequest",
+        "description": "Optional body for POST .../text_review/attest."
       },
       "UpdateConfigRequest": {
         "properties": {

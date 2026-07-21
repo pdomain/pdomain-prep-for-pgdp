@@ -2366,6 +2366,21 @@ class HyphenJoinDecisionsRequest(BaseModel):
     decisions: list[dict[str, object]]
 
 
+class TextReviewAttestRequest(BaseModel):
+    """Optional body for POST .../text_review/attest."""
+
+    note: str | None = None
+
+
+class TextReviewAttestResponse(BaseModel):
+    page_id: str
+    stage_id: str = "text_review"
+    status: str
+    actor_id: str
+    attested_at: str
+    note: str | None = None
+
+
 def _read_artifact_bytes(
     settings: Settings,
     project_id: str,
@@ -2503,6 +2518,66 @@ async def post_wordcheck_decisions(
         flags=updated_flags,
         flagged_count=sum(1 for f in updated_flags if f.get("status") == "open"),
         total_words=int(data.get("total_words", 0)),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/pages/{idx0}/stages/text_review/attest",
+    operation_id="attest_text_review",
+    response_model=None,
+)
+async def attest_text_review(
+    project_id: str,
+    idx0: int,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+    body: TextReviewAttestRequest | None = None,
+) -> TextReviewAttestResponse | JSONResponse:
+    """Mark this page's text_review as attested clean (dual-write attestation.json).
+
+    Validation requires ``attestation.status == "clean"``. Running the stage
+    alone writes empty ``{}``; this route rewrites the attestation while
+    preserving ``output.txt``. Spec: W0.3 / pipeline completion B3.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.text_review_attestation import (
+        TextReviewAttestError,
+        attest_text_review_page,
+    )
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    _rv, project = await _check_registry_page(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
+
+    page = get_page_record(page_service, project_id, idx0)
+    if page is None:
+        raise HTTPException(404, "page not found")
+
+    page_id = _page_id_for_idx0(idx0)
+    note = body.note if body is not None else None
+    try:
+        attestation = await attest_text_review_page(
+            data_root=settings.data_root,
+            database=db,
+            project_id=project_id,
+            page_id=page_id,
+            actor_id=user.user_id,
+            note=note,
+        )
+    except TextReviewAttestError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    return TextReviewAttestResponse(
+        page_id=page_id,
+        status=str(attestation["status"]),
+        actor_id=str(attestation["actor_id"]),
+        attested_at=str(attestation["attested_at"]),
+        note=str(attestation["note"]) if "note" in attestation else None,
     )
 
 

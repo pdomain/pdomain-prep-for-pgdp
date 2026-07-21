@@ -1049,10 +1049,11 @@ def _text_review_cpu(
 
     At default config (no human edit) this is an identity pass: the
     output.txt artifact is the final text result verbatim, and
-    attestation.json records an empty object.  The 'Mark clean' UI button
-    (``POST .../text_review/clean``) short-circuits this by marking the DB
-    row clean directly without running the stage; this impl exists so
-    batch-mode callers can fire the stage programmatically.
+    attestation.json records an empty object (not yet attested).  Mark the
+    page clean via ``POST .../pages/{idx0}/stages/text_review/attest``
+    (or project-wide ``POST .../project-stages/text_review/confirm``), which
+    dual-writes ``attestation.status=clean``.  This impl exists so batch-mode
+    callers can fire the stage programmatically before attest.
 
     Returns dict[str, bytes] with 'output.txt' and 'attestation.json'.
     """

@@ -1938,6 +1938,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/pages/{idx0}/stages/text_review/attest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attest Text Review
+         * @description Mark this page's text_review as attested clean (dual-write attestation.json).
+         *
+         *     Validation requires ``attestation.status == "clean"``. Running the stage
+         *     alone writes empty ``{}``; this route rewrites the attestation while
+         *     preserving ``output.txt``. Spec: W0.3 / pipeline completion B3.
+         */
+        post: operations["attest_text_review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/wordlist-promotion": {
         parameters: {
             query?: never;
@@ -3890,6 +3914,14 @@ export interface components {
             };
             /** Hyphenation Join List */
             hyphenation_join_list: string[];
+        };
+        /**
+         * TextReviewAttestRequest
+         * @description Optional body for POST .../text_review/attest.
+         */
+        TextReviewAttestRequest: {
+            /** Note */
+            note?: string | null;
         };
         /** UpdateConfigRequest */
         UpdateConfigRequest: {
@@ -7367,6 +7399,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WordcheckDecisionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    attest_text_review: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                idx0: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["TextReviewAttestRequest"] | null;
             };
         };
         responses: {
