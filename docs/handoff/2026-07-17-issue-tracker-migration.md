@@ -19,22 +19,30 @@ supersedes: ""
 - **Status:** active
 - **Read when:** picking up the task of clearing this repo's GitHub issue
   tracker into docs.
-- **Search terms:** issue tracker migration, roadmap, closed issues archive,
-  gh issue delete, docgraph handoff.
+- **Search terms:** issue tracker migration, docs/issues, governed issue node,
+  closed issues archive, gh issue delete, docgraph handoff, github-issues-cutover.
 
 ## Goal
 
-Clear this repo's GitHub issue tracker by migrating its open backlog into
-`docs/roadmap.md`, archiving every issue's full text into Git history, then
-deleting the issues. This is the same proven pattern already run on
-`pdomain-ocr-cli` (50 issues) and `pdomain-ocr-simple-gui` (37 issues,
-roadmap-first).
+Clear this repo's GitHub issue tracker. Migrate every open issue into
+`docs/issues/` as its own governed markdown node, archive every issue's full
+text into Git history, then delete the issues. This mirrors the `docs/issues/`
+cutover already run on `pdomain-ocr-cli` and other siblings — see
+`../pdomain-ocr-cli/docs/decisions/2026-07-19-github-issues-cutover.md`.
+
+Note on scope: those siblings split the destination — feature/backlog work goes
+to `docs/roadmap.md`, and only evidence-bearing bugs and investigations go to
+`docs/issues/`. This handoff instead sends **all** open issues to `docs/issues/`
+as one file each (per direct instruction, 2026-07-21). If the next session wants
+the hybrid split, put the 43 `kind:feature` + 1 `kind:spec` issues in
+`docs/roadmap.md` and only the 4 bug/chore issues in `docs/issues/`.
 
 ## Current state
 
 Open issues: 48. Closed issues: 131. Admin confirmed on the repo. Docgraph is
 present (`DOCGRAPH.md`). `docs/decisions/` exists with prior ADRs. No
-`docs/roadmap.md` yet — it must be authored as part of this migration.
+`docs/issues/` folder yet — it must be created (with `README.md` and
+`TEMPLATE.md`, copied from a sibling) as part of this migration.
 
 Label breakdown across the 48 open issues:
 
@@ -82,10 +90,9 @@ carrying into a roadmap, not a tracker to just wipe.
   completed history; archiving and deleting them too is OPTIONAL and only
   applies if the goal is a full tracker wipe rather than clearing the open
   backlog.
-- Roadmap-first is REQUIRED here — the open issues are unfinished backlog.
-  Never delete an issue without first carrying its content into
-  `docs/roadmap.md` (for open work) or the closed-issues archive doc (for
-  closed work).
+- Node-first is REQUIRED here — the open issues are unfinished backlog. Never
+  delete an issue without first carrying its content into a `docs/issues/` node
+  (for open work) or the closed-issues archive doc (for closed work).
 
 ## The proven procedure
 
@@ -93,11 +100,14 @@ carrying into a roadmap, not a tracker to just wipe.
    `gh issue view N --repo pdomain/pdomain-prep-for-pgdp --json number,title,author,createdAt,closedAt,state,stateReason,labels,body,comments,url`
    Save each to a scratch directory and record a `sha256sum` of the raw JSON
    for later verification.
-2. If migrating open backlog: author `docs/roadmap.md`, mirroring the shape of
-   `../pdomain-ocr-cli/docs/roadmap.md` — docgraph frontmatter, Agent Index,
-   Goal/Architecture/Tech Stack/Global Constraints sections, work clusters,
-   and Now/Next/Later grouped by theme. Tag every roadmap item with its
-   source issue number, e.g. `#169`.
+2. If migrating open backlog: create `docs/issues/`. Copy `README.md` and
+   `TEMPLATE.md` from a sibling (`../pdomain-ocr-cli/docs/issues/`), then render
+   one governed node per open issue — `docs/issues/2026-07-DD-gh-NNN-slug.md`,
+   filled in from `TEMPLATE.md` (YAML frontmatter + matching `## Agent Index`,
+   `Kind: issue`, `Status: active` while open, a `Resolution: Open` line, and
+   the issue's body/comments). List each new node under `## Open issues` in the
+   folder `README.md` — that satisfies the docgraph no-orphan rule. Keep the
+   source GitHub number in the filename and the node (`former GH #NNN`).
 3. Render `docs/decisions/2026-07-DD-closed-issues-archive.md` (adjust the
    date): docgraph frontmatter (Kind: decision, Status: retired) + Agent
    Index + Context/Decision/Consequences/Supersedes sections, then one
@@ -105,11 +115,11 @@ carrying into a roadmap, not a tracker to just wipe.
    URL, full body verbatim, and all comments verbatim. Add
    `<!-- markdownlint-disable -->` immediately after the frontmatter block —
    the verbatim issue text will not conform to markdownlint rules.
-4. Commit the roadmap and the archive together in one commit. Then, in a
-   SECOND commit, `git rm` the archive file, citing the add-commit's SHA and
-   `git show <sha>:<path>` in the removal commit message as the retrieval
-   path. Git history is the permanent tombstone; the roadmap stays live and
-   readable.
+4. Commit the `docs/issues/` nodes (plus `README.md`/`TEMPLATE.md`) and the
+   archive together in one commit. Then, in a SECOND commit, `git rm` the
+   archive file, citing the add-commit's SHA and `git show <sha>:<path>` in the
+   removal commit message as the retrieval path. Git history is the permanent
+   tombstone; the `docs/issues/` nodes stay live and readable.
 5. Only after the archive commit exists: delete each migrated issue with
    `gh issue delete N --repo pdomain/pdomain-prep-for-pgdp --yes`. This is
    PERMANENT. Get an explicit human "go" before running any delete.
@@ -126,24 +136,27 @@ commit) is expected and fine.
 
 ## Pointers
 
-- `docs/roadmap.md` — target file to author (does not exist yet).
+- `docs/issues/` — target folder to create (does not exist yet); one governed
+  node per open issue, plus `README.md` and `TEMPLATE.md`.
 - `docs/decisions/` — where the closed-issues archive doc is rendered, then
   removed.
 - `DOCGRAPH.md` — repo docgraph conventions.
-- `../pdomain-ocr-cli/docs/roadmap.md` — shape reference, already migrated.
-- `../pdomain-ocr-simple-gui/docs/roadmap.md` — shape reference,
-  roadmap-first migration, already migrated.
+- `../pdomain-ocr-cli/docs/issues/` — shape reference (`README.md`,
+  `TEMPLATE.md`, per-issue nodes), already migrated.
+- `../pdomain-ocr-cli/docs/decisions/2026-07-19-github-issues-cutover.md` —
+  the cutover decision doc to mirror.
 
 ## Reference worked examples
 
-- `pdomain-ocr-cli`: archive commit `9498407` (local in that repo).
-- `pdomain-ocr-simple-gui`: roadmap+archive commit `ec3979f`, then removal
-  commit `7f3be6b` (local in that repo).
-- The step-by-step pattern is also captured in agent memory under
-  `closed-issue-archive-pattern`.
+- `pdomain-ocr-cli`: `docs/issues/` cutover — see the cutover decision doc above
+  and the per-issue nodes in that folder (local in that repo).
+- `pdomain-ocr-simple-gui`: earlier roadmap+archive migration, archive commit
+  `ec3979f`, removal commit `7f3be6b` (local in that repo).
+- The step-by-step archive-and-delete pattern is also captured in agent memory
+  under `closed-issue-archive-pattern`.
 
 ## Resume steps
 
 1. `gh issue list --repo pdomain/pdomain-prep-for-pgdp --state open --limit 300 --json number,title,body,labels,comments,url > /tmp/pdomain-prep-for-pgdp-open-issues.json`
-2. Read `../pdomain-ocr-cli/docs/roadmap.md` and `../pdomain-ocr-simple-gui/docs/roadmap.md` as shape references.
-3. Draft `docs/roadmap.md` grouping the 43 `kind:feature` + 1 `kind:spec` issues under the `pd-ui` design-handoff theme, and the 3 `kind:bug` + 1 `kind:chore` issues under a separate quality/security theme, tagging every item with its issue number.
+2. Read `../pdomain-ocr-cli/docs/issues/README.md` and `TEMPLATE.md` as shape references; copy both into this repo's new `docs/issues/`.
+3. Render one `docs/issues/2026-07-DD-gh-NNN-slug.md` node per open issue from `TEMPLATE.md`, then list them all under `## Open issues` in the new `README.md`. Stage the folder, `docgraph reindex`, and `docgraph check --strict` the same turn.
