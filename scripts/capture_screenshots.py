@@ -7,9 +7,20 @@ Server must be running at BASE_URL below.
 
 import asyncio
 import importlib
+import os
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Protocol, cast
+
+# DISPLAY hygiene — same guard as tests/e2e/conftest.py::pytest_configure.
+#
+# A stale DISPLAY (e.g. a devcontainer X-forwarding socket left over from a
+# previous editor session) wedges headless chromium's frame production:
+# requestAnimationFrame never fires, so every screenshot below hangs until its
+# timeout instead of failing loudly.  Chromium's --ozone-platform=headless does
+# NOT override this; only removing the variable does.  Headless chromium needs
+# no X server at all, so drop DISPLAY before the browser subprocess inherits it.
+_ = os.environ.pop("DISPLAY", None)
 
 BASE_URL = "http://127.0.0.1:58693"
 OUT_DIR = Path(__file__).parent.parent / "docs/design-brief/existing-ui/screenshots"
