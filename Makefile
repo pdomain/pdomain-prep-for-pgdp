@@ -13,7 +13,7 @@ $(_goals):
 else
 
 .PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
-        typecheck pre-commit-check test test-slow e2e build clean ci \
+        typecheck pre-commit-check update-hooks test test-slow e2e build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
@@ -104,6 +104,7 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 	uv lock --upgrade
 	@echo "📦 Syncing upgraded dependencies..."
 	uv sync --group dev
+	@$(MAKE) --no-print-directory update-hooks
 	@echo "✅ Dependencies upgraded and environment synced!"
 
 update-pdomain-deps: ## Bump all sibling pdomain-* deps (Python + npm) to registry latest; leaves diff for review
@@ -285,6 +286,13 @@ format: ## Format code with ruff
 
 pre-commit-check: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
+
+update-hooks: ## Bump pinned pre-commit hook revisions in .pre-commit-config.yaml
+	@echo "⬆️  Updating pinned pre-commit hook revisions..."
+	@# The hook exits non-zero when it rewrites the config, which is the success
+	@# case here, so its status is not the target's status.
+	-@uv run pre-commit run pre-commit-update --all-files --hook-stage manual
+	@echo "✅ Hook revisions updated — review the .pre-commit-config.yaml diff."
 
 test: ## Run pytest (excludes e2e/ and slow tests)
 	uv run pytest tests/ -v --ignore=tests/e2e -n auto

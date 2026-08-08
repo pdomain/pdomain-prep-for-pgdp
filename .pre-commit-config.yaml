@@ -4,7 +4,15 @@ repos:
 -   repo: https://gitlab.com/vojko.pribudic.foss/pre-commit-update
     rev: 4fd4fcef9cf0a3c95b61c76de4a2b1a0bb0666fc  # frozen: v0.9.0
     hooks:
+    # Manual stage only. This hook rewrites the pinned `rev:` values in this
+    # file and then fails the run because it modified a file, so every
+    # `git commit` and CI run fails whenever a hook upstream publishes a
+    # release. Bumping pins is a maintenance action, not a gate. Run it with
+    # `make update-hooks`. This repo SHA-pins hook revisions (see the
+    # `# frozen:` comments above), so running the bumper here replaces those
+    # frozen SHAs and must be a deliberate, reviewed action.
     -   id: pre-commit-update
+        stages: [manual]
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
