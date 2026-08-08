@@ -149,7 +149,9 @@ async def _commit_ocr_result(
         page_id=page_id,
         stage_id=_STAGE_ID,
     )
-    await _emit(stage_events, project_id, page_id, "stage-status", _STAGE_ID, "running")
+    await _emit(
+        stage_events, project_id, page_id, event_type="stage-status", stage_id=_STAGE_ID, status="running"
+    )
 
     if result.error is not None:
         duration_ms = int(time() * 1000 - started_at_ms)
@@ -161,7 +163,9 @@ async def _commit_ocr_result(
             stage_id=_STAGE_ID,
             error_message=err_msg,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", _STAGE_ID, "failed")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=_STAGE_ID, status="failed"
+        )
         log.warning("batch OCR page %s failed in %d ms: %s", page_id, duration_ms, result.error)
         return
 
@@ -190,7 +194,9 @@ async def _commit_ocr_result(
             stage_id=_STAGE_ID,
             error_message=err_msg,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", _STAGE_ID, "failed")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=_STAGE_ID, status="failed"
+        )
         log.warning("batch OCR dual-write failed for page %s: %s", page_id, exc)
         raise StageRunFailed(err_msg) from exc
 
@@ -203,7 +209,9 @@ async def _commit_ocr_result(
     )
 
     # SSE: clean event for the OCR stage.
-    await _emit(stage_events, project_id, page_id, "stage-status", _STAGE_ID, "clean")
+    await _emit(
+        stage_events, project_id, page_id, event_type="stage-status", stage_id=_STAGE_ID, status="clean"
+    )
 
     duration_ms = int(time() * 1000 - started_at_ms)
     log.debug("batch OCR page %s committed in %d ms", page_id, duration_ms)

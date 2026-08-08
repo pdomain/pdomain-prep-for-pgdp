@@ -232,7 +232,9 @@ def test_all_events_have_actor_id() -> None:
     agg = PrepProjectAggregate(project_id=project_id)
 
     agg.record_stage_run_started("grayscale", "0001", "job-1", actor_id="alice")
-    agg.record_stage_run_completed("grayscale", "0001", "clean", 100, "k/v", actor_id="alice")
+    agg.record_stage_run_completed(
+        "grayscale", "0001", status="clean", duration_ms=100, artifact_key="k/v", actor_id="alice"
+    )
     agg.record_stage_run_failed("ocr", "0001", "err", 50, actor_id="system")
     agg.record_stage_forced_stale("threshold", "0001", "crop", actor_id="system")
 

@@ -131,6 +131,7 @@ async def _seed_clean_parents(
     data_root: Path,
     project_id: str,
     page_id: str,
+    *,
     parent_stages: list[str],
     payload: bytes,
 ) -> None:
@@ -641,6 +642,7 @@ async def _seed_split_child(
     data_root: Path,
     project_id: str,
     parent_page_id: str,
+    *,
     child_idx0: int,
     split_at_stage: str,
     clean_stages: list[str],

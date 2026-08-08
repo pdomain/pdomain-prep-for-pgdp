@@ -35,6 +35,7 @@ class SearchResponse(BaseModel):
 )
 async def search_project_pages(
     project_id: str,
+    *,
     q: str = Query(default=""),
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),

@@ -477,6 +477,7 @@ async def get_project_attributes(
 async def patch_project_attributes(
     project_id: str,
     section: Literal["bib", "pgdp", "fmt", "comments"],
+    *,
     body: dict[str, Any],
     user: UserDep,
     db: DatabaseDep,

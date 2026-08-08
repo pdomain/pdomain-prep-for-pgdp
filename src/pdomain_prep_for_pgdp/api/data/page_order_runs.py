@@ -93,6 +93,7 @@ async def get_page_order_runs(
 )
 async def put_page_order_runs(
     project_id: str,
+    *,
     body: NumberingRunsArtifact,
     user: UserDep,
     db: DatabaseDep,

@@ -47,7 +47,11 @@ def install_error_handlers(app: FastAPI, *, debug: bool = False) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
-        log.exception("unhandled exception in %s %s", request.method, request.url.path)
+        # `exc_info=exc` rather than `log.exception(...)`: this is a FastAPI
+        # exception handler, not an `except` block, so `log.exception`'s implicit
+        # `sys.exc_info()` lookup depends on the caller's frame state. Passing the
+        # bound exception logs this traceback and nothing else. (ruff LOG004)
+        log.error("unhandled exception in %s %s", request.method, request.url.path, exc_info=exc)
         details = traceback.format_exc().splitlines()[-3:] if debug else None
         return JSONResponse(
             status_code=500,

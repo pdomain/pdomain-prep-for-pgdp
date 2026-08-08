@@ -37,6 +37,7 @@ async def db(tmp_path) -> SqliteDatabase:
 
 
 def _state(
+    *,
     project_id: str = "p1",
     page_id: str = "0000",
     stage_id: str = "threshold",

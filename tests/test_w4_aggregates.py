@@ -96,6 +96,7 @@ def _seed_page_stage(
     project_id: str,
     page_id: str,
     stage_id: str,
+    *,
     status: PageStageStatus,
     error_message: str | None = None,
 ) -> None:
@@ -166,7 +167,9 @@ class TestGetProjectStagePages:
         _seed_project(settings, "proj1", page_count=3)
 
         # Seed one page with failed status for 'ocr'
-        _seed_page_stage(settings, "proj1", "0001", "ocr", PageStageStatus.failed, "timeout")
+        _seed_page_stage(
+            settings, "proj1", "0001", "ocr", status=PageStageStatus.failed, error_message="timeout"
+        )
 
         app = build_app(settings)
         with TestClient(app) as client:

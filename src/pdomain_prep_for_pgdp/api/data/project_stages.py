@@ -346,6 +346,7 @@ async def get_project_stage(
 async def run_project_stage(
     project_id: str,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -497,6 +498,7 @@ async def run_project_stage(
 )
 async def run_project_ocr_batch(
     project_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -835,6 +837,7 @@ class _SubmitConfirmRequest(BaseModel):
 )
 async def confirm_submit_check(
     project_id: str,
+    *,
     body: _SubmitConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -935,6 +938,7 @@ async def confirm_submit_check(
 async def _confirm_stage_impl(
     project_id: str,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1108,6 +1112,7 @@ class _StageConfirmRequest(BaseModel):
 )
 async def confirm_text_zones(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1122,7 +1127,14 @@ async def confirm_text_zones(
 
     W4 Group 1 — bespoke confirm (seam-remediation plan).
     """
-    return await _confirm_stage_impl(project_id, "text_zones", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "text_zones",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 @router.post(
@@ -1137,6 +1149,7 @@ async def confirm_text_zones(
 )
 async def confirm_ocr(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1148,7 +1161,14 @@ async def confirm_ocr(
     Semantics: all low-confidence OCR tokens inspected and resolved.
     W4 Group 1.
     """
-    return await _confirm_stage_impl(project_id, "ocr", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "ocr",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 @router.post(
@@ -1163,6 +1183,7 @@ async def confirm_ocr(
 )
 async def confirm_text_review(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1174,7 +1195,14 @@ async def confirm_text_review(
     Semantics: all pages attested (reviewer signed off on each page's text).
     W4 Group 1.
     """
-    return await _confirm_stage_impl(project_id, "text_review", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "text_review",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 @router.post(
@@ -1189,6 +1217,7 @@ async def confirm_text_review(
 )
 async def confirm_wordcheck(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1200,7 +1229,14 @@ async def confirm_wordcheck(
     Semantics: all flagged words resolved (accepted, rejected, or deferred).
     W4 Group 1.
     """
-    return await _confirm_stage_impl(project_id, "wordcheck", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "wordcheck",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 @router.post(
@@ -1215,6 +1251,7 @@ async def confirm_wordcheck(
 )
 async def confirm_page_order(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1228,7 +1265,14 @@ async def confirm_page_order(
     run before confirming.
     W4 Group 1.
     """
-    return await _confirm_stage_impl(project_id, "page_order", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "page_order",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 @router.post(
@@ -1243,6 +1287,7 @@ async def confirm_page_order(
 )
 async def confirm_source(
     project_id: str,
+    *,
     body: _StageConfirmRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1254,7 +1299,14 @@ async def confirm_source(
     Semantics: source ingest reviewed (thumbnails and page attributes confirmed).
     W4 Group 1.
     """
-    return await _confirm_stage_impl(project_id, "source", user, db, settings, stage_events)
+    return await _confirm_stage_impl(
+        project_id,
+        "source",
+        user=user,
+        db=db,
+        settings=settings,
+        stage_events=stage_events,
+    )
 
 
 # ─── W4 Group 2 — N-run schema + naming scheme persist ───────────────────────
@@ -1293,6 +1345,7 @@ class _PageOrderNamingRequest(BaseModel):
 )
 async def put_page_order_naming(
     project_id: str,
+    *,
     body: _PageOrderNamingRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1439,6 +1492,7 @@ def _build_totals(rows: list[dict[str, object]]) -> dict[str, int]:
 async def get_project_stage_pages(
     project_id: str,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1501,6 +1555,7 @@ class _BatchRerunRequest(BaseModel):
 async def rerun_project_stage_pages(
     project_id: str,
     stage_id: str,
+    *,
     body: _BatchRerunRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1596,6 +1651,7 @@ _OCR_LOW_CONF_THRESHOLD: float = 0.5
 async def get_ocr_page_tokens(
     project_id: str,
     page_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1682,6 +1738,7 @@ async def get_ocr_page_tokens(
 )
 async def scan_hyphen_candidates(
     project_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1784,6 +1841,7 @@ async def scan_hyphen_candidates(
 async def get_stage_crop_pages(
     project_id: str,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1875,6 +1933,7 @@ class _WordcheckAcceptRequest(BaseModel):
 )
 async def wordcheck_accept_dict(
     project_id: str,
+    *,
     body: _WordcheckAcceptRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1912,6 +1971,7 @@ async def wordcheck_accept_dict(
 )
 async def wordcheck_accept_high(
     project_id: str,
+    *,
     body: _WordcheckAcceptRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1954,6 +2014,7 @@ class _ApproveLowRiskRequest(BaseModel):
 )
 async def text_review_approve_low_risk(
     project_id: str,
+    *,
     body: _ApproveLowRiskRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -2059,6 +2120,7 @@ class _ArchiveItemToggleRequest(BaseModel):
 async def toggle_archive_item(
     project_id: str,
     item_name: str,
+    *,
     body: _ArchiveItemToggleRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -2225,6 +2287,7 @@ class _RedetectLayoutRequest(BaseModel):
 async def redetect_text_zones_layout(
     project_id: str,
     idx0: int,
+    *,
     body: _RedetectLayoutRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -2320,6 +2383,7 @@ class _PersistLayoutRequest(BaseModel):
 async def persist_text_zones_layout(
     project_id: str,
     idx0: int,
+    *,
     body: _PersistLayoutRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -3033,6 +3097,7 @@ class _IllustrationRegionPatchRequest(BaseModel):
 async def persist_illustration_region(
     project_id: str,
     region_id: str,
+    *,
     body: _IllustrationRegionPatchRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -3106,6 +3171,7 @@ async def get_project_stage_settings(
 async def put_project_stage_settings(
     project_id: str,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,

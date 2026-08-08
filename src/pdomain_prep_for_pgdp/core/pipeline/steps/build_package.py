@@ -262,6 +262,7 @@ def build_package_v2_cpu(
     project_id: str,
     page_ids: list[str],
     data_root: Path,
+    *,
     book_name: str = "",
     page_prefixes: dict[str, str] | None = None,
     skip_ids: frozenset[str] | None = None,

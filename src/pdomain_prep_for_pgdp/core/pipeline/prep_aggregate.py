@@ -80,6 +80,7 @@ class PrepProjectAggregate(Aggregate):
         self,
         stage_id: str,
         page_id: str | None,
+        *,
         status: Literal["clean", "flagged"],
         duration_ms: int,
         artifact_key: str,

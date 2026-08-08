@@ -125,5 +125,30 @@ nothing reconciles them.
 
 ## Resolution
 
-*Open.* When fixed: set frontmatter and Agent Index `Status: retired`, add the
-resolving commit link here, and move the README pointer out of the open list.
+*Partially resolved — still open for defect 2.*
+
+Defects 1 and 3 are fixed. The project now resolves the same ruff the gate
+runs, and the findings are gone:
+
+- `pyproject.toml` dev group raised `ruff>=0.15.13` to `ruff>=0.16.2`, and
+  `uv.lock` re-resolved 0.15.21 to 0.16.2. Both sides now run 0.16.2.
+- All 69 `PLR0917` findings fixed by making the excess parameters keyword-only,
+  per next-step 2. Nothing suppresses `PLR0917`. 54 are FastAPI route handlers,
+  where the cut keeps the URL path parameters positional and moves the injected
+  dependencies, body, and query parameters behind `*`. `uv run ruff check`
+  reports `All checks passed!`.
+- The single `LOG004` finding fixed on its own merits: the unhandled-exception
+  handler in `api/middleware/error_handler.py` now passes `exc_info=exc`
+  explicitly instead of relying on `log.exception`'s implicit
+  `sys.exc_info()` lookup, which is not guaranteed inside a FastAPI exception
+  handler because that is not an `except` block.
+
+Ruff 0.16 also began formatting Python inside Markdown code fences, which
+rewrote two governed docs. Markdown is now excluded from ruff; recorded in
+[lint deviations](../process/lint-deviations.md).
+
+**Defect 2 is still open.** Nothing compares the pre-commit `rev:` against the
+resolved ruff version, so a future hook bump above the floor drifts silently
+again. Raising the `>=` floor to the adopted version (next-step 4) means a
+re-resolve cannot fall *behind* the hook, which narrows the failure mode but is
+not a check. Keep this report open until that check exists.

@@ -154,12 +154,15 @@ async def _emit(
     broker: StageEventBroker | None,
     project_id: str,
     page_id: str,
+    *,
     event_type: str,
     stage_id: str,
     status: str,
-    *,
     extra: dict[str, object] | None = None,
 ) -> None:
+    # `event_type`, `stage_id` and `status` are all bare `str` and were passed
+    # positionally three-in-a-row, where a transposition is silent. Keyword-only
+    # makes that a TypeError at the call site.
     if broker is None:
         return
     payload: dict[str, object] = {"type": event_type, "stage_id": stage_id, "status": status}
@@ -1056,8 +1059,12 @@ async def run_stage(
         page_id=page_id,
         stage_id=stage_id,
     )
-    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "running")
-    await _emit(stage_events, project_id, page_id, "stage-progress", stage_id, "running")
+    await _emit(
+        stage_events, project_id, page_id, event_type="stage-status", stage_id=stage_id, status="running"
+    )
+    await _emit(
+        stage_events, project_id, page_id, event_type="stage-progress", stage_id=stage_id, status="running"
+    )
 
     # W2.1: record StageRunStarted in PrepProjectAggregate (warn-and-continue).
     _started_at_ms = time() * 1000
@@ -1313,7 +1320,9 @@ async def run_stage(
             stage_id=stage_id,
             error_message=_err_msg_ni,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=stage_id, status="failed"
+        )
         # W2.1: StageRunFailed event (non-fatal if event recording fails).
         try:
             _duration_ni = int(time() * 1000 - _started_at_ms)
@@ -1362,7 +1371,9 @@ async def run_stage(
             stage_id=stage_id,
             error_message=_err_msg_aw,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=stage_id, status="failed"
+        )
         # W2.1: StageRunFailed event.
         try:
             _duration_aw = int(time() * 1000 - _started_at_ms)
@@ -1414,7 +1425,9 @@ async def run_stage(
             stage_id=stage_id,
             error_message=_err_msg_ex,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=stage_id, status="failed"
+        )
         # W2.1: StageRunFailed event.
         try:
             _duration_ex = int(time() * 1000 - _started_at_ms)
@@ -1507,7 +1520,9 @@ async def run_stage(
         stage_id=stage_id,
     )
     for desc_id in descendant_ids:
-        await _emit(stage_events, project_id, page_id, "stage-status", desc_id, "dirty")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=desc_id, status="dirty"
+        )
 
     # Step 8c: cross-page cascade — dirty split children's grayscale (v2 root)
     # when this stage is at or before each child's split_at_stage (issue #55).
@@ -1529,7 +1544,15 @@ async def run_stage(
         _clean_extra["last_run_at"] = committed.last_run_at
     with contextlib.suppress(ValueError):
         _clean_extra["idx0"] = int(page_id)
-    await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "clean", extra=_clean_extra)
+    await _emit(
+        stage_events,
+        project_id,
+        page_id,
+        event_type="stage-status",
+        stage_id=stage_id,
+        status="clean",
+        extra=_clean_extra,
+    )
 
     return committed
 
@@ -1662,7 +1685,9 @@ async def run_image_prep_chain_with_events(
             page_id=page_id,
             stage_id=stage_id,
         )
-        await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "running")
+        await _emit(
+            stage_events, project_id, page_id, event_type="stage-status", stage_id=stage_id, status="running"
+        )
 
         try:
             stage_gpu_capable = stage_id in GPU_CAPABLE_STAGES
@@ -1725,7 +1750,14 @@ async def run_image_prep_chain_with_events(
                 stage_id=stage_id,
                 error_message=err_msg,
             )
-            await _emit(stage_events, project_id, page_id, "stage-status", stage_id, "failed")
+            await _emit(
+                stage_events,
+                project_id,
+                page_id,
+                event_type="stage-status",
+                stage_id=stage_id,
+                status="failed",
+            )
             raise StageRunFailed(err_msg) from exc
 
         # Cascade dirty for this stage
@@ -1740,7 +1772,13 @@ async def run_image_prep_chain_with_events(
         with contextlib.suppress(ValueError):
             _chain_clean_extra["idx0"] = int(page_id)
         await _emit(
-            stage_events, project_id, page_id, "stage-status", stage_id, "clean", extra=_chain_clean_extra
+            stage_events,
+            project_id,
+            page_id,
+            event_type="stage-status",
+            stage_id=stage_id,
+            status="clean",
+            extra=_chain_clean_extra,
         )
         result[stage_id] = "clean"
 

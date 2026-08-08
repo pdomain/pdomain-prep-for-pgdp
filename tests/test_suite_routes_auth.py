@@ -120,6 +120,7 @@ _MUTATING_CASES = [
 @pytest.mark.parametrize(("method", "path", "json_body", "params", "authed_status"), _MUTATING_CASES)
 def test_mutating_suite_route_requires_auth(
     tmp_path: Path,
+    *,
     method: str,
     path: str,
     json_body: dict[str, object] | None,

@@ -3,7 +3,7 @@
 import pytest
 
 
-def _make_pdomain_word(text="hello", left=10, top=20, right=110, bottom=70, confidence=0.95):
+def _make_pdomain_word(*, text="hello", left=10, top=20, right=110, bottom=70, confidence=0.95):
     from pdomain_book_tools.geometry.bounding_box import BoundingBox
     from pdomain_book_tools.geometry.point import Point
     from pdomain_book_tools.ocr.word import Word

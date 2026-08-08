@@ -80,6 +80,7 @@ def _warped_text_lines(h: int = 200, w: int = 160) -> np.ndarray:
 
 
 def _warped_page_for_dewarp_test(
+    *,
     h: int = 1000,
     w: int = 760,
     n_lines: int = 20,

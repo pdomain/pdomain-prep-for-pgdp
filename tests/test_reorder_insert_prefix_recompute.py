@@ -190,6 +190,7 @@ def _save_single_run(
 def _save_front_body_runs(
     settings: Settings,
     project_id: str,
+    *,
     front_first: int,
     front_last: int,
     body_first: int,
@@ -352,7 +353,7 @@ def test_reorder_with_two_runs_updates_section_letters(tmp_path: Path) -> None:
             {"idx0": 5, "leaf_role": LeafRole.text, "run_id": "body"},
         ],
     )
-    _save_front_body_runs(settings, project_id, 0, 1, 2, 5)
+    _save_front_body_runs(settings, project_id, front_first=0, front_last=1, body_first=2, body_last=5)
 
     app = build_app(settings)
     with TestClient(app) as client:
@@ -509,7 +510,7 @@ def test_insert_at_start_with_two_runs_shifts_spans(tmp_path: Path) -> None:
             {"idx0": 2, "leaf_role": LeafRole.text, "run_id": "body"},
         ],
     )
-    _save_front_body_runs(settings, project_id, 0, 0, 1, 2)
+    _save_front_body_runs(settings, project_id, front_first=0, front_last=0, body_first=1, body_last=2)
 
     app = build_app(settings)
     with TestClient(app) as client:
@@ -670,7 +671,7 @@ def test_cross_run_reorder_prefix_follows_page_membership(tmp_path: Path) -> Non
             {"idx0": 3, "leaf_role": LeafRole.text, "run_id": "body"},
         ],
     )
-    _save_front_body_runs(settings, project_id, 0, 1, 2, 3)
+    _save_front_body_runs(settings, project_id, front_first=0, front_last=1, body_first=2, body_last=3)
 
     app = build_app(settings)
     with TestClient(app) as client:

@@ -125,6 +125,7 @@ def make_gate_confirmation_event(
 
 def submit_check_v2_cpu(
     project_id: str,
+    *,
     zip_sha256: str,
     zip_size_bytes: int,
     page_count: int,

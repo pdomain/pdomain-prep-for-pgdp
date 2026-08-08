@@ -252,6 +252,7 @@ class ReorderPagesResponse(BaseModel):
 )
 async def list_pages(
     project_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     page_service: PageServiceDep,
@@ -369,6 +370,7 @@ async def get_page(
 )
 async def reorder_pages(
     project_id: str,
+    *,
     body: ReorderPagesRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -520,6 +522,7 @@ async def reorder_pages(
 async def update_page(
     project_id: str,
     idx0: int,
+    *,
     body: UpdatePageRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -782,6 +785,7 @@ async def get_page_ingest_thumbnail(
 )
 async def insert_page(
     project_id: str,
+    *,
     body: InsertPageRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -977,6 +981,7 @@ async def insert_page(
 async def update_page_text(
     project_id: str,
     idx0: int,
+    *,
     body: UpdatePageTextRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1016,6 +1021,7 @@ async def get_page_text(
     project_id: str,
     idx0: int,
     suffix: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
@@ -1132,6 +1138,7 @@ def _rebuild_text_from_words(words: list[OcrWord]) -> str:
 async def delete_page_words(
     project_id: str,
     idx0: int,
+    *,
     body: DeleteWordsRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1222,6 +1229,7 @@ async def delete_page_words(
 async def restore_page_words(
     project_id: str,
     idx0: int,
+    *,
     body: RestoreWordsRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1379,6 +1387,7 @@ def _resolve_split_pixel_bboxes(
 async def split_page(
     project_id: str,
     idx0: int,
+    *,
     body: SplitPageRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -1611,6 +1620,7 @@ def _read_wordcheck_flags_bytes(data_root: Path, project_id: str, page_id: str) 
 async def list_page_stages(
     project_id: str,
     idx0: int,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1684,6 +1694,7 @@ async def run_page_stage(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     storage: StorageDep,
@@ -1843,6 +1854,7 @@ async def get_page_stage_artifact(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -1947,6 +1959,7 @@ async def get_page_stage_thumbnail(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2004,6 +2017,7 @@ async def get_page_stage_thumbnail(
 async def stream_page_stage_events(
     project_id: str,
     idx0: int,
+    *,
     user: UserDep,
     db: DatabaseDep,
     stage_events: StageEventsDep,
@@ -2114,6 +2128,7 @@ async def get_page_stage_settings(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2160,6 +2175,7 @@ async def put_page_stage_settings(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2246,6 +2262,7 @@ async def save_page_stage_settings_as_default(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2305,6 +2322,7 @@ async def revert_page_stage_settings(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2362,6 +2380,7 @@ async def reset_page_stage_settings(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2477,6 +2496,7 @@ def _read_artifact_bytes(
 async def get_wordcheck_flags(
     project_id: str,
     idx0: int,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2527,6 +2547,7 @@ async def get_wordcheck_flags(
 async def post_wordcheck_decisions(
     project_id: str,
     idx0: int,
+    *,
     body: WordcheckDecisionsRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -2605,6 +2626,7 @@ async def post_wordcheck_decisions(
 async def attest_text_review(
     project_id: str,
     idx0: int,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2717,6 +2739,7 @@ async def post_wordlist_promotion(
 async def get_hyphen_join_candidates(
     project_id: str,
     idx0: int,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2769,6 +2792,7 @@ async def get_hyphen_join_candidates(
 async def post_hyphen_join_decisions(
     project_id: str,
     idx0: int,
+    *,
     body: HyphenJoinDecisionsRequest,
     user: UserDep,
     db: DatabaseDep,
@@ -2841,6 +2865,7 @@ async def get_page_stage_settings_page_tier(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2883,6 +2908,7 @@ async def put_page_stage_settings_page_tier(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2943,6 +2969,7 @@ async def delete_page_stage_settings_page_tier(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
@@ -2998,6 +3025,7 @@ async def get_page_stage_settings_resolved(
     project_id: str,
     idx0: int,
     stage_id: str,
+    *,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,

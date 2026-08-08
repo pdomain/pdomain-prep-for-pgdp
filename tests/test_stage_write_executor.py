@@ -66,6 +66,7 @@ async def _seed_clean_in_db_only(
     data_root: Path,
     project_id: str,
     page_id: str,
+    *,
     stage_id: str,
     payload: bytes,
 ) -> None:
@@ -124,7 +125,9 @@ async def test_stage_advances_immediately_on_in_memory_artifact(tmp_path: Path, 
     parent_bytes = bytes(_buf.tobytes())
 
     # Parent (grayscale) is 'clean' in DB (optimistic) but file not yet on disk.
-    await _seed_clean_in_db_only(db, tmp_path, project_id, page_id, "grayscale", parent_bytes)
+    await _seed_clean_in_db_only(
+        db, tmp_path, project_id, page_id, stage_id="grayscale", payload=parent_bytes
+    )
 
     # Put parent artifact in executor cache (simulates prior run_stage with executor).
     executor = StageWriteExecutor(pool_size=1, queue_cap=4)

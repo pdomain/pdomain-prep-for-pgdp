@@ -272,6 +272,27 @@ until the Pydantic models are migrated. See inline comment in `pyproject.toml`.
 
 ---
 
+### 19b. Markdown code fences — ruff formatter
+
+**Config:** `pyproject.toml` `[tool.ruff] extend-exclude = ["*.md"]`
+
+**Justification.** Ruff 0.16 began formatting Python inside Markdown code
+fences. Those fences are illustrative: they are written to be read, and some
+are deliberately elided (`async for event in ...: ...` on one line). Applying
+the formatter rewrote two governed docs, one of them by 223 lines, for no
+reader benefit. Markdown in this repo is already owned by markdownlint and
+docgraph. Matches the same call in `pdomain-book-tools` commit 790ea84.
+
+**Note on `PLR0917`.** Ruff 0.16 also promoted
+`PLR0917` (too-many-positional-arguments) from preview to stable, which
+surfaced 69 findings. Those are **not** deviated: every one was fixed by
+making the excess parameters keyword-only. Nothing in this repo suppresses
+`PLR0917`. Sibling rule `PLR0913` (too-many-arguments) remains ignored — see
+its own entry — because it counts keyword-only parameters too, so FastAPI
+handlers cannot satisfy it at all.
+
+---
+
 ## Python — basedpyright
 
 ### 20. `reportMissingImports` — basedpyright

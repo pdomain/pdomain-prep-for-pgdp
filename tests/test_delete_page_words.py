@@ -121,7 +121,7 @@ def _read_storage_bytes(settings: Settings, key: str) -> bytes:
     return asyncio.run(go())
 
 
-def _word(id_: str, text: str, left: int, top: int, width: int = 30, height: int = 20) -> OcrWord:
+def _word(id_: str, text: str, *, left: int, top: int, width: int = 30, height: int = 20) -> OcrWord:
     return OcrWord(
         id=id_,
         text=text,
