@@ -23,7 +23,7 @@ repos:
     -   id: gitleaks
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.15.22
+    rev: v0.16.2
     hooks:
     # Run the linter for imports
     -   id: ruff-check
@@ -34,7 +34,7 @@ repos:
     # Run the formatter.
     -   id: ruff-format
 -   repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.23.1
+    rev: v0.23.2
     hooks:
     -   id: markdownlint-cli2
     -   id: markdownlint-cli2
