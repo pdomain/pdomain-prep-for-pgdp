@@ -111,6 +111,8 @@ Parallel bug track (not Wave 0 exit):
 
 - [Lint gate runs a different ruff than the project
   does](2026-08-08-ruff-version-skew.md)
+- [dep-refresh cannot auto-land: dated branches, no
+  delete-on-merge](2026-08-08-dep-refresh-cannot-auto-land.md)
 
 Resolved reports are deleted, so this index tracks open work only. Past
 resolutions live in the `docs/context/decisions.md` tombstones and in git
