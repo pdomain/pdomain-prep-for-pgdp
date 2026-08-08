@@ -42,7 +42,10 @@ defects.
   - `Kind: issue`
   - `Level:` `I1` repo-wide, `I2` narrow/local
   - Open issues: `Status: active` + `Resolution: Open`
-  - Closed: `Status: retired` via `doc-retirer`, `Resolution: Resolved|Won't fix|Duplicate`
+  - Closed (`Resolution: Resolved|Won't fix|Duplicate`): route through
+    `doc-retirer`, which deletes the report after promoting anything durable
+    into the doc that owns it and writing a tombstone to
+    `docs/context/decisions.md`. Git history keeps the report.
 - **Required sections** (docgraph): Summary, Impact, Environment / versions,
   Evidence, Root-cause hypotheses, Defects to fix, Next steps, Resolution.
 - **Link it:** list under **Open issues** below and from the parent plan.
@@ -104,6 +107,6 @@ Parallel bug track (not Wave 0 exit):
 - [2026-07-14 review fixes residual (tasks 1–7,9 shipped; docs
   leftover)](2026-07-21-parallel-2026-07-14-review-fixes.md)
 
-## Resolved issues
-
-*None yet.*
+Resolved reports are deleted, so this index tracks open work only. Past
+resolutions live in the `docs/context/decisions.md` tombstones and in git
+history.
