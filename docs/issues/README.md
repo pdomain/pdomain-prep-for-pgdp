@@ -107,6 +107,11 @@ Parallel bug track (not Wave 0 exit):
 - [2026-07-14 review fixes residual (tasks 1–7,9 shipped; docs
   leftover)](2026-07-21-parallel-2026-07-14-review-fixes.md)
 
+### Tooling
+
+- [Lint gate runs a different ruff than the project
+  does](2026-08-08-ruff-version-skew.md)
+
 Resolved reports are deleted, so this index tracks open work only. Past
 resolutions live in the `docs/context/decisions.md` tombstones and in git
 history.
