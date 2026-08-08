@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { buildRealArchiveToolServices } from "@/services/tools/archiveTool";
+import { subscribeProject } from "@/services/sse";
 
 // ---------------------------------------------------------------------------
 // Initial items (UI state seed — not from API at I1)
@@ -173,6 +174,31 @@ export function ArchiveTool({
 
   const [tab, setTab] = useState("overview");
 
+  // Rehydrate the terminal state from the persisted stage status.
+  //
+  // `archive` is terminal and server-side `clean` survives a reload, but the
+  // machine always starts at `reviewing`. Without this the surface shows the
+  // pre-archive keep/drop list forever on any fresh load of an already-archived
+  // project, and the `gate-archived` sentinel never appears.
+  //
+  // The project channel carries both halves: a `project-snapshot` frame on
+  // connect (the reload case) and later `project-stage-status` frames (a run
+  // completing in another tab). Handle both — same pattern as ZipTool's SSE
+  // wiring, which listens for the incremental frames.
+  useEffect(() => {
+    const unsubscribe = subscribeProject(projectId, (event) => {
+      if (event.type === "project-snapshot") {
+        const row = event.project_stages.find((s) => s.stage_id === "archive");
+        if (row?.status === "clean") send({ type: "ARCHIVE_RESTORED" });
+        return;
+      }
+      if (event.type !== "project-stage-status") return;
+      if (event.stage_id !== "archive") return;
+      if (event.status === "clean") send({ type: "ARCHIVE_RESTORED" });
+    });
+    return unsubscribe;
+  }, [projectId, send]);
+
   const ctx = snapshot.context;
   const isReviewing = snapshot.matches("reviewing");
   const isArchiving = snapshot.matches("archiving");
@@ -198,8 +224,12 @@ export function ArchiveTool({
               gap: 14,
             }}
           >
-            {/* Gate card — shown after archiving */}
-            {isArchived && ctx.result && (
+            {/* Gate card — shown whenever the stage is archived.
+                Not gated on ctx.result: a state restored from the persisted
+                stage status has no kept/dropped byte stats (those are only
+                known from a live run), but the gate itself still holds. The
+                stats block below stays gated on result. */}
+            {isArchived && (
               <div
                 data-testid="gate-archived"
                 style={{

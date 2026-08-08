@@ -230,20 +230,35 @@ export function ZipTool({
   // Wire SSE: translate project-stage-status { stage_id: "zip", status: "clean" }
   // → fetch manifest → ZIP_DONE { archive, tree }.
   // On "failed" → ZIP_FAILED.
+  //
+  // The on-connect `project-snapshot` frame is handled the same way. Without
+  // it, a fresh page load of a project whose zip is already clean never sees a
+  // status transition (the incremental frames only fire on change), so the
+  // surface would sit in `compressing` until some unrelated event arrived.
+  // Same gap as ArchiveTool's — see archiveToolMachine's ARCHIVE_RESTORED.
   useEffect(() => {
+    const onZipClean = () => {
+      void fetchZipManifest(projectId).then((result) => {
+        if (result !== null) {
+          send({
+            type: "ZIP_DONE",
+            archive: result.archive,
+            tree: result.tree,
+          });
+        }
+      });
+    };
+
     const unsubscribe = subscribeProject(projectId, (event) => {
+      if (event.type === "project-snapshot") {
+        const row = event.project_stages.find((s) => s.stage_id === "zip");
+        if (row?.status === "clean") onZipClean();
+        return;
+      }
       if (event.type !== "project-stage-status") return;
       if (event.stage_id !== "zip") return;
       if (event.status === "clean") {
-        void fetchZipManifest(projectId).then((result) => {
-          if (result !== null) {
-            send({
-              type: "ZIP_DONE",
-              archive: result.archive,
-              tree: result.tree,
-            });
-          }
-        });
+        onZipClean();
       } else if (event.status === "failed") {
         send({
           type: "ZIP_FAILED",

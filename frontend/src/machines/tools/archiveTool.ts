@@ -111,7 +111,21 @@ export type ArchiveToolEvent =
   | { type: "TOGGLE_KEEP"; name: string }
   | { type: "ARCHIVE_NOW" }
   | { type: "RE_ARCHIVE" }
-  | { type: "UPSTREAM_CHANGED" };
+  | { type: "UPSTREAM_CHANGED" }
+  /**
+   * The stage is already `clean` server-side — jump straight to the terminal
+   * state without re-running the archive.
+   *
+   * `archive` is terminal and its status is persisted, so a fresh page load of
+   * an already-archived project must show the gate rather than the pre-archive
+   * keep/drop list.  The surface sends this from the project SSE channel (the
+   * on-connect `project-snapshot` frame, or a later `project-stage-status`).
+   *
+   * `result` is optional: the kept/dropped byte stats are only known from a
+   * live run in this session.  A restored `archived` state renders the gate
+   * without them.
+   */
+  | { type: "ARCHIVE_RESTORED"; result?: ArchiveResult };
 
 // ---------------------------------------------------------------------------
 // Default item manifest
@@ -200,6 +214,15 @@ export const archiveToolMachine = setup({
         result: params.output,
       }),
     ),
+    /** Restore from persisted status — keep any result already in context. */
+    assignRestoredResult: assign(
+      (
+        { context },
+        params: { result: ArchiveResult | undefined },
+      ): Partial<ArchiveToolContext> => ({
+        result: params.result ?? context.result,
+      }),
+    ),
     assignError: assign(
       (_args, params: { error: unknown }): Partial<ArchiveToolContext> => ({
         error:
@@ -227,6 +250,18 @@ export const archiveToolMachine = setup({
       on: {
         TOGGLE_KEEP: { actions: ["toggleItem", "persistItem"] },
         ARCHIVE_NOW: { target: "archiving" },
+        ARCHIVE_RESTORED: {
+          target: "archived",
+          actions: [
+            {
+              type: "assignRestoredResult",
+              params: ({ event }: { event: ArchiveToolEvent }) => ({
+                result:
+                  event.type === "ARCHIVE_RESTORED" ? event.result : undefined,
+              }),
+            },
+          ],
+        },
       },
     },
 

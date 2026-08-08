@@ -3,20 +3,74 @@
  *
  * Covers:
  * - Initial compressing state (starting banner)
+ * - Rehydration from the persisted stage status (connect snapshot)
+ * - Built state after ZIP_DONE, driven through the mocked SSE seam
  * - Settings tab: zip-settings panel, deterministic display, format display
  *
- * At I1: ZIP_PROGRESS and ZIP_DONE events arrive via SSE (real backend push),
- * not via the mock setTimeout seam that was removed. Tests requiring those
- * transitions are deferred to integration / e2e coverage.
+ * ZIP_PROGRESS / ZIP_DONE arrive via SSE (real backend push). Tests drive that
+ * seam by mocking `@/services/sse` and capturing the project-channel callback,
+ * so the transitions previously deferred to e2e are covered here.
  *
  * @see src/machines/tools/zipTool.ts
  * @see src/pages/pipeline/tools/ZipTool.tsx
  */
 
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import type { ProjectChannelEvent, ProjectStageState } from "@/types/pipeline";
+
+// ---------------------------------------------------------------------------
+// Mock the SSE seam — capture the project-channel callback so tests can push
+// frames synchronously (pattern: machines/lib/pageToolSseBridge.test.ts).
+// ---------------------------------------------------------------------------
+
+let _projectCallback: ((event: ProjectChannelEvent) => void) | null = null;
+
+vi.mock("@/services/sse", () => ({
+  subscribeProject: (
+    _projectId: string,
+    cb: (event: ProjectChannelEvent) => void,
+  ) => {
+    _projectCallback = cb;
+    return () => {
+      _projectCallback = null;
+    };
+  },
+  subscribePageChannel: () => () => {},
+  subscribeProjectPageStageChannel: () => () => {},
+}));
+
+// ---------------------------------------------------------------------------
+// Mock the zip services — `requestRebuild` is the machine's `compressing`
+// entry action (a real POST), and `fetchZipManifest` is what the SSE handler
+// calls before sending ZIP_DONE.
+// ---------------------------------------------------------------------------
+
+const MOCK_ARCHIVE = {
+  name: "book.zip",
+  entries: 1229,
+  bytes: 1_380_000_000,
+  ratio: 0.62,
+  sha256: "a3f1c09e77b4d2e5",
+};
+
+const MOCK_TREE = [{ name: "book.txt", kind: "file", bytes: 1024 }];
+
+const requestRebuildSpy = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("@/services/tools/zipTool", () => ({
+  buildRealZipToolServices: () => ({
+    requestRebuild: (projectId: string, settings: unknown) =>
+      requestRebuildSpy(projectId, settings) as Promise<void>,
+    downloadArchive: () => Promise.resolve("/download"),
+  }),
+  fetchZipManifest: () =>
+    Promise.resolve({ archive: MOCK_ARCHIVE, tree: MOCK_TREE }),
+}));
+
+// Import the component AFTER the mocks are set up.
 import { ZipTool } from "./ZipTool";
 
 // ---------------------------------------------------------------------------
@@ -24,6 +78,41 @@ import { ZipTool } from "./ZipTool";
 // ---------------------------------------------------------------------------
 
 const fakeRunnerRef = {} as never;
+
+beforeEach(() => {
+  requestRebuildSpy.mockClear();
+});
+
+/** Minimal valid ProjectStageState for the zip row. */
+function zipStageRow(status: ProjectStageState["status"]): ProjectStageState {
+  return {
+    project_id: "demo",
+    stage_id: "zip",
+    status,
+    stage_version: 1,
+    artifact_key: null,
+    config_hash: null,
+    input_hash: null,
+    last_run_at: null,
+    duration_ms: null,
+    error_message: null,
+    job_id: null,
+  };
+}
+
+/** Push the on-connect snapshot frame reporting zip's persisted status. */
+async function emitSnapshot(status: ProjectStageState["status"]) {
+  act(() => {
+    _projectCallback?.({
+      type: "project-snapshot",
+      project_stages: [zipStageRow(status)],
+    });
+  });
+  // The handler fetches the manifest before sending ZIP_DONE — let it settle.
+  await waitFor(() => {
+    expect(_projectCallback).not.toBeNull();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Render helper — MemoryRouter required since ZipTool uses useParams
@@ -56,45 +145,117 @@ describe("ZipTool — initial state (compressing)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Built state (after ZIP_DONE) — requires SSE ZIP_DONE event
+// Rehydration from the persisted stage status
+//
+// The zip stage's `clean` status is persisted server-side. On a fresh page
+// load the incremental `project-stage-status` frames never fire (they only
+// mark transitions) — the persisted status arrives in the on-connect
+// `project-snapshot` frame. Ignoring that frame left the surface stuck in
+// `compressing` after any reload of an already-zipped project.
+//
+// Sibling gap, same root cause: ArchiveTool's ARCHIVE_RESTORED.
 // ---------------------------------------------------------------------------
-//
-// DRIFT (I1): gate-built, sha256-stat, zip-tree, download-zip-btn all require
-// a ZIP_DONE event delivered via the SSE actor. At I1 the SSE actor is not
-// yet wired in unit tests. These tests are deferred to integration / e2e.
-//
-// To re-enable: inject a mock SSE actor that fires ZIP_DONE after mount.
 
-describe.skip("ZipTool — built state (requires SSE ZIP_DONE)", () => {
+describe("ZipTool — rehydration from persisted status", () => {
+  it("reaches the built state when the connect snapshot reports zip clean", async () => {
+    renderZip();
+    expect(screen.getByTestId("compressing-starting")).toBeInTheDocument();
+
+    await emitSnapshot("clean");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("compressing-starting"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stays compressing when the snapshot reports zip not clean", async () => {
+    renderZip();
+
+    await emitSnapshot("dirty");
+
+    expect(screen.queryByTestId("gate-built")).not.toBeInTheDocument();
+    expect(screen.getByTestId("compressing-starting")).toBeInTheDocument();
+  });
+
+  it("ignores a clean snapshot row for a different stage", async () => {
+    renderZip();
+
+    act(() => {
+      _projectCallback?.({
+        type: "project-snapshot",
+        project_stages: [{ ...zipStageRow("clean"), stage_id: "archive" }],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("compressing-starting")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-built")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Built state (after ZIP_DONE)
+//
+// Previously skipped: "gate-built, sha256-stat, zip-tree, download-zip-btn all
+// require a ZIP_DONE event delivered via the SSE actor. At I1 the SSE actor is
+// not yet wired in unit tests." The mocked `@/services/sse` seam above supplies
+// exactly that, so these now run here rather than only in e2e.
+// ---------------------------------------------------------------------------
+
+describe("ZipTool — built state (after ZIP_DONE)", () => {
   it("renders gate-built after ZIP_DONE", async () => {
     renderZip();
-    expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
   });
 
   it("renders sha256-stat with archive sha256 value", async () => {
     renderZip();
-    expect(screen.getByTestId("sha256-stat")).toBeInTheDocument();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("sha256-stat")).toBeInTheDocument();
+    });
     expect(screen.getByTestId("sha256-stat")).toHaveTextContent("a3f1");
   });
 
   it("renders zip-tree with archive contents", async () => {
     renderZip();
-    expect(screen.getByTestId("zip-tree")).toBeInTheDocument();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("zip-tree")).toBeInTheDocument();
+    });
   });
 
   it("renders download-zip-btn after built", async () => {
     renderZip();
-    expect(screen.getByTestId("download-zip-btn")).toBeInTheDocument();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("download-zip-btn")).toBeInTheDocument();
+    });
   });
 
   it("compressing-banner is gone after built", async () => {
     renderZip();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
     expect(screen.queryByTestId("compressing-banner")).not.toBeInTheDocument();
   });
 
   it("zip-rebuild-btn visible in settings after built", async () => {
     const user = userEvent.setup();
     renderZip();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
     await user.click(screen.getByRole("tab", { name: "Step Settings" }));
     expect(screen.getByTestId("zip-rebuild-btn")).toBeInTheDocument();
   });
