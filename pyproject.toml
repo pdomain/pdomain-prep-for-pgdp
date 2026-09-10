@@ -32,8 +32,8 @@ dependencies = [
 
 [project.optional-dependencies]
 cuda = [
-    "cupy-cuda12x>=13.3",
-    "nvidia-nvimgcodec-cu12>=0.3",
+    "cupy-cuda13x>=13.3",
+    "nvidia-nvimgcodec-cu13>=0.3",
 ]
 s3 = [
     "boto3>=1.35",
