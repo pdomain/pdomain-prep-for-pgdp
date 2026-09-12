@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -20,6 +21,13 @@ from pydantic import ValidationError
 from pdomain_prep_for_pgdp.core.models import NumberingRunsArtifact
 
 log = logging.getLogger(__name__)
+
+
+def _current_umask() -> int:
+    """Read the process umask without leaving it changed."""
+    value = os.umask(0)
+    _ = os.umask(value)
+    return value
 
 
 def _runs_path(data_root: Path, project_id: str) -> Path:
@@ -58,4 +66,8 @@ def save_runs(data_root: Path, project_id: str, artifact: NumberingRunsArtifact)
     ) as f:
         f.write(artifact.model_dump_json(indent=2))
         tmp_path = Path(f.name)
+    # NamedTemporaryFile creates at 0600 and ignores the umask by design, and
+    # a rename preserves that mode, so without this chmod the published file is
+    # unreadable to any other uid — the host's restic backup included.
+    tmp_path.chmod(0o666 & ~_current_umask())
     tmp_path.replace(path)
