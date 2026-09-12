@@ -13,8 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 from pydantic import ValidationError
 
@@ -23,21 +27,25 @@ from pdomain_prep_for_pgdp.core.models import NumberingRunsArtifact
 log = logging.getLogger(__name__)
 
 
-def _shared_file_mode() -> int:
-    """The mode a plain ``open()`` would produce here: 0666 minus the umask.
+def _open_staged(path: Path) -> tuple[int, Path]:
+    """Create a staging file beside *path*, open for writing.
 
-    ``os.umask`` has no read-only form, so reading the umask means setting it
-    to zero and putting it back, and that is process-global. Calling this per
-    write would expose a zero umask to every other thread for those two
-    syscalls. Call it once at import instead, while the module is still
-    single-threaded, and reuse the result.
+    Not ``tempfile.mkstemp``: that hardcodes 0600 and ignores the umask, which
+    is right for a private scratch file and wrong for one about to be
+    published, because a rename preserves the mode. Passing the mode to
+    ``os.open`` lets the kernel apply the umask exactly as for a plain
+    ``open()``, so there is no chmod to forget and no umask to read. 0666, not
+    0777: nothing published this way is a program.
+
+    ``O_EXCL`` keeps ``mkstemp``'s guarantee that creation fails rather than
+    opening an existing file or following a symlink into one.
     """
-    value = os.umask(0)
-    _ = os.umask(value)
-    return 0o666 & ~value
-
-
-_FILE_MODE = _shared_file_mode()
+    while True:
+        staged = path.parent / f".{path.name}.{uuid4().hex}.tmp"
+        try:
+            return os.open(staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666), staged
+        except FileExistsError:  # pragma: no cover - needs a uuid4 collision
+            continue
 
 
 def _runs_path(data_root: Path, project_id: str) -> Path:
@@ -66,18 +74,12 @@ def save_runs(data_root: Path, project_id: str, artifact: NumberingRunsArtifact)
     """Atomically persist the runs artifact to disk."""
     path = _runs_path(data_root, project_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic write: write to a temp file in the same directory then rename.
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        delete=False,
-        suffix=".tmp",
-    ) as f:
-        f.write(artifact.model_dump_json(indent=2))
-        tmp_path = Path(f.name)
-    # NamedTemporaryFile creates at 0600 and ignores the umask by design, and
-    # a rename preserves that mode, so without this chmod the published file is
-    # unreadable to any other uid — the host's restic backup included.
-    tmp_path.chmod(_FILE_MODE)
-    tmp_path.replace(path)
+    # Atomic write: stage a sibling file, then rename it over the target.
+    fd, staged = _open_staged(path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            _ = f.write(artifact.model_dump_json(indent=2))
+        staged.replace(path)
+    except Exception:
+        staged.unlink(missing_ok=True)
+        raise
