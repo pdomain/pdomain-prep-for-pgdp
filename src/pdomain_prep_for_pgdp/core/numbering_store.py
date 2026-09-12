@@ -23,11 +23,21 @@ from pdomain_prep_for_pgdp.core.models import NumberingRunsArtifact
 log = logging.getLogger(__name__)
 
 
-def _current_umask() -> int:
-    """Read the process umask without leaving it changed."""
+def _shared_file_mode() -> int:
+    """The mode a plain ``open()`` would produce here: 0666 minus the umask.
+
+    ``os.umask`` has no read-only form, so reading the umask means setting it
+    to zero and putting it back, and that is process-global. Calling this per
+    write would expose a zero umask to every other thread for those two
+    syscalls. Call it once at import instead, while the module is still
+    single-threaded, and reuse the result.
+    """
     value = os.umask(0)
     _ = os.umask(value)
-    return value
+    return 0o666 & ~value
+
+
+_FILE_MODE = _shared_file_mode()
 
 
 def _runs_path(data_root: Path, project_id: str) -> Path:
@@ -69,5 +79,5 @@ def save_runs(data_root: Path, project_id: str, artifact: NumberingRunsArtifact)
     # NamedTemporaryFile creates at 0600 and ignores the umask by design, and
     # a rename preserves that mode, so without this chmod the published file is
     # unreadable to any other uid — the host's restic backup included.
-    tmp_path.chmod(0o666 & ~_current_umask())
+    tmp_path.chmod(_FILE_MODE)
     tmp_path.replace(path)
