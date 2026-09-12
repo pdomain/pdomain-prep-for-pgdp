@@ -9,7 +9,7 @@ Exit code:
 Detection precedence (per ``docs/architecture/dev-local-upgrade-flow.md``):
 
 1. ``uv pip show pdomain-book-tools`` reports an ``Editable project location:`` line.
-2. Marker file at ``.venv/.dev-local`` exists.
+2. Marker file at ``.dev-local`` in the project environment exists.
 3. Env var ``PDOMAIN_DEV_LOCAL`` is set to a truthy value (``1``/``true``/``yes``/``on``).
 
 The script is deliberately tolerant: failures from ``uv`` (missing binary,
@@ -47,9 +47,19 @@ def _uv_reports_editable() -> bool:
     return any(line.lower().startswith("editable project location:") for line in result.stdout.splitlines())
 
 
+def _project_venv() -> Path:
+    """The environment uv installs into.
+
+    uv writes to ``UV_PROJECT_ENVIRONMENT`` when that is set and to ``.venv``
+    otherwise, so follow the same rule.
+    """
+    return Path(os.environ.get("UV_PROJECT_ENVIRONMENT") or ".venv")
+
+
 def _marker_file_present() -> bool:
     # Check both legacy marker (.dev-local) and canonical marker (.pdomain-local-mode, spec #362)
-    return Path(".venv", ".dev-local").is_file() or Path(".venv", ".pdomain-local-mode").is_file()
+    venv = _project_venv()
+    return (venv / ".dev-local").is_file() or (venv / ".pdomain-local-mode").is_file()
 
 
 def _env_override() -> bool:

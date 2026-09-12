@@ -1,6 +1,12 @@
 AI ?=
 LOG := .ci-ai.log
 
+# uv installs into UV_PROJECT_ENVIRONMENT when it is set and into .venv
+# otherwise, so mirror that rule rather than hardcoding either name. The
+# pd-suite devcontainer sets ".venv-container" because the workspace is a bind
+# mount shared with the host; a plain checkout outside a container gets .venv.
+VENV := $(if $(UV_PROJECT_ENVIRONMENT),$(UV_PROJECT_ENVIRONMENT),.venv)
+
 ifdef AI
 _goals := $(or $(MAKECMDGOALS),ci)
 .PHONY: $(_goals)
@@ -57,7 +63,7 @@ refresh-version: ## Force hatch-vcs to re-derive `pgdp-prep --version` from curr
 	@# The wheel-side SPA check (build_hooks/spa_check.py) still gates real
 	@# wheel builds on the bundled index.html being present.
 	@mkdir -p src/pdomain_prep_for_pgdp/static
-	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pdomain-prep-for-pgdp
+	@uv sync --reinstall-package pdomain-prep-for-pgdp
 	@uv run pgdp-prep --version || true
 
 install: ## Install pgdp-prep as a uv tool from local source (auto-detects CUDA)
@@ -87,7 +93,7 @@ uninstall: ## Remove the installed pgdp-prep uv tool
 	@echo "✅ pgdp-prep uninstalled."
 
 remove-venv: ## Remove the virtual environment
-	rm -rf .venv
+	rm -rf $(VENV)
 
 reset: clean remove-venv setup ## Rebuild the virtual environment
 	@echo "✅ Environment Reset!"
@@ -97,7 +103,7 @@ upgrade-deps: ## Upgrade dependencies and sync local environment
 		echo "❌ local-dev install detected (editable siblings present)."; \
 		echo "   'make upgrade-deps' would silently revert them to pinned registry versions."; \
 		echo "   Use 'make local-upgrade-deps' to upgrade and restore editable siblings."; \
-		echo "   Or remove .venv/.pdomain-local-mode and run 'make reset' to switch to canonical."; \
+		echo "   Or remove $(VENV)/.pdomain-local-mode and run 'make reset' to switch to canonical."; \
 		exit 1; \
 	fi
 	@echo "⬆️ Upgrading dependency lockfile..."

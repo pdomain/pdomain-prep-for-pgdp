@@ -66,7 +66,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.2.1",
     "pytest-xdist>=3.6",
-    "ruff>=0.16.2",
+    "ruff>=0.16.7",
     "httpx>=0.28",
     "httpx2>=2.5",
 ]
@@ -294,9 +294,13 @@ failOnWarnings = true
 # actual import order issues would surface as runtime ImportErrors.
 reportImportCycles = "none"
 
-# Tell basedpyright where the venv is so it finds third-party stubs.
-venvPath = "."
-venv = ".venv"
+# venvPath/venv are deliberately unset. This workspace names its environment
+# ".venv-container" via UV_PROJECT_ENVIRONMENT, so a hardcoded ".venv" silently
+# resolves a stale environment: after any merge that changes uv.lock, every new
+# third-party symbol reports as a missing attribute until .venv is re-synced.
+# Run under `uv run` and basedpyright resolves from the active interpreter.
+# Matches pdomain-book-tools, pdomain-ocr-labeler-spa and pdomain-pgdp-measure,
+# which unset these for the same reason.
 
 [[tool.basedpyright.executionEnvironments]]
 root = "tests"
@@ -324,6 +328,12 @@ markers = [
 filterwarnings = [
     # Treat all warnings as errors — surfaces deprecation issues at LLM-iteration time.
     "error",
+    # starlette 1.6.0 reads `anyio.abc.BlockingPortal` at import time, an
+    # alias anyio 4.15.1 deprecated. Importing the FastAPI test client is
+    # enough to raise it and nothing here can avoid that. Matched on the
+    # message so every other DeprecationWarning still fails. Drop this once
+    # starlette stops reading the deprecated alias.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
     # Pre-existing ignores: third-party noise that isn't actionable here.
     # Add new ignores below as new warnings surface — each one with a comment
     # explaining the package and why we tolerate it.

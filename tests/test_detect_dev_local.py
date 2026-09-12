@@ -5,7 +5,7 @@ detected and 1 otherwise. Detection precedence (per
 ``docs/architecture/dev-local-upgrade-flow.md``):
 
 1. ``uv pip show pdomain-book-tools`` reports an ``Editable project location:`` line.
-2. Marker file at ``.venv/.dev-local`` exists.
+2. Marker file at ``.dev-local`` in the project environment exists.
 3. Env var ``PDOMAIN_DEV_LOCAL=1``.
 
 The tests fake each signal independently so the script is exercised
@@ -94,7 +94,7 @@ def test_exit_0_when_marker_file_present(tmp_path: Path) -> None:
     fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
     venv = tmp_path / ".venv"
     venv.mkdir()
-    (venv / ".pdomain-local-mode").write_text("")
+    _ = (venv / ".pdomain-local-mode").write_text("")
 
     env = _base_env(tmp_path, fake_uv=fake_uv)
     result = _run(env, cwd=tmp_path)
@@ -133,7 +133,7 @@ def test_uv_failure_falls_through_to_other_signals(tmp_path: Path) -> None:
     # Now add the marker — should flip to dev-local (exit 0).
     venv = tmp_path / ".venv"
     venv.mkdir()
-    (venv / ".pdomain-local-mode").write_text("")
+    _ = (venv / ".pdomain-local-mode").write_text("")
     result2 = _run(env, cwd=tmp_path)
     assert result2.returncode == 0, result2.stdout + result2.stderr
 
@@ -156,3 +156,36 @@ def test_env_var_accepts_common_truthy_values(tmp_path: Path, truthy: str) -> No
     env["PDOMAIN_DEV_LOCAL"] = truthy
     result = _run(env, cwd=tmp_path)
     assert result.returncode == 0, f"{truthy!r}: {result.stdout + result.stderr}"
+
+
+def test_marker_found_in_uv_project_environment(tmp_path: Path) -> None:
+    """The marker lives wherever uv installs, not always in ``.venv``.
+
+    uv writes to ``UV_PROJECT_ENVIRONMENT`` when that is set. The pd-suite
+    devcontainer names the environment ``.venv-container``, so a hardcoded
+    ``.venv`` made the marker invisible there.
+    """
+
+    fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
+    venv = tmp_path / ".venv-container"
+    venv.mkdir()
+    _ = (venv / ".pdomain-local-mode").write_text("")
+
+    env = _base_env(tmp_path, fake_uv=fake_uv)
+    env["UV_PROJECT_ENVIRONMENT"] = ".venv-container"
+    result = _run(env, cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_dot_venv_ignored_when_environment_is_named(tmp_path: Path) -> None:
+    """A stale ``.venv`` must not stand in for the named environment."""
+
+    fake_uv = "#!/usr/bin/env bash\necho 'Name: pdomain-book-tools'\necho 'Location: /opt/site-packages'\n"
+    stale = tmp_path / ".venv"
+    stale.mkdir()
+    _ = (stale / ".pdomain-local-mode").write_text("")
+
+    env = _base_env(tmp_path, fake_uv=fake_uv)
+    env["UV_PROJECT_ENVIRONMENT"] = ".venv-container"
+    result = _run(env, cwd=tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr

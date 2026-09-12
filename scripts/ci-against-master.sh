@@ -10,6 +10,18 @@
 # Override the preflight with PREFLIGHT="make test" for a faster smoke.
 set -euo pipefail
 
+# uv installs into UV_PROJECT_ENVIRONMENT when that is set and into .venv
+# otherwise, so mirror the same rule instead of hardcoding either name. The
+# pd-suite devcontainer sets ".venv-container" because the workspace is a bind
+# mount shared with the host; a plain checkout outside a container gets .venv.
+venv_under() {
+  case "${UV_PROJECT_ENVIRONMENT:-}" in
+    "") printf '%s/.venv' "$1" ;;
+    /*) printf '%s' "$UV_PROJECT_ENVIRONMENT" ;;
+    *) printf '%s/%s' "$1" "$UV_PROJECT_ENVIRONMENT" ;;
+  esac
+}
+
 OWNER="pdomain"
 PY_SIBLINGS=(pdomain-book-tools pdomain-ops)  # repo-specific; keep in sync with [tool.uv.sources]
 PREFLIGHT="${PREFLIGHT:-make ci-slow}"
@@ -17,9 +29,10 @@ PREFLIGHT="${PREFLIGHT:-make ci-slow}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+PROJECT_VENV="$(venv_under "$REPO_ROOT")"
 for marker in \
-    .venv/.pdomain-local-mode \
-    .venv/.pdomain-dev-local; do
+    "$PROJECT_VENV/.pdomain-local-mode" \
+    "$PROJECT_VENV/.pdomain-dev-local"; do
     if [ -f "$marker" ]; then
         echo "ERROR: leave local-dev mode before ci-against-master ($marker)" >&2
         exit 1
