@@ -18,7 +18,7 @@ $(_goals):
 
 else
 
-.PHONY: help setup refresh-version install uninstall reset remove-venv lint format \
+.PHONY: help setup install-hooks refresh-version install uninstall reset remove-venv lint format \
         typecheck pre-commit-check update-hooks test test-slow e2e build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         local-setup-py local-frontend-install local-frontend-build \
@@ -51,9 +51,23 @@ setup: ## Sync deps + install pre-commit hooks + refresh version
 	@echo "📦 Installing dependencies..."
 	uv sync --group dev
 	@echo "🪝 Setting up pre-commit hooks..."
-	uv run pre-commit install || true
+	@$(MAKE) --no-print-directory install-hooks
 	@$(MAKE) --no-print-directory refresh-version
 	@echo "✅ Setup complete!"
+
+install-hooks: ## (Re)install pre-commit hooks (repairs a stale interpreter path)
+	@# `pre-commit install` bakes an absolute interpreter path into .git/hooks.
+	@# A hook written against a different environment name, or against a worktree
+	@# that has since been deleted, keeps failing until it is rewritten — and a
+	@# "skip if the file exists" guard never rewrites it. Rewriting costs ~0.2s,
+	@# so do it every time this repo owns its hooks directory.
+	@if [ -f .git ]; then \
+	  echo "hooks: worktree checkout — the canonical repo owns them, skipping"; \
+	elif [ -n "$$(git config --get core.hooksPath 2>/dev/null)" ]; then \
+	  echo "hooks: core.hooksPath is set — leaving it alone, skipping"; \
+	else \
+	  uv run pre-commit install --hook-type pre-commit --hook-type commit-msg; \
+	fi
 
 refresh-version: ## Force hatch-vcs to re-derive `pgdp-prep --version` from current git state
 	@echo "🔄 Reinstalling pdomain-prep-for-pgdp so hatch-vcs picks up the current HEAD / tags..."
