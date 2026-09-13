@@ -252,7 +252,15 @@ export function ZipTool({
     const unsubscribe = subscribeProject(projectId, (event) => {
       if (event.type === "project-snapshot") {
         const row = event.project_stages.find((s) => s.stage_id === "zip");
-        if (row?.status === "clean") onZipClean();
+        if (row?.status === "clean") {
+          onZipClean();
+        } else {
+          // Missing or stale: this is the only path that asks for a build.
+          // The machine starts in `hydrating` precisely so that reading the
+          // status, not mounting the surface, is what triggers one.
+          // Issue: ocr-container-meta#402.
+          send({ type: "NEEDS_REBUILD" });
+        }
         return;
       }
       if (event.type !== "project-stage-status") return;
@@ -270,7 +278,12 @@ export function ZipTool({
   }, [projectId, send]);
 
   const ctx = snapshot.context;
-  const isCompressing = snapshot.matches("compressing");
+  // `hydrating` is the pre-decision state: the surface has not yet read the
+  // persisted stage status, so it does not know whether a build is needed.
+  // To the reader that is indistinguishable from "starting", so it renders the
+  // same placeholder — the difference is that nothing has been requested yet.
+  const isHydrating = snapshot.matches("hydrating");
+  const isCompressing = snapshot.matches("compressing") || isHydrating;
   const isBuilt = snapshot.matches("built");
   const isFailed = snapshot.matches("failed");
 

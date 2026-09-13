@@ -626,7 +626,11 @@ describe("buildPackageTool — preflightPassed gate", () => {
 // ---------------------------------------------------------------------------
 
 describe("zipTool — compression lifecycle", () => {
-  it("starts in compressing and calls requestRebuild on entry", () => {
+  // Starting in `compressing` used to POST a rebuild on every mount of the
+  // surface, even when the archive was already clean (ocr-container-meta#402).
+  // The machine now starts in `hydrating`, which has no entry action: the
+  // persisted stage status decides whether a build is needed.
+  it("starts in hydrating and requests nothing", () => {
     const requestRebuild = vi.fn().mockResolvedValue(undefined);
     const actor = createActor(zipToolMachine, {
       input: {
@@ -636,8 +640,51 @@ describe("zipTool — compression lifecycle", () => {
       } satisfies ZipToolInput,
     });
     actor.start();
+    expect(actor.getSnapshot().matches("hydrating")).toBe(true);
+    expect(requestRebuild).not.toHaveBeenCalled();
+    actor.stop();
+  });
+
+  it("NEEDS_REBUILD moves to compressing and requests the build once", () => {
+    const requestRebuild = vi.fn().mockResolvedValue(undefined);
+    const actor = createActor(zipToolMachine, {
+      input: {
+        projectId: "proj-test",
+        stageIndex: 20,
+        services: makeZipServices({ requestRebuild }),
+      } satisfies ZipToolInput,
+    });
+    actor.start();
+    actor.send({ type: "NEEDS_REBUILD" });
     expect(actor.getSnapshot().matches("compressing")).toBe(true);
-    // entry action fires requestRebuild
+    expect(requestRebuild).toHaveBeenCalledOnce();
+    actor.stop();
+  });
+
+  it("UPSTREAM_CHANGED from built requests exactly one rebuild", () => {
+    const requestRebuild = vi.fn().mockResolvedValue(undefined);
+    const actor = createActor(zipToolMachine, {
+      input: {
+        projectId: "proj-test",
+        stageIndex: 20,
+        services: makeZipServices({ requestRebuild }),
+      } satisfies ZipToolInput,
+    });
+    actor.start();
+    actor.send({
+      type: "ZIP_DONE",
+      archive: {
+        name: "a.zip",
+        entries: 1,
+        bytes: 1,
+        ratio: 1,
+        sha256: "abc",
+      },
+      tree: [],
+    });
+    expect(actor.getSnapshot().matches("built")).toBe(true);
+    actor.send({ type: "UPSTREAM_CHANGED" });
+    // Previously twice: once as the transition action, once on entry.
     expect(requestRebuild).toHaveBeenCalledOnce();
     actor.stop();
   });

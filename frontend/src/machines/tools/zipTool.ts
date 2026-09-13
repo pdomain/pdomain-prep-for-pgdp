@@ -18,6 +18,13 @@
  *   - F5.6-7: `patchSettings` is not stored in a settings sub-machine. At F5
  *     settings are local context fields. At I1 wire to stageSettings pattern.
  *
+ * No longer divergent: this machine used to start in `compressing` and carry
+ * `entry: requestRebuild` there, which the YAML never specified. That made
+ * mounting the surface re-run the zip stage, and made UPSTREAM_CHANGED fire
+ * `requestRebuild` twice. Both the machine and the YAML now start in
+ * `hydrating` and treat `requestRebuild` as a transition action.
+ * Issue: ocr-container-meta#402.
+ *
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-zip.yaml
  * @see src/machines/DIVERGENCES.md
  */
@@ -104,7 +111,14 @@ export type ZipToolEvent =
   | { type: "REBUILD" }
   | { type: "SET_FORMAT"; patch: Partial<ZipSettings> }
   | { type: "UPSTREAM_CHANGED" }
-  | { type: "RETRY" };
+  | { type: "RETRY" }
+  /**
+   * The persisted stage status says the archive is missing or stale, so a
+   * build is genuinely needed. Sent from `hydrating` once the surface has
+   * read the stage status. See the `hydrating` state for why this is an
+   * event rather than the initial state's entry action.
+   */
+  | { type: "NEEDS_REBUILD" };
 
 // ---------------------------------------------------------------------------
 // Machine
@@ -183,10 +197,46 @@ export const zipToolMachine = setup({
     },
     error: null,
   }),
-  initial: "compressing",
+  initial: "hydrating",
   states: {
+    /**
+     * Read the persisted stage status before doing any work.
+     *
+     * `compressing` requests a real rebuild on entry, so making it the initial
+     * state re-ran the whole zip stage on every mount of the surface, even
+     * when the archive was already clean. On a large book that is slow, and it
+     * churns a clean stage to dirty and back for nothing.
+     *
+     * This state has no entry action. The surface reads the stage status from
+     * the project SSE channel's on-connect `project-snapshot` frame and then
+     * sends exactly one of:
+     *   - ZIP_DONE      — already clean, adopt the existing archive
+     *   - NEEDS_REBUILD — missing or stale, go build it
+     *
+     * Explicit triggers (REBUILD, SET_FORMAT, UPSTREAM_CHANGED, RETRY) still
+     * target `compressing` and so still recompress.
+     *
+     * Issue: ocr-container-meta#402.
+     */
+    hydrating: {
+      on: {
+        ZIP_DONE: { target: "built", actions: "assignArchive" },
+        NEEDS_REBUILD: { target: "compressing", actions: "requestRebuild" },
+        // A build is already running server-side (progress is being pushed).
+        // Follow it; do NOT request another one.
+        ZIP_PROGRESS: { target: "compressing", actions: "assignProgress" },
+        ZIP_FAILED: { target: "failed", actions: "assignError" },
+      },
+    },
+
+    /**
+     * No entry action, per the YAML: `requestRebuild` is a transition action on
+     * the events that mean "build it", not a consequence of being in this
+     * state. The shipped machine previously carried `entry: requestRebuild`,
+     * which is what re-ran the stage on every mount, and which also made
+     * UPSTREAM_CHANGED fire `requestRebuild` twice.
+     */
     compressing: {
-      entry: "requestRebuild",
       on: {
         ZIP_PROGRESS: { actions: "assignProgress" },
         ZIP_DONE: { target: "built", actions: "assignArchive" },
@@ -197,10 +247,10 @@ export const zipToolMachine = setup({
     built: {
       on: {
         DOWNLOAD: { actions: "downloadArchive" },
-        REBUILD: { target: "compressing" },
+        REBUILD: { target: "compressing", actions: "requestRebuild" },
         SET_FORMAT: {
           target: "compressing",
-          actions: "patchSettings",
+          actions: ["patchSettings", "requestRebuild"],
         },
         UPSTREAM_CHANGED: {
           target: "compressing",
@@ -213,7 +263,7 @@ export const zipToolMachine = setup({
       on: {
         RETRY: {
           target: "compressing",
-          actions: "clearError",
+          actions: ["clearError", "requestRebuild"],
         },
       },
     },

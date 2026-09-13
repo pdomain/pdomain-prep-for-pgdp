@@ -156,6 +156,72 @@ describe("ZipTool — initial state (compressing)", () => {
 // Sibling gap, same root cause: ArchiveTool's ARCHIVE_RESTORED.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// No rebuild on mount (ocr-container-meta#402)
+//
+// `compressing` requests a real rebuild (POST .../zip/run). It used to be the
+// initial state, so merely opening the Zip step re-ran the whole stage even
+// when the archive was already clean. The machine now starts in `hydrating`,
+// which has no entry action: reading the persisted status decides whether a
+// build is needed.
+// ---------------------------------------------------------------------------
+
+describe("ZipTool — does not rebuild on mount", () => {
+  it("requests no rebuild before the stage status is known", () => {
+    renderZip();
+    expect(requestRebuildSpy).not.toHaveBeenCalled();
+  });
+
+  it("requests no rebuild when the snapshot reports zip clean", async () => {
+    renderZip();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
+    expect(requestRebuildSpy).not.toHaveBeenCalled();
+  });
+
+  it("requests exactly one rebuild when the snapshot reports zip dirty", async () => {
+    renderZip();
+    await emitSnapshot("dirty");
+    await waitFor(() => {
+      expect(requestRebuildSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("follows an in-flight build without requesting another", async () => {
+    renderZip();
+    act(() => {
+      _projectCallback?.({
+        type: "project-stage-progress",
+        stage_id: "zip",
+        progress: 0.5,
+        message: "compressing",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("zip-tool")).toBeInTheDocument();
+    });
+    expect(requestRebuildSpy).not.toHaveBeenCalled();
+  });
+
+  it("still rebuilds on an explicit REBUILD from the built state", async () => {
+    const user = userEvent.setup();
+    renderZip();
+    await emitSnapshot("clean");
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-built")).toBeInTheDocument();
+    });
+    expect(requestRebuildSpy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "Step Settings" }));
+    await user.click(screen.getByTestId("zip-rebuild-btn"));
+    await waitFor(() => {
+      expect(requestRebuildSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
 describe("ZipTool — rehydration from persisted status", () => {
   it("reaches the built state when the connect snapshot reports zip clean", async () => {
     renderZip();

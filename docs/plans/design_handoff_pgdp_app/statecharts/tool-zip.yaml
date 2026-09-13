@@ -21,12 +21,35 @@ context:
   tree: []                # TreeRow[] — archive contents
   error: null
 
-initial: compressing
+initial: hydrating
 
 states:
 
+  # Read the persisted stage status before doing any work.
+  #
+  # `compressing` is not a safe initial state: entering it means a build has
+  # been requested, so starting there re-ran the whole zip stage every time the
+  # surface mounted, even when the archive was already clean. This state has no
+  # entry action and no side effect. The surface reads the stage status from the
+  # project SSE channel's on-connect `project-snapshot` frame and sends exactly
+  # one of ZIP_DONE (already clean) or NEEDS_REBUILD (missing or stale).
+  #
+  # ZIP_PROGRESS here means a build is already running server-side: follow it,
+  # do not request another.
+  #
+  # Issue: ocr-container-meta#402.
+  hydrating:
+    description: 'Reading the persisted stage status; nothing requested yet.'
+    on:
+      ZIP_DONE:      { target: built, actions: [assignArchive, emitResolved] }
+      NEEDS_REBUILD: { target: compressing, actions: [requestRebuild] }
+      ZIP_PROGRESS:  { target: compressing, actions: [assignProgress] }
+      ZIP_FAILED:    { target: failed, actions: [assignError] }
+
   compressing:
     description: 'Compressing… N / M entries · deterministic.'
+    # No entry action: `requestRebuild` is a transition action on the events
+    # that mean "build it", never a consequence of being in this state.
     on:
       ZIP_PROGRESS: { actions: [assignProgress] }
       ZIP_DONE:     { target: built, actions: [assignArchive, emitResolved] }

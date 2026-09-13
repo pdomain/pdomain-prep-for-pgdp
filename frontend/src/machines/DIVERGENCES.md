@@ -1419,9 +1419,11 @@ This is more deterministic than event-based self-dispatch.
 `ZIP_PROGRESS` ticks and terminates with `ZIP_DONE` or `ZIP_FAILED`.
 
 **XState v5:** `zipTool` has no `fromPromise` actor. The machine starts in
-`compressing` and receives server-pushed events (`ZIP_PROGRESS`, `ZIP_DONE`,
-`ZIP_FAILED`) directly. The `requestRebuild` action fires on entry to `compressing`
-(and on `UPSTREAM_CHANGED` from `built`) and triggers the server to begin streaming.
+`hydrating` and receives server-pushed events (`ZIP_PROGRESS`, `ZIP_DONE`,
+`ZIP_FAILED`) directly. The `requestRebuild` action is a transition action on the
+events that mean "build it" (`NEEDS_REBUILD`, `REBUILD`, `SET_FORMAT`,
+`UPSTREAM_CHANGED`, `RETRY`) and triggers the server to begin streaming. It is
+deliberately not an entry action on `compressing` — see F5.6-4.
 
 **Impact:** At I1, the SSE channel for zip progress integrates unchanged — the
 machine already handles the exact event shapes the real server will push. The
@@ -1429,15 +1431,27 @@ surface component's `useEffect` simulation has been removed (see F5.6-12).
 
 ---
 
-### F5.6-4 — `requestRebuild` fires on compressing entry AND UPSTREAM_CHANGED
+### F5.6-4 — `requestRebuild` fires on compressing entry AND UPSTREAM_CHANGED {#resolved-I2}
 
-**YAML:** `requestRebuild` is modeled as a single entry action on the `compressing`
-state.
+**RESOLVED at I2** (issue `ocr-container-meta#402`). The machine no longer has an
+entry action on `compressing`.
 
-**XState v5:** In addition to the state entry action, `requestRebuild` also fires
-on the `UPSTREAM_CHANGED` event from `built` (which auto-transitions back to
-`compressing`). This ensures the server re-starts compression whenever the upstream
-build changes without requiring an explicit user action.
+**What this entry originally claimed.** That the YAML modelled `requestRebuild`
+as a single entry action on `compressing`, and that the machine additionally
+fired it on `UPSTREAM_CHANGED`. The first half was wrong: `tool-zip.yaml` never
+had an entry action. It lists `requestRebuild` as a transition action on
+`REBUILD`, `SET_FORMAT`, `UPSTREAM_CHANGED` and `RETRY`. The machine's
+`entry: requestRebuild` was the divergence, and it had two consequences:
+
+- `UPSTREAM_CHANGED` fired `requestRebuild` twice — once as its own transition
+  action and once on entry to `compressing`.
+- `compressing` was also the initial state, so merely mounting the Zip surface
+  POSTed a rebuild and re-ran the whole stage, even when the archive was clean.
+
+**Resolution.** `requestRebuild` is now a transition action only, matching the
+YAML, and both start in a new `hydrating` state that reads the persisted stage
+status before deciding whether a build is needed. See `zipTool.ts` and
+`tool-zip.yaml`.
 
 ---
 
