@@ -83,9 +83,9 @@ export function SourcePreview({ projectId, limit = 10 }: SourcePreviewProps) {
         {data.filenames.map((name) => (
           <li
             key={name}
-            className="flex flex-col gap-1 overflow-hidden rounded border border-border-1 bg-surface"
+            className="flex flex-col gap-1 overflow-hidden rounded-sm border border-border-1 bg-surface"
           >
-            <div className="aspect-[2/3] w-full overflow-hidden bg-raised">
+            <div className="aspect-2/3 w-full overflow-hidden bg-raised">
               <img
                 // encodeURIComponent escapes "/" (→ %2F) and " " (→ %20),
                 // matching FastAPI's `{filename}` path-parameter decoding.

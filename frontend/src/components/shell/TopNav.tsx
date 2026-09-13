@@ -23,7 +23,7 @@ export function TopNav({
       <div className="flex items-center gap-3">
         {/* Brand glyph: amber gradient square with "p" */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded bg-gradient-to-br from-amber-400 to-amber-600 text-sm font-bold text-accent-ink select-none">
+          <span className="flex h-7 w-7 items-center justify-center rounded-sm bg-linear-to-br from-amber-400 to-amber-600 text-sm font-bold text-accent-ink select-none">
             p
           </span>
           <span className="text-sm font-semibold text-accent-ink">

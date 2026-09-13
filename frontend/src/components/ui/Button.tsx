@@ -1,6 +1,6 @@
 // TODO(s0-b): replace with pdomain-ui Button when pdomain-ui exports matching variants.
 // pdomain-ui Button supports variant: "primary"|"ghost"|"danger" and size: "sm"|"md"|"lg".
-// This app also uses "outline", "secondary", "link", "amber" variants and "xs", "icon",
+// This app also uses "outline-solid", "secondary", "link", "amber" variants and "xs", "icon",
 // "default" sizes, plus the buttonVariants() helper — none of which pdomain-ui ships yet.
 // Blocked on pdomain-ui extending its variant/size set or the app migrating to pdomain-ui variants.
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 
 // Base classes applied to every button regardless of variant/size.
 const BASE =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
 // Variant → CSS classes.
 const VARIANT_CLASSES: Record<string, string> = {

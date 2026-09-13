@@ -29,9 +29,9 @@ export function ToggleGroupItem({
     <ToggleGroupPrimitive.Item
       data-testid={testId}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-bg-surface transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-bg-surface transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
         "bg-bg-surface text-ink-3 hover:bg-bg-raised hover:text-ink-1",
-        "data-[state=on]:bg-bg-raised data-[state=on]:text-ink-1 data-[state=on]:shadow-sm",
+        "data-[state=on]:bg-bg-raised data-[state=on]:text-ink-1 data-[state=on]:shadow-xs",
         className,
       )}
       {...props}

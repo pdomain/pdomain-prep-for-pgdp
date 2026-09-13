@@ -239,7 +239,7 @@ export function SettingsPage() {
           <textarea
             value={scannosText}
             onChange={(e) => setScannosText(e.target.value)}
-            className="mt-1 block w-full rounded border border-border-2 bg-bg-surface p-2 font-mono text-xs"
+            className="mt-1 block w-full rounded-sm border border-border-2 bg-bg-surface p-2 font-mono text-xs"
             rows={6}
             spellCheck={false}
           />
@@ -251,7 +251,7 @@ export function SettingsPage() {
           <textarea
             value={hyphenText}
             onChange={(e) => setHyphenText(e.target.value)}
-            className="mt-1 block w-full rounded border border-border-2 bg-bg-surface p-2 font-mono text-xs"
+            className="mt-1 block w-full rounded-sm border border-border-2 bg-bg-surface p-2 font-mono text-xs"
             rows={4}
             spellCheck={false}
           />
@@ -426,7 +426,7 @@ function SelectField({
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
           aria-label={label}
-          className="mt-1 block w-full rounded border border-border-2 bg-bg-surface px-2 py-1 text-sm text-ink-1"
+          className="mt-1 block w-full rounded-sm border border-border-2 bg-bg-surface px-2 py-1 text-sm text-ink-1"
         >
           <SelectValue />
         </SelectTrigger>

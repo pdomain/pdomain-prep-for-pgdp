@@ -201,7 +201,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
             <SelectTrigger
               aria-label="Stage"
               data-testid="artifact-primary-select"
-              className="rounded border border-border-2 px-2 py-1 text-sm"
+              className="rounded-sm border border-border-2 px-2 py-1 text-sm"
             >
               <SelectValue placeholder="— select —" />
             </SelectTrigger>
@@ -230,7 +230,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
             <SelectTrigger
               aria-label="Compare with"
               data-testid="artifact-compare-select"
-              className="rounded border border-border-2 px-2 py-1 text-sm"
+              className="rounded-sm border border-border-2 px-2 py-1 text-sm"
             >
               <SelectValue placeholder="— none —" />
             </SelectTrigger>
@@ -255,7 +255,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
       <div className="grid grid-cols-2 gap-3">
         <div
           data-testid="artifact-primary-pane"
-          className="overflow-auto rounded border bg-page"
+          className="overflow-auto rounded-sm border bg-page"
         >
           {primaryStage ? (
             <ArtifactPane
@@ -270,7 +270,7 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
         </div>
         <div
           data-testid="artifact-compare-pane"
-          className="overflow-auto rounded border bg-page"
+          className="overflow-auto rounded-sm border bg-page"
         >
           {compareStage ? (
             <ArtifactPane

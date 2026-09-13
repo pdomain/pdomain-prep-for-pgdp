@@ -20,7 +20,7 @@ export function KeyCap({
     <kbd
       data-testid={testId}
       className={cn(
-        "inline-flex items-center justify-center rounded border border-border-2 bg-bg-raised px-1.5 py-0.5 font-mono text-xs text-ink-2 shadow-sm",
+        "inline-flex items-center justify-center rounded-sm border border-border-2 bg-bg-raised px-1.5 py-0.5 font-mono text-xs text-ink-2 shadow-xs",
         className,
       )}
     >

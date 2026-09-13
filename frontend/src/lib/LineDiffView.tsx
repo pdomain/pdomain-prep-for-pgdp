@@ -70,7 +70,7 @@ export function LineDiffView({ diff, className }: Props) {
   return (
     <div
       className={
-        "overflow-auto rounded border border-border-2 bg-surface font-mono text-xs " +
+        "overflow-auto rounded-sm border border-border-2 bg-surface font-mono text-xs " +
         (className ?? "")
       }
     >
@@ -105,7 +105,7 @@ function Column({
             return (
               <div
                 key={idx}
-                className="flex min-h-[1.25rem] items-start bg-page/50 px-2 leading-5"
+                className="flex min-h-5 items-start bg-page/50 px-2 leading-5"
               >
                 <span className="w-8 select-none text-right text-ink-4">
                   &nbsp;
@@ -124,7 +124,7 @@ function Column({
           return (
             <div
               key={idx}
-              className={`flex min-h-[1.25rem] items-start px-2 leading-5 ${tint}`}
+              className={`flex min-h-5 items-start px-2 leading-5 ${tint}`}
             >
               <span className="w-8 select-none text-right text-ink-4">
                 {gutter(lineNo)}

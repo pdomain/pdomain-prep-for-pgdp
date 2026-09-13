@@ -42,7 +42,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
   return (
     <>
       <div
-        className="overflow-hidden rounded-lg border border-status-running/30 bg-status-running-bg shadow-sm"
+        className="overflow-hidden rounded-lg border border-status-running/30 bg-status-running-bg shadow-xs"
         data-testid="disk-cost-banner"
       >
         <div className="flex items-center gap-3 border-l-4 border-status-running py-3 pl-4 pr-3">
@@ -111,7 +111,7 @@ export function DiskCostBanner({ project }: DiskCostBannerProps) {
               <button
                 type="button"
                 onClick={() => setDialogOpen(false)}
-                className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
+                className="rounded-sm border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
               >
                 Close
               </button>

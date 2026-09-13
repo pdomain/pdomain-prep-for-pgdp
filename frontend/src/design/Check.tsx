@@ -17,11 +17,11 @@ export type CheckTone = "clean" | "error" | "neutral";
 
 const TONE_CLASSES: Record<CheckTone, string> = {
   clean:
-    "border-[color:var(--exact)] data-[checked=true]:bg-[color:var(--exact)] data-[checked=true]:border-[color:var(--exact)]",
+    "border-(--exact) data-[checked=true]:bg-(--exact) data-[checked=true]:border-(--exact)",
   error:
-    "border-[color:var(--mismatch)] data-[checked=true]:bg-[color:var(--mismatch)] data-[checked=true]:border-[color:var(--mismatch)]",
+    "border-(--mismatch) data-[checked=true]:bg-(--mismatch) data-[checked=true]:border-(--mismatch)",
   neutral:
-    "border-border-2 data-[checked=true]:bg-[color:var(--accent)] data-[checked=true]:border-[color:var(--accent)]",
+    "border-border-2 data-[checked=true]:bg-(--accent) data-[checked=true]:border-(--accent)",
 };
 
 export interface CheckProps {
@@ -64,7 +64,7 @@ export function Check({
       <div
         data-checked={checked}
         className={cn(
-          "mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded border",
+          "mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-sm border",
           "transition-colors",
           TONE_CLASSES[tone],
         )}

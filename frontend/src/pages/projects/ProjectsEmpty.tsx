@@ -20,7 +20,7 @@ export function ProjectsEmpty({ onNewProject }: { onNewProject: () => void }) {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="absolute rounded border border-border-2 bg-bg-surface shadow-sm"
+              className="absolute rounded-sm border border-border-2 bg-bg-surface shadow-xs"
               style={{
                 left: 30 + i * 14,
                 top: 14 - i * 6,

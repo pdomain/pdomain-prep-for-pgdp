@@ -87,7 +87,7 @@ describe("lucide-react direct imports (banned in production source)", () => {
 //   bg-teal-600 — PageWorkbenchPage split-mode highlight (specialist)
 //   bg-red-N / bg-blue-N / bg-green-N — PageWorkbenchPage mode btn hues (specialist)
 //   bg-black/40, bg-black/30 — overlay scrim pending --overlay-scrim token
-//   bg-gradient-to-br — CSS gradient utility, not a palette color
+//   bg-linear-to-br — CSS gradient utility, not a palette color
 //   text-white on bg-accent / bg-status-error surfaces — accepted as token-adjacent
 const BANNED_PALETTE =
   /\b(bg|text|border|hover:bg|hover:text|hover:border)-slate-\d+\b/;

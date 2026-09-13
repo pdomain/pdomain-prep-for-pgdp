@@ -67,7 +67,7 @@ export function SearchModal({
                 </p>
               )}
             </div>
-            <DialogPrimitive.Close className="ml-2 mt-1 rounded-sm opacity-70 ring-offset-bg-surface transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2">
+            <DialogPrimitive.Close className="ml-2 mt-1 rounded-xs opacity-70 ring-offset-bg-surface transition-opacity hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-accent focus:ring-offset-2">
               <X className="h-4 w-4 text-ink-3" />
               <span className="sr-only">Close</span>
             </DialogPrimitive.Close>

@@ -61,7 +61,7 @@ export function Seg({
             className={cn(
               "h-7 px-3 text-xs font-medium whitespace-nowrap transition-colors",
               active
-                ? "bg-bg-raised text-ink-1 shadow-sm"
+                ? "bg-bg-raised text-ink-1 shadow-xs"
                 : "bg-transparent text-ink-3 hover:text-ink-2 hover:bg-bg-surface",
             )}
           >

@@ -18,7 +18,7 @@
  *   FAIL: Any #rrggbb or #rgb hex literal in JSX/TSX source code
  *   FAIL: Any rgb( or rgba( call with non-zero r/g/b values (i.e. not pure black)
  *         that looks like a brand/status colour (simple heuristic: non-zero, non-greyscale)
- *   PASS: rgba(0,0,0,…) structural shadow/scrim values
+ *   PASS: rgba(0,0,0,…) structural shadow values
  *   PASS: color-mix(in srgb, var(--token) …) — allowed, token-based
  *   PASS: var(--any-token) — the canonical form
  *
@@ -85,7 +85,7 @@ function findRgbColors(src: string): string[] {
     const nums = call.match(/\d+/g)?.map(Number) ?? [];
     if (nums.length < 3) continue;
     const [r, g, b] = nums as [number, number, number];
-    // Structural shadow/scrim: pure black/near-black (r,g,b all < 50)
+    // Structural shadow: pure black/near-black (r,g,b all < 50)
     // These are intentional box-shadow structural values — allowed.
     const isStructuralShadow = r < 50 && g < 50 && b < 50;
     if (!isStructuralShadow) {

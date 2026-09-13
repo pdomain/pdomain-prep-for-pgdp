@@ -452,7 +452,7 @@ function ProjectInfoBand({
         >
           <Button
             data-testid="settings-toggle-btn"
-            variant={inSettings ? "primary" : "outline"}
+            variant={inSettings ? "primary" : "outline-solid"}
             size="sm"
             onClick={inSettings ? onCloseSettings : onOpenSettings}
           >

@@ -10,7 +10,7 @@ export function Card({
     <div
       data-testid={testId}
       className={cn(
-        "rounded-lg border border-border-1 bg-bg-surface shadow-sm",
+        "rounded-lg border border-border-1 bg-bg-surface shadow-xs",
         className,
       )}
       {...props}

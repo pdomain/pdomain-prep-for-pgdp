@@ -219,7 +219,7 @@ const DEWARP_SCHEMA: StageSchema = {
   flagKinds: [
     { key: "strongCurve", label: "Strong curve", tone: "var(--mismatch)" },
     { key: "uncertain", label: "Uncertain", tone: "var(--fuzzy)" },
-    { key: "gutter", label: "Gutter shadow", tone: "var(--ocr)" },
+    { key: "gutter", label: "Gutter shadow-sm", tone: "var(--ocr)" },
     { key: "illustration", label: "Illustration", tone: "var(--ink-3)" },
   ],
   controls: [
@@ -241,10 +241,10 @@ const DEWARP_SCHEMA: StageSchema = {
     },
     {
       key: "gutterRemove",
-      label: "Remove gutter shadow",
+      label: "Remove gutter shadow-sm",
       kind: "toggle",
       defaultValue: true,
-      description: "Crop the inner gutter shadow before dewarp.",
+      description: "Crop the inner gutter shadow-sm before dewarp.",
     },
   ],
   confirmLabel: "Confirm dewarp",

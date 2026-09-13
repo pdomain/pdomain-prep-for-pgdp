@@ -148,7 +148,7 @@ export function JobsPage() {
 
       <div className="px-6 py-4 space-y-3">
         {projectFilter && (
-          <div className="flex items-center justify-between rounded border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          <div className="flex items-center justify-between rounded-sm border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
             <span>
               Filtered to project{" "}
               <span className="font-mono">{projectFilter.slice(0, 8)}</span>
@@ -157,7 +157,7 @@ export function JobsPage() {
               type="button"
               aria-label="Clear filter"
               onClick={clearFilter}
-              className="rounded border border-sky-300 px-2 py-0.5 text-sky-800 hover:bg-sky-100"
+              className="rounded-sm border border-sky-300 px-2 py-0.5 text-sky-800 hover:bg-sky-100"
             >
               Clear filter
             </button>
@@ -170,7 +170,7 @@ export function JobsPage() {
         )}
 
         {jobs.data && filteredJobs.length === 0 && (
-          <p className="rounded border border-dashed border-border-1 bg-bg-surface p-6 text-center text-ink-3">
+          <p className="rounded-sm border border-dashed border-border-1 bg-bg-surface p-6 text-center text-ink-3">
             {allJobs.length === 0
               ? "No jobs yet. Run a pipeline step from a project."
               : "No jobs match the current filter."}

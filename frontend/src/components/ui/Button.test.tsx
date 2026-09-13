@@ -28,7 +28,7 @@ describe("Button", () => {
     expect(btn.className).toContain("border-border-2");
   });
 
-  it("applies outline variant classes", () => {
+  it("applies outline-solid variant classes", () => {
     render(
       <Button variant="outline" data-testid="btn">
         Out

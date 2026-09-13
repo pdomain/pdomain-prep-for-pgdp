@@ -103,7 +103,7 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
         {/* apikey badge */}
         {authMode === "apikey" && (
           <DropdownMenuItem disabled>
-            <span className="rounded bg-bg-raised px-2 py-0.5 text-xs text-ink-3">
+            <span className="rounded-sm bg-bg-raised px-2 py-0.5 text-xs text-ink-3">
               apikey mode
             </span>
           </DropdownMenuItem>

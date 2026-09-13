@@ -54,11 +54,11 @@ export function SettingSlider({
         onChange={(e) => onChange(Number(e.target.value))}
         className={cn(
           "h-1.5 w-full flex-1 cursor-pointer appearance-none rounded-full",
-          "bg-bg-raised accent-[color:var(--accent)]",
+          "bg-bg-raised accent-(--accent)",
           disabled && "opacity-50 cursor-not-allowed",
         )}
       />
-      <span className="min-w-[2.5rem] text-right font-mono text-xs text-ink-2 tabular-nums">
+      <span className="min-w-10 text-right font-mono text-xs text-ink-2 tabular-nums">
         {value}
         {unit ?? ""}
       </span>

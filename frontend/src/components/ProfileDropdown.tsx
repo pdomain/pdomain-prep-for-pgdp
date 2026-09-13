@@ -60,7 +60,7 @@ export function ProfileDropdown({ token, onSignOut }: Props) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded bg-raised px-2 py-0.5 text-xs font-mono text-ink-2 hover:bg-sunk"
+        className="flex items-center gap-2 rounded-sm bg-raised px-2 py-0.5 text-xs font-mono text-ink-2 hover:bg-sunk"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -69,7 +69,7 @@ export function ProfileDropdown({ token, onSignOut }: Props) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-1 w-64 rounded border border-border-1 bg-surface p-2 text-xs text-ink-2 shadow"
+          className="absolute right-0 mt-1 w-64 rounded-sm border border-border-1 bg-surface p-2 text-xs text-ink-2 shadow-sm"
         >
           <div className="px-2 py-1">
             <div className="font-medium">{email ?? sub ?? "user"}</div>
@@ -83,7 +83,7 @@ export function ProfileDropdown({ token, onSignOut }: Props) {
               setOpen(false);
               onSignOut();
             }}
-            className="mt-1 w-full rounded px-2 py-1 text-left hover:bg-raised"
+            className="mt-1 w-full rounded-sm px-2 py-1 text-left hover:bg-raised"
           >
             Sign out
           </button>

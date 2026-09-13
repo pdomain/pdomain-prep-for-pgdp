@@ -17,12 +17,12 @@ export type GateTone = "passed" | "blocked" | "pending" | "warning";
 
 const TONE_CLASSES: Record<GateTone, string> = {
   passed:
-    "border-[color:var(--exact)] bg-[color:color-mix(in_srgb,var(--exact)_8%,transparent)] text-[color:var(--exact)]",
+    "border-(--exact) bg-[color-mix(in_srgb,var(--exact)_8%,transparent)] text-(--exact)",
   blocked:
-    "border-[color:var(--mismatch)] bg-[color:color-mix(in_srgb,var(--mismatch)_8%,transparent)] text-[color:var(--mismatch)]",
+    "border-(--mismatch) bg-[color-mix(in_srgb,var(--mismatch)_8%,transparent)] text-(--mismatch)",
   pending: "border-border-2 bg-bg-raised text-ink-3",
   warning:
-    "border-[color:var(--fuzzy)] bg-[color:color-mix(in_srgb,var(--fuzzy)_8%,transparent)] text-[color:var(--fuzzy)]",
+    "border-(--fuzzy) bg-[color-mix(in_srgb,var(--fuzzy)_8%,transparent)] text-(--fuzzy)",
 };
 
 export interface GateProps {

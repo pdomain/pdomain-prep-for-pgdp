@@ -73,7 +73,7 @@ export function SearchPanel({ projectId }: Props) {
   const hasPrev = offset > 0;
 
   return (
-    <div className="rounded border bg-surface" data-testid="search-panel">
+    <div className="rounded-sm border bg-surface" data-testid="search-panel">
       <div className="px-4 pt-3 pb-2 text-sm font-medium">Search pages</div>
 
       <form
@@ -87,11 +87,11 @@ export function SearchPanel({ projectId }: Props) {
           placeholder="Search OCR text…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 rounded border border-border-2 px-2 py-1 text-sm"
+          className="flex-1 rounded-sm border border-border-2 px-2 py-1 text-sm"
         />
         <button
           type="submit"
-          className="rounded border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
+          className="rounded-sm border border-border-2 px-3 py-1.5 text-sm hover:bg-page"
         >
           Search
         </button>
@@ -144,14 +144,14 @@ export function SearchPanel({ projectId }: Props) {
               <button
                 onClick={() => setOffset((o) => Math.max(0, o - PAGE_LIMIT))}
                 disabled={!hasPrev}
-                className="rounded border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
+                className="rounded-sm border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
               >
                 Previous 20
               </button>
               <button
                 onClick={() => setOffset((o) => o + PAGE_LIMIT)}
                 disabled={!hasMore}
-                className="rounded border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
+                className="rounded-sm border border-border-2 px-3 py-1 text-xs hover:bg-page disabled:opacity-40"
               >
                 Next 20
               </button>

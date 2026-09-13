@@ -185,7 +185,7 @@ function PostImportRedirected({
 
           {jobState === "done" && (
             <div
-              className="mt-3 rounded border border-border-1 bg-bg-raised px-3 py-2 text-xs text-ink-2"
+              className="mt-3 rounded-sm border border-border-1 bg-bg-raised px-3 py-2 text-xs text-ink-2"
               data-testid="import-done-notice"
             >
               Import complete — project is ready.

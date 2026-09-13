@@ -28,9 +28,9 @@ export interface TreeItem {
 }
 
 const TONE_CLASSES: Record<TreeItemTone, string> = {
-  clean: "text-[color:var(--exact)]",
-  dirty: "text-[color:var(--fuzzy)]",
-  error: "text-[color:var(--mismatch)]",
+  clean: "text-(--exact)",
+  dirty: "text-(--fuzzy)",
+  error: "text-(--mismatch)",
   neutral: "text-ink-2",
 };
 

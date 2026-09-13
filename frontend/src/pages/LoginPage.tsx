@@ -69,13 +69,13 @@ function ApikeyLoginPage() {
             placeholder="API key"
             // eslint-disable-next-line jsx-a11y/no-autofocus -- login form; intentional focus
             autoFocus
-            className="w-full rounded border border-border-default bg-bg-raised px-3 py-2 text-sm text-ink-1 placeholder-ink-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full rounded-sm border border-border-default bg-bg-raised px-3 py-2 text-sm text-ink-1 placeholder-ink-3 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
           />
           {error && <p className="text-sm text-status-error">{error}</p>}
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+            className="w-full rounded-sm bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 disabled:opacity-50"
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
@@ -147,7 +147,7 @@ function JwtLoginPage() {
       <Card className="w-full max-w-md space-y-4 p-8 text-center">
         {/* Brand glyph — matches TopNav left cluster */}
         <div className="flex justify-center">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-base font-bold text-ink-1">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br from-amber-400 to-amber-600 text-base font-bold text-ink-1">
             p
           </span>
         </div>

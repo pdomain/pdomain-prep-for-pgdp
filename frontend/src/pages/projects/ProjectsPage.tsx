@@ -394,7 +394,7 @@ export function ProjectsPage({
               type="search"
               value={query}
               placeholder="Filter projects…"
-              className="h-7 w-52 rounded border border-border-2 bg-bg-sunk px-2 text-xs text-ink-2 placeholder:text-ink-4"
+              className="h-7 w-52 rounded-sm border border-border-2 bg-bg-sunk px-2 text-xs text-ink-2 placeholder:text-ink-4"
               onChange={(e) =>
                 e.target.value === ""
                   ? railSend({ type: "CLEAR_SEARCH" })
@@ -711,7 +711,7 @@ function ProjectDetailPane({
       >
         {/* PAGES */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             pages
           </div>
           <div
@@ -723,7 +723,7 @@ function ProjectDetailPane({
         </div>
         {/* ON DISK */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             on disk
           </div>
           <div
@@ -735,7 +735,7 @@ function ProjectDetailPane({
         </div>
         {/* FLAGGED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             flagged
           </div>
           <div
@@ -756,7 +756,7 @@ function ProjectDetailPane({
         </div>
         {/* PROGRESS */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             progress
           </div>
           <div
@@ -771,7 +771,7 @@ function ProjectDetailPane({
         </div>
         {/* CREATED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             created
           </div>
           <div
@@ -787,7 +787,7 @@ function ProjectDetailPane({
         </div>
         {/* UPDATED */}
         <div className="bg-bg-surface px-3.5 py-3.5">
-          <div className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+          <div className="text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
             updated
           </div>
           <div
@@ -810,7 +810,7 @@ function ProjectDetailPane({
 
       {/* Pipeline strip */}
       <div className="mt-6" data-testid="detail-pipeline">
-        <div className="mb-2 text-[9.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+        <div className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-ink-3">
           Pipeline
         </div>
         <div className="rounded-lg border border-border-1 bg-bg-surface px-4 py-3.5">
@@ -874,7 +874,7 @@ function ProjectDetailPane({
                   </span>
                 ) : null}
                 {active && (
-                  <span className="absolute bottom-[-1px] left-2.5 right-2.5 h-0.5 rounded-t bg-accent" />
+                  <span className="absolute -bottom-px left-2.5 right-2.5 h-0.5 rounded-t bg-accent" />
                 )}
               </button>
             );
@@ -1507,7 +1507,7 @@ function ManageTabPanel({
                 onChange={() => {
                   if (isArmed) manageSend({ type: "ACKNOWLEDGE" });
                 }}
-                className="h-4 w-4 rounded border border-border-2"
+                className="h-4 w-4 rounded-sm border border-border-2"
               />
               <label
                 htmlFor="delete-ack-checkbox"
@@ -1531,7 +1531,7 @@ function ManageTabPanel({
             </AlertDialogCancel>
             <AlertDialogAction asChild>
               <Button
-                variant={isDangerConfirm ? "danger" : "outline"}
+                variant={isDangerConfirm ? "danger" : "outline-solid"}
                 size="sm"
                 data-testid="delete-confirm-btn"
                 disabled={!confirmEnabled}
@@ -1669,7 +1669,7 @@ function ManageRow({
         <div />
       )}
       <Button
-        variant={danger === true ? "danger" : "outline"}
+        variant={danger === true ? "danger" : "outline-solid"}
         size="sm"
         data-testid={`manage-action-btn-${id}`}
         onClick={onAction}
@@ -1809,7 +1809,7 @@ function CreateProjectModal({
               <div
                 role="tablist"
                 aria-label="Upload source"
-                className="flex gap-1 rounded border border-border-2 p-0.5 w-fit"
+                className="flex gap-1 rounded-sm border border-border-2 p-0.5 w-fit"
               >
                 <button
                   role="tab"
@@ -1936,7 +1936,7 @@ function ProgressLine({
   return (
     <div className="space-y-2" data-testid={testid}>
       <div className="text-sm text-ink-2">{label}</div>
-      <div className="h-2 w-full overflow-hidden rounded bg-bg-raised">
+      <div className="h-2 w-full overflow-hidden rounded-sm bg-bg-raised">
         <div
           className="h-full bg-accent transition-[width]"
           style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}

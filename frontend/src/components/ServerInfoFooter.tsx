@@ -50,7 +50,7 @@ export function ServerInfoFooter(): React.ReactElement | null {
       <button
         type="button"
         onClick={onCopy}
-        className="ml-2 rounded px-1.5 py-0.5 text-ink-4 hover:bg-bg-raised hover:text-ink-2"
+        className="ml-2 rounded-sm px-1.5 py-0.5 text-ink-4 hover:bg-bg-raised hover:text-ink-2"
         aria-label="Copy server URL"
       >
         {copied ? "copied" : "copy"}
