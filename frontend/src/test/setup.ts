@@ -37,6 +37,29 @@ if (typeof globalThis.EventSource === "undefined") {
   (globalThis as any).EventSource = EventSourceStub;
 }
 
+// jsdom does not implement matchMedia. Tests that need a specific OS
+// preference (dark/light) call `vi.spyOn(window, "matchMedia")`, which
+// requires an existing function to spy on (Vitest 5 no longer spies on
+// `undefined`). The default implementation below reports "no preference" so
+// unrelated tests are unaffected; theme-preference tests override it with
+// `mockImplementation`.
+if (typeof window.matchMedia === "undefined") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string): MediaQueryList => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // Start the mock server before any test runs.
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });

@@ -10,7 +10,7 @@
  * Design reference: grayscale.jsx § GrayscalePages + GrayThumb + ModePill
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { GrayscaleBackend, GrayscalePage } from "./types";
 import {
@@ -69,11 +69,16 @@ function GrayThumb({
   const [src, setSrc] = useState<string>(grayThumbUrl);
   const [failed, setFailed] = useState(false);
 
-  // Reset to the grayscale thumbnail URL when lastRunAt changes (stage re-ran).
-  useEffect(() => {
+  // Reset to the grayscale thumbnail URL when lastRunAt changes (stage
+  // re-ran). Adjusted during render
+  // (https://react.dev/learn/you-might-not-need-an-effect) instead of in an
+  // effect, comparing against the previously seen URL.
+  const [prevGrayThumbUrl, setPrevGrayThumbUrl] = useState(grayThumbUrl);
+  if (grayThumbUrl !== prevGrayThumbUrl) {
+    setPrevGrayThumbUrl(grayThumbUrl);
     setSrc(grayThumbUrl);
     setFailed(false);
-  }, [grayThumbUrl]);
+  }
 
   const boxShadow = active
     ? "0 0 0 2px var(--accent), inset 0 0 0 1px rgba(40,40,40,0.15)"

@@ -55,7 +55,7 @@ import {
   type ProjectSettingsServices,
 } from "@/machines/projectSettings";
 import { Button } from "@/components/ui/Button";
-import { resolveToolSlot } from "./toolSlot";
+import { TOOL_REGISTRY, ToolSlotPlaceholder } from "./toolSlot";
 
 // ---------------------------------------------------------------------------
 // Status colors for StageStrip dots
@@ -1215,7 +1215,11 @@ export function PipelinePage({
           })
     ] ?? null;
 
-  const ToolComponent = resolveToolSlot(ctx.currentStageId);
+  // Looked up inline (rather than through a resolver function) so the JSX
+  // tag below resolves to a component reference react-hooks/static-components
+  // can see comes from a stable module-level binding, not one "created" here.
+  const ToolComponent =
+    TOOL_REGISTRY[ctx.currentStageId] ?? ToolSlotPlaceholder;
 
   return (
     <section

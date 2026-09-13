@@ -86,7 +86,8 @@ export type ToolSlotComponent = (props: ToolSlotProps) => ReactNode;
 /**
  * Map from stageId → ToolSlotComponent.
  * F5 will populate this with stage-specific tool components.
- * Until then, `resolveToolSlot` returns the placeholder for every stage.
+ * Until then, `TOOL_REGISTRY[stageId] ?? ToolSlotPlaceholder` resolves to
+ * the placeholder for every stage.
  */
 export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   // F5.1 — Source stage tool (task/f51-source-tool)
@@ -125,13 +126,6 @@ export const TOOL_REGISTRY: Partial<Record<string, ToolSlotComponent>> = {
   archive: ArchiveTool,
 };
 
-/**
- * Look up the registered tool for a stage, falling back to the placeholder.
- */
-export function resolveToolSlot(stageId: string): ToolSlotComponent {
-  return TOOL_REGISTRY[stageId] ?? ToolSlotPlaceholder;
-}
-
 // ---------------------------------------------------------------------------
 // Placeholder — visible per workspace spec-acceptance rule
 // ---------------------------------------------------------------------------
@@ -140,8 +134,13 @@ export function resolveToolSlot(stageId: string): ToolSlotComponent {
  * Placeholder shown when F5 has not yet registered a tool for a stage.
  * The placeholder is visible + labeled so F5 can locate and replace it.
  * `data-testid="tool-slot-placeholder"` is the testid for artboard tests.
+ *
+ * Exported (along with `TOOL_REGISTRY`) so callers look up
+ * `TOOL_REGISTRY[stageId] ?? ToolSlotPlaceholder` inline rather than through
+ * a wrapper function — an indirection that `react-hooks/static-components`
+ * cannot prove returns a stable component reference across renders.
  */
-function ToolSlotPlaceholder({ stageId }: ToolSlotProps): ReactNode {
+export function ToolSlotPlaceholder({ stageId }: ToolSlotProps): ReactNode {
   return (
     <div
       data-testid="tool-slot-placeholder"

@@ -31,9 +31,20 @@ export function useStageEvents(
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  useEffect(() => {
+  // Reset connection state as soon as the target page changes, adjusted
+  // during render (https://react.dev/learn/you-might-not-need-an-effect)
+  // instead of at the top of the effect below, so a stale error/connected
+  // flag from the previous page never paints even for one frame.
+  const stageKey =
+    projectId === null || idx0 === null ? null : `${projectId}:${idx0}`;
+  const [prevStageKey, setPrevStageKey] = useState(stageKey);
+  if (stageKey !== prevStageKey) {
+    setPrevStageKey(stageKey);
     setError(null);
     setIsConnected(false);
+  }
+
+  useEffect(() => {
     if (projectId === null || idx0 === null) return;
     if (typeof EventSource === "undefined") return;
 

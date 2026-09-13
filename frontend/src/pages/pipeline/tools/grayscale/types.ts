@@ -12,20 +12,6 @@ export type {
 } from "@/machines/tools/grayscaleTool";
 
 // Task 4.1 — pipeline config types
-export type {
-  FlattenConfig,
-  ClaheConfig,
-  Color2GrayParams,
-  GrayscaleConverter,
-  GrayscaleChannel,
-  GrayscaleConfig,
-  GrayscaleDraftConfig,
-} from "./grayscaleConfig";
-
-export {
-  GRAYSCALE_CONFIG_DEFAULTS,
-  draftToSettings,
-  settingsToDraft,
-} from "./grayscaleConfig";
+export type { GrayscaleConverter, GrayscaleChannel } from "./grayscaleConfig";
 
 export type GrayscaleTab = "overview" | "pages" | "workbench" | "settings";

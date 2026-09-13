@@ -15,7 +15,7 @@
  * @see src/pdomain_prep_for_pgdp/api/data/stage_settings_all.py — PUT route
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type {
   GrayscaleDraftConfig,
@@ -55,18 +55,18 @@ export function GrayscaleSettingsAllSection({
 
   // Sync local draft when the parent loads the persisted config from the API
   // (the prop starts as GRAYSCALE_CONFIG_DEFAULTS then updates once the query
-  // resolves — the useEffect re-initialises the draft from the loaded value).
-  useEffect(() => {
+  // resolves). Adjusted during render
+  // (https://react.dev/learn/you-might-not-need-an-effect) instead of in an
+  // effect, comparing against the previously seen values of the fields that
+  // actually drive re-initialisation. Deep-equality would be nicer but config
+  // is a plain object and the parent only changes it once (loading →
+  // loaded), so comparing these primitives is enough.
+  const syncKey = `${config.converter}|${config.flatten.enabled}|${config.clahe.enabled}|${config.channel}`;
+  const [prevSyncKey, setPrevSyncKey] = useState(syncKey);
+  if (syncKey !== prevSyncKey) {
+    setPrevSyncKey(syncKey);
     setDraft({ ...config });
-    // Deep-equality would be nicer but config is a plain object and the parent
-    // only changes it once (loading → loaded), so shallow-spread is fine here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    config.converter,
-    config.flatten.enabled,
-    config.clahe.enabled,
-    config.channel,
-  ]);
+  }
 
   return (
     <div

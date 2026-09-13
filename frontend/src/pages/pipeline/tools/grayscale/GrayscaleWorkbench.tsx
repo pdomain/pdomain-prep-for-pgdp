@@ -13,7 +13,7 @@
  * backend integration deferred to I1. Marked [OPEN:I1] in comments.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@pdomain/pdomain-ui/icons";
 import type {
@@ -885,11 +885,15 @@ function PageViewerPane({
   const page = pages[cursor];
 
   // Reset the failed flag whenever the page changes so navigating to a new
-  // page re-attempts the ingest thumbnail fetch.
+  // page re-attempts the ingest thumbnail fetch. Adjusted during render
+  // (https://react.dev/learn/you-might-not-need-an-effect) instead of in an
+  // effect, comparing against the previously seen URL.
   const srcUrl = page ? sourceArtifactUrl(projectId, page.idx0) : null;
-  useEffect(() => {
+  const [prevSrcUrl, setPrevSrcUrl] = useState(srcUrl);
+  if (srcUrl !== prevSrcUrl) {
+    setPrevSrcUrl(srcUrl);
     setSrcImgFailed(false);
-  }, [srcUrl]);
+  }
   const sec = estimateSecPerPage(backend);
 
   // Artifact URL for the grayscale stage output (after-pane).

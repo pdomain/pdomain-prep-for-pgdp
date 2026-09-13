@@ -14,7 +14,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
@@ -144,12 +144,18 @@ export function ArtifactViewer({ projectId, idx0, selectedStageId }: Props) {
   // undefined = auto-derive from upstream; non-undefined = user override
   const [compareId, setCompareId] = useState<string | undefined>(undefined);
 
-  // Sync from chip-rail prop: update primary and reset compare override
-  useEffect(() => {
-    if (selectedStageId === primaryId) return;
-    setPrimaryId(selectedStageId);
-    setCompareId(undefined);
-  }, [selectedStageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Sync from chip-rail prop: update primary and reset compare override.
+  // Adjusted during render (https://react.dev/learn/you-might-not-need-an-effect)
+  // instead of in an effect, so switching chips doesn't cost an extra render.
+  const [prevSelectedStageId, setPrevSelectedStageId] =
+    useState(selectedStageId);
+  if (selectedStageId !== prevSelectedStageId) {
+    setPrevSelectedStageId(selectedStageId);
+    if (selectedStageId !== primaryId) {
+      setPrimaryId(selectedStageId);
+      setCompareId(undefined);
+    }
+  }
 
   // Pane is hidden when no chip is selected — selectedStageId drives visibility.
   if (!selectedStageId) return null;

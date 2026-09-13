@@ -946,15 +946,23 @@ function ActivityTabPanel({
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState<string | null>(null);
 
-  // Use the recentActivity machine via createActor so we get the full
-  // machine lifecycle without mounting another hook at the component boundary.
-  // Key on project.id so switching projects resets the actor.
-  useEffect(() => {
+  // Reset activity state when switching to a different project. Adjusted
+  // during render (https://react.dev/learn/you-might-not-need-an-effect)
+  // instead of at the top of the effect below, so the reset commits with the
+  // same render as the project switch rather than one render later.
+  const [prevProjectId, setPrevProjectId] = useState(project.id);
+  if (project.id !== prevProjectId) {
+    setPrevProjectId(project.id);
     setActivityLoading(true);
     setActivityError(null);
     setActivityEntries([]);
     setActivityTotal(0);
+  }
 
+  // Use the recentActivity machine via createActor so we get the full
+  // machine lifecycle without mounting another hook at the component boundary.
+  // Key on project.id so switching projects resets the actor.
+  useEffect(() => {
     const actor = createActor(recentActivityMachine, {
       input: {
         projectId: project.id,
@@ -1088,11 +1096,19 @@ function AttributesTabPanel({
   const [attrLoading, setAttrLoading] = useState(true);
   const [attrError, setAttrError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Reset attributes state when switching to a different project. Adjusted
+  // during render (https://react.dev/learn/you-might-not-need-an-effect)
+  // instead of at the top of the effect below, so the reset commits with the
+  // same render as the project switch rather than one render later.
+  const [prevAttrProjectId, setPrevAttrProjectId] = useState(project.id);
+  if (project.id !== prevAttrProjectId) {
+    setPrevAttrProjectId(project.id);
     setAttrLoading(true);
     setAttrError(null);
     setAttrFields(null);
+  }
 
+  useEffect(() => {
     const actor = createActor(attributesPanelMachine, {
       input: { projectId: project.id, services },
     });

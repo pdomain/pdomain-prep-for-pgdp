@@ -89,30 +89,40 @@ function ApikeyLoginPage() {
 
 function JwtLoginPage() {
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
+
+  // Config validity, the callback URL params, and the stashed PKCE verifier
+  // are all synchronously available (window.__ENV__ / location / storage) —
+  // derived during render rather than set as state from inside the effect
+  // below, since none of this needs a lifecycle to compute.
+  const e = env();
+  const configError =
+    e.AUTH_MODE !== "jwt" || !e.JWT_ISSUER
+      ? "Login is only used in JWT auth mode. Check window.__ENV__ / /env.js."
+      : null;
+
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const verifier = code ? sessionStorage.getItem(PKCE_VERIFIER_KEY) : null;
+  const stateOk = code
+    ? state === sessionStorage.getItem("pgdp.pkce_state")
+    : true;
+  const pkceError =
+    !configError && code && (!verifier || !stateOk)
+      ? "PKCE state mismatch — restart the login flow."
+      : null;
+
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const displayError = configError ?? pkceError ?? runtimeError;
 
   useEffect(() => {
-    const e = env();
-    if (e.AUTH_MODE !== "jwt" || !e.JWT_ISSUER) {
-      setError(
-        "Login is only used in JWT auth mode. Check window.__ENV__ / /env.js.",
-      );
-      return;
-    }
+    if (configError || pkceError) return;
+    const e2 = env();
+    if (!e2.JWT_ISSUER) return; // narrows e2.JWT_ISSUER to string below
 
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-
-    if (code) {
+    if (code && verifier) {
       // Step 2: exchange code for token.
-      const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
-      const stateOk = state === sessionStorage.getItem("pgdp.pkce_state");
-      if (!verifier || !stateOk) {
-        setError("PKCE state mismatch — restart the login flow.");
-        return;
-      }
-      void exchangeCode(e.JWT_ISSUER, code, verifier)
+      void exchangeCode(e2.JWT_ISSUER, code, verifier)
         .then((token) => {
           setAuthToken(token);
           sessionStorage.removeItem(PKCE_VERIFIER_KEY);
@@ -121,16 +131,16 @@ function JwtLoginPage() {
           void navigate(ret, { replace: true });
         })
         .catch((err: unknown) =>
-          setError(err instanceof Error ? err.message : String(err)),
+          setRuntimeError(err instanceof Error ? err.message : String(err)),
         );
       return;
     }
 
     // Step 1: kick off the PKCE flow.
-    void startPkce(e).catch((err: unknown) =>
-      setError(err instanceof Error ? err.message : String(err)),
+    void startPkce(e2).catch((err: unknown) =>
+      setRuntimeError(err instanceof Error ? err.message : String(err)),
     );
-  }, [navigate]);
+  }, [navigate, configError, pkceError, code, verifier]);
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
@@ -142,8 +152,8 @@ function JwtLoginPage() {
           </span>
         </div>
         <h1 className="text-lg font-semibold text-ink-1">Sign in</h1>
-        {error ? (
-          <p className="text-sm text-status-error">{error}</p>
+        {displayError ? (
+          <p className="text-sm text-status-error">{displayError}</p>
         ) : (
           <p className="text-sm text-ink-3">
             Redirecting to your identity provider…

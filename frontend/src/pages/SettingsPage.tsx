@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
 import { Button, buttonVariants } from "../components/ui/Button";
@@ -46,7 +46,12 @@ export function SettingsPage() {
   const [scannosText, setScannosText] = useState("");
   const [hyphenText, setHyphenText] = useState("");
 
-  useEffect(() => {
+  // Sync local draft state from the loaded query data. Adjusted during
+  // render (https://react.dev/learn/you-might-not-need-an-effect) instead of
+  // in an effect, comparing against the last-seen defaults.data reference.
+  const [prevDefaultsData, setPrevDefaultsData] = useState(defaults.data);
+  if (defaults.data !== prevDefaultsData) {
+    setPrevDefaultsData(defaults.data);
     if (defaults.data) {
       setDraft(defaults.data);
       setScannosText(
@@ -56,7 +61,7 @@ export function SettingsPage() {
       );
       setHyphenText(defaults.data.hyphenation_join_list.join("\n"));
     }
-  }, [defaults.data]);
+  }
 
   const save = useMutation({
     mutationFn: (next: SystemDefaults) =>
