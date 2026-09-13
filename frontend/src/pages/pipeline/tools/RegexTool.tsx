@@ -462,11 +462,9 @@ function RegexTabBar({
 
 export function RegexTool({
   stageId,
-  runnerRef,
+  runnerRef: _runnerRef, // wired at I1
   _testServices,
 }: ToolSlotProps & { _testServices?: RegexPassServices }): ReactNode {
-  void runnerRef; // wired at I1
-
   const { projectId = "demo" } = useParams<{ projectId: string }>();
   const services = useMemo(
     () => _testServices ?? buildRealRegexPassServices(),

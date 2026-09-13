@@ -305,7 +305,7 @@ function HyphenCaseRow({
  */
 function HyphenPageWorkbenchPanel({
   pageId,
-  cases,
+  cases: _cases, // will filter by pageId at I1
   send,
 }: {
   pageId: string | null;
@@ -323,8 +323,6 @@ function HyphenPageWorkbenchPanel({
     undecided: pageCases.filter((c) => c.status === "undecided").length,
     flagged: pageCases.filter((c) => c.status === "flagged").length,
   };
-
-  void cases; // will filter by pageId at I1
 
   if (!pageId) {
     return (
@@ -968,11 +966,9 @@ function HyphenCaseList({
 
 export function HyphenJoinTool({
   stageId,
-  runnerRef,
+  runnerRef: _runnerRef, // wired at I1
   _testServices,
 }: ToolSlotProps & { _testServices?: HyphenJoinServices }): ReactNode {
-  void runnerRef; // wired at I1
-
   const { projectId = "demo" } = useParams<{ projectId: string }>();
   const services = useMemo(
     () => _testServices ?? buildRealHyphenJoinServices(),
@@ -991,12 +987,7 @@ export function HyphenJoinTool({
   const isSettled = snapshot.matches("settled");
   const isReviewing = snapshot.matches("reviewing");
 
-  // Sync tab to mode when machine mode changes
-  const tabForMode: Record<HyphenMode, HyphenTab> = {
-    queue: "queue",
-    joined: "joined",
-    mismatch: "mismatch",
-  };
+  // Sync tab to mode when machine mode changes — wired at I1; no-op for now.
 
   const counts = {
     queue: cases.filter(
@@ -1015,8 +1006,6 @@ export function HyphenJoinTool({
       send({ type: "SET_MODE", mode: MODE_MAP[modeTab] });
     }
   };
-
-  void tabForMode;
 
   if (isScanning) {
     return (

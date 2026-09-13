@@ -502,13 +502,11 @@ export interface WordcheckTestScanDone {
 
 export function WordcheckTool({
   stageId,
-  runnerRef,
+  runnerRef: _runnerRef, // wired at I1
   _testScanDone,
 }: ToolSlotProps & {
   _testScanDone?: WordcheckTestScanDone;
 }): ReactNode {
-  void runnerRef; // wired at I1
-
   const { projectId = "demo" } = useParams<{ projectId: string }>();
   const services = useMemo(() => buildRealWordcheckToolServices(), []);
 

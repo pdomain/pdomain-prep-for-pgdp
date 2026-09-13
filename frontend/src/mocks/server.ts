@@ -1556,11 +1556,9 @@ export function createMockServer(): MockServer {
       return { rules, counts };
     },
 
-    async waiveValidationRule(_projectId, ruleId, note) {
+    async waiveValidationRule(_projectId, _ruleId, _note) {
       // The mock simply accepts the waiver — the machine patches counts client-side
       // A real server would persist the waiver record.
-      void ruleId;
-      void note;
       return { ok: true };
     },
 

@@ -1086,7 +1086,7 @@ export function PipelinePage({
   const { projectId = "" } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const initialStageId = searchParams.get("stage");
-  const queryClient = useQueryClient();
+  void useQueryClient(); // available for cache invalidation at I2
 
   const resolvedServices = useMemo<PipelinePageServices>(() => {
     if (injectedServices) return injectedServices;
@@ -1095,9 +1095,8 @@ export function PipelinePage({
     const runnerSvcs = buildRealStageRunnerServices();
     const shell = buildRealPipelineShellServices(runnerSvcs);
     const settings = buildRealProjectSettingsServices();
-    void queryClient; // available for cache invalidation at I2
     return { shell, settings };
-  }, [injectedServices, queryClient]);
+  }, [injectedServices]);
 
   const [snap, send] = useActor(pipelineShellMachine, {
     input: {

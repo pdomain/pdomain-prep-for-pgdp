@@ -790,14 +790,9 @@ export const pipelineShellMachine = setup({
      * Stop all 23 runner actors on cleanup / reload.
      * Used when entering loadError so we don't leak actors.
      */
-    stopRunners: ({ context }) => {
-      for (const ref of context.runners) {
-        if (ref) {
-          // runners are spawned children — XState v5 manages their lifecycle
-          // automatically when the parent stops, but we record this for clarity.
-          void ref;
-        }
-      }
+    stopRunners: () => {
+      // runners are spawned children — XState v5 manages their lifecycle
+      // automatically when the parent stops, so there is nothing to do here.
     },
   },
 }).createMachine({

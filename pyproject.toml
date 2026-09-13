@@ -13,7 +13,12 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "pdomain-book-tools>=0.21.0",
+    "pdomain-book-tools>=0.28.0",
+    # Declared directly, though nothing here imports it: book-tools 0.28.0
+    # depends on it, it lives only on the self-hosted index, and that index
+    # is explicit, so a purely transitive reference does not resolve. Every
+    # sibling that depends on book-tools lists it the same way.
+    "pdomain-book-contracts>=0.2.0",
     "pdomain-ops>=0.11.2",
     "eventsourcing>=9.0",
     "fastapi>=0.115",
@@ -84,6 +89,10 @@ required-version = ">=0.11.16"
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
+# Transitive since book-tools 0.28.0, which split the pure-Python contracts
+# out. It lives only on the self-hosted index, so the mapping is required
+# even though nothing here imports it directly.
+pdomain-book-contracts = { index = "pdomain-index-pip" }
 pdomain-ops = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]

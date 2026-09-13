@@ -695,9 +695,8 @@ export const textZonesToolMachine = setup({
      * YAML: `persistLayout` — SIDE EFFECT: PUT page layout (zones + order | dismissed split)
      * Called from SAVE_LAYOUT and KEEP_AS_ONE transitions.
      */
-    persistLayout: ({ context }) => {
+    persistLayout: () => {
       // SIDE EFFECT: at I1, PUT /api/projects/:id/stages/text_zones/pages/:pageId/layout
-      void context;
     },
 
     /**

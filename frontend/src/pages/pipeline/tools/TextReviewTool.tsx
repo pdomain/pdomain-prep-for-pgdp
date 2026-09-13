@@ -520,10 +520,8 @@ function TextReviewTabBar({
 
 export function TextReviewTool({
   stageId,
-  runnerRef,
+  runnerRef: _runnerRef, // wired at I1
 }: ToolSlotProps): ReactNode {
-  void runnerRef; // wired at I1
-
   const { projectId = "demo" } = useParams<{ projectId: string }>();
   const services = useMemo(() => buildRealTextReviewToolServices(), []);
 

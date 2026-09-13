@@ -928,11 +928,9 @@ function ZoneTabBar({
 
 export function TextZonesTool({
   stageId,
-  runnerRef,
+  runnerRef: _runnerRef, // wired at I1
   _testServices,
 }: ToolSlotProps & { _testServices?: TextZonesToolServices }): ReactNode {
-  void runnerRef; // wired at I1
-
   // Extract projectId from the runner context (at I1; for now use fixture)
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 

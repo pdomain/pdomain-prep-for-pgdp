@@ -285,8 +285,8 @@ export const projectSettingsMachine = setup({
 
     /** YAML: `applyDestructiveResult` — reflect result into values if needed */
     applyDestructiveResult: assign(
-      (_args, params: { result: { ok: boolean; message?: string } }) => {
-        void params.result; // result available for derived state if needed
+      (_args, _params: { result: { ok: boolean; message?: string } }) => {
+        // result available for derived state if needed
         return {};
       },
     ),
