@@ -85,7 +85,7 @@ already includes the SPA bundle, so no `make run` step is needed.
 
 Contributor workflows (Node, mise, local-dev with `pdomain-book-tools`, CI,
 release tags) live in [`DEVELOPMENT.md`](DEVELOPMENT.md). Architecture deep
-dive is in [`docs/`](docs/).
+dive is in [`docs/README.md`](docs/README.md).
 
 End users do not need Node, npm, or mise — the published wheel ships with
 the prebuilt SPA bundle.

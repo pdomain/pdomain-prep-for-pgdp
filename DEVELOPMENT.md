@@ -1,7 +1,7 @@
 # Developing pdomain-prep-for-pgdp
 
 This document covers contributor workflows. End-user install + usage lives
-in [`README.md`](README.md). Architecture writeup is in [`docs/`](docs/).
+in [`README.md`](README.md). Architecture writeup is in [`docs/README.md`](docs/README.md).
 
 ## Prerequisites
 
