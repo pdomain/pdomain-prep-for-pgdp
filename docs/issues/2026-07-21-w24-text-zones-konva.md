@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-06
 Kind: issue
 Level: I1
 ---
@@ -14,9 +14,9 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-06
 - **Resolution:** Open
-- **Severity:** Medium — split/zone QA blocked on schematic canvas; depends on W0.5
+- **Severity:** Medium — split/zone QA blocked on schematic canvas; W0.5 body contract is shipped
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
 - **Read when:** implementing text_zones hi-fi Konva board, split overlays, or after W0.5 split contract lands
 - **Search terms:** TextZonesTool, Konva, zone-canvas-area, split-preview-canvas, schematic zone, APPLY_SPLIT,
@@ -30,20 +30,19 @@ routes, but the visual surface is schematic: zone card thumbs are CSS
 blocks, the page canvas is a placeholder labeled “Page canvas with zone
 overlays (I1: Konva)”, and split preview is “Split preview (I1: Konva)”.
 Design-level split/zone editing on a real page image is not available.
-**Depends on W0.5** (text_zones APPLY_SPLIT FE/BE contract) — building Konva
-on a 422ing split body wastes effort. Wave 2.4 done when “Design-level split
-works on a real page.”
+W0.5 (the APPLY_SPLIT body) shipped on 2026-11-06. See
+[Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+Wave 2.4 done when “Design-level split works on a real page.”
 
 ## Impact
 
 - Users cannot draw/adjust zones or verify split gutters on actual page
   imagery inside the tool.
 - Contour-only backend zones (PARTIAL stage) remain hard to review.
-- Split UX cannot be product-validated until W0.5 body alignment and this
-  Konva surface both land.
-- Parent plan rates text_zones frontend FUNCTIONAL (machine/tabs exist) but
-  still calls out split FE/BE mismatch (B7 / W0.5) and design-handoff Konva
-  boards as fidelity backlog.
+- Split UX still needs this Konva surface before a proofer can validate a
+  split on a real page image. The request body itself is shipped.
+- Parent plan rates text_zones frontend FUNCTIONAL (machine/tabs exist).
+  Design-handoff Konva boards remain fidelity backlog.
 
 ## Environment / versions
 
@@ -53,8 +52,7 @@ review date: 2026-07-21
 UI: frontend/src/pages/pipeline/tools/TextZonesTool.tsx
 services: frontend/src/services/tools/textZonesTool.ts
 machine: frontend/src/machines/tools/textZonesTool.ts
-dependency: W0.5 — docs/issues/2026-07-21-w05-text-zones-split-contract.md
-  (parent plan B7 / Wave 0 W0.5)
+dependency: W0.5 shipped — docs/architecture/03-pipeline.md (Book path contracts)
 design: docs/plans/design_handoff_pgdp_app/final/text_zones/
 parent plan: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.4
 ```

@@ -25,8 +25,7 @@ supersedes: ""
 ## Goal
 
 Make a real book finishable on `make run`: fix live pipeline blockers, then
-deepen text/pack/UI. This session produced the forward queue as governed docs;
-implementation has not started.
+deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Resume at Wave 1.
 
 ## Done this session
 
@@ -70,8 +69,8 @@ implementation has not started.
 
 - Forward queue is the completion plan + `docs/issues/`, not roadmap P0–P3
   historical “all shipped.”
-- W0.0 text-chain contract is the highest risk; golden-path CI is Wave 0 exit
-  (W0.6), not Wave 3.
+- Wave 0, including golden-path CI, shipped on 2026-11-06. See
+  `docs/architecture/03-pipeline.md` (Book path contracts).
 - `build_package` is PARTIAL for product packaging (no cover.png / oxipng vs
   legacy `core/packaging.py`).
 - Local-first remains ahead of Modal/Postgres/S3 dual-write.
@@ -82,39 +81,28 @@ implementation has not started.
   commit; check `git status` / `git log origin/master..HEAD` before push).
 - Working tree clean after handoff commit (except this handoff file until
   committed).
-- Implementation entry: Wave 0 issues under `docs/issues/README.md`.
+- Implementation entry: Wave 1 issues under `docs/issues/README.md`.
 
 ## Pointers
 
 - `docs/plans/2026-07-21-pipeline-completion-review.md` — authoritative plan
 - `docs/issues/README.md` — open issue index
-- `docs/issues/2026-07-21-w00-text-chain-contract.md` — start here (B0+B1)
-- `docs/issues/2026-07-21-w02-project-stage-job-adapter.md`
-- `docs/issues/2026-07-21-w03-text-review-attestation.md`
-- `docs/issues/2026-07-21-w04-multi-page-stage-run.md`
-- `docs/issues/2026-07-21-w05-text-zones-split-contract.md`
-- `docs/issues/2026-07-21-w06-golden-path-ci.md`
+- `docs/architecture/03-pipeline.md` — Book path contracts (Wave 0)
+- `docs/context/decisions.md` — Wave 0 retirement tombstone
 - `docs/issues/2026-07-21-parallel-2026-07-14-review-fixes.md` — residual only
 - `docs/plans/2026-07-14-review-fixes.md` — draft plan text still stale
-- `src/pdomain_prep_for_pgdp/core/pipeline/stage_runner.py` — compound load
-- `src/pdomain_prep_for_pgdp/core/pipeline/steps/wordcheck.py` — flags-only
-- `src/pdomain_prep_for_pgdp/core/job_runner.py` — project stage kwargs bag
-- `frontend/src/services/pipeline.ts` — page 0000-only runStage
+- `src/pdomain_prep_for_pgdp/core/pipeline/stage_runner.py` — load by consumer need
+- `src/pdomain_prep_for_pgdp/core/pipeline/steps/wordcheck.py` — flags.json + output.txt
+- `src/pdomain_prep_for_pgdp/core/pipeline/project_stage_kwargs.py` — project stage kwargs
+- `frontend/src/services/pipeline.ts` — rerun fan-out for non-OCR page stages
 - `docs/handoff/2026-07-17-issue-tracker-migration.md` — **other** scope (GH
   tracker cutover); do not mix with this queue unless CT says so
 
 ## Resume steps
 
-1. Read `docs/plans/2026-07-21-pipeline-completion-review.md` Wave 0 table and
-   `docs/issues/2026-07-21-w00-text-chain-contract.md`.
-2. Confirm text-chain design with CT (three options in the plan Architecture
-   section).
-3. TDD first: failing golden-path / runner chain test (W0.6 skeleton) that
-   asserts UTF-8 prose not flags JSON in text_review `output.txt`.
-4. Implement W0.0+W0.1 parent load-by-consumer-need together.
-5. Then W0.2 job adapter, W0.3 per-page attestation writer, W0.4 multi-page
-   shell, W0.5 split body, land W0.6 green in `make ci`.
-6. Use worktrees for implementation; `make ci AI=1` before each commit; do not
+1. Read `docs/plans/2026-07-21-pipeline-completion-review.md` Wave 1 table and
+   `docs/issues/README.md`. Wave 0 is shipped.
+2. Use worktrees for implementation; `make ci AI=1` before each commit; do not
    push without say-so.
-7. Optionally mark `docs/plans/2026-07-14-review-fixes.md` residual/shipped so
+3. Optionally mark `docs/plans/2026-07-14-review-fixes.md` residual/shipped so
    agents stop re-opening fixed suite/device tasks.

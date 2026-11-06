@@ -1,6 +1,6 @@
 """W0.5 — text_zones APPLY_SPLIT body matches SplitPageRequest.
 
-Issue: docs/issues/2026-07-21-w05-text-zones-split-contract.md
+Contract: docs/architecture/03-pipeline.md (Book path contracts)
 """
 
 from __future__ import annotations

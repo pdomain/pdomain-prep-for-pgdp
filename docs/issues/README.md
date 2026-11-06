@@ -63,14 +63,9 @@ Parallel bug track (not Wave 0 exit):
 
 ## Open issues
 
-### Wave 0 — Correctness (book path)
-
-- [Text-chain contract and compound parent load (W0.0 / W0.1)](2026-07-21-w00-text-chain-contract.md)
-- [Project-stage job kwargs adapter (W0.2)](2026-07-21-w02-project-stage-job-adapter.md)
-- [Per-page text_review attestation writer (W0.3)](2026-07-21-w03-text-review-attestation.md)
-- [Multi-page page-stage run from shell (W0.4)](2026-07-21-w04-multi-page-stage-run.md)
-- [text_zones APPLY_SPLIT FE/BE contract (W0.5)](2026-07-21-w05-text-zones-split-contract.md)
-- [Golden-path CI regression (W0.6)](2026-07-21-w06-golden-path-ci.md)
+Wave 0 (correctness, book path) shipped on 2026-11-06. The reports were retired.
+Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+The tombstone is in [decisions](../context/decisions.md).
 
 ### Wave 1 — Text and pack product path
 

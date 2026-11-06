@@ -1,6 +1,6 @@
 """W0.2 — project-stage job kwargs adapter (B2).
 
-Issue: docs/issues/2026-07-21-w02-project-stage-job-adapter.md
+Contract: docs/architecture/03-pipeline.md (Book path contracts)
 
 The job runner must not pass a single generic kwargs bag. Per-stage kwargs
 must match each callable and load parent artifacts for zip / submit_check.

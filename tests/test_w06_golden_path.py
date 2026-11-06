@@ -1,6 +1,6 @@
 """W0.6 — golden-path book regression in default CI.
 
-Issue: docs/issues/2026-07-21-w06-golden-path-ci.md
+Contract: docs/architecture/03-pipeline.md (Book path contracts)
 
 Hermetic 3-page path (no DocTR / GPU):
   seed OCR compound + image stages → text chain → attest → page_order

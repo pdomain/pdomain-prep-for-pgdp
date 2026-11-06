@@ -1,6 +1,6 @@
 """W0.3 — per-page text_review attestation writer (B3).
 
-Issue: docs/issues/2026-07-21-w03-text-review-attestation.md
+Contract: docs/architecture/03-pipeline.md (Book path contracts)
 
 Attest rewrites attestation.json to status=clean so validation no longer
 emits unattested_text_review without hand-seeded files.

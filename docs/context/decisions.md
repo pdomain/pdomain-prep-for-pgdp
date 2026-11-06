@@ -1,9 +1,16 @@
+---
+Status: active
+Kind: decision
+Last verified: 2026-11-06
+---
+
 # Decisions and lifecycle tombstones
 
 ## Agent Index
 
 - **Kind:** decision
 - **Status:** active
+- **Last verified:** 2026-11-06
 - **Read when:** researching durable choices, implementation deviations, or retired documents.
 - **Search terms:** decisions, tombstones, retired specs, implementation deviations.
 
@@ -165,3 +172,25 @@ retained rationale, and remaining work; this literal list makes the per-document
 - `specs/08-data-models.md`
 - `specs/09-deployment.md`
 - `specs/REFACTOR-PROPOSAL.md`
+- `docs/issues/2026-07-21-w00-text-chain-contract.md`
+- `docs/issues/2026-07-21-w02-project-stage-job-adapter.md`
+- `docs/issues/2026-07-21-w03-text-review-attestation.md`
+- `docs/issues/2026-07-21-w04-multi-page-stage-run.md`
+- `docs/issues/2026-07-21-w05-text-zones-split-contract.md`
+- `docs/issues/2026-07-21-w06-golden-path-ci.md`
+
+## 2026-11-06 retirement tombstones
+
+### 2026-11-06 Retired: Wave 0 book-path issues
+
+- Old path: `docs/issues/2026-07-21-w00-text-chain-contract.md`
+- Old path: `docs/issues/2026-07-21-w02-project-stage-job-adapter.md`
+- Old path: `docs/issues/2026-07-21-w03-text-review-attestation.md`
+- Old path: `docs/issues/2026-07-21-w04-multi-page-stage-run.md`
+- Old path: `docs/issues/2026-07-21-w05-text-zones-split-contract.md`
+- Old path: `docs/issues/2026-07-21-w06-golden-path-ci.md`
+- Outcome: implemented
+- Superseded by: `docs/architecture/03-pipeline.md` section Book path contracts
+- Removal commit: PENDING_REMOVAL_COMMIT
+- Rationale kept: `docs/architecture/03-pipeline.md` and the tests named in that section
+- Remaining work: none for Wave 0. Wave 1 and later stay on the completion plan.

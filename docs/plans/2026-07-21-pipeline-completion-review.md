@@ -13,7 +13,7 @@ kind: plan
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-06
 - **Read when:** picking the next pipeline workstream, assessing E2E readiness, or reconciling roadmap vs code.
 - **Search terms:** pipeline gaps, stage completeness, E2E book path, continuation plan, text chain, pack chain, hi-fi backlog, wordcheck contract.
 
@@ -35,17 +35,14 @@ What is real today:
 - Strong pure-function packaging, naming, and gate DAG tests
 - Hi-fi Source and Grayscale surfaces
 
+Wave 0 correctness shipped on 2026-11-06. The text chain, compound load, project job kwargs, per-page attestation, multi-page shell run, text-zones split body, and golden-path CI test are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+
 What still fails a real book walk:
 
-1. **Wordcheck / text-chain artifact contract** — flags JSON vs text DAG (see B0)
-2. OCR compound parent-load only reads `output.*` (B1)
-3. Project-stage job runner kwargs do not match stage callables (B2)
-4. Text review attestation never becomes `status: clean` on disk (B3)
-5. Shell runs only page `0000` for most page stages (B4)
-6. OCR / wordcheck / text_review UI paths lack live queue SSE (B5)
-7. Illustrations extract and package path naming are incomplete (B6)
-8. Regex stage is not full text postprocess (B8)
-9. Default CI never runs a golden book path or real DocTR
+1. OCR / wordcheck / text_review UI paths lack live queue SSE (B5)
+2. Illustrations extract and package path naming are incomplete (B6)
+3. Regex stage is not full text postprocess (B8)
+4. Default CI does not load real DocTR weights. The golden-path test uses a hermetic OCR fixture.
 
 Roadmap (`docs/plans/roadmap.md`) marks historical P0–P3 UX tickets shipped.
 That overstates live pipeline readiness. Treat this plan as the forward
@@ -180,7 +177,7 @@ text, illustrations, scanno cleanup, hyphen decisions, and live text review.
 
 ## Critical defects (blockers)
 
-These are code-backed, not speculative. Fix before more UI polish.
+These were code-backed on 2026-07-21. B0, B1, B2, B3, B4, and B7 shipped on 2026-11-06. Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). B5, B6, B8, and B9 are still open. The subsections below keep the original evidence.
 
 ### B0 — Wordcheck / text-chain artifact contract (highest risk)
 
@@ -393,14 +390,16 @@ detail; this section is the queue order only.
 
 **Priority order for book blockers** (do these first):
 
+Wave 0 shipped on 2026-11-06. Behavior and tests: [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+
 | ID | Issue | Work | Done when (falsifiable) |
 |----|-------|------|-------------------------|
-| W0.0 / W0.1 | [w00-text-chain-contract](../issues/2026-07-21-w00-text-chain-contract.md) | **Text-chain contract (B0+B1):** compound wordcheck / DAG rewire / runner fan-in; load-by-consumer-need | Runner test: ocr→…→text_review produces **UTF-8 page text**, not flags JSON; wordcheck still emits flags for UI |
-| W0.2 | [w02-project-stage-job-adapter](../issues/2026-07-21-w02-project-stage-job-adapter.md) | Stage-specific project job adapter (B2) | validation→…→submit_check via jobs without TypeError; zip has sha256 |
-| W0.3 | [w03-text-review-attestation](../issues/2026-07-21-w03-text-review-attestation.md) | Per-page attestation writer (B3) | API attest N pages → validation has zero `unattested_text_review` without hand-seeding |
-| W0.4 | [w04-multi-page-stage-run](../issues/2026-07-21-w04-multi-page-stage-run.md) | Multi-page page-stage run (B4) | 3-page book: run crop/threshold cleans **all** pages |
-| W0.5 | [w05-text-zones-split-contract](../issues/2026-07-21-w05-text-zones-split-contract.md) | text_zones APPLY_SPLIT FE/BE (B7) | APPLY_SPLIT succeeds in API + service test |
-| W0.6 | [w06-golden-path-ci](../issues/2026-07-21-w06-golden-path-ci.md) | Golden-path regression in default CI | Asserts real text, clean attestation, N-page dual-write, matched png/txt |
+| W0.0 / W0.1 | shipped | **Text-chain contract (B0+B1):** compound wordcheck and load-by-consumer-need | Runner test: ocr→…→text_review produces **UTF-8 page text**, not flags JSON; wordcheck still emits flags for UI |
+| W0.2 | shipped | Stage-specific project job adapter (B2) | validation→…→submit_check via jobs without TypeError; zip has sha256 |
+| W0.3 | shipped | Per-page attestation writer (B3) | API attest N pages → validation has zero `unattested_text_review` without hand-seeding |
+| W0.4 | shipped | Multi-page page-stage run (B4) | 3-page book: run crop/threshold cleans **all** pages |
+| W0.5 | shipped | text_zones APPLY_SPLIT FE/BE (B7) | APPLY_SPLIT succeeds in API + service test |
+| W0.6 | shipped | Golden-path regression in default CI | Asserts real text, clean attestation, N-page dual-write, matched png/txt |
 
 **Parallel track (not Wave 0 exit):** remaining [2026-07-14 review fixes](2026-07-14-review-fixes.md) tasks 1–5, 7–9 (suite auth, app_id, device, timeout, zip off-loop, AppShell client, docs, pin). Each task uses its own red/green test from that plan.
 
@@ -446,7 +445,7 @@ leaving the pipeline shell.
 
 | ID | Issue | Work | Done when |
 |----|-------|------|-----------|
-| W3.1 | — | ~~Golden-path in CI~~ | **Moved to [W0.6](../issues/2026-07-21-w06-golden-path-ci.md)** |
+| W3.1 | — | ~~Golden-path in CI~~ | Shipped with Wave 0. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). |
 | W3.2 | [w32-playwright-smoke-ci](../issues/2026-07-21-w32-playwright-smoke-ci.md) | Playwright smoke in CI | Failing UI registry breaks CI |
 | W3.3 | [w33-seeded-ocr-browser-fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | Seeded OCR browser fixtures | W6.2 text skips closed |
 | W3.4 | [w34-reclaim-stuck-running](../issues/2026-07-21-w34-reclaim-stuck-running.md) | Reclaim stuck `running` jobs | Crash recovery test |
@@ -472,14 +471,8 @@ leaving the pipeline shell.
 
 ## Recommended next session sequence
 
-1. **Confirm W0.0 text-chain design** with CT (compound wordcheck vs DAG rewire vs runner fan-in).
-2. **TDD W0.0 + W0.1 + W0.6 skeleton** — failing golden-path test first.
-3. **W0.2 job adapter** — pack stages runnable.
-4. **W0.3 attestation writer** — real per-page clean path.
-5. **W0.4 multi-page run** — wire shell to existing batch/rerun enqueue (task 6 already shipped).
-6. **W0.5 split contract**.
-7. Land golden-path green in CI; only then Wave 1 or Wave 2.
-8. Residual: update draft 2026-07-14 plan status; W3.8 for remaining doc drift.
+1. Start at Wave 1. Wave 0 is shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+2. Residual: update draft 2026-07-14 plan status; W3.8 for remaining doc drift.
 
 Use worktrees for implementation branches. Run `make ci AI=1` before each
 commit. Prefer pure-function TDD for adapter and artifact-key logic.
@@ -487,6 +480,8 @@ commit. Prefer pure-function TDD for adapter and artifact-key logic.
 ---
 
 ## Evidence index
+
+The file paths below are the 2026-07-21 review snapshot. Current book-path behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 
 | Topic | Primary locations |
 |-------|-------------------|

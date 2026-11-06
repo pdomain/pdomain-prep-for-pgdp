@@ -1,6 +1,6 @@
 """W0.0 / W0.1 — text-chain artifact contract (B0 + B1).
 
-Issue: docs/issues/2026-07-21-w00-text-chain-contract.md
+Contract: docs/architecture/03-pipeline.md (Book path contracts)
 Plan:  docs/plans/2026-07-21-pipeline-completion-review.md § Text-chain data contract
 
 Contract:

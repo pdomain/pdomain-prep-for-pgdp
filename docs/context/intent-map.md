@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-14
-Last verified: 2026-07-21
+Last verified: 2026-11-06
 Kind: plan
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** plan
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-06
 - **Read when:** choosing work, checking deferred ideas, or identifying owner decisions.
 - **Search terms:** active intent, deferred work, rejected direction, owner decision, pipeline issues.
 
@@ -44,14 +44,10 @@ generated OpenAPI.
   source-local and are found by repository search rather than duplicated as a brittle line-by-line inventory.
 - Keep the roadmap aligned with shipped GPU grayscale support and registry version 3.
 - Maintain the current `wordcheck` stage; scanno research may improve its flagging but does not create a separate stage.
-- **Pipeline completion queue:** [completion plan](../plans/2026-07-21-pipeline-completion-review.md)
-  decomposed into governed issues under [docs/issues](../issues/README.md). Start with Wave 0
-  ([text-chain contract](../issues/2026-07-21-w00-text-chain-contract.md),
-  [job adapter](../issues/2026-07-21-w02-project-stage-job-adapter.md),
-  [attestation](../issues/2026-07-21-w03-text-review-attestation.md),
-  [multi-page run](../issues/2026-07-21-w04-multi-page-stage-run.md),
-  [split contract](../issues/2026-07-21-w05-text-zones-split-contract.md),
-  [golden-path CI](../issues/2026-07-21-w06-golden-path-ci.md)).
+- **Pipeline completion queue:** [completion plan](../plans/2026-07-21-pipeline-completion-review.md).
+  Wave 0 shipped on 2026-11-06. Current book-path behavior is in
+  [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+  Start the remaining queue at Wave 1 under [docs/issues](../issues/README.md).
 
 ## Deferred
 
