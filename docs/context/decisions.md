@@ -191,6 +191,6 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Old path: `docs/issues/2026-07-21-w06-golden-path-ci.md`
 - Outcome: implemented
 - Superseded by: `docs/architecture/03-pipeline.md` section Book path contracts
-- Removal commit: PENDING_REMOVAL_COMMIT
+- Removal commit: 6b2db15c51323f539ebce28d8b7d517dbd78a54f
 - Rationale kept: `docs/architecture/03-pipeline.md` and the tests named in that section
 - Remaining work: none for Wave 0. Wave 1 and later stay on the completion plan.
