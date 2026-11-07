@@ -169,12 +169,13 @@ def test_thumbnail_for_page_returns_error_on_corrupt_bytes() -> None:
     pytest.importorskip("cv2")
     from pdomain_prep_for_pgdp.core.ingest import thumbnail_for_page
 
-    idx0, stem, jpg, err = thumbnail_for_page(3, "bad", b"not an image at all")
+    idx0, stem, jpg, err = thumbnail_for_page(3, "qqstem", b"not an image at all")
     assert idx0 == 3
-    assert stem == "bad"
+    assert stem == "qqstem"
     assert jpg is None
     assert err is not None
-    assert "bad" not in err  # stem is in the bookkeeping tuple, not the message
+    # The stem stays in the tuple. A hex address can contain the letters in "bad".
+    assert "qqstem" not in err
     # error originates in the Pillow header-check layer or the cv2 decode layer
     assert any(kw in err.lower() for kw in ("imdecode", "cv2", "cannot read image header", "cannot identify"))
 
