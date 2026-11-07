@@ -36,48 +36,28 @@ import {
 } from "@/machines/tools/hyphenJoin";
 import { buildRealHyphenJoinServices } from "@/services/tools/hyphenJoin";
 
-// ---------------------------------------------------------------------------
-// Mock page-workbench data (UI state seed — not from API at I1)
-// ---------------------------------------------------------------------------
+function showsJoinedForm(hyphenCase: HyphenCase): boolean {
+  if (hyphenCase.status === "joined") return true;
+  if (hyphenCase.status === "crosspage" && hyphenCase.validated) return true;
+  return hyphenCase.status === "validated" && hyphenCase.kind === "mismatch";
+}
 
-const MOCK_PAGE_CASES: HyphenCase[] = [
-  {
-    caseId: "hp1",
-    kind: "auto",
-    head: "some",
-    tail: "thing",
-    line: 3,
-    page: "p0004",
-    status: "joined",
-    validated: false,
-    conf: 0.9,
-    book: { inBody: true, joinedElsewhere: true, mismatch: false },
-  },
-  {
-    caseId: "hp2",
-    kind: "auto",
-    head: "every",
-    tail: "body",
-    line: 11,
-    page: "p0004",
-    status: "undecided",
-    validated: false,
-    conf: 0.71,
-    book: { inBody: false, joinedElsewhere: false, mismatch: false },
-  },
-  {
-    caseId: "hp3",
-    kind: "crosspage",
-    head: "after",
-    tail: "noon",
-    line: 38,
-    page: "p0004",
-    status: "crosspage",
-    validated: false,
-    conf: 0.85,
-    book: { inBody: true, joinedElsewhere: false, mismatch: false },
-  },
-];
+function workbenchText(pageCases: HyphenCase[]): {
+  before: string;
+  after: string;
+} {
+  const before = pageCases
+    .map((hyphenCase) => `${hyphenCase.head}-\n${hyphenCase.tail}`)
+    .join("\n\n");
+  const after = pageCases
+    .map((hyphenCase) =>
+      showsJoinedForm(hyphenCase)
+        ? `${hyphenCase.head}${hyphenCase.tail}`
+        : `${hyphenCase.head}-\n${hyphenCase.tail}`,
+    )
+    .join("\n\n");
+  return { before, after };
+}
 
 // ---------------------------------------------------------------------------
 // Case row sub-components
@@ -305,15 +285,17 @@ function HyphenCaseRow({
  */
 function HyphenPageWorkbenchPanel({
   pageId,
-  cases: _cases, // will filter by pageId at I1
+  cases,
   send,
 }: {
   pageId: string | null;
   cases: HyphenCase[];
   send: (event: HyphenJoinEvent) => void;
 }): ReactNode {
-  // Use mock page cases when no real backend yet (F5). I1 will filter by pageId.
-  const pageCases = pageId ? MOCK_PAGE_CASES : ([] as HyphenCase[]);
+  const pageCases = pageId
+    ? cases.filter((hyphenCase) => hyphenCase.page === pageId)
+    : [];
+  const preview = workbenchText(pageCases);
 
   const pageCounts = {
     crosspage: pageCases.filter((c) => c.kind === "crosspage").length,
@@ -589,7 +571,7 @@ function HyphenPageWorkbenchPanel({
           </div>
         </div>
 
-        {/* Right: before/after viewer placeholder (wired at I1) */}
+        {/* Right: before/after text for the cases on this page */}
         <div
           data-testid="hyphen-workbench-viewer"
           style={{
@@ -635,11 +617,11 @@ function HyphenPageWorkbenchPanel({
                   flex: 1,
                   padding: "10px 14px",
                   fontSize: 12,
-                  color: "var(--ink-3)",
-                  fontStyle: "italic",
+                  color: "var(--ink-2)",
+                  whiteSpace: "pre-wrap",
                 }}
               >
-                Page text before join decisions. Wired at I1.
+                {preview.before}
               </div>
             </div>
             <div
@@ -671,11 +653,11 @@ function HyphenPageWorkbenchPanel({
                   flex: 1,
                   padding: "10px 14px",
                   fontSize: 12,
-                  color: "var(--ink-3)",
-                  fontStyle: "italic",
+                  color: "var(--ink-2)",
+                  whiteSpace: "pre-wrap",
                 }}
               >
-                Page text after join decisions. Wired at I1.
+                {preview.after}
               </div>
             </div>
           </div>

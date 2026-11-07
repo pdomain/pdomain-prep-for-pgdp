@@ -6,9 +6,10 @@
  * - **Pages**      — confidence-tinted page grid + inline Recognition panel
  * - **Settings**   — OCR engine / backend / model settings (minimal at F5; wired at I1)
  *
- * At F5: mock-only wiring (PAGE_PUSH events from a simulated run).
- * At I1: real SSE actor feeds PAGE_PUSH events; confirmStage hits the backend;
- * settings tab wires to stageSettings machine pattern from F5.1 stageSettings.ts.
+ * On mount, completed OCR pages are hydrated from the data API. Live
+ * `stage-status: clean` events for `ocr` arrive as PAGE_PUSH. A project with
+ * no pages, or no OCR work in progress, sends HYDRATE_EMPTY (no fake rows).
+ * Demo and missing project ids do not call the network.
  *
  * @see src/machines/tools/ocrTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/final/ocr/ — design canvas
@@ -16,7 +17,7 @@
 
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
@@ -25,7 +26,13 @@ import {
   type OcrTotals,
   type OcrToken,
 } from "@/machines/tools/ocrTool";
-import { buildRealOcrToolServices } from "@/services/tools/ocrTool";
+import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
+import {
+  buildRealOcrToolServices,
+  hydrateOcrProject,
+  loadFinishedOcrRow,
+  type OcrHydrateResult,
+} from "@/services/tools/ocrTool";
 
 // ---------------------------------------------------------------------------
 // Confidence helpers
@@ -1100,6 +1107,34 @@ function OcrTabBar({
 // Main OcrTool component
 // ---------------------------------------------------------------------------
 
+function isLiveProjectId(projectId: string): boolean {
+  return projectId.length > 0 && projectId !== "demo";
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+/** Read a cancel flag without letting control-flow freeze it at false. */
+function isCancelled(flag: { cancelled: boolean }): boolean {
+  return flag.cancelled;
+}
+
+function publishOcrHydrate(
+  send: (
+    event: { type: "HYDRATE_EMPTY" } | { type: "PAGE_PUSH"; row: OcrPageRow },
+  ) => void,
+  result: OcrHydrateResult,
+): void {
+  if (result.kind === "empty") {
+    send({ type: "HYDRATE_EMPTY" });
+    return;
+  }
+  for (const row of result.rows) {
+    send({ type: "PAGE_PUSH", row });
+  }
+}
+
 export function OcrTool({
   stageId,
   runnerRef: _runnerRef,
@@ -1118,6 +1153,109 @@ export function OcrTool({
 
   // Tab state — local per F5-3-2 convention (view-only, not guarded by machine)
   const [activeTab, setActiveTab] = useState<OcrTab>("pages");
+  const [loadError, setLoadError] = useState<{
+    projectId: string;
+    message: string;
+  } | null>(null);
+  const loadErrorMessage =
+    loadError !== null && loadError.projectId === projectId
+      ? loadError.message
+      : null;
+
+  // External page list + OCR stage channel. First paint stays in recognising.
+  // Pages that finish while the list is loading stay buffered until their
+  // rows are merged. Confirm is only rendered in reviewing, so it cannot
+  // fire on a snapshot that is missing those pages.
+  useEffect(() => {
+    if (!isLiveProjectId(projectId)) {
+      send({ type: "HYDRATE_EMPTY" });
+      return;
+    }
+    const controller = new AbortController();
+    const flag = { cancelled: false };
+    const pendingIds: string[] = [];
+    let acceptLive = false;
+    const pushFinished = (pageId: string): void => {
+      void (async () => {
+        try {
+          const row = await loadFinishedOcrRow(
+            projectId,
+            pageId,
+            controller.signal,
+          );
+          if (isCancelled(flag) || row === null) return;
+          send({ type: "PAGE_PUSH", row });
+        } catch (reason: unknown) {
+          if (isCancelled(flag) || isAbortError(reason)) return;
+        }
+      })();
+    };
+    const unsub = subscribePageChannelForTool({
+      projectId,
+      stageId: "ocr",
+      totalPages: Number.MAX_SAFE_INTEGER,
+      getPageMode: () => "doctr",
+      onPagePush: (page) => {
+        if (isCancelled(flag)) return;
+        if (!acceptLive) {
+          pendingIds.push(page.id);
+          return;
+        }
+        pushFinished(page.id);
+      },
+    });
+    void (async () => {
+      let result: OcrHydrateResult = { kind: "empty" };
+      try {
+        result = await hydrateOcrProject(projectId, controller.signal);
+        if (isCancelled(flag)) return;
+      } catch (reason: unknown) {
+        if (isCancelled(flag) || isAbortError(reason)) return;
+      }
+
+      const loaded: OcrPageRow[] = [];
+      const failed: string[] = [];
+      while (pendingIds.length > 0) {
+        const ids = pendingIds.splice(0, pendingIds.length);
+        for (const pageId of ids) {
+          try {
+            const row = await loadFinishedOcrRow(
+              projectId,
+              pageId,
+              controller.signal,
+            );
+            if (isCancelled(flag)) return;
+            if (row === null) failed.push(pageId);
+            else loaded.push(row);
+          } catch (reason: unknown) {
+            if (isCancelled(flag) || isAbortError(reason)) return;
+            failed.push(pageId);
+          }
+        }
+      }
+
+      if (isCancelled(flag)) return;
+      if (failed.length > 0) {
+        // Keep the live channel closed. A later clean event must not open
+        // confirm while this page, or the withheld snapshot, is still missing.
+        setLoadError({
+          projectId,
+          message: `OCR page ${failed.join(", ")} did not load.`,
+        });
+        return;
+      }
+
+      acceptLive = true;
+      setLoadError(null);
+      publishOcrHydrate(send, result);
+      for (const row of loaded) send({ type: "PAGE_PUSH", row });
+    })();
+    return () => {
+      flag.cancelled = true;
+      controller.abort();
+      unsub();
+    };
+  }, [projectId, send]);
 
   const isRecognising = snapshot.matches("recognising");
   const isReviewing = snapshot.matches("reviewing");
@@ -1188,6 +1326,12 @@ export function OcrTool({
         flexDirection: "column",
       }}
     >
+      {loadErrorMessage !== null ? (
+        <p data-testid="ocr-load-error" role="alert">
+          {loadErrorMessage}
+        </p>
+      ) : null}
+
       {/* Tab bar */}
       <OcrTabBar active={activeTab} onChange={setActiveTab} />
 

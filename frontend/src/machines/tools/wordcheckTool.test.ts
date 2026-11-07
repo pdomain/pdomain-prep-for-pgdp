@@ -191,6 +191,18 @@ describe("suspects region — reviewing", () => {
     expect(snap.context.suspects.find((s) => s.id === "s1")).toBeUndefined();
   });
 
+  it("SCAN_DONE in reviewing replaces the suspect list", () => {
+    const actor = reachReviewing();
+    actor.send({
+      type: "SCAN_DONE",
+      suspects: [makeSuspect("s9")],
+      totals: makeTotals({ suspects: 1 }),
+    });
+    const snap = actor.getSnapshot();
+    expect(snap.matches({ suspects: "reviewing" })).toBe(true);
+    expect(snap.context.suspects.map((suspect) => suspect.id)).toEqual(["s9"]);
+  });
+
   it("auto-settles (via confirming) when last suspect is removed by FIX", async () => {
     const actor = startMachine();
     // Single suspect

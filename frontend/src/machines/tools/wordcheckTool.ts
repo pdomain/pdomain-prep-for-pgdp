@@ -609,6 +609,25 @@ export const wordcheckToolMachine = setup({
               target: "confirming",
               guard: "notRunning",
             },
+            // A page that finishes after the first suspects must update the queue.
+            SCAN_DONE: [
+              {
+                target: "reviewing",
+                guard: {
+                  type: "anySuspects",
+                  params: ({
+                    event,
+                  }: {
+                    event: Extract<WordcheckToolEvent, { type: "SCAN_DONE" }>;
+                  }) => ({ output: event }),
+                },
+                actions: ["assignSuspects"],
+              },
+              {
+                target: "settled",
+                actions: ["assignSuspects"],
+              },
+            ],
           },
         },
 
@@ -684,6 +703,25 @@ export const wordcheckToolMachine = setup({
          */
         settled: {
           on: {
+            // A later wordcheck clean event can refill an honest empty settle.
+            SCAN_DONE: [
+              {
+                target: "reviewing",
+                guard: {
+                  type: "anySuspects",
+                  params: ({
+                    event,
+                  }: {
+                    event: Extract<WordcheckToolEvent, { type: "SCAN_DONE" }>;
+                  }) => ({ output: event }),
+                },
+                actions: ["assignSuspects"],
+              },
+              {
+                target: "settled",
+                actions: ["assignSuspects"],
+              },
+            ],
             UPSTREAM_CHANGED: {
               target: "scanning",
               actions: ["requestRescan"],

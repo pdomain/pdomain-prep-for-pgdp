@@ -146,9 +146,10 @@ export function subscribePageChannelForTool(
       if (event.type !== "stage-status") return;
       if (event.stage_id !== stageId) return;
       if (event.status !== "clean") return;
+      // A clean event with no page index is not page 0. Drop it.
+      if (event.idx0 === undefined) return;
 
-      // Use server-provided idx0 if available; fall back to 0 as a safe default.
-      const resolvedIdx0 = event.idx0 !== undefined ? event.idx0 : 0;
+      const resolvedIdx0 = event.idx0;
       const pageIdStr = String(resolvedIdx0).padStart(4, "0");
 
       // Count distinct completions for isLast detection — first-time only.

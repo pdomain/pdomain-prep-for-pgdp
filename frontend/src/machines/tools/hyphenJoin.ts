@@ -77,6 +77,26 @@ export interface HyphenJoinServices {
   scanHyphenation(
     projectId: string,
   ): Promise<{ cases: HyphenCase[]; totals: HyphenTotals }>;
+
+  /**
+   * POST one join/keep decision for a case. Optional so scan-only stubs
+   * still typecheck. `page` is the case page label (`p0004` or `0000`).
+   */
+  persistDecision?: (
+    projectId: string,
+    page: string,
+    candidateId: string,
+    decision: "join" | "keep",
+  ) => Promise<void>;
+
+  /**
+   * POST every decided case on the open page.
+   */
+  persistPage?: (
+    projectId: string,
+    pageId: string,
+    cases: HyphenCase[],
+  ) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +212,33 @@ function patchCase(
   fn: (c: HyphenCase) => HyphenCase,
 ): HyphenCase[] {
   return cases.map((c) => (c.caseId === caseId ? fn(c) : c));
+}
+
+function caseIdFromEvent(event: HyphenJoinEvent): string | null {
+  switch (event.type) {
+    case "ACCEPT_JOIN":
+    case "KEEP_HYPHEN":
+    case "VALIDATE_JOIN":
+    case "FIX_MISMATCH":
+    case "REVERT_DECISION":
+      return event.caseId;
+    default:
+      return null;
+  }
+}
+
+function verdictForEvent(event: HyphenJoinEvent): "join" | "keep" | null {
+  switch (event.type) {
+    case "ACCEPT_JOIN":
+    case "VALIDATE_JOIN":
+    case "FIX_MISMATCH":
+      return "join";
+    case "KEEP_HYPHEN":
+    case "REVERT_DECISION":
+      return "keep";
+    default:
+      return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -508,11 +555,20 @@ export const hyphenJoinMachine = setup({
 
     clearError: assign({ error: () => null }),
 
-    // ---- Side-effect slots — no-op at F5; wired at I1 ----------------------
+    // ---- Side-effect slots -------------------------------------------------
 
-    /** YAML: `persistDecision` — SIDE EFFECT: POST decision { caseId, verdict } */
-    persistDecision: () => {
-      // SIDE EFFECT: at I1, POST /api/projects/:id/stages/hyphen_join/decisions
+    /** POST the decision for this case. Missing service is a no-op. */
+    persistDecision: ({ context, event }) => {
+      const persist = context.services.persistDecision;
+      if (persist === undefined) return;
+      const caseId = caseIdFromEvent(event);
+      const decision = verdictForEvent(event);
+      if (caseId === null || decision === null) return;
+      const hyphenCase = context.cases.find((item) => item.caseId === caseId);
+      if (hyphenCase === undefined) return;
+      void persist(context.projectId, hyphenCase.page, caseId, decision).catch(
+        () => undefined,
+      );
     },
 
     /** YAML: `persistGroup` — SIDE EFFECT: POST group validation { word } */
@@ -520,9 +576,14 @@ export const hyphenJoinMachine = setup({
       // SIDE EFFECT: at I1, POST .../hyphen_join/validate-group
     },
 
-    /** YAML: `persistPage` — SIDE EFFECT: commit page's decisions */
-    persistPage: () => {
-      // SIDE EFFECT: at I1, POST .../hyphen_join/pages/:id/commit
+    /** POST decided cases on the open page. Missing service is a no-op. */
+    persistPage: ({ context }) => {
+      const persist = context.services.persistPage;
+      const pageId = context.pageId;
+      if (persist === undefined || pageId === null) return;
+      void persist(context.projectId, pageId, context.cases).catch(
+        () => undefined,
+      );
     },
 
     /** YAML: `persistRule` — SIDE EFFECT: POST word rule */

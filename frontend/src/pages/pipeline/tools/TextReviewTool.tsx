@@ -20,8 +20,10 @@
  *  - VIEW_ON_PAGE — eye button per review queue item (canvas: text-review.jsx eye per row)
  *  - SEND_APPROVED — "Send approved to Illustrations" button in banner
  *
- * F5 mock-only: QUEUE_READY is sent on mount with mock data.
- * I1: real SSE actor feeds QUEUE_PUSH/QUEUE_READY; backend wired.
+ * On mount, the queue is built from wordcheck flags on pages that are not
+ * attested. No review items is QUEUE_READY with an empty queue (the machine
+ * settles). Demo and missing project ids do not call the network.
+ * `_testQueueReady` injects a queue for tests. Production never invents items.
  *
  * @see src/machines/tools/textReviewTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-text-review.yaml
@@ -36,52 +38,34 @@ import type { ToolSlotProps } from "../toolSlot";
 import {
   textReviewToolMachine,
   type QueueItem,
+  type ReviewTotals,
   type Thread,
 } from "@/machines/tools/textReviewTool";
-import { buildRealTextReviewToolServices } from "@/services/tools/textReviewTool";
+import {
+  buildRealTextReviewToolServices,
+  EMPTY_REVIEW_TOTALS,
+  loadTextReviewQueue,
+} from "@/services/tools/textReviewTool";
 
-const MOCK_ITEMS: QueueItem[] = [
-  {
-    id: "qi1",
-    word: "tbe",
-    ctxL: "…saw ",
-    ctxR: " light…",
-    suggest: "the",
-    reason: "dict-fail",
-    page: "p0002",
-    line: 14,
-    reviewer: "auto",
-    comments: 0,
-    status: "pending",
-  },
-  {
-    id: "qi2",
-    word: "ligbt",
-    ctxL: "…tbe ",
-    ctxR: " and…",
-    reason: "dict-fail",
-    page: "p0002",
-    line: 14,
-    reviewer: "auto",
-    comments: 0,
-    status: "pending",
-  },
-  {
-    id: "qi3",
-    word: "ond",
-    ctxL: "…light ",
-    ctxR: " the…",
-    suggest: "and",
-    reason: "dict-fail",
-    page: "p0003",
-    line: 7,
-    reviewer: "auto",
-    comments: 0,
-    status: "pending",
-  },
-];
+/** Test-only queue injection. Never set this in non-test code. */
+export interface TextReviewTestQueueReady {
+  queue: QueueItem[];
+  threads: Thread[];
+  totals: ReviewTotals;
+}
 
-const MOCK_THREADS: Thread[] = [];
+function isLiveProjectId(projectId: string): boolean {
+  return projectId.length > 0 && projectId !== "demo";
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+/** Read a cancel flag without letting control-flow freeze it at false. */
+function isCancelled(flag: { cancelled: boolean }): boolean {
+  return flag.cancelled;
+}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -521,7 +505,10 @@ function TextReviewTabBar({
 export function TextReviewTool({
   stageId,
   runnerRef: _runnerRef, // wired at I1
-}: ToolSlotProps): ReactNode {
+  _testQueueReady,
+}: ToolSlotProps & {
+  _testQueueReady?: TextReviewTestQueueReady;
+}): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
   const services = useMemo(() => buildRealTextReviewToolServices(), []);
 
@@ -534,27 +521,62 @@ export function TextReviewTool({
   const [commentTarget, setCommentTarget] = useState<string | null>(null);
   const [commentBody, setCommentBody] = useState("");
 
-  // Simulate mock QUEUE_READY on mount
+  // First paint stays on the assembling spinner. An empty queue is sent on
+  // the next turn so a demo mount does not call the network and does not
+  // stay in assembling. A test queue is applied in this effect immediately.
   useEffect(() => {
-    const timeout = setTimeout(() => {
+    if (_testQueueReady) {
       send({
         type: "QUEUE_READY",
-        queue: MOCK_ITEMS,
-        threads: MOCK_THREADS,
-        totals: {
-          total: MOCK_ITEMS.length,
-          queue: MOCK_ITEMS.length,
-          pending: MOCK_ITEMS.length,
-          discuss: 0,
-          approved: 0,
-          clean: 0,
-          comments: 0,
-        },
+        queue: _testQueueReady.queue,
+        threads: _testQueueReady.threads,
+        totals: _testQueueReady.totals,
       });
-    }, 150);
-    return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return;
+    }
+    if (!isLiveProjectId(projectId)) {
+      const timer = window.setTimeout(() => {
+        send({
+          type: "QUEUE_READY",
+          queue: [],
+          threads: [],
+          totals: EMPTY_REVIEW_TOTALS,
+        });
+      }, 0);
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+    const controller = new AbortController();
+    const flag = { cancelled: false };
+    void (async () => {
+      try {
+        const snapshotQueue = await loadTextReviewQueue(
+          projectId,
+          controller.signal,
+        );
+        if (isCancelled(flag)) return;
+        send({
+          type: "QUEUE_READY",
+          queue: snapshotQueue.queue,
+          threads: snapshotQueue.threads,
+          totals: snapshotQueue.totals,
+        });
+      } catch (reason: unknown) {
+        if (isCancelled(flag) || isAbortError(reason)) return;
+        send({
+          type: "QUEUE_READY",
+          queue: [],
+          threads: [],
+          totals: EMPTY_REVIEW_TOTALS,
+        });
+      }
+    })();
+    return () => {
+      flag.cancelled = true;
+      controller.abort();
+    };
+  }, [projectId, send, _testQueueReady]);
 
   const isAssembling = snapshot.matches("assembling");
   const isSettled = snapshot.matches("settled");

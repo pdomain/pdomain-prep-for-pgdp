@@ -6,11 +6,11 @@
  *  - Overview  — suspect totals + list totals derived from machine context
  *  - Settings  — requirePreviewToCommit placeholder (F5; wired at I1)
  *
- * I1: real SSE actor feeds SCAN_PROGRESS/SCAN_DONE events from the backend.
- * Machine waits in `scanning` state until the first SCAN_DONE arrives.
- *
- * W5.4: removed MOCK_SUSPECTS and the 200ms setTimeout that was leaking into
- * production — real flow now receives scan results via SSE.
+ * On mount, flags are loaded from each page's wordcheck flags route.
+ * An empty list or a 404 on every page is SCAN_DONE with no suspects
+ * (the machine settles). A later wordcheck `clean` event refetches flags.
+ * Demo and missing project ids do not call the network.
+ * `_testScanDone` still injects a scan for tests.
  *
  * @see src/machines/tools/wordcheckTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/statecharts/tool-wordcheck.yaml
@@ -26,7 +26,12 @@ import {
   type Suspect,
   type SuspectTotals,
 } from "@/machines/tools/wordcheckTool";
-import { buildRealWordcheckToolServices } from "@/services/tools/wordcheckTool";
+import { subscribePageChannelForTool } from "@/machines/lib/pageToolSseBridge";
+import {
+  buildRealWordcheckToolServices,
+  EMPTY_SUSPECT_TOTALS,
+  loadWordcheckScan,
+} from "@/services/tools/wordcheckTool";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -489,15 +494,20 @@ function WordcheckTabBar({
 // ---------------------------------------------------------------------------
 
 /**
- * Artboard test-injection type for W5.4.
- *
- * In production, SCAN_DONE arrives via SSE (I1).
- * In tests, `_testScanDone` allows immediate injection without timers or mocks.
+ * Test-only scan injection.
  * Never set this in non-test code.
  */
 export interface WordcheckTestScanDone {
   suspects: Suspect[];
   totals: SuspectTotals;
+}
+
+function isLiveProjectId(projectId: string): boolean {
+  return projectId.length > 0 && projectId !== "demo";
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
 }
 
 export function WordcheckTool({
@@ -519,15 +529,67 @@ export function WordcheckTool({
   const [activeTab, setActiveTab] = useState<WordcheckTab>("suspects");
   const [suspectFilter, setSuspectFilter] = useState<string>("all");
 
-  // W5.4: removed 200ms setTimeout + MOCK_SUSPECTS (was leaking mock data into
-  // production flow). In production, SCAN_DONE arrives via SSE at I1.
-  // `_testScanDone` fires immediately on mount for artboard tests only.
   useEffect(() => {
-    if (!_testScanDone) return;
-    send({ type: "SCAN_DONE", ..._testScanDone });
-    // Intentionally runs once on mount — _testScanDone is stable in tests.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (_testScanDone) {
+      send({
+        type: "SCAN_DONE",
+        suspects: _testScanDone.suspects,
+        totals: _testScanDone.totals,
+      });
+      return;
+    }
+    if (!isLiveProjectId(projectId)) {
+      send({
+        type: "SCAN_DONE",
+        suspects: [],
+        totals: EMPTY_SUSPECT_TOTALS,
+      });
+      return;
+    }
+    let cancelled = false;
+    let active: AbortController | null = null;
+    const publish = (scan: {
+      suspects: Suspect[];
+      totals: SuspectTotals;
+    }): void => {
+      if (cancelled) return;
+      send({
+        type: "SCAN_DONE",
+        suspects: scan.suspects,
+        totals: scan.totals,
+      });
+    };
+    const load = (): void => {
+      active?.abort();
+      const controller = new AbortController();
+      active = controller;
+      void loadWordcheckScan(projectId, controller.signal).then(
+        (scan) => {
+          if (active !== controller) return;
+          publish(scan);
+        },
+        (reason: unknown) => {
+          if (active !== controller || isAbortError(reason)) return;
+          publish({ suspects: [], totals: EMPTY_SUSPECT_TOTALS });
+        },
+      );
+    };
+    const unsub = subscribePageChannelForTool({
+      projectId,
+      stageId: "wordcheck",
+      totalPages: Number.MAX_SAFE_INTEGER,
+      getPageMode: () => "wordcheck",
+      onPagePush: () => {
+        load();
+      },
+    });
+    load();
+    return () => {
+      cancelled = true;
+      active?.abort();
+      unsub();
+    };
+  }, [projectId, send, _testScanDone]);
 
   const isScanning = snapshot.matches({ suspects: "scanning" });
   const isSettled = snapshot.matches({ suspects: "settled" });

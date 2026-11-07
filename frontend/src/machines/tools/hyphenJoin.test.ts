@@ -192,6 +192,20 @@ describe("reviewing state — decisions", () => {
     expect(c2?.validated).toBe(false); // unchanged
   });
 
+  it("ACCEPT_JOIN posts a join decision for the case page", async () => {
+    const persistDecision = vi.fn().mockResolvedValue(undefined);
+    const actor = await reachReviewing(makeServices({ persistDecision }));
+    actor.send({ type: "ACCEPT_JOIN", caseId: "c1" });
+    expect(persistDecision).toHaveBeenCalledWith("p1", "p001", "c1", "join");
+  });
+
+  it("KEEP_HYPHEN posts a keep decision", async () => {
+    const persistDecision = vi.fn().mockResolvedValue(undefined);
+    const actor = await reachReviewing(makeServices({ persistDecision }));
+    actor.send({ type: "KEEP_HYPHEN", caseId: "c1" });
+    expect(persistDecision).toHaveBeenCalledWith("p1", "p001", "c1", "keep");
+  });
+
   it("KEEP_HYPHEN on undecided case → status validated", async () => {
     const actor = await reachReviewing();
     actor.send({ type: "KEEP_HYPHEN", caseId: "c1" });

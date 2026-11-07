@@ -121,6 +121,44 @@ describe("recognising state", () => {
     expect(snap.context.totals?.running).toBe(0);
   });
 
+  it("returns to recognising when a later page is still running", async () => {
+    const actor = startMachine();
+    actor.send({ type: "PAGE_PUSH", row: makeRow("0001", "clean") });
+    await waitFor(actor, (s) => s.matches("reviewing"));
+    actor.send({ type: "PAGE_PUSH", row: makeRow("0002", "running") });
+    expect(actor.getSnapshot().value).toBe("recognising");
+    expect(actor.getSnapshot().context.totals?.running).toBe(1);
+  });
+
+  it("does not let a later running row replace a finished row", async () => {
+    const actor = startMachine();
+    actor.send({
+      type: "PAGE_PUSH",
+      row: makeRow("0001", "clean", { words: 10, meanConf: 0.9 }),
+    });
+    await waitFor(actor, (s) => s.matches("reviewing"));
+    actor.send({ type: "PAGE_PUSH", row: makeRow("0001", "running") });
+    const row = actor.getSnapshot().context.rows[0];
+    expect(row?.state).toBe("clean");
+    expect(row?.words).toBe(10);
+  });
+
+  it("does not let a wordless clean stub replace word stats", async () => {
+    const actor = startMachine();
+    actor.send({
+      type: "PAGE_PUSH",
+      row: makeRow("0001", "clean", { words: 10, meanConf: 0.9 }),
+    });
+    await waitFor(actor, (s) => s.matches("reviewing"));
+    actor.send({
+      type: "PAGE_PUSH",
+      row: { idx: "0001", prefix: "p0001", state: "clean" },
+    });
+    const row = actor.getSnapshot().context.rows[0];
+    expect(row?.words).toBe(10);
+    expect(row?.meanConf).toBeCloseTo(0.9);
+  });
+
   it("PAGE_PUSH upserts an existing row (not duplicates)", () => {
     const actor = startMachine();
     actor.send({ type: "PAGE_PUSH", row: makeRow("0001", "running") });

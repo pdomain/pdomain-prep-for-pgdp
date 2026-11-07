@@ -13,7 +13,7 @@
  */
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ import type { ToolSlotProps } from "../toolSlot";
 import { Button } from "@/components/ui/Button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { buildRealBuildPackageToolServices } from "@/services/tools/buildPackageTool";
+import { loadValidationPreflight } from "@/services/tools/preflightStatus";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -110,8 +111,23 @@ export function BuildPackageTool({
 
   const [tab, setTab] = useState("overview");
 
-  // In a real app, pipelineShell fans PREFLIGHT_PUSH; here we simulate it.
-  // The Build button will be disabled when preflight is not 'passed'.
+  // The tool slot does not share an actor with validation. On open, read
+  // the validation artifact and push passed, blocked, or unknown.
+  // "demo" is the no-route fixture and must not call the network.
+  useEffect(() => {
+    if (projectId === "demo" || projectId === "") return;
+    let active = true;
+    void loadValidationPreflight(projectId)
+      .then((status) => {
+        if (active) send({ type: "PREFLIGHT_PUSH", status });
+      })
+      .catch(() => {
+        if (active) send({ type: "PREFLIGHT_PUSH", status: "unknown" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, send]);
 
   const ctx = snapshot.context;
   const isBuilding = snapshot.matches("building");

@@ -10,18 +10,23 @@
  * - Overview stat cells render
  * - Assembling spinner on initial mount before QUEUE_READY
  *
+ * Queue rows that the view-on-page tests need are passed through
+ * `_testQueueReady`. A production mount with no project does not invent them.
+ *
  * @see src/machines/tools/textReviewTool.ts — machine
  * @see TextReviewTool.tsx — component under test
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-  act,
-} from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { server } from "@/test/server";
+import type {
+  QueueItem,
+  ReviewTotals,
+  Thread,
+} from "@/machines/tools/textReviewTool";
 import { TextReviewTool } from "./TextReviewTool";
 
 // ---------------------------------------------------------------------------
@@ -30,13 +35,95 @@ import { TextReviewTool } from "./TextReviewTool";
 
 const fakeRunnerRef = {} as never;
 
+const MOCK_ITEMS: QueueItem[] = [
+  {
+    id: "qi1",
+    word: "tbe",
+    ctxL: "…saw ",
+    ctxR: " light…",
+    suggest: "the",
+    reason: "dict-fail",
+    page: "p0002",
+    line: 14,
+    reviewer: "auto",
+    comments: 0,
+    status: "pending",
+  },
+  {
+    id: "qi2",
+    word: "ligbt",
+    ctxL: "…tbe ",
+    ctxR: " and…",
+    reason: "dict-fail",
+    page: "p0002",
+    line: 14,
+    reviewer: "auto",
+    comments: 0,
+    status: "pending",
+  },
+  {
+    id: "qi3",
+    word: "ond",
+    ctxL: "…light ",
+    ctxR: " the…",
+    suggest: "and",
+    reason: "dict-fail",
+    page: "p0003",
+    line: 7,
+    reviewer: "auto",
+    comments: 0,
+    status: "pending",
+  },
+];
+
+const MOCK_THREADS: Thread[] = [];
+
+const MOCK_TOTALS: ReviewTotals = {
+  total: MOCK_ITEMS.length,
+  queue: MOCK_ITEMS.length,
+  pending: MOCK_ITEMS.length,
+  discuss: 0,
+  approved: 0,
+  clean: 0,
+  comments: 0,
+};
+
 // ---------------------------------------------------------------------------
-// Render helper
+// Render helpers
 // ---------------------------------------------------------------------------
 
 function renderTool() {
   return render(
     <TextReviewTool stageId="text_review" runnerRef={fakeRunnerRef} />,
+  );
+}
+
+function renderToolWithQueue() {
+  return render(
+    <TextReviewTool
+      stageId="text_review"
+      runnerRef={fakeRunnerRef}
+      _testQueueReady={{
+        queue: MOCK_ITEMS,
+        threads: MOCK_THREADS,
+        totals: MOCK_TOTALS,
+      }}
+    />,
+  );
+}
+
+function renderLive(projectId: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/projects/${projectId}/pipeline`]}>
+      <Routes>
+        <Route
+          path="/projects/:projectId/pipeline"
+          element={
+            <TextReviewTool stageId="text_review" runnerRef={fakeRunnerRef} />
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
   );
 }
 
@@ -52,6 +139,20 @@ describe("TextReviewTool — initial assembling state", () => {
       screen.getByTestId("text-review-tool-assembling"),
     ).toBeInTheDocument();
   });
+
+  it("leaves assembling for an empty queue and does not invent items", async () => {
+    renderTool();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("text-review-tool-settled"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("text-review-tool-assembling"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("tbe")).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -59,33 +160,19 @@ describe("TextReviewTool — initial assembling state", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — tab bar after queue ready", () => {
-  it("renders tab bar after QUEUE_READY (150ms mock delay)", async () => {
-    vi.useFakeTimers();
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("renders tab bar after the test queue is applied", () => {
+    renderToolWithQueue();
 
     expect(screen.getByTestId("text-review-tab-bar")).toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 
-  it("all four tab buttons are present", async () => {
-    vi.useFakeTimers();
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("all four tab buttons are present", () => {
+    renderToolWithQueue();
 
     expect(screen.getByTestId("text-review-tab-overview")).toBeInTheDocument();
     expect(screen.getByTestId("text-review-tab-review")).toBeInTheDocument();
     expect(screen.getByTestId("text-review-tab-threads")).toBeInTheDocument();
     expect(screen.getByTestId("text-review-tab-settings")).toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 });
 
@@ -94,19 +181,8 @@ describe("TextReviewTool — tab bar after queue ready", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — tab switching", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("starts on the review tab by default", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("starts on the review tab by default", () => {
+    renderToolWithQueue();
 
     expect(screen.getByTestId("text-review-review-tab")).toBeInTheDocument();
     expect(
@@ -114,12 +190,8 @@ describe("TextReviewTool — tab switching", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clicking Overview tab shows text-review-overview-tab", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("clicking Overview tab shows text-review-overview-tab", () => {
+    renderToolWithQueue();
 
     fireEvent.click(screen.getByTestId("text-review-tab-overview"));
 
@@ -129,12 +201,8 @@ describe("TextReviewTool — tab switching", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clicking Settings tab shows text-review-settings-tab", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("clicking Settings tab shows text-review-settings-tab", () => {
+    renderToolWithQueue();
 
     fireEvent.click(screen.getByTestId("text-review-tab-settings"));
 
@@ -144,12 +212,8 @@ describe("TextReviewTool — tab switching", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clicking Threads tab shows text-review-threads-tab", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("clicking Threads tab shows text-review-threads-tab", () => {
+    renderToolWithQueue();
 
     fireEvent.click(screen.getByTestId("text-review-tab-threads"));
 
@@ -162,41 +226,21 @@ describe("TextReviewTool — tab switching", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — VIEW_ON_PAGE eye button per item", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  it("renders view-on-page button for first queue item (qi1)", () => {
+    renderToolWithQueue();
 
-  it("renders view-on-page button for first mock queue item (qi1)", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
-
-    // Review tab is default; mock data contains item "qi1"
     expect(screen.getByTestId("view-on-page-item-qi1")).toBeInTheDocument();
   });
 
-  it("view-on-page button has title 'View on page'", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("view-on-page button has title 'View on page'", () => {
+    renderToolWithQueue();
 
     const btn = screen.getByTestId("view-on-page-item-qi1");
     expect(btn).toHaveAttribute("title", "View on page");
   });
 
-  it("renders view-on-page button for all three mock items", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("renders view-on-page button for all three injected items", () => {
+    renderToolWithQueue();
 
     expect(screen.getByTestId("view-on-page-item-qi1")).toBeInTheDocument();
     expect(screen.getByTestId("view-on-page-item-qi2")).toBeInTheDocument();
@@ -209,29 +253,14 @@ describe("TextReviewTool — VIEW_ON_PAGE eye button per item", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — SEND_APPROVED button", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("renders the send-approved button in the review banner", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("renders the send-approved button in the review banner", () => {
+    renderToolWithQueue();
 
     expect(screen.getByTestId("text-review-send-approved")).toBeInTheDocument();
   });
 
-  it("send-approved button label contains 'Illustrations'", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
+  it("send-approved button label contains 'Illustrations'", () => {
+    renderToolWithQueue();
 
     const btn = screen.getByTestId("text-review-send-approved");
     expect(btn).toHaveTextContent(/Illustrations/i);
@@ -243,21 +272,10 @@ describe("TextReviewTool — SEND_APPROVED button", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — DISCUSSIONS-GATE", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  it("confirm-advance button is present in the review tab banner", () => {
+    renderToolWithQueue();
 
-  it("confirm-advance button is present in the review tab banner", async () => {
-    renderTool();
-
-    await act(async () => {
-      await vi.runAllTimersAsync();
-    });
-
-    // Gate is open (no discuss items in mock data) so button is enabled
+    // Gate is open (no discuss items in the injected queue) so button is enabled
     const btn = screen.getByTestId("text-review-confirm-advance");
     expect(btn).toBeInTheDocument();
   });
@@ -268,16 +286,8 @@ describe("TextReviewTool — DISCUSSIONS-GATE", () => {
 // ---------------------------------------------------------------------------
 
 describe("TextReviewTool — overview stat cells", () => {
-  it("renders all six stat cells when overview tab is active", async () => {
-    // Using real timers — mock QUEUE_READY fires on 150ms real timeout
-    renderTool();
-
-    await waitFor(
-      () => {
-        expect(screen.getByTestId("text-review-tab-bar")).toBeInTheDocument();
-      },
-      { timeout: 1000 },
-    );
+  it("renders all six stat cells when overview tab is active", () => {
+    renderToolWithQueue();
 
     fireEvent.click(screen.getByTestId("text-review-tab-overview"));
 
@@ -289,5 +299,44 @@ describe("TextReviewTool — overview stat cells", () => {
     expect(
       screen.getByTestId("text-review-stat-open-threads"),
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live project — flags on an unattested page, never a canned word
+// ---------------------------------------------------------------------------
+
+describe("TextReviewTool — live queue", () => {
+  it("queues a wordcheck flag from the server and leaves assembling", async () => {
+    server.use(
+      http.get("/api/data/projects/book/pages", () =>
+        HttpResponse.json({
+          pages: [{ idx0: 1, prefix: "img0001" }],
+          next_cursor: null,
+          total: 1,
+        }),
+      ),
+      http.get("/api/data/projects/book/pages/1/stages", () =>
+        HttpResponse.json([{ stage_id: "text_review", status: "not-run" }]),
+      ),
+      http.get("/api/data/projects/book/pages/1/stages/wordcheck/flags", () =>
+        HttpResponse.json({
+          page_id: "0001",
+          flags: [{ word_id: "w-arid", word_text: "arid" }],
+          flagged_count: 1,
+          total_words: 4,
+        }),
+      ),
+    );
+    renderLive("book");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-item-row-w-arid")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("arid").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByTestId("text-review-tool-assembling"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("tbe")).not.toBeInTheDocument();
   });
 });

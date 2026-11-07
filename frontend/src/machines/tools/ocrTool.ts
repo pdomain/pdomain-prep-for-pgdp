@@ -144,6 +144,8 @@ export interface OcrToolContext {
 export type OcrToolEvent =
   // Recognition loop
   | { type: "PAGE_PUSH"; row: OcrPageRow }
+  /** No pages, or no OCR work in progress. Leaves `recognising` with no rows. */
+  | { type: "HYDRATE_EMPTY" }
   | { type: "PAUSE" }
   // Grid sub-state
   | { type: "OPEN_RECOGNITION"; idx: string }
@@ -200,7 +202,18 @@ function recountOcr(rows: OcrPageRow[]): OcrTotals {
 function upsertOcrRow(rows: OcrPageRow[], row: OcrPageRow): OcrPageRow[] {
   const idx = rows.findIndex((r) => r.idx === row.idx);
   if (idx === -1) return [...rows, row];
-  return rows.map((r, i) => (i === idx ? row : r));
+  const existing = rows[idx];
+  if (existing === undefined) return [...rows, row];
+  // A hydrate that started while the page was running must not wipe a
+  // clean row that arrived later, and a wordless stub must not wipe stats.
+  if (existing.state !== "running" && row.state === "running") return rows;
+  if (existing.words !== undefined && row.words === undefined) return rows;
+  const prefix =
+    row.prefix === row.idx && existing.prefix !== existing.idx
+      ? existing.prefix
+      : row.prefix;
+  const next = prefix === row.prefix ? row : { ...row, prefix };
+  return rows.map((r, i) => (i === idx ? next : r));
 }
 
 function nextFlaggedAfter(
@@ -259,6 +272,7 @@ export const ocrToolMachine = setup({
      */
     allFlagsReviewed: ({ context }) => {
       if (!context.totals) return false;
+      if ((context.totals.running ?? 0) > 0) return false;
       return (
         context.totals.flagged === 0 ||
         context.totals.flagged === context.totals.reviewed
@@ -270,6 +284,17 @@ export const ocrToolMachine = setup({
      */
     hasNextFlagged: ({ context }) =>
       nextFlaggedAfter(context.rows, context.cursor) !== null,
+
+    /** Ignore a late empty hydrate after SSE or a page push already filled rows. */
+    noRowsYet: ({ context }) => context.rows.length === 0,
+
+    /** A merged running row means recognition is not finished. */
+    stillRunning: ({ context, event }) => {
+      if (event.type !== "PAGE_PUSH") return false;
+      return upsertOcrRow(context.rows, event.row).some(
+        (row) => row.state === "running",
+      );
+    },
   },
 
   actions: {
@@ -287,6 +312,12 @@ export const ocrToolMachine = setup({
         const newRows = upsertOcrRow(context.rows, event.row);
         return recountOcr(newRows);
       },
+    }),
+
+    /** Empty project or no OCR in progress: reviewing with an empty row list. */
+    assignHydrateEmpty: assign({
+      rows: () => [] as OcrPageRow[],
+      totals: () => recountOcr([]),
     }),
 
     /**
@@ -537,6 +568,11 @@ export const ocrToolMachine = setup({
             actions: ["mergePage"],
           },
         ],
+        HYDRATE_EMPTY: {
+          target: "reviewing",
+          guard: "noRowsYet",
+          actions: ["assignHydrateEmpty"],
+        },
         PAUSE: { actions: ["requestPause"] },
       },
     },
@@ -549,6 +585,17 @@ export const ocrToolMachine = setup({
       initial: "grid",
 
       on: {
+        // A running row that arrives after the first clean page is not done.
+        PAGE_PUSH: [
+          {
+            target: "#ocrTool.recognising",
+            guard: "stillRunning",
+            actions: ["mergePage"],
+          },
+          {
+            actions: ["mergePage"],
+          },
+        ],
         CONFIRM_ADVANCE: {
           target: "confirming",
           guard: "allFlagsReviewed",

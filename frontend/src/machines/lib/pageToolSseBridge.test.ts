@@ -186,6 +186,29 @@ describe("pageToolSseBridge — subscribePageChannelForTool", () => {
     unsub();
   });
 
+  it("ignores a clean event that does not name idx0", () => {
+    const received: ToolPagePush[] = [];
+
+    const unsub = subscribePageChannelForTool({
+      projectId: "proj-1",
+      stageId: "ocr",
+      totalPages: 4,
+      getPageMode: () => "doctr",
+      onPagePush: (page) => received.push(page),
+    });
+
+    _capturedCallback!({
+      type: "stage-status",
+      stage_id: "ocr",
+      status: "clean",
+      job_id: null,
+      error_message: null,
+    });
+
+    expect(received).toHaveLength(0);
+    unsub();
+  });
+
   it("does NOT call onPagePush for a different stage_id", () => {
     const received: ToolPagePush[] = [];
 

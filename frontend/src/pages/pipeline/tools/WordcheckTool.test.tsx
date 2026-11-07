@@ -16,8 +16,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { server } from "@/test/server";
 import { WordcheckTool } from "./WordcheckTool";
 import type { Suspect, SuspectTotals } from "@/machines/tools/wordcheckTool";
 
@@ -85,10 +87,25 @@ const MOCK_TOTALS: SuspectTotals = {
 // ---------------------------------------------------------------------------
 
 function renderToolScanning() {
-  // No _testScanDone — machine stays in scanning state
+  // No _testScanDone — a demo mount hydrates to the empty settled scan.
   return render(
     <MemoryRouter>
       <WordcheckTool stageId="wordcheck" runnerRef={fakeRunnerRef} />
+    </MemoryRouter>,
+  );
+}
+
+function renderLive(projectId: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/projects/${projectId}/pipeline`]}>
+      <Routes>
+        <Route
+          path="/projects/:projectId/pipeline"
+          element={
+            <WordcheckTool stageId="wordcheck" runnerRef={fakeRunnerRef} />
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -110,22 +127,84 @@ function renderToolWithScanDone() {
 // Scanning state — W5.4 verifies no mock data leaks into production on mount
 // ---------------------------------------------------------------------------
 
-describe("WordcheckTool — scanning state (no mock data, W5.4)", () => {
-  it("renders scanning indicator inside suspects tab on initial mount", () => {
+describe("WordcheckTool — empty scan is the zero-state", () => {
+  it("leaves scanning after hydrate when no scan is injected", async () => {
     renderToolScanning();
-    // Tab bar always renders; scanning indicator is inside the suspects tab
-    expect(screen.getByTestId("wordcheck-scanning")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("wordcheck-tool-settled")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("wordcheck-scanning")).not.toBeInTheDocument();
   });
 
-  it("renders the tab bar even during scanning (always visible)", () => {
+  it("does not keep the review tab bar on an empty settle", async () => {
     renderToolScanning();
-    expect(screen.getByTestId("wordcheck-tab-bar")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("wordcheck-tool-settled")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("wordcheck-tab-bar")).not.toBeInTheDocument();
   });
 
-  it("does NOT render suspect rows before SCAN_DONE (no leak of mock data)", () => {
+  it("does NOT render suspect rows when no scan is injected", async () => {
     renderToolScanning();
-    // sw1, sw2, sw3 come from _testScanDone; absent in scanning state
+    await waitFor(() => {
+      expect(screen.getByTestId("wordcheck-tool-settled")).toBeInTheDocument();
+    });
+    // sw1 comes from _testScanDone; the honest empty scan has no rows.
     expect(screen.queryByTestId("suspect-row-sw1")).not.toBeInTheDocument();
+    expect(screen.queryByText("tbe")).not.toBeInTheDocument();
+  });
+
+  it("settles when every page flags route is 404", async () => {
+    server.use(
+      http.get("/api/data/projects/book/pages", () =>
+        HttpResponse.json({
+          pages: [{ idx0: 0, prefix: "img0000" }],
+          next_cursor: null,
+          total: 1,
+        }),
+      ),
+      http.get(
+        "/api/data/projects/book/pages/0/stages/wordcheck/flags",
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    renderLive("book");
+    await waitFor(() => {
+      expect(screen.getByTestId("wordcheck-tool-settled")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("wordcheck-scanning")).not.toBeInTheDocument();
+    expect(screen.queryByText("tbe")).not.toBeInTheDocument();
+  });
+
+  it("shows a real flag and leaves scanning", async () => {
+    server.use(
+      http.get("/api/data/projects/book/pages", () =>
+        HttpResponse.json({
+          pages: [{ idx0: 2, prefix: "img0002" }],
+          next_cursor: null,
+          total: 1,
+        }),
+      ),
+      http.get("/api/data/projects/book/pages/2/stages/wordcheck/flags", () =>
+        HttpResponse.json({
+          page_id: "0002",
+          stage_id: "wordcheck",
+          flags: [{ word_id: "w-arid", word_text: "arid", status: "open" }],
+          flagged_count: 1,
+          total_words: 10,
+        }),
+      ),
+    );
+    renderLive("book");
+    await waitFor(() => {
+      expect(screen.getByTestId("suspect-row-w-arid")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("arid").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("wordcheck-scanning")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("wordcheck-tool-settled"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("tbe")).not.toBeInTheDocument();
   });
 });
 
