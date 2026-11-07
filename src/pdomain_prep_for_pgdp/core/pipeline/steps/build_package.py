@@ -34,9 +34,12 @@ PGDP layout contract:
   Page files are named <prefix>.png / <prefix>.txt where ``prefix`` comes
   from the ``page_prefixes`` mapping (e.g. "f003", "p045"). When
   ``page_prefixes`` is absent (legacy/test path), the bare page_id is used.
-  Illustration crops stored under stages/extract_illustrations/ are included
-  in an ``images/`` directory following the legacy naming convention
-  ``<prefix>_<NN:02d>.<ext>``.
+  Illustration crops named by ``stages/illustrations/crops.json`` are
+  included in an ``images/`` directory as ``<prefix>_<NN:02d>.<ext>``.
+  When that manifest is absent, the legacy ``stages/extract_illustrations/``
+  directory is used instead. An empty manifest packs no crops.
+  A cover page listed in ``cover_page_ids`` is also stored as ``cover.png``.
+  When ``optimize_png`` is true, proofing PNGs go through oxipng level 4.
 
 PGDP naming rules (DP wiki — Content Providing FAQ):
   Per-file rules (enforced by pgdp_naming.validate_pgdp_filename):
@@ -72,6 +75,7 @@ import zipfile
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from pdomain_prep_for_pgdp.core.packaging import _optimize_png
 from pdomain_prep_for_pgdp.core.pipeline.pgdp_naming import (
     PgdpNamingError,
     validate_package_naming,
@@ -90,35 +94,110 @@ if TYPE_CHECKING:
 # ────────────────────────────────────────────────────────────────────────────
 
 
+_CROP_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+
+
+def _crop_image_files(stage_dir: Path) -> list[Path]:
+    """Image files in one stage directory, sorted. JSON sidecars are skipped."""
+    if not stage_dir.is_dir():
+        return []
+    return sorted(
+        path for path in stage_dir.iterdir() if path.is_file() and path.suffix.lower() in _CROP_SUFFIXES
+    )
+
+
+def _image_files_named_by_crops_manifest(stage_dir: Path) -> list[Path] | None:
+    """Files named by ``crops.json``, or None when that manifest is absent.
+
+    An empty or unreadable manifest returns an empty list so a leftover
+    image, or the legacy extract directory, is not packed in its place.
+    """
+    manifest_path = stage_dir / "crops.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        payload: object = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    crops = payload.get("crops")
+    if not isinstance(crops, list):
+        return []
+    named: list[Path] = []
+    for item in crops:
+        if not isinstance(item, dict):
+            continue
+        filename = item.get("file")
+        if (
+            not isinstance(filename, str)
+            or filename == ""
+            or "/" in filename
+            or "\\" in filename
+            or filename in {".", ".."}
+        ):
+            continue
+        path = stage_dir / filename
+        if path.is_file() and path.suffix.lower() in _CROP_SUFFIXES:
+            named.append(path)
+    return named
+
+
 def _collect_illustration_crops(
     page_base: Path,
     prefix: str,
 ) -> list[tuple[str, bytes]]:
-    """Scan stages/extract_illustrations/ for crop image files.
+    """Scan illustration crop images for the submission zip.
 
-    Returns a list of (zip_name, data) pairs for inclusion under images/.
-
-    Crop files are any non-JSON files in the extract_illustrations stage
-    directory. They are named ``<prefix>_<NN:02d>.<ext>`` in the zip
-    (matching the legacy packaging.py convention: ``images/<prefix>_<NN:02d>.<ext>``).
-
-    If the extract_illustrations stage directory does not exist (stage not yet
-    run) or contains no image files, returns an empty list.
+    When ``stages/illustrations/crops.json`` exists, pack only the image
+    files it names. Otherwise read the legacy ``stages/extract_illustrations/``
+    directory. Crop files are named ``images/<prefix>_<NN:02d>.<ext>``.
     """
-    ill_dir = page_base / "extract_illustrations"
-    if not ill_dir.is_dir():
+    named = _image_files_named_by_crops_manifest(page_base / "illustrations")
+    image_files = _crop_image_files(page_base / "extract_illustrations") if named is None else named
+    if not image_files:
         return []
 
     crops: list[tuple[str, bytes]] = []
-    # Collect image files sorted for deterministic ordering
-    image_files = sorted(
-        f for f in ill_dir.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg"}
-    )
     for idx, crop_path in enumerate(image_files, start=1):
         ext = crop_path.suffix.lstrip(".")
         zip_name = f"images/{prefix}_{idx:02d}.{ext}"
         crops.append((zip_name, crop_path.read_bytes()))
     return crops
+
+
+def _png_optimize_enabled(cfg: object) -> bool:
+    """Read ``optimize_png`` from stage cfg. A missing flag defaults to True."""
+    if cfg is None:
+        return True
+    flag = getattr(cfg, "optimize_png", True)
+    return flag if isinstance(flag, bool) else True
+
+
+def _cover_page_ids_from_store(data_root: Path, project_id: str) -> frozenset[str]:
+    """Return cover page ids, or empty when the project has no event store.
+
+    ``build_page_service`` creates ``.pd-pages/`` when the directory is
+    missing, so this returns before that call when ``events.db`` is absent.
+    """
+    events_db = data_root / "projects" / project_id / ".pd-pages" / "events.db"
+    if not events_db.is_file():
+        return frozenset()
+
+    from pdomain_prep_for_pgdp.core.models import PageType
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.page_store_factory import build_page_service
+
+    service = build_page_service(data_root, project_id)
+    try:
+        records = list_page_records(service, project_id)
+    finally:
+        closer = getattr(service.app, "close", None)
+        if callable(closer):
+            closer()
+    return frozenset(
+        f"{page.idx0:04d}" for page in records if page.page_type == PageType.cover and not page.ignore
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -135,18 +214,21 @@ def build_submission_zip(
     page_prefixes: dict[str, str] | None = None,
     skip_ids: frozenset[str] | None = None,
     built_at: str | None = None,
+    cover_page_ids: frozenset[str] | None = None,
+    optimize_png: bool = False,
 ) -> bytes:
     """Build the PGDP submission zip from on-disk artifacts.
 
     Reads per page:
       - canvas_map/output.png     (proofing image)
       - text_review/output.txt    (reviewed text)
-      - extract_illustrations/    (illustration crops, if any)
+      - illustrations/ or extract_illustrations/  (illustration crops, if any)
 
     Writes into ZIP:
       - <prefix>.png   (proofing image, named via page_prefixes or page_id)
       - <prefix>.txt   (reviewed text, named via page_prefixes or page_id)
       - images/<prefix>_<NN>.ext  (illustration crops, when present)
+      - cover.png      (alias of the first cover page's proofing PNG)
       - pgdp.json      (manifest)
 
     Args:
@@ -160,6 +242,13 @@ def build_submission_zip(
             When None, bare page_id is used (legacy/test path).
         skip_ids: Set of page_ids to exclude from the zip (role=="skip").
             When None, no pages are excluded (legacy/test path).
+        cover_page_ids: Page ids whose proofing PNG is also written as
+            ``cover.png``. The first match in ``page_ids`` wins. None and
+            an empty set write no cover alias.
+        optimize_png: When True, run oxipng level 4 on each proofing PNG.
+            A failed page keeps its original bytes and increments
+            ``oxipng_skipped_pages`` in the manifest. Default False so
+            callers that do not opt in keep the bytes they wrote on disk.
         built_at: ISO-format UTC timestamp for the pgdp.json manifest.
             Pass a fixed value (e.g. the stage-run event timestamp) to get
             a deterministic archive. When None, uses datetime.now(UTC).
@@ -206,17 +295,27 @@ def build_submission_zip(
     page_count = 0
     illustration_count = 0
     page_manifest: list[dict[str, Any]] = []
+    cover_ids = cover_page_ids if cover_page_ids is not None else frozenset()
+    skip_counter: list[int] = [0]
+    cover_prefix: str | None = None
 
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for page_id in effective_page_ids:
             page_base = data_root / "projects" / project_id / "pages" / page_id / "stages"
             prefix = page_prefixes[page_id] if page_prefixes and page_id in page_prefixes else page_id
 
-            # Proofing image
+            # Proofing image. Cover alias uses the same bytes as the page PNG.
             img_path = page_base / "canvas_map" / "output.png"
-            if img_path.exists():
-                zf.writestr(f"{prefix}.png", img_path.read_bytes())
+            img_bytes: bytes | None = None
+            if img_path.is_file():
+                img_bytes = img_path.read_bytes()
+                if optimize_png:
+                    img_bytes = _optimize_png(img_bytes, skip_counter=skip_counter)
+                zf.writestr(f"{prefix}.png", img_bytes)
                 page_count += 1
+                if page_id in cover_ids and cover_prefix is None:
+                    zf.writestr("cover.png", img_bytes)
+                    cover_prefix = prefix
 
             # Reviewed text
             txt_path = page_base / "text_review" / "output.txt"
@@ -233,7 +332,7 @@ def build_submission_zip(
                 {
                     "page_id": page_id,
                     "prefix": prefix,
-                    "has_image": img_path.exists(),
+                    "has_image": img_bytes is not None,
                     "has_text": txt_path.exists(),
                     "illustration_count": len(crops),
                 }
@@ -248,6 +347,10 @@ def build_submission_zip(
             "illustration_count": illustration_count,
             "pages": page_manifest,
         }
+        if cover_prefix is not None:
+            manifest["cover_prefix"] = cover_prefix
+        if optimize_png:
+            manifest["oxipng_skipped_pages"] = skip_counter[0]
         zf.writestr("pgdp.json", json.dumps(manifest, indent=2))
 
     return buf.getvalue()
@@ -268,6 +371,7 @@ def build_package_v2_cpu(
     skip_ids: frozenset[str] | None = None,
     built_at: str | None = None,
     cfg: Any = None,
+    cover_page_ids: frozenset[str] | None = None,
 ) -> bytes:
     """v2 build_package stage callable.
 
@@ -297,8 +401,6 @@ def build_package_v2_cpu(
     LongJobRunner seam: B5 route layer wraps this in an async Job.
     Gate: caller must ensure proof_pack stage is clean before calling.
     """
-    _ = cfg
-
     # Load the naming manifest when page_prefixes are not explicitly supplied.
     # This is the live execution path: page_order must be clean.
     if page_prefixes is None:
@@ -307,6 +409,9 @@ def build_package_v2_cpu(
         if skip_ids is None:
             skip_ids = manifest.skip_set()
 
+    resolved_covers = (
+        cover_page_ids if cover_page_ids is not None else _cover_page_ids_from_store(data_root, project_id)
+    )
     return build_submission_zip(
         project_id=project_id,
         page_ids=page_ids,
@@ -315,4 +420,6 @@ def build_package_v2_cpu(
         page_prefixes=page_prefixes,
         skip_ids=skip_ids,
         built_at=built_at,
+        cover_page_ids=resolved_covers,
+        optimize_png=_png_optimize_enabled(cfg),
     )

@@ -62,6 +62,7 @@ from pdomain_prep_for_pgdp.core.page_service_helpers import (
 )
 from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import (
     StageArtifactWriteError,
+    commit_stage_artifact,
     stage_artifact_path,
     stage_thumbnail_path,
 )
@@ -75,6 +76,7 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_runner import (
     StageDependenciesNotMet,
     StageOutputUnsupported,
     StageRunFailed,
+    _cascade_dirty,
     cascade_dirty_for_config_change,
     run_stage,
 )
@@ -2745,13 +2747,17 @@ async def get_hyphen_join_candidates(
     settings: SettingsDep,
     page_service: PageServiceDep,
 ) -> HyphenJoinCandidatesResponse | JSONResponse:
-    """Return hyphen-join candidates detected from the stage artifact.
+    """Return hyphen-join candidates from the pre-join source text.
 
-    Reads the hyphen_join stage artifact (text) and detects end-of-line
-    hyphen candidates. Returns 404 if no clean artifact is available.
-    Spec: docs/specs/api-v2-deltas.md §1.9.
+    Source order is wordcheck output.txt, then the saved source.txt, then
+    the hyphen_join output. Saved decisions are attached when present.
+    Returns 404 if the stage is not clean or no source text exists.
     """
-    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import detect_candidates
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_decisions import (
+        annotate_candidates,
+        load_hyphen_source_text,
+        read_hyphen_join_decisions,
+    )
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -2770,17 +2776,14 @@ async def get_hyphen_join_candidates(
     if row is None or row.status != "clean":
         raise HTTPException(404, "hyphen_join stage has no clean artifact")
 
-    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "hyphen_join")
-    if not artifact_path.exists():
+    text = load_hyphen_source_text(settings.data_root, project_id, page_id)
+    if text is None:
         raise HTTPException(404, "hyphen_join artifact missing on disk")
 
-    text = artifact_path.read_bytes().decode("utf-8")
-    raw_candidates = detect_candidates(text)
-    candidates: list[dict[str, object]] = [dict(c) for c in raw_candidates]
-
+    saved = read_hyphen_join_decisions(settings.data_root, project_id, page_id)
     return HyphenJoinCandidatesResponse(
         page_id=page_id,
-        candidates=candidates,
+        candidates=annotate_candidates(text, saved),
     )
 
 
@@ -2799,14 +2802,23 @@ async def post_hyphen_join_decisions(
     settings: SettingsDep,
     page_service: PageServiceDep,
 ) -> HyphenJoinCandidatesResponse | JSONResponse:
-    """Record hyphen-join decisions and return updated candidates.
+    """Save hyphen-join decisions, rewrite output.txt, and return candidates.
 
-    Reads the hyphen_join stage artifact, re-detects candidates, and
-    annotates each with the submitted decision where applicable.
-    Returns 404 if no clean artifact is available.
-    Spec: docs/specs/api-v2-deltas.md §1.9.
+    Candidates are detected from the pre-join source, not from text that
+    already had joins applied. The source and decisions.json are written
+    before the stage artifact so a failed commit still leaves a re-runnable
+    decision file. Downstream clean stages become dirty.
     """
-    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import detect_candidates
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_decisions import (
+        annotate_candidates,
+        joined_text,
+        load_hyphen_source_text,
+        merge_decisions,
+        parse_decision_payload,
+        read_hyphen_join_decisions,
+        save_hyphen_decisions,
+        save_hyphen_source,
+    )
 
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
@@ -2825,31 +2837,34 @@ async def post_hyphen_join_decisions(
     if row is None or row.status != "clean":
         raise HTTPException(404, "hyphen_join stage has no clean artifact")
 
-    artifact_path = stage_artifact_path(settings.data_root, project_id, page_id, "hyphen_join")
-    if not artifact_path.exists():
+    text = load_hyphen_source_text(settings.data_root, project_id, page_id)
+    if text is None:
         raise HTTPException(404, "hyphen_join artifact missing on disk")
 
-    text = artifact_path.read_bytes().decode("utf-8")
-    raw_candidates = detect_candidates(text)
-
-    decision_map: dict[str, str] = {}
-    for d in body.decisions:
-        cid = str(d.get("candidate_id", ""))
-        dec = str(d.get("decision", "keep"))
-        if cid:
-            decision_map[cid] = dec
-
-    candidates: list[dict[str, object]] = []
-    for c in raw_candidates:
-        entry: dict[str, object] = dict(c)
-        cid = str(c.get("candidate_id", ""))
-        if cid in decision_map:
-            entry["decision"] = decision_map[cid]
-        candidates.append(entry)
-
+    merged = merge_decisions(
+        read_hyphen_join_decisions(settings.data_root, project_id, page_id),
+        parse_decision_payload(body.decisions),
+    )
+    save_hyphen_source(settings.data_root, project_id, page_id, text)
+    save_hyphen_decisions(settings.data_root, project_id, page_id, merged)
+    await commit_stage_artifact(
+        data_root=settings.data_root,
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="hyphen_join",
+        artifact_bytes=joined_text(text, merged).encode("utf-8"),
+        idx0=idx0,
+    )
+    await _cascade_dirty(
+        database=db,
+        project_id=project_id,
+        page_id=page_id,
+        stage_id="hyphen_join",
+    )
     return HyphenJoinCandidatesResponse(
         page_id=page_id,
-        candidates=candidates,
+        candidates=annotate_candidates(text, merged),
     )
 
 

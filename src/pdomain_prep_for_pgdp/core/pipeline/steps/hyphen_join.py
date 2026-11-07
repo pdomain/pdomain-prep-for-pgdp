@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 # ────────────────────────────────────────────────────────────────────────────
 # End-of-line hyphen candidate detection
@@ -87,7 +90,7 @@ def _stable_candidate_id(prefix: str, suffix: str, offset: int) -> str:
 
 def apply_join_decisions(
     text: str,
-    decisions: list[dict[str, Any]],
+    decisions: Sequence[Mapping[str, str]],
 ) -> str:
     """Apply hyphen-join decisions to the original text.
 
@@ -136,8 +139,9 @@ def apply_join_decisions(
     if not join_offsets:
         return text
 
-    # Apply joins by replacing matched substrings
-    # Process from right to left so offsets remain valid
+    # Splice each joined span at its own offset. Identical match text
+    # can occur more than once, so a first-copy replace would edit the
+    # wrong span. Right to left keeps the earlier offsets valid.
     sorted_candidates = sorted(
         [c for c in candidates if int(c["offset"]) in join_offsets],
         key=lambda c: int(c["offset"]),
@@ -146,12 +150,13 @@ def apply_join_decisions(
 
     result = text
     for cand in sorted_candidates:
-        prefix = str(cand["prefix"])
-        suffix = str(cand["suffix"])
+        offset = int(cand["offset"])
         match_text = str(cand["match_text"])
-        # Join: remove hyphen and newline, concatenate
-        joined = prefix + suffix
-        result = result.replace(match_text, joined, 1)
+        end = offset + len(match_text)
+        if offset < 0 or end > len(result) or result[offset:end] != match_text:
+            continue
+        joined = str(cand["prefix"]) + str(cand["suffix"])
+        result = result[:offset] + joined + result[end:]
 
     return result
 
@@ -217,11 +222,17 @@ def hyphen_join_v2_cpu(text_bytes: bytes, cfg: Any = None) -> bytes:
     text = text_bytes.decode("utf-8")
 
     # Extract pre-approved join decisions from config if available
-    decisions: list[dict[str, Any]] = []
+    decisions: list[dict[str, str]] = []
     if cfg is not None:
         raw_decisions = getattr(cfg, "hyphen_join_decisions", None)
-        if raw_decisions:
-            decisions = list(raw_decisions)
+        if isinstance(raw_decisions, list):
+            for item in raw_decisions:
+                if not isinstance(item, dict):
+                    continue
+                candidate_id = item.get("candidate_id")
+                decision = item.get("decision")
+                if isinstance(candidate_id, str) and decision in {"join", "keep"}:
+                    decisions.append({"candidate_id": candidate_id, "decision": str(decision)})
 
     result = apply_join_decisions(text, decisions)
     return result.encode("utf-8")

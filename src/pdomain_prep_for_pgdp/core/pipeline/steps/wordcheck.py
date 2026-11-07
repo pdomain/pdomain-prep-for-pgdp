@@ -24,6 +24,8 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
+from pdomain_prep_for_pgdp.core.pipeline.steps.scanno_seed import pptext_scanno_words
+
 # ────────────────────────────────────────────────────────────────────────────
 # Core flag generation (pure function, no side effects)
 # ────────────────────────────────────────────────────────────────────────────
@@ -230,14 +232,10 @@ def project_flags_from_events(
 # v2 stage callable — registered in V2_STAGE_IMPL
 # ────────────────────────────────────────────────────────────────────────────
 
-# Default bad-words list (common scannos for PGDP books).
-# In production, this is loaded from the project/system word list store.
-# The stage callable uses an empty bad-words set by default so it is
-# side-effect free without a project context; callers with a project context
-# pass bad_words via cfg.
-_DEFAULT_BAD_WORDS: frozenset[str] = frozenset(
+# OCR misspellings that are not real English words. Kept beside the MIT
+# pptext stealth list so "teh" still flags after the seed ships.
+_OCR_MISSPELLINGS: frozenset[str] = frozenset(
     {
-        # Common OCR scannos (PGDP community standard)
         "teh",
         "adn",
         "nw",
@@ -265,6 +263,18 @@ _DEFAULT_BAD_WORDS: frozenset[str] = frozenset(
     }
 )
 
+# System bad-word seed: OCR misspellings plus the pptext MIT stealth list.
+_DEFAULT_BAD_WORDS: frozenset[str] = _OCR_MISSPELLINGS | pptext_scanno_words()
+
+
+def _string_set(value: object) -> set[str]:
+    """Read a cfg word list without assuming its container type."""
+    if isinstance(value, str):
+        return {value} if value else set()
+    if isinstance(value, (set, frozenset, list, tuple)):
+        return {str(item) for item in value if str(item)}
+    return set()
+
 
 def wordcheck_v2_cpu(
     words_json: bytes,
@@ -280,23 +290,20 @@ def wordcheck_v2_cpu(
         ``{"flags": [...], "flagged_count": int, "total_words": int}``
     - ``output.txt`` — pass-through page prose for hyphen_join → pack (never flags JSON)
 
-    ``cfg`` may expose ``wordcheck_bad_words`` / ``wordcheck_good_words`` sets.
-    Default: uses ``_DEFAULT_BAD_WORDS`` with no good_words.
+    ``cfg`` may expose ``wordcheck_bad_words`` / ``wordcheck_good_words``.
+    Those project lists are unioned with (or, for good words, subtracted
+    from) the shipped system seed. Flags stay in ``flags.json``.
+    ``output.txt`` is the page prose passed in, never the flag report.
 
     Words are NEVER silently dropped — only flagged. Deleted words
     (``OcrWord.deleted=True``) are skipped from flag generation.
     """
-    # Extract word lists from config if available
     bad_words: set[str] = set(_DEFAULT_BAD_WORDS)
     good_words: set[str] = set()
 
     if cfg is not None:
-        extra_bad = getattr(cfg, "wordcheck_bad_words", None)
-        if extra_bad:
-            bad_words.update(extra_bad)
-        extra_good = getattr(cfg, "wordcheck_good_words", None)
-        if extra_good:
-            good_words.update(extra_good)
+        bad_words.update(_string_set(getattr(cfg, "wordcheck_bad_words", None)))
+        good_words.update(_string_set(getattr(cfg, "wordcheck_good_words", None)))
 
     flags = flag_words(words_json, bad_words=bad_words, good_words=good_words)
 

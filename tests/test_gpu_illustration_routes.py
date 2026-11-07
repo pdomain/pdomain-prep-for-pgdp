@@ -4,9 +4,8 @@ These three routes are stubs today (per spec 05 — wiring lands in a
 later iteration). Locks in:
   - POST /suggest-splits returns 200 with `{splits: []}`,
   - POST /suggest-illustrations returns 200 with `{regions: []}`,
-  - POST /extract-illustration surfaces as 500 internal_error (the
-    NotImplementedError isn't an HTTPException, so the catch-all in
-    api.middleware.error_handler turns it into an envelope).
+  - POST /extract-illustration returns 501. The page stage writes crops;
+    this route does not.
 
 When these routes are wired up, the failing assertions here force a
 test rewrite — that's intentional, so the contract change is conscious.
@@ -42,10 +41,8 @@ def test_suggest_illustrations_returns_empty_list(client: TestClient) -> None:
     assert r.json() == {"regions": []}
 
 
-def test_extract_illustration_returns_500_until_wired(settings: Settings) -> None:
-    """Use a local TestClient with `raise_server_exceptions=False` so the
-    catch-all error handler's response reaches us instead of the bare
-    NotImplementedError surfacing as a Starlette ServerError."""
+def test_extract_illustration_returns_501(settings: Settings) -> None:
+    """The interactive extract route stays a 501. Crops come from the stage."""
     app = build_app(settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         r = client.post(
@@ -57,8 +54,7 @@ def test_extract_illustration_returns_500_until_wired(settings: Settings) -> Non
                 "output_format": "jpg",
             },
         )
-        # NotImplementedError → 500 internal_error envelope.
-        assert r.status_code == 500
+        assert r.status_code == 501
         body = r.json()
-        assert body["error"] == "internal_error"
-        assert "not yet wired" in body["message"]
+        assert body["error"] == "http_501"
+        assert "illustrations stage" in body["message"]

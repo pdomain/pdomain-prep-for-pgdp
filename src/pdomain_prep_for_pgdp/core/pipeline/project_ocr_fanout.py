@@ -208,9 +208,19 @@ async def _commit_ocr_result(
         stage_id=_STAGE_ID,
     )
 
-    # SSE: clean event for the OCR stage.
+    # SSE: clean event for the OCR stage. idx0 lets the page channel
+    # update the page that finished. A missing idx0 is not page 0.
+    clean_extra: dict[str, object] = {}
+    with contextlib.suppress(ValueError):
+        clean_extra["idx0"] = int(page_id)
     await _emit(
-        stage_events, project_id, page_id, event_type="stage-status", stage_id=_STAGE_ID, status="clean"
+        stage_events,
+        project_id,
+        page_id,
+        event_type="stage-status",
+        stage_id=_STAGE_ID,
+        status="clean",
+        extra=clean_extra,
     )
 
     duration_ms = int(time() * 1000 - started_at_ms)

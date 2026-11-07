@@ -345,7 +345,7 @@ class TestHyphenScanRoute:
         cases = r.json()["cases"]
         if cases:
             case = cases[0]
-            for field in ("id", "prefix", "suffix", "pageId", "status", "kind"):
+            for field in ("id", "prefix", "suffix", "pageId", "idx0", "status", "kind"):
                 assert field in case, f"missing case field: {field}"
 
 

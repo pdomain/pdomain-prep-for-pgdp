@@ -53,6 +53,7 @@ import numpy.typing as npt
 from pdomain_prep_for_pgdp.core.models import (
     V2_PAGE_STAGE_IDS,
     V2_PROJECT_STAGE_IDS,
+    IllustrationRegion,
     ResolvedPageConfig,
 )
 
@@ -765,32 +766,40 @@ def _auto_detect_illustrations_cpu(
 
 
 def _text_postprocess_cpu(text_bytes: object, cfg: StageConfig = None) -> str:
-    """Apply step-8 normalisation to OCR text at default config.
+    """Run the full Step-8 postprocess on OCR page text.
 
-    At default config (no per-project scannos, no custom regex, no
-    hyphenation word list), applies only the two universal transforms:
-    curly-quote normalisation and em-dash → double-hyphen conversion.
-    The full `postprocess_text` function requires `SystemDefaults` and
-    `ProjectConfig` which the runner doesn't have yet (M3 config plumbing).
+    Order matches ``postprocess_text``: curly quotes, em dash, hyphenation
+    join list, system scannos, project scannos, custom regex passes.
 
-    `text_bytes` is raw bytes from the `ocr` stage's artifact dir; the
-    runner scans the dir for `output.*` and passes the first file's bytes.
-    With `ocr` now handled by the multi-artifact writer (Slice 14), this
-    stage is fully runnable end-to-end.
+    Scanno tables and the join list come from the resolved page config.
+    With the default empty tables the stage still normalises quotes and
+    em dashes and otherwise leaves the prose alone.
 
-    Returns a str; the runner's `text` output-type path encodes it to UTF-8
-    and writes `output.txt`.
+    Returns a str. The runner's text output path encodes it to UTF-8
+    and writes ``output.txt``.
     """
-    from pdomain_prep_for_pgdp.core.text_postprocess import normalize_curly_quotes, normalize_em_dash
+    from pdomain_prep_for_pgdp.core.models import ProjectConfig, SystemDefaults
+    from pdomain_prep_for_pgdp.core.text_postprocess import postprocess_text
 
-    _ = cfg
     if isinstance(text_bytes, (bytes, bytearray)):
-        text = text_bytes.decode(errors="replace")
+        text = bytes(text_bytes).decode(errors="replace")
     else:
         text = str(text_bytes)
 
-    text = normalize_curly_quotes(text)
-    return normalize_em_dash(text)
+    standard = dict(getattr(cfg, "standard_scannos", None) or {})
+    custom = dict(getattr(cfg, "custom_scannos", None) or {})
+    raw_passes = getattr(cfg, "custom_regex_passes", None) or []
+    passes = [(str(pattern), str(repl)) for pattern, repl in raw_passes]
+    joins = [str(item) for item in (getattr(cfg, "hyphenation_join_list", None) or [])]
+
+    system = SystemDefaults(standard_scannos=standard, hyphenation_join_list=joins)
+    project = ProjectConfig(
+        book_name="",
+        source_uri="",
+        custom_scannos=custom,
+        custom_regex_passes=passes,
+    )
+    return postprocess_text(text, system=system, project=project)
 
 
 # ─── Real implementations: denoise (B2) ─────────────────────────────────────
@@ -1273,19 +1282,79 @@ def _canvas_map_v2_cpu(binary: ImageArray, cfg: StageConfig = None) -> ImageArra
     return _canvas_map_cpu(rescaled, cfg)
 
 
-def _illustrations_v2_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
-    """v2 illustrations stage: auto_detect + extract (placeholder for extract).
+def _regions_to_crop(image: ImageArray, cfg: StageConfig) -> list[IllustrationRegion]:
+    """Configured regions, else a full-page plate, else the layout detector.
 
-    auto_detect_illustrations runs and returns regions; extract_illustrations
-    is a B3 placeholder until hi_res_crops wiring lands.
+    The detector is the last resort. A page that already has regions never
+    loads layout weights.
+    """
+    from pdomain_prep_for_pgdp.core.illustrations import synthesise_plate_region
+    from pdomain_prep_for_pgdp.core.models import PageRecord, PageType
+
+    raw = getattr(cfg, "illustration_regions", None) or []
+    configured: list[IllustrationRegion] = []
+    for item in raw:
+        if isinstance(item, IllustrationRegion):
+            configured.append(item)
+        elif isinstance(item, dict):
+            configured.append(IllustrationRegion.model_validate(item))
+    if configured:
+        return configured
+
+    page_type = getattr(cfg, "page_type", None)
+    if page_type == PageType.plate_p:
+        height, width = cast("tuple[int, int]", image.shape[:2])
+        plate = PageRecord(
+            project_id="",
+            idx0=0,
+            prefix="",
+            source_stem="",
+            page_type=PageType.plate_p,
+        )
+        return [synthesise_plate_region(plate, (int(height), int(width)))]
+
+    detected = _auto_detect_illustrations_cpu(image, cfg)
+    return [IllustrationRegion.model_validate(item) for item in detected]
+
+
+def _illustrations_v2_cpu(image: ImageArray, cfg: StageConfig = None) -> CompoundStageOutput:
+    """Crop each region and return crops.json plus the image files.
+
+    ``crops.json`` is the compound primary. ``regions.json`` stays as the
+    detect side product. Crop files are ``i_01.jpg`` (or ``.png``).
     """
     import json
 
-    regions = _auto_detect_illustrations_cpu(image, cfg)
-    # Persist both regions JSON and a stub for hi_res_crops (B3 fills in real crops)
-    return {
-        "regions.json": json.dumps(regions).encode(),
-    }
+    import cv2
+
+    from pdomain_prep_for_pgdp.core.illustrations import extract_illustration
+
+    ok, encoded = cv2.imencode(".png", image)
+    if not ok:
+        raise RuntimeError("cv2.imencode failed in _illustrations_v2_cpu")
+    source_bytes = bytes(encoded.tobytes())
+
+    regions = _regions_to_crop(image, cfg)
+    files: dict[str, bytes] = {}
+    crops: list[dict[str, object]] = []
+    for position, region in enumerate(regions, start=1):
+        ext = "png" if region.output_format == "png" else "jpg"
+        filename = f"i_{position:02d}.{ext}"
+        files[filename] = extract_illustration(source_image_bytes=source_bytes, region=region)
+        crops.append(
+            {
+                "index": region.index,
+                "file": filename,
+                "L": region.L,
+                "T": region.T,
+                "R": region.R,
+                "B": region.B,
+                "output_format": ext,
+            }
+        )
+    files["crops.json"] = json.dumps({"crops": crops}).encode()
+    files["regions.json"] = json.dumps([region.model_dump(mode="json") for region in regions]).encode()
+    return files
 
 
 # ─── B3 stage callables (OCR/Text group) ────────────────────────────────────

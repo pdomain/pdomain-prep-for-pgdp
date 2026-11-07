@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
@@ -85,6 +85,15 @@ class ProjectConfig(ApiModel):
 
     custom_regex_passes: list[tuple[str, str]] = Field(default_factory=list)
     custom_scannos: dict[str, str] = Field(default_factory=dict)
+
+    wordcheck_bad_words: list[str] = Field(default_factory=list)
+    """Extra bad words for this project. Unioned with the system scanno seed.
+
+    Wordcheck flags them. It does not rewrite page text.
+    """
+
+    wordcheck_good_words: list[str] = Field(default_factory=list)
+    """Words that must not be flagged, even when they sit on a bad-word list."""
 
     layout_category_overrides: dict[str, str | None] = Field(default_factory=dict)
 
@@ -482,6 +491,17 @@ class GrayscaleConfigModel(ApiModel):
         return cls(**kwargs)
 
 
+class HyphenJoinDecision(TypedDict):
+    """One saved end-of-line hyphen decision.
+
+    ``decision`` is ``join`` or ``keep``. The stage applies ``join`` and
+    leaves ``keep`` unchanged.
+    """
+
+    candidate_id: str
+    decision: str
+
+
 # ─── ResolvedPageConfig (output of resolver; not persisted) ──────────────────
 
 
@@ -534,6 +554,24 @@ class ResolvedPageConfig(ApiModel):
     post_transform_crop_insets: tuple[int, int, int, int] = (0, 0, 0, 0)
     """Post-transform crop insets in pixels: (top, bottom, left, right).
     Applied after dewarp; default (0,0,0,0) is a pass-through."""
+
+    # Text chain (Wave 1). Copied from system defaults and project config.
+    standard_scannos: dict[str, str] = Field(default_factory=dict)
+    """System scanno replacements applied by the regex stage."""
+    custom_scannos: dict[str, str] = Field(default_factory=dict)
+    """Project scanno replacements applied after the system table."""
+    custom_regex_passes: list[tuple[str, str]] = Field(default_factory=list)
+    """Project (pattern, replacement) pairs applied last by the regex stage."""
+    hyphenation_join_list: list[str] = Field(default_factory=list)
+    """Prefixes the regex stage may rejoin across an end-of-line hyphen."""
+    wordcheck_bad_words: list[str] = Field(default_factory=list)
+    """Project bad words. Unioned with the shipped scanno seed at flag time."""
+    wordcheck_good_words: list[str] = Field(default_factory=list)
+    """Project good words. They suppress a flag even when the word is bad."""
+    hyphen_join_decisions: list[HyphenJoinDecision] = Field(default_factory=list)
+    """Saved join/keep decisions. Empty means the hyphen_join stage is identity."""
+    illustration_regions: list[IllustrationRegion] = Field(default_factory=list)
+    """Regions to crop for the illustrations stage. Empty defers to detect or a plate page."""
 
     # ── Pipeline GrayscaleConfig (Task 1.1) ───────────────────────────────────
     # Full book-tools pipeline config.  The old flat grayscale_mode /

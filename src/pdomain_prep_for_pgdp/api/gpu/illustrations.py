@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from pdomain_prep_for_pgdp.api.dependencies import GPUBackendDep
@@ -71,4 +71,7 @@ async def extract_illustration(
     _body: ExtractIllustrationRequest,
     _gpu: GPUBackendDep,
 ) -> ExtractIllustrationResponse:
-    raise NotImplementedError("core.illustrations.extract_illustration not yet wired")
+    raise HTTPException(
+        status_code=501,
+        detail="extract-illustration is not available on this route; the illustrations stage writes the crops",
+    )

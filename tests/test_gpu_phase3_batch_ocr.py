@@ -305,6 +305,7 @@ async def test_fanout_emits_running_and_clean_sse_per_page(tmp_path: Path) -> No
     # 2 pages x 2 keys each = 4 running, 4 clean.
     assert len(running_events) == 4, f"Expected 4 running events (dual-publish), got {running_events}"
     assert len(clean_events) == 4, f"Expected 4 clean events (dual-publish), got {clean_events}"
+    assert {event[1].get("idx0") for event in clean_events} == {1, 2}
 
     # Result stats.
     assert result["total"] == 2

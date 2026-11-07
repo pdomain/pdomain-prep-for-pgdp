@@ -86,6 +86,13 @@ def resolve_page_config(
         single_dimension_rescale=bool(o.single_dimension_rescale),
         flip_horizontal=bool(o.flip_horizontal),
         flip_vertical=bool(o.flip_vertical),
+        standard_scannos=dict(system.standard_scannos),
+        custom_scannos=dict(project.custom_scannos),
+        custom_regex_passes=list(project.custom_regex_passes),
+        hyphenation_join_list=list(system.hyphenation_join_list),
+        wordcheck_bad_words=list(project.wordcheck_bad_words),
+        wordcheck_good_words=list(project.wordcheck_good_words),
+        illustration_regions=list(page.illustration_regions),
     )
 
 

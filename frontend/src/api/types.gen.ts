@@ -837,7 +837,7 @@ export interface paths {
          *     every page's OCR text artifact and aggregates the results into a flat
          *     ``{ cases: HyphenCase[], totals: HyphenTotals }`` response.
          *
-         *     HyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``
+         *     HyphenCase shape: ``{id, prefix, suffix, pageId, idx0, offset, matchText, status, kind}``
          *     HyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,
          *                            mismatch, unvalidated}``
          *
@@ -1995,11 +1995,11 @@ export interface paths {
         };
         /**
          * Get Hyphen Join Candidates
-         * @description Return hyphen-join candidates detected from the stage artifact.
+         * @description Return hyphen-join candidates from the pre-join source text.
          *
-         *     Reads the hyphen_join stage artifact (text) and detects end-of-line
-         *     hyphen candidates. Returns 404 if no clean artifact is available.
-         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         *     Source order is wordcheck output.txt, then the saved source.txt, then
+         *     the hyphen_join output. Saved decisions are attached when present.
+         *     Returns 404 if the stage is not clean or no source text exists.
          */
         get: operations["get_hyphen_join_candidates"];
         put?: never;
@@ -2021,12 +2021,12 @@ export interface paths {
         put?: never;
         /**
          * Post Hyphen Join Decisions
-         * @description Record hyphen-join decisions and return updated candidates.
+         * @description Save hyphen-join decisions, rewrite output.txt, and return candidates.
          *
-         *     Reads the hyphen_join stage artifact, re-detects candidates, and
-         *     annotates each with the submitted decision where applicable.
-         *     Returns 404 if no clean artifact is available.
-         *     Spec: docs/specs/api-v2-deltas.md §1.9.
+         *     Candidates are detected from the pre-join source, not from text that
+         *     already had joins applied. The source and decisions.json are written
+         *     before the stage artifact so a failed commit still leaves a re-runnable
+         *     decision file. Downstream clean stages become dirty.
          */
         post: operations["post_hyphen_join_decisions"];
         delete?: never;
@@ -3602,6 +3602,10 @@ export interface components {
             custom_scannos: {
                 [key: string]: string;
             };
+            /** Wordcheck Bad Words */
+            wordcheck_bad_words: string[];
+            /** Wordcheck Good Words */
+            wordcheck_good_words: string[];
             /** Layout Category Overrides */
             layout_category_overrides: {
                 [key: string]: string | null;

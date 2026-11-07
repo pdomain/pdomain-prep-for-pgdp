@@ -40,6 +40,8 @@ def test_project_config_required_includes_default_factory_fields() -> None:
     for name in (
         "custom_regex_passes",
         "custom_scannos",
+        "wordcheck_bad_words",
+        "wordcheck_good_words",
         "layout_category_overrides",
         "default_overrides",
     ):

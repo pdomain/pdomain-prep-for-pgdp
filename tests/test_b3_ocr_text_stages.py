@@ -518,6 +518,27 @@ def test_hyphen_join_apply_joins_text() -> None:
     assert "brownfox" in result or "brown\nfox" not in result
 
 
+def test_hyphen_join_apply_splices_the_later_identical_span() -> None:
+    """A join decision edits the span at its own offset.
+
+    Two copies of the same end-of-line hyphen must not share one
+    ``str.replace`` of the first copy.
+    """
+    from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import (
+        apply_join_decisions,
+        detect_candidates,
+    )
+
+    text = "ex-\nample and ex-\nample"
+    candidates = detect_candidates(text)
+    assert len(candidates) == 2
+    decisions = [
+        {"candidate_id": candidates[0]["candidate_id"], "decision": "keep"},
+        {"candidate_id": candidates[1]["candidate_id"], "decision": "join"},
+    ]
+    assert apply_join_decisions(text, decisions) == "ex-\nample and example"
+
+
 def test_hyphen_join_apply_rejected_candidate_unchanged() -> None:
     """Rejected candidate leaves the hyphen-newline in place."""
     from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_join import (

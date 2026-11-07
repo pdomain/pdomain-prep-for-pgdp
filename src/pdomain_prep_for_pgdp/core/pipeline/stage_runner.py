@@ -250,6 +250,17 @@ STAGE_CONFIG_FIELDS: dict[str, frozenset[str]] = {
     "post_ocr_crop": frozenset({"ocr_crop", "rotated_standard"}),
     "ocr_crop": frozenset({"rotated_standard"}),
     "ocr": frozenset({"use_ocr_bbox_edge"}),
+    "wordcheck": frozenset({"wordcheck_bad_words", "wordcheck_good_words"}),
+    "hyphen_join": frozenset({"hyphen_join_decisions"}),
+    "regex": frozenset(
+        {
+            "standard_scannos",
+            "custom_scannos",
+            "custom_regex_passes",
+            "hyphenation_join_list",
+        }
+    ),
+    "illustrations": frozenset({"illustration_regions", "page_type"}),
     # grayscale (Wave-2): the resolved GrayscaleConfigModel field on ResolvedPageConfig.
     # A settings change on the nested pipeline config → config hash differs → dirty cascade.
     "grayscale": frozenset({"grayscale"}),
@@ -1156,6 +1167,17 @@ async def run_stage(
         )
         cfg = apply_stage_settings_to_config(cfg, stage_id, _effective)
 
+    # A non-empty decisions.json wins over a caller-supplied resolved_config.
+    # An empty or missing file leaves the caller's decisions in place.
+    if stage_id == "hyphen_join":
+        from pdomain_prep_for_pgdp.core.pipeline.steps.hyphen_decisions import (
+            read_hyphen_join_decisions,
+        )
+
+        saved_decisions = read_hyphen_join_decisions(data_root, project_id, page_id)
+        if saved_decisions:
+            cfg = cfg.model_copy(update={"hyphen_join_decisions": saved_decisions})
+
     _cfg_hash = _compute_config_hash(cfg, stage_id)
 
     # Sentinel for the impl's in-memory output; set inside the else branch
@@ -1201,23 +1223,40 @@ async def run_stage(
             _src_img = _decode_image_bytes(_src_bytes)
             output = _call_impl(impl, [_src_img], cfg)
 
-            # Encode and commit. v2 root page stages output ndarray (gray/image).
-            _v2root_arr = _require_image_artifact(output, stage_id=stage_id)
-            artifact_bytes_v2root = _encode_image_to_png(_v2root_arr)
-            # Phase 1: pass ndarray to executor cache for image-type root stages.
-            _v2root_ndarray_cache: np.ndarray | None = _v2root_arr if write_executor is not None else None
-            committed = await _commit_single_artifact(
-                data_root=data_root,
-                database=database,
-                project_id=project_id,
-                page_id=page_id,
-                stage_id=stage_id,
-                artifact_bytes=artifact_bytes_v2root,
-                stage_version=_stage_ver,
-                write_executor=write_executor,
-                config_hash=_cfg_hash,
-                artifact_ndarray=_v2root_ndarray_cache,
-            )
+            if stage.output_type in COMPOUND_OUTPUT_TYPES:
+                # illustrations reads the source image and writes crops.json
+                # plus crop files. It is not a single PNG root stage.
+                compound_output = _require_compound_output(output, stage_id=stage_id)
+                primary_filename = COMPOUND_PRIMARY_FILENAME[stage.output_type]
+                committed = await commit_stage_artifacts_multi(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    files=compound_output,
+                    primary_filename=primary_filename,
+                    stage_version=_stage_ver,
+                    config_hash=_cfg_hash,
+                )
+            else:
+                # Encode and commit. v2 root page stages output ndarray (gray/image).
+                _v2root_arr = _require_image_artifact(output, stage_id=stage_id)
+                artifact_bytes_v2root = _encode_image_to_png(_v2root_arr)
+                # Phase 1: pass ndarray to executor cache for image-type root stages.
+                _v2root_ndarray_cache: np.ndarray | None = _v2root_arr if write_executor is not None else None
+                committed = await _commit_single_artifact(
+                    data_root=data_root,
+                    database=database,
+                    project_id=project_id,
+                    page_id=page_id,
+                    stage_id=stage_id,
+                    artifact_bytes=artifact_bytes_v2root,
+                    stage_version=_stage_ver,
+                    write_executor=write_executor,
+                    config_hash=_cfg_hash,
+                    artifact_ndarray=_v2root_ndarray_cache,
+                )
         else:
             # Load parents by consumer need (words vs text products from compounds).
             # Single-parent passes the bare artifact; multi-parent / dual OCR

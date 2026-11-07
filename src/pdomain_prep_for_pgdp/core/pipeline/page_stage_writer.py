@@ -455,6 +455,26 @@ async def commit_stage_artifact(
     return state
 
 
+_CROP_IMAGE_SUFFIXES: Final[frozenset[str]] = frozenset({".png", ".jpg", ".jpeg"})
+
+
+def _drop_unnamed_crop_images(stage_dir: Path, kept: set[str]) -> None:
+    """Remove crop images this commit did not write.
+
+    A later illustrations run that drops a region must not leave the old
+    ``i_NN`` file beside the new ``crops.json``. JSON sidecars stay.
+    """
+    if not stage_dir.is_dir():
+        return
+    for path in stage_dir.iterdir():
+        if not path.is_file() or path.name in kept:
+            continue
+        if path.suffix.lower() not in _CROP_IMAGE_SUFFIXES:
+            continue
+        with contextlib.suppress(OSError):
+            path.unlink()
+
+
 # ─── commit_stage_artifacts_multi ───────────────────────────────────────────
 
 
@@ -652,6 +672,9 @@ async def commit_stage_artifacts_multi(
         if snap.exists():
             with contextlib.suppress(OSError):
                 snap.unlink()
+
+    if "crops.json" in files:
+        _drop_unnamed_crop_images(stage_dir, set(files))
 
     # FTS index upsert for text_review (v2 final attested text stage).
     # Mirrors commit_stage_artifact's FTS path. Requires idx0; skipped

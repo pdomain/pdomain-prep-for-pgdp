@@ -1989,7 +1989,7 @@
           "project-stages"
         ],
         "summary": "Scan Hyphen Candidates",
-        "description": "Scan all pages for end-of-line hyphen candidates.\n\nRuns ``detect_candidates`` (from the ``hyphen_join`` pipeline step) over\nevery page's OCR text artifact and aggregates the results into a flat\n``{ cases: HyphenCase[], totals: HyphenTotals }`` response.\n\nHyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``\nHyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,\n                       mismatch, unvalidated}``\n\nR2 \u2014 I2 DRIFT (seam-remediation plan). Resolves hyphenJoin.scanHyphenation stub.",
+        "description": "Scan all pages for end-of-line hyphen candidates.\n\nRuns ``detect_candidates`` (from the ``hyphen_join`` pipeline step) over\nevery page's OCR text artifact and aggregates the results into a flat\n``{ cases: HyphenCase[], totals: HyphenTotals }`` response.\n\nHyphenCase shape: ``{id, prefix, suffix, pageId, idx0, offset, matchText, status, kind}``\nHyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,\n                       mismatch, unvalidated}``\n\nR2 \u2014 I2 DRIFT (seam-remediation plan). Resolves hyphenJoin.scanHyphenation stub.",
         "operationId": "scan_hyphen_candidates",
         "security": [
           {
@@ -5026,7 +5026,7 @@
           "pages"
         ],
         "summary": "Get Hyphen Join Candidates",
-        "description": "Return hyphen-join candidates detected from the stage artifact.\n\nReads the hyphen_join stage artifact (text) and detects end-of-line\nhyphen candidates. Returns 404 if no clean artifact is available.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "description": "Return hyphen-join candidates from the pre-join source text.\n\nSource order is wordcheck output.txt, then the saved source.txt, then\nthe hyphen_join output. Saved decisions are attached when present.\nReturns 404 if the stage is not clean or no source text exists.",
         "operationId": "get_hyphen_join_candidates",
         "security": [
           {
@@ -5081,7 +5081,7 @@
           "pages"
         ],
         "summary": "Post Hyphen Join Decisions",
-        "description": "Record hyphen-join decisions and return updated candidates.\n\nReads the hyphen_join stage artifact, re-detects candidates, and\nannotates each with the submitted decision where applicable.\nReturns 404 if no clean artifact is available.\nSpec: docs/specs/api-v2-deltas.md \u00a71.9.",
+        "description": "Save hyphen-join decisions, rewrite output.txt, and return candidates.\n\nCandidates are detected from the pre-join source, not from text that\nalready had joins applied. The source and decisions.json are written\nbefore the stage artifact so a failed commit still leaves a re-runnable\ndecision file. Downstream clean stages become dirty.",
         "operationId": "post_hyphen_join_decisions",
         "security": [
           {
@@ -9437,6 +9437,20 @@
             "type": "object",
             "title": "Custom Scannos"
           },
+          "wordcheck_bad_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Wordcheck Bad Words"
+          },
+          "wordcheck_good_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Wordcheck Good Words"
+          },
           "layout_category_overrides": {
             "additionalProperties": {
               "anyOf": [
@@ -9474,6 +9488,8 @@
           "ocr_crop_right",
           "custom_regex_passes",
           "custom_scannos",
+          "wordcheck_bad_words",
+          "wordcheck_good_words",
           "layout_category_overrides",
           "optimize_png",
           "default_overrides"

@@ -1751,7 +1751,7 @@ async def scan_hyphen_candidates(
     every page's OCR text artifact and aggregates the results into a flat
     ``{ cases: HyphenCase[], totals: HyphenTotals }`` response.
 
-    HyphenCase shape: ``{id, prefix, suffix, pageId, offset, matchText, status, kind}``
+    HyphenCase shape: ``{id, prefix, suffix, pageId, idx0, offset, matchText, status, kind}``
     HyphenTotals shape: ``{total, joined, validated, undecided, flagged, crosspage,
                            mismatch, unvalidated}``
 
@@ -1806,6 +1806,7 @@ async def scan_hyphen_candidates(
                 "prefix": cand["prefix"],
                 "suffix": cand["suffix"],
                 "pageId": page_id,
+                "idx0": page.idx0,
                 "offset": cand["offset"],
                 "matchText": cand["match_text"],
                 "status": "undecided",

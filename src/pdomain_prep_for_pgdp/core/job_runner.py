@@ -585,6 +585,9 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     artifact_key: str | None = None
 
     try:
+        # build_package reads optimize_png from project config. Other project
+        # stages ignore cfg, and a ProjectConfig would be an unexpected object.
+        stage_cfg = project.config if stage_id == "build_package" else None
         call_kwargs = build_project_stage_call_kwargs(
             stage_id=stage_id,
             impl_callable=impl_callable,  # type: ignore[arg-type]
@@ -593,7 +596,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             data_root=data_root,
             book_name=project.config.book_name if project.config else "",
             started_at_iso=started_at_iso,
-            cfg=None,
+            cfg=stage_cfg,
         )
         # Run in a thread pool to avoid blocking the async event loop (W0.3).
         # result is StageArtifact (bytes | ImageArray | str | …); we write
