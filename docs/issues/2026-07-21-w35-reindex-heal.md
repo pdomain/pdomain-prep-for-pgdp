@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — recovery CLI exists; operators and exit criteria under-documented
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -50,6 +50,15 @@ runbooks/: only docs/runbooks/dev-local-upgrade-flow.md (no reindex runbook)
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Reindex/heal implementation and unit coverage exist, but no operator reindex runbook is present. Heal reconciles
+artifacts/stage rows and FTS; it does not reclaim durable running jobs. Checked cli/reindex.py,
+tests/test_reindex_cli.py, and the runbook directory.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. CLI documents heal mutations
 

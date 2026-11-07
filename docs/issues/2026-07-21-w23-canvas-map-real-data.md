@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — canvas_map review surface is THIN / schematic
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
@@ -54,6 +54,15 @@ parent plan: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.3
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+CanvasMapTool still uses four fabricated page rows and constant scatter points. Backend geometry and canvas-map
+settings exist but do not feed that surface. Checked CanvasMapTool.tsx, stage_registry.py, and
+stage_settings.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Hard-coded scatter points
 

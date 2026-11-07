@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — unsafe defaults if self-hosted beyond localhost HTTP
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -25,15 +25,14 @@ Level: I1
 ## Summary
 
 Apikey-mode session cookies are issued with `secure=False` (hardcoded TODO for
-prod). CORS middleware allows all origins, methods, and headers. Acceptable
-for local `make run` on HTTP; unsafe defaults for non-local HTTPS or any
-deployment where a browser on another origin can call the API with credentials
-semantics that operators may misconfigure later.
+prod). CORS middleware allows all origins, methods, and headers, without `allow_credentials=True`.
+SameSite strict and that missing credential allowance constrain cross-origin browser requests.
+The remaining work is configurable deployment policy and accurate operator guidance.
 
 ## Impact
 
 - Session cookie can be sent over plain HTTP if the app is exposed beyond loopback.
-- Wildcard CORS is a footgun when auth_mode moves past `none` on a shared host.
+- Wildcard CORS provides an unrestricted origin policy for non-credentialed responses.
 - Self-host checklist incomplete without secure cookie + origin allowlist knobs.
 
 ## Environment / versions
@@ -46,6 +45,14 @@ local default: auth_mode none / apikey on HTTP :8765
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Session secure remains hardcoded false and CORS origins remain wildcard, without an allow_credentials=True
+setting. No corresponding configuration knobs exist. Checked api/auth/session.py, bootstrap.py, and settings.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Cookie flags
 

@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — image-prep visual QA is fake for threshold–dewarp
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
@@ -55,6 +55,15 @@ parent plan: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.1
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Shared ImageStageReviewTool still paints synthetic grid thumbnails and a text-only before/after placeholder. The
+stage artifact GET route exists but that component does not use it. Checked ImageStageReviewTool.tsx and
+api/data/pages.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Fake page thumbnails in the flag grid
 

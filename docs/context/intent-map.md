@@ -56,7 +56,8 @@ generated OpenAPI.
 - Add faithful upper-case Roman and alphabetic numbering controls and round trips. Current frontend mappings
   lose those distinctions; see [numbering limits](../architecture/08-page-numbering.md#limits-and-remaining-work).
 - Revisit the broader first-class Source back/duplicate/inserted-kind model separately from the existing durable
-  back/duplicate role labels. OCR folios and their reconciliation gate remain [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
+  back/duplicate role labels. Detector integration with the existing folio loader and confirmation guard remains
+  [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
 - Generalize grayscale settings controls beyond grayscale under [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md).
   Real archive-copy export remains [W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
 

@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — Cancel UI looks live but cannot stop stage work
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -50,6 +50,15 @@ data API: no /stages/{stageId}/cancel
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Stage cancellation still posts to an absent route and swallows errors; job-id cancellation exists separately and
+does not interrupt an underlying worker thread. Checked services/pipeline.ts, api/gpu/jobs.py, and
+core/job_runner.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Soft-fail cancel client
 

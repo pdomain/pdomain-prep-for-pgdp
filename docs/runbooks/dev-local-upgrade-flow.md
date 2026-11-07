@@ -1,140 +1,64 @@
-# `dev-local`-aware `upgrade-deps`
+---
+Kind: runbook
+Status: active
+Owner: CT
+Created: 2026-05-19
+Last verified: 2026-11-07
+---
+
+# Upgrade dependencies while preserving local siblings
 
 ## Agent Index
 
 - **Kind:** runbook
 - **Status:** active
-- **Last verified:** 2026-07-14
-- **Read when:** upgrading dependencies after installing a sibling project editably.
-- **Search terms:** dev-local, upgrade-deps, editable dependency, uv sync.
-
-## Applicability
-
-**Applicable.** This repo has a `dev-local` workflow: `make dev-local`,
-`make install-local`, and `make local-setup` install `pdomain-book-tools`
-editably from `../pdomain-book-tools/` (see Makefile lines 239–271). A naive
-`uv sync --group dev` will silently overwrite the editable install with
-the published / git-tag-pinned version from `pyproject.toml`, reverting
-the contributor's local work without warning.
-
-(Unlike `pdomain-ocr-cli` or the trainer, this repo has no torch/doctr GPU
-extras to revert — the surface area is just the editable
-`pdomain-book-tools` install. The hazard is still real because OCR behavior
-in this app is anchored in `pdomain-book-tools` and a silent demotion of
-that dep masks regressions during dev.)
-
-## The hazard
-
-`make upgrade-deps` today ends with:
-
-```make
-uv lock --upgrade
-uv sync --group dev
-```
-
-If the contributor previously ran `make install-local` or
-`make dev-local`, `uv sync` will see the canonical
-`pdomain-book-tools = { git = ..., tag = "vX.Y.Z" }` entry in
-`pyproject.toml` and replace the editable sibling install with the
-pinned tag, with no message.
-
-Result: the contributor's edits in `../pdomain-book-tools/` are no longer
-reflected in the running app, and the next `pgdp-prep` run silently
-regresses to the pinned tag's behavior. Especially nasty here because
-OCR-correctness work often spans both repos.
-
-## Required behavior (workspace-wide contract)
-
-1. **Detect dev-local vs canonical** before any `uv sync` invoked by
-   `upgrade-deps`.
-2. **Detection precedence** (cross-repo contract anchored in
-   `pdomain-book-tools`):
-   1. `uv pip show pdomain-book-tools` reports an `Editable project
-      location:` line — primary signal.
-   2. Fallback: a marker file in `.venv/` (e.g. `.venv/.dev-local`)
-      written by `make dev-local` / `make install-local`.
-   3. Last-resort override: env var `PDOMAIN_DEV_LOCAL=1`.
-3. **UX:** default `make upgrade-deps` **refuses with a message** when
-   dev-local is detected, pointing at the sibling recipe. A new
-   `make upgrade-deps-local` target performs `uv lock --upgrade`,
-   `uv sync --group dev`, then re-installs `pdomain-book-tools` editable
-   from `../pdomain-book-tools/` (and writes the `.venv/.dev-local`
-   marker).
-4. **Canonical-mode behavior unchanged.** When detection finds no
-   editable install, `make upgrade-deps` runs exactly as it does today.
-5. **Cross-platform.** Detection must work on Linux, macOS, and
-   Windows (PowerShell). `uv pip show` output is uniform across
-   platforms; the marker-file fallback is plain-file presence; the
-   env var is OS-agnostic.
-
-## Implementation sketch
-
-A small script (e.g. `scripts/detect_dev_local.py` or a Make
-function) that exits 0 if dev-local is detected and 1 otherwise.
-`upgrade-deps` becomes:
-
-```make
-upgrade-deps: ## Upgrade dependencies and sync local environment
-    @if uv run python scripts/detect_dev_local.py >/dev/null 2>&1; then \
-      echo "❌ dev-local install detected (editable pdomain-book-tools)."; \
-      echo "   Run 'make upgrade-deps-local' to upgrade and restore the editable install."; \
-      echo "   Or set PDOMAIN_DEV_LOCAL=0 and 'make reset' to switch to canonical."; \
-      exit 1; \
-    fi
-    uv lock --upgrade
-    uv sync --group dev
-
-upgrade-deps-local: ## Upgrade deps then restore editable pdomain-book-tools
-    uv lock --upgrade
-    uv sync --group dev
-    $(MAKE) dev-local
-```
-
-The marker file should be written at the end of `dev-local` /
-`install-local` and removed by `reset` / `clean`.
-
-## Why anchor detection on `pdomain-book-tools`
-
-Every pdomain-* downstream that has a dev-local concept routes editability
-through `pdomain-book-tools`. Probing that one package keeps the contract
-uniform across pdomain-ocr-cli, pdomain-ocr-labeler-spa, pdomain-ocr-trainer, and
-pdomain-prep-for-pgdp — a single shared detection script could eventually
-live in `pdomain-book-tools` itself or in a workspace-level helper.
-
-## Status
-
-**Shipped.** `Makefile` `upgrade-deps` refuses with the message above when
-`scripts/detect_dev_local.py` detects an editable `pdomain-book-tools` install;
-`upgrade-deps-local` upgrades then re-runs `make dev-local`. Tests live in
-`tests/test_detect_dev_local.py`. The `.venv/.dev-local` marker is written
-by `dev-local` / `install-local` (`Makefile` lines 301–311).
-
-## Related
-
-- Workspace decision recorded in agent-memory under
-  `.claude/agent-memory/<agent>/` for each pdomain-* repo.
+- **Last verified:** 2026-11-07
+- **Read when:** upgrading dependencies in local-dev mode.
+- **Search terms:** local-upgrade-deps, local-dev, editable siblings, local marker.
 
 ## Trigger
 
-Use this flow when upgrading dependencies after `make dev-local`,
-`make install-local`, or `make local-setup` installed a sibling dependency
-editably.
+Use this flow after activating local mode with `make local-dev`.
+Normal dependencies come from the registry. Local mode overlays editable pdomain-book-tools and pdomain-ops,
+plus the linked `@pdomain/pdomain-ui` frontend package.
 
 ## Preconditions
 
-The sibling checkout exists, the repository setup has completed, and the
-contributor knows whether the editable dependency must be preserved.
+Run `make setup` first and ensure the sibling checkouts exist.
+`make local-setup` clones missing siblings; it does not activate local mode.
+The canonical checkout's active environment must contain `.pdomain-local-mode` for `local-upgrade-deps`.
+
+The generic upgrade guard checks editability before synchronization. It recognizes editable book-tools,
+a `.dev-local` or `.pdomain-local-mode` marker, or a true `PDOMAIN_DEV_LOCAL` value.
+A false environment value does not override editable or marker detection.
+That fallback detection does not replace the canonical marker requirement of the local-upgrade target.
 
 ## Steps
 
-Run the repository's dev-local-aware upgrade target described above. Then
-restore the editable sibling through the documented local install target if
-needed.
+1. Run `make local-check` and inspect the current mode and sibling resolution.
+2. Run `make local-upgrade-deps`.
+3. Run `make local-check` again and confirm both Python siblings and the UI link.
+4. Inspect dependency/lockfile changes, then use `make local-run`.
+
+The upgrade target runs `uv lock --upgrade` and `uv sync` at the canonical root, then `local-dev` restores
+editable Python siblings and frontend links. Legacy `upgrade-deps-local` and `dev-local` are aliases.
 
 ## Verification
 
-Confirm the installed dependency resolves to the sibling checkout and run the repository's required CI gate.
+Confirm local-check resolves the intended siblings. Run the repository CI gate before committing.
+The source behavior is covered by `tests/test_detect_dev_local.py` and the local-mode scripts.
+This source audit did not perform an upgrade or change installed dependencies.
 
 ## Rollback
 
-Restore `uv.lock` from the current branch and rerun the repository setup target, then reinstall the editable sibling.
+Restore only dependency changes introduced by this upgrade, preserving pre-existing user edits.
+Re-synchronize and deliberately reapply `make local-dev` when retaining local mode.
+
+`make clean` removes build/cache artifacts; it does not clear local mode.
+`make reset` removes the active environment and runs setup. To return to registry mode deliberately, remove
+its `.pdomain-local-mode` marker first. `local-uninstall` removes a separately installed uv tool only.
+
+## Evidence
+
+Verified 2026-11-07 against `scripts/detect_dev_local.py`, the `scripts/local-*.sh` scripts,
+and Makefile upgrade/reset/clean targets. Environment selection uses `UV_PROJECT_ENVIRONMENT`, default `.venv`.

@@ -1,8 +1,14 @@
+---
+Kind: process
+Status: active
+Last verified: 2026-11-07
+---
+
 # CLAUDE — pdomain-prep-for-pgdp
 
-Web app that converts a folder/zip of scanned book images into a PGDP-ready
-submission package. Single Python wheel ships everywhere — solo proofer on a
-laptop, small-team self-hosted, or hosted multi-tenant.
+Web app that converts a folder/zip of scanned book images into a PGDP-ready submission package.
+The supported implementation is local-first: filesystem storage, SQLite, and per-stage CPU/GPU execution.
+Remote adapters remain extension points with incomplete persistence and deployment paths.
 
 Architecture starts at [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md).
 The former root `specs/00`–`specs/09` set described the initial design but diverged
@@ -14,18 +20,16 @@ architecture, generated OpenAPI, code, and tests are authoritative.
 - **Backend:** FastAPI + uvicorn, Python 3.13. `src/pdomain_prep_for_pgdp/`.
 - **Frontend:** React 19 + Vite + TS + **XState v5** + TanStack Query + Konva + Tailwind. `frontend/`.
 - **Pipeline core:** `src/pdomain_prep_for_pgdp/core/` — mode-agnostic, used by every adapter.
-- **Adapters:** `src/pdomain_prep_for_pgdp/adapters/` — `IStorage` (filesystem/S3),
-  `IDatabase` (SQLite/Postgres), `IAuth` (none/apikey/jwt), `GPUBackend`
-  (cpu/local/modal/shared_container). Selected at startup by `Settings`.
-- **OCR:** `core/ocr.py` mirrors `pdomain-ocr-cli`'s flow verbatim: load DocTR
-  predictor (process-singleton) → load layout detector → run page →
-  `page.reorganize_page(layout=...)` → optional `validate_word_preservation`.
-  Canonical reference: `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307-540`.
+- **Adapters:** storage/database/auth wiring lives under `src/pdomain_prep_for_pgdp/adapters/`.
+  GPU selection includes cpu/local/mps/modal/shared_container. Local stages use the registry;
+  remote GPU dispatch classes come from `pdomain_ops.gpu`. Settings selects startup configuration.
+- **OCR:** `core/ocr.py` loads cached DocTR predictors, runs OCR, optionally reorganizes layout and checks
+  word preservation, and also supports Tesseract. That module is the current implementation reference.
 - **Pipeline stages:** 24 v2 stages in `core/pipeline/stage_registry.py` (16
   page-scoped, 8 project-scoped). Canonical stage table and registry contract:
   [pipeline architecture](docs/architecture/03-pipeline.md). Older numbered
   step IDs are historical v1 references and are superseded.
-  Each stage has its own XState v5 machine in `frontend/src/machines/`; the
+  XState v5 machines and shared tool machines live in `frontend/src/machines/`; the
   registry of stage_id → React surface component is in
   `frontend/src/pages/pipeline/toolSlot.tsx` (`TOOL_REGISTRY`).
 
@@ -33,7 +37,7 @@ architecture, generated OpenAPI, code, and tests are authoritative.
 
 ```sh
 make ci AI=1        # full CI — always run before committing
-make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e`
+make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e -n auto`
 make e2e AI=1       # Playwright e2e suite (separate uv group)
 make run            # rebuilds SPA if missing or stale, then launches pgdp-prep at http://127.0.0.1:8765
 make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
@@ -70,7 +74,7 @@ make frontend-dev    # one terminal — Vite on :5173
 uv run pgdp-prep --reload --frontend-dev http://localhost:5173   # other — :8765
 ```
 
-Project has its own `.venv/` (provisioned by `make setup` via `uv`).
+The environment is `.venv/` by default, or `UV_PROJECT_ENVIRONMENT` when set. `make setup` syncs it through uv.
 Targeted runs: `uv run pytest -k <pattern>`.
 
 ## Rules
@@ -104,16 +108,13 @@ Targeted runs: `uv run pytest -k <pattern>`.
   Not config on `ocr_crop`.
 - **Local-first:** active work = SQLite + filesystem + CPU. Cloud/remote
   items parked in `docs/plans/roadmap.md §Deferred`.
-- `pdomain-book-tools` pinned `>=0.17.0` (textline dewarp shipped in 0.17.x).
-  Run `make local-dev` to install it editable while iterating alongside sibling
-  changes. The `>=0.18` gate (denoise promotion) is an open question —
-  see `docs/architecture/statechart-convergence-notes.md §Open questions`.
-  To bump: `make update-pdomain-deps`.
-- `gpu_backend="cpu"` is the test default. `LocalBackend` subclasses
-  `CpuBackend`; Modal/SharedContainer require real config.
+- Current dependency minimums are `pdomain-book-tools>=0.28.0` and `pdomain-ops>=0.11.2`, from pdomain-index-pip.
+  `make local-dev` installs editable siblings; `make update-pdomain-deps` refreshes registry constraints.
+- `gpu_backend="cpu"` is the test default. Local/cpu/mps startup uses `_NoOpGPUBackend` for compatibility;
+  page stages execute through the registry. Remote modes require real configuration.
 - `make build` runs `frontend-build` first so the wheel ships with the SPA bundle.
-- Data API: every route filters by `user.user_id`; flipping `auth_mode`
-  `none`→`jwt` is multi-user-safe.
+- Authentication selection exists, but managed multi-tenant deployment remains deferred.
+  Page services use per-project local event stores.
 
 ## Sibling repos
 

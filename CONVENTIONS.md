@@ -4,7 +4,7 @@
 
 - **Kind:** process
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** changing code, tests, or documentation.
 - **Search terms:** conventions, comments, documentation style.
 

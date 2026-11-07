@@ -13,7 +13,7 @@
 > [Current state](../context/current-state.md)
 > and described stage-by-stage below. M1–M6
 > are all shipped (see [migration decisions](../context/decisions.md)); per AD-7,
-> `STAGE_IMPL[stage_id][device]` in `core/pipeline/stage_registry.py`
+> `V2_STAGE_IMPL[stage_id][device]` in `core/pipeline/stage_registry.py`
 > is the only execution path. This doc is a code-level guide to where
 > each stage's implementation lives today and how OCR mirrors
 > `pdomain-ocr-cli`.
@@ -227,162 +227,100 @@ when the project events database is absent.
 
 ## Stage-to-code map
 
-The registry defines 24 stages plus project-level orchestration tasks.
-Today's code lives at:
+The v2 DAG contains 24 stages: 16 page-scoped and 8 project-scoped. Registry version 3 adds the numbering-runs
+migration; it does not introduce a third stage vocabulary. The live table is `V2_STAGE_DAG` in
+`core/pipeline/stage_dag.py`; execution callables live in `V2_STAGE_IMPL` in `core/pipeline/stage_registry.py`.
 
-| Stage / task | Code |
-|---|---|
-| `project.ingest` (root) | `core/ingest.ingest_source()` |
-| `thumbnail` | `core/ingest._make_thumbnail_bytes()` (in-memory, `ProcessPoolExecutor` per AD-9) |
-| `auto_detect_attrs` | `core/auto_detect.detect_page_attributes` |
-| `auto_detect_illustrations` | `core/illustrations.auto_detect_illustrations` |
-| Proofing-chain stages (`decode_source` → `initial_crop` → `manual_deskew_pre` → `grayscale` → `threshold` → `invert` → `find_content_edges` → `crop_to_content` → `auto_deskew` → `morph_fill` → `rescale` → `canvas_map`) | Individual entries in `STAGE_IMPL[stage_id]["cpu"]` (`core/pipeline/stage_registry.py`); each calls a `pdomain_book_tools.image_processing.cv2_processing` primitive |
-| `blank_proof_synth` | `core/pipeline/blank_proof.py` |
-| `ocr_crop` | `core/pipeline/crop_for_ocr.py` |
-| `extract_illustrations` | `core/illustrations.py` (extract + auto-detect) |
-| `ocr` | `core/ocr.py` (mirrors pdomain-ocr-cli) |
-| `text_postprocess` | `core/text_postprocess.py` |
-| `text_review` (gate) | `PATCH /api/data/projects/{id}/pages/{idx0}/text` (edit), `DELETE .../words` + `POST .../words/restore` (word edits), then attest via `text_review` stage run |
-| `project.build_package` | `core/packaging.py`; parks in `awaiting_review` job state when any proof-range page is un-attested, then resumes when the gate clears |
+| Scope | Stage IDs | Implementation |
+|---|---|---|
+| Project | `source` | Ingest jobs in `core/ingest.py`; `_source_cpu` supplies the registry callable |
+| Page | `grayscale`, `crop`, `threshold`, `deskew`, `denoise`, `dewarp`, `post_transform_crop` | Composed image callables in `stage_registry.py` |
+| Page | `canvas_map`, `post_ocr_crop`, `text_zones`, `illustrations` | Composition, OCR crop, zone JSON, and crop-file callables in `stage_registry.py` |
+| Page | `ocr` | `_ocr_cpu` delegates to `core/ocr.py` |
+| Page | `wordcheck`, `hyphen_join` | `core/pipeline/steps/wordcheck.py` and `hyphen_join.py` |
+| Page | `regex`, `text_review` | Text and compound-output callables in `stage_registry.py` |
+| Project | `page_order`, `validation`, `proof_pack`, `build_package` | Corresponding modules under `core/pipeline/steps/` |
+| Project | `zip`, `submit_check`, `archive` | `zip_stage.py`, `submit_check.py`, `archive_stage.py` under that same directory |
+
+Older names such as `decode_source`, `initial_crop`, `manual_deskew_pre`, `blank_proof_synth`, `ocr_crop`,
+and `text_postprocess` describe folded helpers or earlier designs. They are not additional live stage IDs.
 
 ## Step 0 — `ingest_source`
 
-Inputs: a `Project`, source key (zip or storage prefix), the storage adapter,
-and the database.
+The historical heading refers to today's two-job import path: `unzip_source`, followed by `generate_thumbnails`.
+ZIP enumeration checks resource limits and dispatches decompression to a worker thread. Folder enumeration
+reads the configured storage prefix. Source names are sorted before assigning zero-based scan indices.
 
-For zip sources: `_enumerate_zip` reads the zip from storage, extracts each
-image entry under `projects/<id>/source/<stem>.<ext>`. For folder sources:
-`_enumerate_folder` walks the storage prefix and reads bytes inline. Both
-sort by stem so `idx0` is deterministic.
+`unzip_source` creates shared Page and Project aggregates, writes source bytes to BlobStore, and stores
+`source_blob_hash` in the prep page extension. New leaves start as normal, included pages. It does not run
+attribute detection or generate thumbnails during extraction.
 
-For each entry `_build_page_records`:
-
-1. Decodes + resizes to a 400-px JPG thumbnail (in-memory cv2; written to
-   `projects/<id>/thumbnails/<stem>.jpg`).
-2. If `auto_detect=True` (default), runs `core.auto_detect.detect_page_attributes`
-   on the source bytes to suggest `page_type` (blank / plate_p / normal) and
-   `alignment` (default / center).
-3. If a `layout_detector` is supplied, calls `auto_detect_illustrations`
-   (writes a tempfile so pdomain-book-tools' detector can take a path) and
-   filters to figure / decoration / table regions above the confidence
-   threshold.
-4. Constructs a `PageRecord` and appends. After each page, `progress_cb`
-   fires with `(processed, total, stem)` so the runner emits an SSE event.
-
-Corrupt entries land in `IngestResult.errors` without aborting the batch.
-
-After the loop, if any pages were ingested and `auto_detect=True`, the median
-`height/width` ratio is recorded into `Project.config.default_overrides["page_h_w_ratio"]`.
+`generate_thumbnails` reads those source blobs, creates JPEGs, and persists `thumbnail_blob_hash` through
+page aggregate events. One worker uses a thread; multiple workers use a process pool. The worker count
+comes from the explicit argument, then `PGDP_THUMBNAIL_WORKERS`, then CPU count.
+Thumbnail decode failures are collected as errors. Finishing thumbnail generation seeds default numbering runs
+and records the project source stage as clean.
 
 ## Proofing chain — per-stage `STAGE_IMPL` entries
 
-Each proofing-chain step (`decode_source` → `initial_crop` →
-`manual_deskew_pre` → `grayscale` → `threshold` → `invert` →
-`find_content_edges` → `crop_to_content` → `auto_deskew` → `morph_fill` →
-`rescale` → `canvas_map`) is an individual entry in `STAGE_IMPL[stage_id]["cpu"]`
-(`core/pipeline/stage_registry.py`). `StageRunner` walks the DAG calling
-each one with the in-memory upstream artifact, then routes the result
-through `commit_stage_artifact` (`core/pipeline/page_stage_writer.py`)
-for dual-write to disk + `page_stages` row (AD-2).
+The image path is `grayscale → crop → threshold → deskew → denoise → dewarp → post_transform_crop`.
+`canvas_map` branches from that final stage and folds morphology, resizing, canvas placement, and blank-proof
+synthesis into one stage. `text_zones` is a separate branch from `post_transform_crop`.
 
-When the user requests a single stage with `mode=from`, the runner cascades
-to descendants by walking `stage_dag.py`'s parent→child graph and re-running
-every reachable dirty stage. Eager dirty propagation on a single-stage run
-marks every downstream `clean`/`failed` row `dirty` synchronously
-(the current downstream-dirty invariant).
+`run_stage` runs one stage for one page. A root image stage reads the original BlobStore image; other page
+stages load their page-scoped parents. Registry dispatch maps the requested device to the available implementation.
+The runner commits single or compound output and invalidates downstream rows after success.
+It does not itself implement a `mode=from` traversal that executes every descendant.
 
-For `page_type ∈ {blank, plate_b, plate_r}` the registry short-circuits to
-`blank_proof.create_blank_proof` (canonical-aspect blank PNG) — this is the
-`blank_proof_synth` stage.
+Direct single-artifact writes use `commit_stage_artifact`. With `StageWriteExecutor`, the runner first records
+an optimistic clean row, caches the artifact, and queues the file write. A background write failure marks
+the stage failed and invalidates descendants. This deferred path is not an atomic disk-and-database transaction.
 
 GPU implementations ship in the v2 registry. CUDA requests map to its `gpu` key.
-See [image preparation and settings](09-image-prep-settings.md#cpu-and-gpu-execution)
-for supported stages and device selection.
+See [image preparation and settings](09-image-prep-settings.md#cpu-and-gpu-execution) for supported stages.
 
 ## Stage `ocr_crop` — crop for OCR
 
-Uniform OCR border crop (project-wide top/bottom/left/right) applied to
-the proofing image. With splits represented as sibling pages,
-each child page runs its own `ocr_crop` independently — the legacy
-"yield one crop per split" inner loop is gone. Each page (root or
-split-child) produces exactly one `ocr_image` artifact.
+The current stage ID is `post_ocr_crop`. It consumes `canvas_map` output and applies configured OCR-margin
+trims. Split children are first-class pages and each runs its own chain; there is no inner crop-per-split loop.
 
 ## Step 7 — OCR (mirrors pdomain-ocr-cli)
 
-`core/ocr.py` follows `pdomain-ocr-cli/pdomain_ocr_cli/ocr_to_txt.py:307–540` verbatim
-(see `feedback_ocr_follows_pdomain_ocr_cli.md` in memory):
+`core/ocr.py` resolves model paths and layout configuration, reuses process-cached predictors, and calls
+`Document.from_image_ocr_via_doctr`. It then reorganizes the page with the layout detector when enabled.
+Optional word-preservation validation reports dropped words. The adapter converts the resulting word objects
+into prep's OCR schema. Tesseract bypasses DocTR and uses its text and word-box APIs.
 
-1. **Resolve models** (`core/hf_models.py`):
-   - `resolve_ocr_models(repo, det_filename, reco_filename, ...)` — local
-     paths or HF Hub download with `(.arch, .vocab)` sidecars.
-   - `resolve_layout_source(layout_model, layout_checkpoint)` — for
-     `pp-doclayout-plus-l`, looks up the HF repo + revision exposed by
-     `pdomain_book_tools.layout.adapters.pp_doclayout.PPDocLayoutPlusLDetector`.
-   - `prefetch_layout_files()` pre-downloads transformers files so the later
-     `from_pretrained()` is a cache hit.
-2. **Process-singleton predictors** (`get_predictor()`, `get_layout_detector()`)
-   — load each model once per process, keyed by model paths + device.
-3. **Per page**:
-   - `Document.from_image_ocr_via_doctr(image_path, ..., predictor)`.
-   - `layout_detector.detect(image_path)` (skipped when `layout_detector="none"`).
-   - Snapshot `pre_reorg = list(page.words)` if `validate_reorg`.
-   - `page.reorganize_page(layout=page_layout)` (or no kwarg if no detector).
-   - When `validate_reorg`: `validate_word_preservation(pre, post)` → log a
-     warning if any words were dropped.
-4. **Adapt** the resulting `pdomain_book_tools.ocr.word.Word` objects to spec-08
-   `OcrWord` (`_to_ocr_word`).
-5. **Tesseract path** (`engine="tesseract"`) bypasses DocTR + layout entirely
-   and uses `pytesseract.image_to_string` + `image_to_data` for word boxes.
-
-`engine=` kwarg overrides `cfg.ocr_engine` for one call (so the per-page UI
-can force Tesseract on a stubborn page without rewriting the config).
+The engine argument can override the resolved configuration for one call. OCR writes `words.json` and `raw.txt`
+as the compound products described in [Book path contracts](#book-path-contracts).
 
 ## Step 8 — Text post-process
 
-`core/text_postprocess.py` orchestrator:
-
-```
-quotes(curly→straight) → em-dash(→--) → join_hyphenated_lines(allow-list)
-→ apply_scannos(system) → apply_scannos(project) → apply_custom_regex_passes(project)
-```
-
-Hyphenation join only fires when the prefix is in the allow-list (so genuine
-compounds like "self-aware" don't get rejoined). Scannos are case-sensitive
-word-boundaried replacements.
+The live `regex` stage calls `core/text_postprocess.py`; it is not a separate `text_postprocess` registry stage.
+Quote and dash normalization precede allow-list hyphen joins, system and project scanno replacements,
+and custom regular-expression passes. Scanno replacements are case-sensitive and word-boundary based.
 
 ## Step 4.5 — Illustrations
 
-`extract_illustration(source_image_bytes, region)` decodes via cv2, clamps
-coords, optionally converts to grayscale, and encodes JPG (with quality) or
-PNG.
-
-`regions_for_page(page, system, source_dimensions=...)` returns either
-the user-confirmed `page.illustration_regions`, or a synthesised full-page
-region for `plate_p` pages.
-
-`auto_detect_illustrations(image_path, layout_detector, confidence_threshold)`
-runs the detector on the source image and filters to figure / decoration /
-table region types above the threshold; type is mapped to spec-05's
-`"illustration" | "decoration" | "plate"`.
+The live `illustrations` stage owns crop metadata and image files. Its source input comes from BlobStore.
+Detection and region-editing routes persist region information; package assembly reads the resulting
+`crops.json` contract described above. The older extraction route remains a 501 stub and is not that stage.
 
 ## Step 10 — Package
 
-`build_package(project, pages, storage)` assembles a zip:
+The live project `build_package` stage calls `build_package_v2_cpu` and `build_submission_zip` in
+`core/pipeline/steps/build_package.py`. It reads the page-order naming manifest, canvas PNGs, reviewed page
+text, and illustration crops. Output is the stage artifact `stages/build_package/output.zip`.
+The manifest determines filename prefixes and skips; cover aliases come from persisted cover-page roles.
 
-- One `<full_prefix>.png` + `<full_prefix>.txt` per non-ignored page output
-  (so splits get their own entries).
-- `cover.png` aliased from the page where `idx0 == config.cover_idx0`.
-- `images/<prefix>_<NN>.<ext>` for each illustration region whose hi-res
-  crop exists at `projects/<id>/hi_res/<prefix>_<NN>.<ext>`.
-- `pgdp.json` manifest (book_name, project_id, built_at, page_count,
-  illustration_count, pages[], optional cover_prefix / title_prefix).
-
-Written to `projects/<id>/for_zip/<book_name>.zip` via `IStorage.put_bytes`.
+`proof_pack` precedes build. The later `zip` stage records integrity information, `submit_check` evaluates
+the supplied archive metadata, and `archive` writes its inventory. An old `project.build_package` job with
+range-based names and an awaiting-review gate is not the current registry contract.
 
 ## Configuration resolution
 
-The pipeline never reads raw config layers — only a resolved
-flat object. `core/config_resolver.py`:
+Page-stage execution starts by resolving system, project, and page configuration.
+The resolved model can contain nested settings such as grayscale. `core/config_resolver.py`:
 
 ```python
 def resolve_page_config(

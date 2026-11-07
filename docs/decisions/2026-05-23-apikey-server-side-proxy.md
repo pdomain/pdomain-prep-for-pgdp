@@ -7,11 +7,23 @@ Status: decided
 
 - **Kind:** decision
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** changing API-key browser authentication or session cookies.
 - **Search terms:** API key, session cookie, authentication, HMAC.
 
 ## Threat model
+
+**Implementation review, 2026-11-07:** this is the dated decision rationale, with current behavior clarified here.
+The signed timestamp/nonce is in the browser cookie; verification is stateless, with the server retaining
+the secret and configured key, not a per-session database. The verifier enforces an eight-hour soft TTL.
+The browser cookie still has no Max-Age. Logout clears the cookie but does not revoke another valid copy.
+Server-side revocation/rotation remains deferred. A stable `PGDP_SESSION_SECRET` preserves sessions across
+restarts; the default is generated when Settings is constructed.
+
+The authenticated API wrapper uses `credentials: "include"`; that does not describe every raw fetch,
+including OIDC token exchange. The key is entered transiently, never emitted by env.js or persisted as a
+JavaScript bearer in API-key mode. Current cookie `secure=False` is tracked in W3.7.
+Historical dependency/environment observations below were not rerun as current environment claims.
 
 Before commit `a27f62c`, `/env.js` emitted the upstream bearer token
 (`PGDP_API_KEY`) in its unauthenticated JSON payload.  Any visitor —

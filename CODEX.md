@@ -5,6 +5,7 @@
 
 - **Kind:** process
 - **Status:** active
+- **Last verified:** 2026-11-07
 - **Read when:** Codex starts work in this repository.
 - **Search terms:** Codex guidance, agent instructions, repository workflow.
 

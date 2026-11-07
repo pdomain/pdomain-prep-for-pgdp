@@ -4,157 +4,81 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** packaging or deploying the application.
-- **Search terms:** deployment, local install, container, cloud.
+- **Search terms:** deployment, local install, container, cloud, release.
 
-This document tracks the three deployment shapes and separates shipped paths
-from deferred work.
+The supported deployment is local filesystem storage with SQLite. Self-hosted authentication is configurable.
+Managed cloud operation remains deferred; adapter selection alone does not make local page stores remote.
 
 ## Local — `pgdp-prep`
 
-**Status:** ✅ shippable.
+The installer resolves GitHub's latest release response, selects a wheel asset, downloads it, and installs it
+through uv. It fails if the release has no wheel instead of falling back to a source build requiring Node.
+It can bootstrap uv and select CUDA extras when NVIDIA is detected. This describes the installer code;
+this audit did not exercise a fresh remote installation or confirm current release assets.
 
-```sh
-curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
-pgdp-prep
-```
+Defaults include `127.0.0.1:8765`, `~/pgdp-projects`, filesystem storage, SQLite, and auth mode `none`.
+GPU selection is automatic unless configured. The preferred variable is `PDOMAIN_GPU_BACKEND`;
+`PGDP_GPU_BACKEND` remains a deprecated alias. The CLI opens a browser unless `--no-browser` is supplied.
 
-`install.sh`:
-
-1. Install `uv` if missing.
-2. Detect NVIDIA via `nvidia-smi`; if found, set `EXTRA_INDEX` to the right
-   PyTorch CUDA wheel index and add the `[cuda]` extra.
-3. Resolve the latest GitHub tag from the `tags` API.
-4. Look up the GitHub Release for that tag, find the `.whl` asset attached
-   to it (uploaded by `.github/workflows/release.yml`), download it to a
-   temp dir.
-5. `uv tool install --reinstall <wheel-path>[cuda]`.
-
-Step 4 is what removes the historical Node/npm requirement: the wheel
-already contains the built React SPA, so the user never builds the
-frontend. If the release has no wheel asset (workflow failure, or an old
-tag from before this was wired up), install.sh hard-fails with a pointer
-to the release URL rather than silently falling back to a `git+...`
-install (which would require Node).
-
-Defaults at startup (no env vars set):
-
-| Setting | Default |
-|---|---|
-| `host` / `port` | `127.0.0.1:8765` |
-| `data_root` | `~/pgdp-projects` |
-| `storage_backend` | `filesystem` |
-| `database_url` | `sqlite:///~/pgdp-projects/state.db` |
-| `auth_mode` | `none` |
-| `gpu_backend` | auto-detect (`local` if cupy importable, else `mps` on macOS arm64, else `cpu`) |
-| `dispatch_interval_seconds` | `0` (immediate) |
-| `stage_write_pool_size` | `min(cpu_count(), 4)` |
-| `stage_write_queue_cap` | `4 × stage_write_pool_size` |
-| `reconcile_interval_seconds` | `1800` (30 min) — periodic dual-write reconciler |
-
-`__main__.py` opens a browser tab on start unless `--no-browser` is passed.
+The stage write pool defaults to `min(cpu_count(), 4)`; its queue capacity defaults to four times the pool size.
+There is no configured periodic reconciliation interval. Reconciliation is an explicit CLI operation.
 
 ### Disk-cost implication of every-intermediate stage persistence
 
-Per the [pipeline architecture](03-pipeline.md), every stage of every
-page persists its output to disk on every run — roughly **16× source-page
-footprint per page**. A 500-page book at 2 MB/source-page is ~16 GB of
-stage artifacts under `~/pgdp-projects/<id>/pages/`. Configure
-`PGDP_DATA_ROOT` accordingly.
+Artifacts live under `<data_root>/projects/<id>/pages/<page_id>/stages/` and project-stage directories.
+Image, text, and compound products differ in size. Multiplying source size by all stage counts is a planning
+estimate, not a measured invariant. A 500-page book with 2 MB inputs and sixteen source-sized intermediates
+would use about 16 GB, but actual storage depends on outputs and compression.
 
-The `pgdp-prep reindex <project_id>` CLI walks the page tree and the
-`page_stages` DB rows, reporting drift; `--heal` deletes orphan files
-and marks DB rows whose file is missing as `failed`. Run it after a
-process crash or manual file moves.
+`pgdp-prep reindex <project_id>` reports drift. With `--heal`, orphan files move to
+`.orphan-stage-artifacts` with a manifest; missing artifacts mark rows failed, and hash/version drift marks rows
+dirty with downstream invalidation. Heal does not reclaim durable running jobs.
 
 ## Self-hosted
 
-**Status:** ✅ shippable for filesystem + SQLite + apikey. Postgres is deferred.
-
-Same wheel; flip env vars:
+Use the same wheel with filesystem/SQLite and an appropriate auth mode. For example:
 
 ```sh
 PGDP_HOST=0.0.0.0
 PGDP_DATA_ROOT=/var/lib/pgdp
 PGDP_AUTH_MODE=apikey
 PGDP_API_KEY=...
-# optional: PGDP_STORAGE_BACKEND=s3 + S3_DATA_BUCKET=...
-# optional: PGDP_GPU_BACKEND=modal + MODAL_TOKEN_ID=... MODAL_TOKEN_SECRET=...
+PGDP_SESSION_SECRET=...
 ```
 
-Recommended: systemd unit + Caddy/nginx for TLS. The team-of-five default
-reads from one shared Postgres + one shared GPU box (or Modal for burst).
+Keep the session secret stable if API-key sessions should survive restarts. TLS termination is a deployment
+responsibility. The session cookie currently hardcodes `secure=False`; CORS origins are wildcard without
+credentialed cross-origin enablement. See [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
+
+S3 configuration uses `PGDP_S3_DATA_BUCKET`. Modal credentials use `PGDP_MODAL_TOKEN_ID` and
+`PGDP_MODAL_TOKEN_SECRET`. These settings expose adapter wiring, not a verified managed deployment.
+The Postgres builder exists, but its stage/database contract remains incomplete.
 
 ## Managed (Fargate + Modal)
 
-**Status:** 🟡 scaffolded, not yet end-to-end.
+Remote GPU dispatch classes come from `pdomain_ops.gpu`. Local page lifecycle and project-stage execution still
+use local project paths. Container orchestration, remote persistence completeness, and multi-instance
+coordination require further work. See [the roadmap](../plans/roadmap.md#deferred--remote--cloud-mode).
 
-What's working:
+The Dockerfile uses Node 24 to build the SPA and Python 3.13 for runtime.
+No image-size or live cloud-readiness claim is established by this source audit.
 
-- `Dockerfile` builds a CPU-only Python 3.13 image with `[s3,postgres,modal,jwt]`
-  extras. Frontend SPA copied in from a Node build stage. ~150 MB image.
-- Bootstrap selects S3 + Postgres (when implemented) + JWT + Modal at
-  startup based on env vars.
-- `BatchDispatcher` flushes every 5 minutes by default; managed-mode jobs
-  enter `scheduled` status until the next flush.
-- `ModalBackend` looks up deployed Modal Functions by name and dispatches
-  via `.remote.aio()`. Wire shape verified by 3 TDD tests against a fake
-  `modal` module.
+## Build and release commands
 
-What still needs work:
+`make frontend-build` copies the SPA bundle into package static resources.
+Hatch's build artifacts include `static/**`; the custom SPA check rejects a wheel build without its bundle.
 
-All cloud/remote-mode follow-ups are parked under roadmap "Deferred —
-remote / cloud mode" while local-first lands:
+`make ci AI=1` runs local lint, type checks, OpenAPI generation, frontend build, backend/frontend tests, and knip.
+`make ci-slow AI=1` adds distribution builds and slow tests.
+The release targets invoke local release scripts. This checkout has no `.github/workflows/` release, publish,
+dependency-refresh, or CI workflow. Do not describe absent GitHub workflows as active automation.
 
-- **`modal_app.py` function bodies** — `process_page` / `run_ocr` /
-  `run_batch` raise `NotImplementedError` (roadmap §D1).
-- **Postgres adapter** — scaffold shipped (commit `77072c6`); live-DB
-  integration tests deferred (roadmap §D2).
-- **Container publication** — GitHub Actions does not publish a container
-  image; managed-mode container publication remains deferred (roadmap §D4).
-- **install.sh end-to-end** has never been exercised against a clean
-  shell with internet (roadmap §D3).
+## Evidence
 
-The historical planning estimate for 100 books/month was ~$70/month total. Modal
-GPU charges are ~$2/book; rest is Fargate (~$10) + Aurora (~$45) + S3 (~$5).
-
-## CI
-
-Two workflows:
-
-| Workflow | When | Job | What |
-|---|---|---|---|
-| `.github/workflows/ci.yml` | every push + PR | `ci` | `make ci AI=1` — setup + frontend-install + pre-commit + openapi-export + frontend-build + pytest + frontend-format-check + frontend-lint + vitest |
-| `.github/workflows/release.yml` | workflow dispatch from `make release-patch`, `make release-minor`, or `make release-major` | `release-ci` | checks out the exact tag and runs `make ci-slow` |
-| `.github/workflows/release.yml` | workflow dispatch after `release-ci` | `publish` | builds the wheel, creates the GitHub Release asset, and dispatches `pdomain/pdomain-index-pip`; scheduled index regen is the fallback |
-
-Tag pushes alone are not the supported release path. GitHub Actions does not
-publish a container image for this repo.
-
-## Frontend bundling
-
-The SPA lives inside the Python wheel:
-
-1. `vite build` writes to `frontend/dist/`.
-2. CI copies that into `src/pdomain_prep_for_pgdp/static/`.
-3. `pyproject.toml`'s `[tool.hatch.build.targets.wheel.force-include]`
-   bundles it into the wheel under `pdomain_prep_for_pgdp/static/`.
-4. At runtime `bootstrap._mount_static_frontend` mounts that directory at
-   `/`. `index.html` loads `/env.js` first (FastAPI-served, see backend doc).
-
-The dev workflow is different: `pgdp-prep --frontend-dev http://localhost:5173`
-keeps the FastAPI process from mounting the static SPA, so Vite's dev server
-on port 5173 owns `/` while FastAPI owns `/api/*` and `/cdn/*`.
-
-## What's not deployed yet
-
-All parked under roadmap "Deferred — remote / cloud mode":
-
-- **Modal app deploy** — the user runs `modal deploy
-  src/pdomain_prep_for_pgdp/adapters/gpu/modal_app.py` themselves; CI doesn't (§D1).
-- **install.sh end-to-end exercise** — `install.sh` carries the same latent
-  wheel-METADATA bug pre-fixed in `pdomain-ocr-cli`; fix before exercising the
-  curl-pipe-sh path (AD-10, §D3).
-- **Container publication** — GitHub Actions does not publish container images
-  for this repo; managed-mode container publishing remains deferred (§D4).
+Verified from source on 2026-11-07: `install.sh`, `Dockerfile`, `Makefile`, `pyproject.toml`,
+`scripts/do-release.sh`, `scripts/release-common.sh`, `settings.py`, `bootstrap.py`,
+and `cli/reindex.py`. Python module paths are under `src/pdomain_prep_for_pgdp/`.
+The repository's `.github/` tree contains an issue template, not workflows.
+Local tests cover settings and reconciliation; this audit does not claim live cloud or clean-machine install tests.

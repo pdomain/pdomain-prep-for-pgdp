@@ -58,9 +58,11 @@ Blank markers remain in manifest order with no filename prefix. Only skip-role l
 
 ## Limits and remaining work
 
-Automated OCR-folio detection and its advance gate remain open in
+Automated OCR-folio detection remains open in
 [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
-The existing nullable field and reconciliation function do not prove that detector is implemented.
+The machine already loads through `fetchFolios` and guards confirmation with `sequenceClean`.
+The nullable field and reconciliation function do not establish that a detector populates production values.
+Integrate persisted detector results with those existing paths; a new streaming design is a separate choice.
 
 The frontend offers only Roman, Arabic, and unnumbered styles. It maps Roman to lower-case Roman on save.
 Upper-case Roman reloads as Roman, and alphabetic reloads as unnumbered; saving can lose those distinctions.

@@ -1,3 +1,9 @@
+---
+Kind: process
+Status: active
+Last verified: 2026-11-07
+---
+
 # pdomain-prep-for-pgdp
 
 Web app that converts a folder or zip of scanned book images (e.g. from
@@ -5,9 +11,8 @@ Internet Archive) into a PGDP-ready submission package: standard proofing
 images, OCR text files, and a zip ready for upload to
 [Distributed Proofreaders](https://www.pgdp.net/).
 
-One Python wheel ships everywhere — solo proofer on a laptop, small team on a
-shared GPU box, or a hosted multi-tenant offering. The same pipeline runs in
-all three; only the storage / database / auth / GPU adapters change.
+One Python wheel includes the backend and SPA. The supported implementation is local-first: filesystem
+storage, SQLite, and registry-selected CPU/GPU execution. Managed remote deployment remains deferred.
 
 ## Quick start (local install)
 
@@ -25,15 +30,19 @@ The installer:
 
 - installs `uv` if missing,
 - detects an NVIDIA GPU via `nvidia-smi` and picks the matching PyTorch wheel,
-- resolves the latest GitHub tag, downloads the prebuilt wheel attached to
+- resolves the latest GitHub release, downloads the prebuilt wheel attached to
   that release, and runs `uv tool install` against it,
-- starts a single FastAPI process on port `8765` and opens a browser tab.
+- prints the command to run next: `pgdp-prep`. That command starts FastAPI and opens a browser tab.
 
 No AWS, no Docker, no PyPI publish step. **End users do not need Node, npm,
 or mise** — the wheel ships with the React SPA prebuilt, so `pgdp-prep` runs
 out of the published install.
 
 ## Deployment shapes
+
+Local filesystem/SQLite is the supported shape. The remote columns below describe extension points and
+deferred targets, not equivalent production support. The installer download contract does not establish
+that this checkout has an automated publication workflow.
 
 | | Local | Self-hosted | Managed |
 |---|---|---|---|
@@ -54,7 +63,7 @@ Single FastAPI process serving:
 |---|---|
 | `/` | React SPA (built into the wheel) |
 | `/api/data/*` | Project + page CRUD, presigned URLs, jobs |
-| `/api/gpu/*` | Image processing, OCR, ingest, packaging |
+| `/api/gpu/*` | Ingest, illustration helpers, and job operations |
 | `/cdn/*` | Local image files (filesystem mode only) |
 | `/api/auth/*` | Identity (none / api-key / JWT) |
 
@@ -67,7 +76,7 @@ Contributors should also read [development setup](DEVELOPMENT.md),
 ## How to run (from a checkout)
 
 ```sh
-make run        # auto-detects GPU; CUDA host -> cuda:0, else CPU
+make run        # selects the configured or automatically detected backend
 make run-cpu    # forces PGDP_GPU_BACKEND=cpu (debugging / weak GPU / CUDA OOM)
 ```
 
@@ -75,8 +84,8 @@ Both targets rebuild the SPA bundle into `src/pdomain_prep_for_pgdp/static/`
 if missing or stale (any frontend source newer than the built bundle), then
 launch `pgdp-prep` as a single FastAPI process at
 <http://127.0.0.1:8765> (next free port if 8765 is taken). Watch the
-startup log for `local backend on cuda:0` vs `local backend on cpu`
-to confirm which device the OCR pipeline picked up.
+startup log for `Selected GPU backend: <name>`. Per-stage execution uses registered CPU/GPU implementations.
+For direct configuration prefer `PDOMAIN_GPU_BACKEND`; `PGDP_GPU_BACKEND` remains a deprecated alias.
 
 End users installing via the wheel just run `pgdp-prep` — the wheel
 already includes the SPA bundle, so no `make run` step is needed.
@@ -94,8 +103,8 @@ the prebuilt SPA bundle.
 
 The [architecture documentation](docs/architecture/01-overview.md) describes
 the shipped system. Pydantic models and the generated `/openapi.json` define
-request and response shapes; the TypeScript frontend types are generated from
-that OpenAPI document.
+request and response shapes. OpenAPI export writes `frontend/src/api/types.gen.ts`;
+the handwritten `frontend/src/api/types.ts` remains in use by some consumers.
 
 ## License
 

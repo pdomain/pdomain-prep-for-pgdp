@@ -4,11 +4,11 @@
 
 - **Kind:** research
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** changing scanno detection or evaluating deferred OCR-error ideas.
 - **Search terms:** scannos, OCR errors, WordCheck, confusion sets.
 
-> Research report for the **Scannocheck** stage of `pdomain-prep-for-pgdp`.
+> Historical OCR-error research. Scannocheck was the research label; the shipped stage ID is `wordcheck`.
 > Date: 2026-06-02 · v2 (two research rounds). Author: research synthesis (Claude Code).
 >
 > **What this stage must do:** *suggest* OCR-error suspects to a human proofer
@@ -28,6 +28,15 @@
 ---
 
 ## 0. Executive summary
+
+Repository boundary checked on 2026-11-07: wordcheck flags exact matches against built-in OCR misspellings
+and the MIT pptext seed. It checks lower, title, and upper forms.
+Project bad words extend the set; project good words
+take precedence. It writes `flags.json` and passes page prose through `output.txt`.
+KenLM, dictionary checking, context trigrams, SymSpell, confidence fusion, period lexicons, and neural
+suggestions below remain research proposals. This review did not recheck external research, licenses,
+releases, accuracy, or latency estimates. The verification date covers repository integration only;
+the original June research and its uncertainty markers remain historical.
 
 **The shape of the answer:** PGDP already built our contract (flag-only,
 three-level), so copy its architecture. Stealth recall comes from a

@@ -28,6 +28,12 @@ See [numbering runs](../architecture/08-page-numbering.md),
 
 ## Current risks
 
+The 2026-11-07 warning audit checked all 36 age-flagged documents against repository source, configuration,
+tests, or their normative pointers. Current architecture distinguishes deferred/project writes from synchronous
+rollback-capable page writes. Hosted workflows are absent; release commands are local scripts.
+Historical decisions and scanno research keep their original context. External research and live deployments
+were not revalidated by this repository audit.
+
 - Local SQLite tests can show a transient `SQL statements in progress` commit failure under full parallel CI.
   The affected page-text test passed alone and in five repeated parallel runs. No deterministic defect was
   established.

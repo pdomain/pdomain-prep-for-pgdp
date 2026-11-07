@@ -1,3 +1,9 @@
+---
+Kind: process
+Status: active
+Last verified: 2026-11-07
+---
+
 # Agent guidance
 
 Codex and other AI coding assistants: read [`CLAUDE.md`](CLAUDE.md),

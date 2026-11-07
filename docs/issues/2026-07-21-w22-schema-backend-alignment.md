@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** High — UI implies tunable image prep that does not change output
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
@@ -59,6 +59,15 @@ parent plan: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.2
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+stageSchemas remains mismatched with backend knobs; imageStageReview rerun discards its draft. Threshold lacks a
+stage-settings defaults entry and dewarp ignores cfg. Checked stageSchemas.ts,
+services/tools/imageStageReview.ts, stage_settings.py, and stage_registry.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Threshold UI offers Sauvola / adaptive; backend is level or Otsu
 

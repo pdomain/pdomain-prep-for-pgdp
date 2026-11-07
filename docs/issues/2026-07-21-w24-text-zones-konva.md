@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-11-06
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-06
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — split/zone QA blocked on schematic canvas; W0.5 body contract is shipped
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
@@ -59,6 +59,14 @@ parent plan: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.4
 
 ## Evidence
 
+### Current source verification — 2026-11-07
+
+W0.5 split-body translation is implemented; real page imagery and editable zone/split overlays remain absent.
+Checked services/tools/textZonesTool.ts and TextZonesTool.tsx.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
+
 ### 1. Zone card thumbs are schematic
 
 ```64:66:frontend/src/pages/pipeline/tools/TextZonesTool.tsx
@@ -100,26 +108,11 @@ File header: “At F5: mock-only wiring… At I1: replace the mock services…�
 Meanwhile `buildRealTextZonesToolServices` exists and maps several routes —
 service layer is ahead of the visual surface.
 
-### 4. Split body contract still diverges (W0.5 prerequisite)
+### 4. Split body contract shipped (W0.5)
 
-Parent plan B7: backend expects `{ bbox, split_at_stage, suffixes }`;
-frontend historically `{ suffixes, bboxes }` without `split_at_stage`.
-
-Live service still posts a divergent shape:
-
-```103:113:frontend/src/services/tools/textZonesTool.ts
-  // At I1 the endpoint accepts { suffixes, bboxes } where bboxes is a list.
-  const result = await api.post<...>(
-    `/api/data/projects/${encodeURIComponent(projectId)}/pages/${encodeURIComponent(pageId)}/split`,
-    {
-      suffixes: ["a", "b"],
-      bboxes: [bboxA, bboxB],
-    },
-  );
-```
-
-W2.4 must not ship Konva APPLY_SPLIT until W0.5 makes this succeed in API +
-service tests.
+The service now parses the scan index and posts suffixes, normalized boxes, `split_at_stage=text_zones`,
+and `normalized=true` to the page split route. W0.5 shipped with API and service tests.
+The remaining work is real imagery and editable zone/gutter overlays, then end-to-end UI verification.
 
 ### 5. Plan done-when
 
@@ -128,9 +121,8 @@ works on a real page.”
 
 ## Root-cause hypotheses
 
-1. **(Most likely) Deliberate F5 schematic + blocked on split contract** —
-   design handoff required Konva; implementation stopped at tab shell and
-   service stubs; W0.5 still open so interactive split was deprioritized.
+1. **(Most likely) Deliberate F5 schematic not replaced** — the split service contract shipped,
+   but the visual surface still lacks real image/overlay binding.
 2. **Real services partially landed without image/overlay binding** —
    redetect/layout routes may return zones, but UI never maps them onto an
    image layer.
@@ -143,16 +135,14 @@ works on a real page.”
    (or equivalent) overlays for zones and split gutters. (Primary)
 2. **Schematic zone card thumbs** — real post_transform_crop / text_zones
    parent imagery (same honesty theme as W2.1).
-3. **Split apply path** — only after **W0.5**: correct body including
-   `split_at_stage` (and canonical bbox field names); design-level split on
-   a real page must succeed end-to-end.
+3. **Interactive split integration** — use the shipped W0.5 body contract; verify a design-level split
+   on a real page end-to-end.
 4. **Wire redetect/persist layout results into the canvas**, not only
    machine context totals.
 
 ## Next steps
 
-1. **Gate:** confirm W0.5 issue closed (APPLY_SPLIT API + service test green)
-   before deep Konva work.
+1. Reuse the shipped W0.5 API/service contract while building real overlays.
 2. Read design handoff under `docs/plans/design_handoff_pgdp_app/final/text_zones/`
    for required gestures (zone drag, gutter drag, split into a/b).
 3. Spike: Konva stage over artifact image with one zone rect + one gutter

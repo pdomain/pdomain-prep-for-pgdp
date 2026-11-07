@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** changing the React application or its API contract.
 - **Search terms:** frontend, React, routes, XState, OpenAPI.
 
@@ -19,7 +19,7 @@
 - `frontend/src/api/client.ts` is a thin typed `fetch` wrapper. Its auth
   behavior differs by `__ENV__.AUTH_MODE` — see "Auth in the SPA" below;
   it does not always attach a Bearer token.
-- `frontend/src/api/types.ts` is regenerated from `/openapi.json` via
+- `frontend/src/api/types.gen.ts` is regenerated from `/openapi.json` via
   `make openapi-export` (`openapi-typescript`). The committed `openapi.json`
   at repo root is the contract source; `tests/test_openapi_spec_committed.py`
   guards it against drift.
@@ -65,7 +65,7 @@ Verified against `frontend/src/api/client.ts` and `App.tsx`.
 the login flow does not populate them in none mode. If a token is already stored or supplied by the environment,
 the client can still attach it. Requests always use `credentials: "include"`. `UserMenu` renders `null`.
 
-**`apikey` mode** — httpOnly session cookie, no token ever touches JS:
+**`apikey` mode** — httpOnly session cookie; the entered key is transient and not persisted as a JS bearer:
 
 - `loginWithApiKey(key)` (`LoginPage`'s apikey form) `POST`s `{ api_key }`
   to `/api/auth/session` with `credentials: "include"`; the server responds
@@ -108,41 +108,29 @@ former `AuthBadge`/`ProfileDropdown` split) in the header:
 
 ## Workbench canvas — superseded
 
-**Stale — flagged, not fully re-verified.** This section previously described
-a standalone `PageWorkbenchPage` with Konva `Transformer` drag-create/
-drag-resize for split and illustration regions. That page and its
-`handleAddSplit`/`handleAddRegion`/`commitOverrides` flow no longer exist in
-`frontend/src/` (folded away with the other per-page routes — see "Pages"
-above). The one remaining Konva-backed interaction is the word-bbox
-marquee-select overlay (`WordBboxOverlay` + `lib/marquee.ts`, partial-overlap
-selection over OCR word bounding boxes) inside the `text_review` tool tab
-(`TextReviewTool`). A full description of current per-stage region-editing UX
-(crop/split/illustration equivalents inside `PagesGridTool`,
-`ImageStageReviewTool`, `CanvasMapTool`, `IllustrationsTool`) needs its own
-verification pass — out of scope for this fix.
+The standalone PageWorkbenchPage is removed. Text-review word selection uses `WordBboxOverlay`,
+the shared pdomain-ui `PageImageCanvas`, and react-konva rectangle overlays.
+TextZonesTool and OcrTool still include schematic canvas placeholders; full interactive region editing
+must not be inferred from the old workbench design. Shared image-review thumbnails and canvas scatter
+remain [W2.1](../issues/2026-07-21-w21-isr-real-thumbs.md) and
+[W2.3](../issues/2026-07-21-w23-canvas-map-real-data.md).
 
 ## Job progress UX
 
-Two kinds of progress:
+PipelinePage subscribes to project-stage and project page-stage streams. Tool bridges refresh their state
+and artifacts from those messages. ZipTool uses project SSE and fetches its manifest.
+JobsPage polls through TanStack Query every five seconds.
+The removed JobProgressInline/RunPipelinePanel/ProjectJobsFeed are not current rendering surfaces.
 
-1. **`JobProgressInline`** (in RunPipelinePanel and ProjectJobsFeed) — opens
-   an `EventSource` against `/api/gpu/jobs/{id}/events`. SSE messages drive
-   state updates instantly. On connection error, falls back to one `GET
-   /api/data/jobs/{id}` so the UI shows terminal state at minimum.
-2. **`JobsPage`** uses `useQuery` with `refetchInterval: 5000` because it's
-   listing many jobs at once — SSE-per-job there would be wasteful.
-
-The semantic event types (`progress` / `complete` / `error` / `cancelled`)
-let consumers switch on `type` instead of parsing `status`.
+SSE wire event names and JSON body types are distinct; see [job events](05-events-and-jobs.md#jobeventbroker).
 
 ## Form patterns
 
-- **Three-state toggles** in `ConfigOverridesPanel`: cycle null → true →
-  false → null. `null` shows as "inherit" (the resolver picks the parent layer).
-- **Inline rename** in `ProjectTitleEdit`: click-to-edit, Enter to commit,
-  Escape to cancel.
-- **Confirm-then-delete** in `ProjectListRow`: kebab `⋯` → "Delete project?
-  Yes / Cancel" inline replacement.
+Current form ownership follows the projects surface, pipeline tool registry, and per-tool XState machines.
+The former ConfigOverridesPanel, ProjectTitleEdit, and ProjectListRow examples are removed.
+Grayscale's persisted tier controls are documented in [image settings](09-image-prep-settings.md).
+The generated `types.gen.ts` and retained handwritten `types.ts` coexist; generation does not mean every
+consumer already imports generated types.
 
 ## What's shipped, what's deferred
 
@@ -151,11 +139,11 @@ Source persistence, real grayscale previews, and grayscale tier controls are des
 The persisted page-order tool and its style limitations are described in [numbering runs](08-page-numbering.md).
 
 - **OpenAPI codegen + drift guard** — shipped. `make openapi-export`
-  regenerates `frontend/src/api/types.ts`; `tests/test_openapi_spec_committed.py`
+  regenerates `frontend/src/api/types.gen.ts`; `tests/test_openapi_spec_committed.py`
   fails CI if the committed `openapi.json` diverges from the FastAPI app.
 - **shadcn/ui + Radix adoption** — §13a shipped 2026-05-15. Dialog,
   AlertDialog, Tooltip, Select, Popover, Collapsible, Badge are Radix
   wrappers (TooltipProvider mounted in `App.tsx`); sonner provides toasts.
-- **Vitest + msw harness** — shipped. Run via `make frontend-test`. ~22
-  test files covering pure-function helpers, API clients, and mount-level
+- **Vitest + msw harness** — shipped. Run via `make frontend-test`.
+  Tests cover pure-function helpers, API clients, and mount-level
   page tests.

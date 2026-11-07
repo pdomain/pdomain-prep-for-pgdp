@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — manage export and archive inventory not real product paths
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -47,6 +47,14 @@ Archive: frontend/src/pages/pipeline/tools/ArchiveTool.tsx MOCK_ITEMS
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Save a copy remains disabled/coming-soon, the export route returns only a synthetic copy id, and ArchiveTool
+starts from MOCK_ITEMS. Checked ProjectsPage.tsx, api/data/projects.py, and ArchiveTool.tsx.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Manage UI comingSoon
 

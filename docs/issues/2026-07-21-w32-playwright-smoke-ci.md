@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — UI registry/route regressions never break default CI
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -30,7 +30,10 @@ Makefile `test` target passes `--ignore=tests/e2e`, and `ci` depends on
 cover app load, 24 tool-slot registry presence, and upload/import flows — a
 fast smoke subset can break CI when a stage tool falls out of
 `TOOL_REGISTRY` or the SPA fails to boot. Without promotion, those failures
-only surface on manual `make e2e`.
+are not checked at browser level by `make ci`; unit/component tests may still catch some of them.
+
+This is the local Make gate. GitHub workflows were removed in `e22bdd2`; no current GitHub Actions CI job
+is implied. Several W6.2 deferrals are passing documentation stubs, not pytest-marked skips.
 
 ## Impact
 
@@ -48,6 +51,14 @@ e2e group: uv run --group e2e pytest tests/e2e -v (requires playwright install c
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Local make ci excludes Playwright; make e2e remains separate. No GitHub workflow files remain. Checked Makefile,
+tests/e2e/test_w62_gap_tests.py, and removal commit e22bdd2.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. `make ci` / `make test` exclude e2e
 
@@ -76,7 +87,7 @@ Parent plan W3.2 exit: “Failing UI registry breaks CI.”
 
 ### 3. Full e2e remains optional / heavier
 
-W6.2 gap file documents skips for text_review approval, validation waiver UI,
+W6.2 gap file documents unimplemented browser flows for text_review approval, validation waiver UI,
 and page_order naming preview — those need fixtures (see W3.3), not the
 smoke subset.
 
@@ -100,7 +111,7 @@ smoke subset.
 1. Tag or collect smoke tests (`test_app_loads_*`, tool-slot registry, upload).
 2. Add `make e2e-smoke` (or `pytest -m e2e_smoke`) that depends on
    `frontend-build` and the e2e group.
-3. Wire smoke into `make ci` (or a documented CI job that is required).
+3. Wire smoke into the local `make ci` gate; discuss any new hosted CI workflow separately.
 4. Keep heavy/seeded flows out of smoke (W3.3).
 
 ## What is NOT broken

@@ -123,41 +123,26 @@ DocTR; the SPA strings would need an i18n layer.
 Revisit only after the local-mode flow above is end-to-end coherent.
 None of these are in scope for daily-use rollout.
 
-### D1. Modal app S3 wiring
+### D1. Remote GPU integration
 
-`src/pdomain_prep_for_pgdp/adapters/gpu/modal_app.py` — `process_page` /
-`run_ocr` / `run_batch` raise `NotImplementedError`. Needs S3
-storage config wiring + Modal-side function bodies + a real account
-for end-to-end tests.
+Remote classes come from `pdomain_ops.gpu`; the old local Modal backend modules are removed.
+Complete and verify remote artifact transport and local-store replacement before claiming managed readiness.
 
 ### D2. Postgres adapter — live-DB integration tests
 
-Scaffold shipped (`adapters/database/postgres.py`); direct-class
-tests `importorskip` psycopg cleanly. Reviving requires (1) a
-Postgres service in the dev container, (2) a parametrised `db`
-fixture factory yielding SQLite **or** Postgres, (3) deciding the
-managed-mode default (currently empty `database_url` falls back to
-SQLite).
+The builder selects Postgres for configured URLs, but stage-related adapter methods remain incomplete.
+A live Postgres test service and full database-contract coverage are still required.
 
 ### D3. install.sh end-to-end exercise
 
-`install.sh` / `install.ps1` / `Makefile.install` are authored but
-the curl-pipe-sh path has never been exercised in a clean shell.
-Note: long-term strategy is the self-hosted PEP 503 index
-(AD-10); fix the latent wheel-METADATA bug pre-fixed in pdomain-ocr-cli
-before exercising.
+The installer expects a wheel from the latest GitHub release. This source audit did not exercise a clean-machine
+installation or prove the historical wheel-METADATA defect remains. Keep an actual install test as deferred work.
 
 ### D4. Managed-mode container publication
 
-`.github/workflows/release.yml` is dispatch-only: the local
-`make release-patch`, `make release-minor`, and `make release-major`
-targets run release preflight, push the exact tag, and dispatch the
-workflow. The workflow publishes the wheel as a GitHub Release artifact
-and dispatches `pdomain-index-pip`.
-
-GitHub Actions does not build or publish the managed-mode container.
-Wire ECR / GHCR credentials only when managed-mode container publishing
-is back in scope.
+Local release targets invoke release scripts. GitHub workflows were removed in `e22bdd2`;
+this checkout has no automatic release/publish or container-publication workflow.
+Managed container credentials and publication remain separate deferred work.
 
 ### D5. CUDA `STAGE_IMPL` entries
 

@@ -318,8 +318,8 @@ Dewarp and canvas_map control schemas do not match backend knobs.
 All nine July review fixes shipped, including the frontend route/auth correction in `29f60ca`.
 The retired plan's durable contracts are in
 [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
-Its residual umbrella is closed. Broader architecture verification remains
-[W3.8](../issues/2026-07-21-w38-stale-docs-refresh.md).
+Its residual umbrella is closed. The 2026-11-07 source audit completed W3.8;
+see [current architecture](../architecture/01-overview.md).
 Do not reimplement those fixes. Wave 0 also completed the multi-page shell orchestration.
 
 ### Deferred product (correctly parked)
@@ -397,7 +397,7 @@ Wave 0 shipped on 2026-11-06. Behavior and tests: [Book path contracts](../archi
 | W0.6 | shipped | Golden-path regression in default CI | Asserts real text, clean attestation, N-page dual-write, matched png/txt |
 
 **July review fixes:** shipped; see [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
-Broader documentation verification remains W3.8.
+W3.8 documentation verification completed on 2026-11-07.
 
 **Wave 0 exit criteria (all required):**
 
@@ -450,11 +450,11 @@ leaving the pipeline shell.
 | W3.5 | [w35-reindex-heal](../issues/2026-07-21-w35-reindex-heal.md) | reindex --heal coverage | Heal path documented + tested |
 | W3.6 | [w36-job-stage-cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Job/stage cancel | Cancel works or explicit defer |
 | W3.7 | [w37-cookie-cors-hardening](../issues/2026-07-21-w37-cookie-cors-hardening.md) | Cookie secure + CORS allowlist | Self-host checklist |
-| W3.8 | [w38-stale-docs-refresh](../issues/2026-07-21-w38-stale-docs-refresh.md) | Stale architecture docs | Doc matches code |
+| W3.8 | shipped | Source-verified architecture and guidance | Completed 2026-11-07; current docs distinguish implementation from history |
 | W3.9 | [w39-page-order-ocr-folios](../issues/2026-07-21-w39-page-order-ocr-folios.md) | page_order P4 OCR-folios | Folio chips real |
 | W3.10 | [w310-save-copy-archive](../issues/2026-07-21-w310-save-copy-archive.md) | Save-a-copy + archive inventory | No `comingSoon` stub |
 
-**Documentation follow-up:** [W3.8 architecture verification](../issues/2026-07-21-w38-stale-docs-refresh.md).
+**Documentation verification:** W3.8 completed; see [architecture](../architecture/01-overview.md).
 
 ### Explicitly later (do not start unless local path is solid)
 
@@ -470,8 +470,7 @@ leaving the pipeline shell.
 ## Recommended next session sequence
 
 1. Start at Wave 2. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
-2. Use [W3.8](../issues/2026-07-21-w38-stale-docs-refresh.md) for remaining architecture verification.
-   The July review-fixes plan has retired.
+2. Use current architecture as the implementation reference. W3.8 and the July review-fixes plan are complete.
 
 Use worktrees for implementation branches. Run `make ci AI=1` before each
 commit. Prefer pure-function TDD for adapter and artifact-key logic.

@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — shared backend tiers exist; only grayscale exposes full page/project/all UX
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
@@ -60,6 +60,16 @@ parent: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.5
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+Grayscale remains the dedicated page/project/all UI. Threshold, deskew, and denoise use shared ISR controls, and
+threshold has no settings-default entry. Checked SettingsPage.tsx, GrayscaleTiers.test.tsx,
+ImageStageReviewTool.tsx, and stage_settings.py. This does not assert that general PageConfigOverrides always
+survives subsequent stage-setting application.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Backend model is already shared, not grayscale-only
 

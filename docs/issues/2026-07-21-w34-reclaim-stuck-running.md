@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
@@ -14,9 +14,9 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
-- **Severity:** High — crash leaves work permanently stranded until manual DB edit
+- **Severity:** High — no automatic recovery of in-flight work after process death
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
 - **Read when:** diagnosing hung jobs after process kill, startup recovery, or Wave 3 ops.
 - **Search terms:** JobStatus.running, reclaim, stuck job, run_pending, `_find_queued`, crash recovery, W3.4
@@ -25,8 +25,8 @@ Level: I1
 ## Summary
 
 `InProcessJobRunner` only dequeues jobs with `status == queued`. When a
-handler marks a job `running` and the process dies (kill, OOM, laptop sleep
-with unclean shutdown), the row stays `running` forever: no startup reclaim
+handler marks a job `running` and the process dies through a kill, OOM, or unclean shutdown,
+the row stays `running` until explicitly changed: no startup reclaim
 rewrites it to `queued`/`error`, and the poll loop never selects it again.
 Page/project stage rows can similarly remain mid-flight without a heal path
 tied to process start.
@@ -35,7 +35,8 @@ tied to process start.
 
 - Users see perpetual “running” jobs after a crash; Run stage appears dead.
 - Downstream stages never start; book path stalls silently.
-- Manual SQLite/DB surgery or re-enqueue is the only recovery today.
+- After restart, the owner can cancel the durable job through the job-id API and start new work.
+  Cancellation does not repair incomplete artifacts or make a rerun automatically safe.
 
 ## Environment / versions
 
@@ -47,6 +48,15 @@ storage: SQLite jobs table (local-first)
 ```
 
 ## Evidence
+
+### Current source verification — 2026-11-07
+
+The poller selects queued jobs and bootstrap has no automatic running-job recovery. After restart DELETE
+/api/gpu/jobs/{job_id} can cancel a durable row independently of its old worker. Checked core/job_runner.py,
+bootstrap.py, and api/gpu/jobs.py.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
 
 ### 1. Poll selects only `queued`
 
@@ -85,11 +95,11 @@ Grep across `src/pdomain_prep_for_pgdp` finds no startup pass that resets
 orphaned `running` jobs. Parent plan §Adapter / ops risks: “Stuck `running`
 jobs after process crash (no reclaim).” W3.4 done-when: crash recovery test.
 
-### 4. Cancel path does not help stranded rows
+### 4. Job cancellation is available after restart
 
-Cancel only applies when something can mark the job cancelled while a worker
-is alive (`JobStatus.cancelled` guards in `_run_one`). Dead process = no
-canceler for stuck `running`.
+`DELETE /api/gpu/jobs/{job_id}` loads the durable row, checks ownership and terminal status, and writes
+`cancelled`. It does not require the original worker to remain alive. It changes visible job status;
+it does not reclaim page/project artifacts. Automatic startup recovery is still absent.
 
 ## Root-cause hypotheses
 
@@ -120,7 +130,7 @@ canceler for stuck `running`.
 - Live `queued` jobs still run under a healthy process.
 - Handler timeout (review-fixes task 4 / parallel track) fails in-process
   hung handlers; it does not recover cross-process stuck `running`.
-- GPU `DELETE /api/gpu/jobs/{id}` cancel for live jobs is separate (W3.6).
+- Job-id cancellation can also mark a stranded job cancelled after restart; stage cancellation remains W3.6.
 
 ## Resolution
 

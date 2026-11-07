@@ -4,163 +4,86 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** orienting to the system or tracing its main components.
 - **Search terms:** architecture overview, FastAPI, pipeline, adapters.
 
 ## What this app does
 
-Take a folder or zip of scanned book images (e.g. an Internet Archive scan)
-and produce a PGDP-ready submission package: standard proofing images, OCR
-text files, illustrations, and the final zip. The full pipeline lives in
-`core/` and runs identically on a laptop, a self-hosted VM, or a hosted
-Fargate container — only the storage / database / auth / GPU adapters change.
+The app turns scanned book images into proofing PNGs, OCR text, illustration crops, and a PGDP submission ZIP.
+The supported implementation is local-first: filesystem storage, SQLite, and registry-selected CPU/GPU stages.
+Remote adapters are extension points, not proof of equivalent hosted behavior. Page lifecycle and project-stage
+execution still depend on local project stores.
 
 ## The single-process picture
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│  Browser — React 19 SPA (Vite, TanStack Query, Konva, Tailwind)   │
-└─────────────────────────────────┬─────────────────────────────────┘
-                                  │ HTTP + SSE
-                                  ▼
-┌───────────────────────────────────────────────────────────────────┐
-│  pgdp-prep — single Python process (FastAPI + uvicorn)            │
-│                                                                   │
-│   /                  Static SPA bundle (from package resources)   │
-│   /env.js            Runtime config shim (window.__ENV__)         │
-│   /api/auth/*        /me + JWT/apikey/none verification           │
-│   /api/data/*        Project + page CRUD, presigned URLs, jobs    │
-│   /api/gpu/*         Process page, OCR, ingest, packaging, jobs   │
-│   /cdn/*             Local image PUT/GET (filesystem mode only)   │
-│                                                                   │
-│   ┌─ core/            ─ pipeline + OCR + packaging (mode-agnostic)│
-│   ├─ adapters/        ─ storage / db / auth / gpu (swappable)     │
-│   ├─ dispatcher/      ─ immediate / batched (managed mode)        │
-│   ├─ core/job_runner  ─ async poll, fan-out, status broker        │
-│   ├─ core/job_events  ─ in-memory pub/sub for SSE                 │
-│   └─ core/queue       ─ single-thread executor + 200ms batch win  │
-└─────────────────────────────────┬─────────────────────────────────┘
-                                  │
-              ┌───────────────────┼────────────────┐
-              ▼                   ▼                ▼
-        IStorage             IDatabase       GPUBackend
-        ┌──────────┐         ┌──────────┐    ┌────────────────┐
-        │filesystem│         │SQLite    │    │CPU (cv2/DocTR) │
-        │   or S3  │         │ (or PG)  │    │Local CUDA stub │
-        └──────────┘         └──────────┘    │Modal scaffold  │
-                                              │Shared container│
-                                              └────────────────┘
+The React SPA talks to FastAPI through HTTP and Server-Sent Events (SSE). FastAPI serves the bundled SPA,
+runtime configuration, auth, data routes, ingest/helpers/job routes, and filesystem asset access.
 
-        Page lifecycle (local, per project)
-        ┌─────────────────────────────────────────────────────┐
-        │ pdomain-ops PagesApplication + LocalPageStore       │
-        │ .pd-pages/events.db + content-addressed blobs/      │
-        ├─────────────────────────────────────────────────────┤
-        │ PrepProjectAggregate workflow history              │
-        │ events.db                                           │
-        └─────────────────────────────────────────────────────┘
-```
+- `/env.js` exposes runtime settings without publishing an API key.
+- `/api/data/*` owns projects, pages, stage execution/settings, ordering, search, and artifacts.
+- `/api/gpu/*` owns ingest, illustration helpers, and job access; it has no legacy process-page or OCR-page route.
+- `/cdn/*` serves filesystem assets. Authenticated deployments use ownership-checked reads.
+- `/api/suite/*` supplies shared suite settings and discovery, with middleware guarding mutations.
 
-The wheel ships everywhere. The same code runs in every shape; only adapter
-selection differs (driven by env vars, see [`06-deployment.md`](06-deployment.md)).
+The in-process runner polls queued jobs. Current page stages dispatch through `get_stage_impl` into
+`V2_STAGE_IMPL`; the retained `STAGE_IMPL` table is legacy vocabulary. Bootstrap constructs a priority
+executor, but current stage calls do not all run through that executor.
 
 ## Module layout
 
-```
-src/pdomain_prep_for_pgdp/
-├── __init__.py             # version (hatch-vcs-derived)
-├── __main__.py             # `pgdp-prep` console entry point
-├── settings.py             # pydantic-settings — single Settings instance
-├── bootstrap.py            # build_app() — wires adapters, mounts routes
-│
-├── core/                   # mode-agnostic — used by every shape
-│   ├── models.py           # all spec-08 Pydantic models
-│   ├── config_resolver.py  # SystemDefaults + ProjectConfig + PageRecord -> ResolvedPageConfig
-│   ├── prefix.py           # compute_prefix()
-│   ├── assign_prefixes.py  # rewrite prefixes after Step-3 config patch
-│   ├── auto_detect.py      # spec-01 page-attribute heuristics
-│   ├── ingest.py           # Step 0/1/2 — extract zip, thumbnails, page records
-│   ├── pipeline/
-│   │   ├── stage_dag.py            # Per-page stage DAG (AD-1, spec pipeline-task-model)
-│   │   ├── stage_registry.py       # STAGE_IMPL[stage_id][device] — only execution path (AD-7)
-│   │   ├── stage_runner.py         # Runs a single stage; dirty-cascades descendants
-│   │   ├── stage_write_executor.py # Bounded ThreadPool + semaphore (AD-6)
-│   │   ├── page_stage_writer.py    # commit_stage_artifact{,_multi} dual-write (AD-2)
-│   │   ├── crop_for_ocr.py         # ocr_crop stage
-│   │   └── blank_proof.py          # blank_proof_synth stage
-│   ├── ocr.py              # mirrors pdomain-ocr-cli OCR flow
-│   ├── illustrations.py    # extract_illustration + auto-detect via layout model
-│   ├── text_postprocess.py # Step 8 — quotes, scannos, hyphenation, regex
-│   ├── packaging.py        # Step 10 — build PGDP zip with manifest
-│   ├── hf_models.py        # HF Hub download helpers (DocTR + layout)
-│   ├── job_runner.py       # InProcessJobRunner — polls, fans out, emits events
-│   ├── job_events.py       # JobEventBroker — in-memory SSE pub/sub
-│   └── queue/single_executor.py  # Priority queue + 200ms window for GPU work
-│
-├── adapters/               # one per process — selected at startup
-│   ├── storage/{base,filesystem,s3}.py
-│   ├── database/{base,sqlite}.py        # postgres deferred
-│   ├── auth/{base,none_,apikey,jwt_}.py
-│   └── gpu/{base,modal_backend,modal_app,shared_container}.py  # cpu/local deleted M6 (AD-7)
-│
-├── dispatcher/{base,immediate,batched}.py
-│
-└── api/
-    ├── auth/me.py                   # /api/auth/me
-    ├── cdn.py                       # PUT /cdn/{key:path} (filesystem upload)
-    ├── env_js.py                    # GET /env.js (runtime config shim)
-    ├── dependencies.py              # FastAPI deps (storage, db, auth, gpu, ...)
-    ├── data/{projects,pages,system_defaults,assets,jobs,pipeline,search}.py
-    ├── gpu/{ingest,illustrations,jobs,schemas}.py   # legacy process-page/ocr routes deleted M6
-    ├── healthz.py
-    ├── server_info.py
-    └── middleware/{error_handler,request_id}.py  # Uniform ApiError envelope + X-Request-Id
-```
+| Location under `src/pdomain_prep_for_pgdp/` | Responsibility |
+|---|---|
+| `bootstrap.py`, `settings.py`, `__main__.py` | Startup wiring, environment settings, and CLI entry point |
+| `core/ingest.py`, `core/page_store_factory.py`, `core/prep_extension.py` | Import and shared page lifecycle |
+| `core/pipeline/stage_dag.py`, `stage_registry.py`, `stage_runner.py` | 24-stage vocabulary, implementations, and execution |
+| `core/pipeline/page_stage_writer.py`, `stage_write_executor.py` | Synchronous rollback-capable writes and deferred writes |
+| `core/pipeline/project_stages.py`, `prep_aggregate.py` | Project-stage rows and workflow events |
+| `core/numbering*.py`, `core/pipeline/steps/` | Numbering, text products, validation, and packaging |
+| `core/ocr.py`, `hf_models.py`, `illustrations.py` | OCR, model resolution, and image regions |
+| `core/job_runner.py`, `core/job_events.py`, `dispatcher/` | Jobs, transient progress events, and dispatcher infrastructure |
+| `adapters/storage/`, `database/`, `auth/` | Configurable application adapters |
+| `api/` | Auth, data, GPU/job, asset, suite, and runtime routes |
+
+Shared remote GPU classes come from `pdomain_ops.gpu`; local `adapters/gpu/` no longer contains the former
+backend modules. The frontend lives in `frontend/src/`, with XState machines, typed services, and a tool registry.
 
 ## What changes between deployment shapes
 
-Across deployment shapes, **only adapter selection** changes:
+Settings selects storage, database, authentication, and GPU mode. The database builder can select a partial
+Postgres adapter, while page lifecycle remains local. Dispatcher selection follows the configured dispatch
+interval; it is not inferred from a deployment label. Managed multi-instance behavior remains deferred.
 
-| Layer | Local | Self-hosted | Managed |
-|---|---|---|---|
-| `IStorage` | filesystem | filesystem or S3 | S3 |
-| `IDatabase` | SQLite | SQLite or Postgres | Postgres |
-| `IAuth` | none | apikey | jwt |
-| `GPUBackend` | cpu / local | local / modal | modal / shared_container |
-| Dispatcher | `ImmediateDispatcher` | immediate | `BatchDispatcher` (5-min flush) |
-
-`bootstrap.build_app()` reads `Settings`, picks one of each, and assembles
-the FastAPI app. Everything in `core/` and `api/` is shape-agnostic.
+See [backend wiring](02-backend.md), [deployment](06-deployment.md), and the
+[deferred roadmap](../plans/roadmap.md#deferred--remote--cloud-mode).
 
 ## Dependency surface
 
-- **Backend** (Python 3.13): FastAPI, uvicorn, pydantic, pydantic-settings,
-  sse-starlette, anyio, huggingface_hub, transformers, **pdomain-book-tools** (the
-  shared OCR/geometry/image-processing primitive lib pinned to v0.9.0).
-  Optional extras: `[s3]` boto3, `[postgres]` psycopg + SQLAlchemy,
-  `[modal]` modal, `[jwt]` pyjwt, `[cuda]` cupy + nvimgcodec.
-- **Frontend** (Node 20): React 19, Vite, TypeScript, TanStack Query v5,
-  react-konva, react-router v7, Zustand, Tailwind, openapi-typescript.
+The backend uses Python 3.13, FastAPI, Pydantic, uvicorn, anyio, and OCR/image libraries.
+Current dependency minimums include `pdomain-book-tools>=0.28.0`, `pdomain-ops>=0.11.2`,
+`pdomain-book-contracts>=0.2.0`, and `eventsourcing>=9.5`. See `pyproject.toml` for the full constraints and extras.
 
-## Where state lives
+The frontend uses React 19, Vite, TypeScript, XState v5, TanStack Query, react-konva, React Router, and Tailwind.
+The repo toolchain pins Node 24 and pnpm 11. OpenAPI generation writes `frontend/src/api/types.gen.ts`;
+some consumers still use the handwritten `types.ts` surface.
 
-| Kind | Storage | Notes |
+## State ownership
+
+| State | Owner | Storage |
 |---|---|---|
-| `SystemDefaults` | DB row keyed by `owner_id` | One per user (managed mode); admin row is fallback. |
-| `Project` (incl. config + pipeline state) | DB row | Stored as JSON-document column. |
-| Generic page lifecycle and prep display order | Per-project pdomain-ops event store | `.pd-pages/events.db`; shared `PageAggregate` records carry `PrepPageExtension.idx0`. `ProjectAggregate.page_ids` retains membership in insertion order. |
-| Prep workflow history | Per-project app-local event store | `events.db`; `PrepProjectAggregate` records stage runs, review and gate decisions, settings changes, and workflow audit events such as `PageReorder`. |
-| Page image and thumbnail bytes | Per-project pdomain-ops BlobStore | Content-addressed files under `.pd-pages/blobs/`. |
-| `Job` | DB row | Status / progress / payload. |
-| Source images, thumbnails, processed PNGs, OCR text, illustrations, zip | `IStorage` | Filesystem in local mode; S3 in managed. Spec-08 storage layout. |
+| Generic page/project lifecycle, blobs, prep page extensions | Per-project pdomain-ops page service | `.pd-pages/events.db` and content-addressed blobs |
+| Prep workflow history | `PrepProjectAggregate` | Per-project `events.db` |
+| Page-stage rows, jobs, configuration, search | `IDatabase` | Application database |
+| Project-stage rows | `ProjectStageStore` | Per-project `project_stages.db` |
+| Stage artifacts | Page/project stage writers | Files under `<data_root>/projects/<id>/` |
 
-Project configuration, stage rows, jobs, and other application records remain
-in `IDatabase`. Generic page lifecycle is reconstructed from the pdomain-ops
-event store plus BlobStore. Prep reads its display order by sorting the
-namespaced `PrepPageExtension.idx0` stored on each shared Page aggregate; a
-reorder mutates those extension values without rewriting generic
-`PageRecord.page_index` or `ProjectAggregate.page_ids`. Prep workflow history
-replays from the separate app-local event store, where reorder also appends a
-`PageReorder` audit event. Legacy page-row adapters still exist at some API and
-migration boundaries; they are not the authoritative lifecycle store.
+Prep display order is `PrepPageExtension.idx0`, sorted by page listing. Reorder updates those extensions;
+it does not reorder generic project membership or rewrite generic `PageRecord.page_index`.
+This split ownership does not constitute a single atomic transaction across every store.
+
+## Evidence
+
+Verified from source on 2026-11-07: `bootstrap.py`, `settings.py`, `core/page_store_factory.py`,
+`core/pipeline/stage_dag.py`, `stage_registry.py`, `project_stages.py`, `core/job_runner.py`, and `pyproject.toml`.
+The [pipeline](03-pipeline.md), [events/jobs](05-events-and-jobs.md), and [numbering](08-page-numbering.md)
+docs describe the execution contracts. This audit does not claim a live remote deployment was tested.

@@ -1,240 +1,111 @@
+---
+Kind: process
+Status: active
+Owner: CT
+Created: 2026-05-05
+Last verified: 2026-11-07
+---
+
 # Developing pdomain-prep-for-pgdp
 
-This document covers contributor workflows. End-user install + usage lives
-in [`README.md`](README.md). Architecture writeup is in [`docs/README.md`](docs/README.md).
+Use the Make targets for contributor work. The current implementation is local-first; see
+[architecture](docs/architecture/01-overview.md) and the [active queue](docs/issues/README.md).
 
 ## Prerequisites
 
-| Tool | Required for | Notes |
-|---|---|---|
-| [`uv`](https://docs.astral.sh/uv/) | Always | Python package + tool manager. Provisions Python itself. |
-| `git` | Always | |
-| Node 24 + `npm` | Frontend changes, `make build`, `make openapi-export` | Active LTS. **Not** required for backend-only iterations or running `pytest`. |
-| [`mise`](https://mise.jdx.dev/) | **Optional** | Pin Node / Python / uv per the repo's `mise.toml`. Make targets dispatch through it when present. See "Optional: pinned tool versions". |
-| NVIDIA GPU + CUDA Toolkit | Optional | For GPU-accelerated processing. CPU mode is first-class. |
+Use uv for Python dependencies and Node 24 with pnpm 11 for frontend work. The repo's mise configuration
+pins Python, Node, and pnpm; it does not manage uv. Make uses mise when available and PATH tools otherwise.
+Backend tests do not require a frontend build. Pre-commit includes Node-based hooks, so setup/checks may
+provision or need a Node environment. Installed wheels include the built SPA and do not require end-user Node.
 
-A sibling [`../pdomain-book-tools`](https://github.com/pdomain/pdomain-book-tools)
-checkout is required for local-dev workflows that edit both repos at once.
-`make local-setup` clones it for you.
-
-## What needs Node, what doesn't
-
-**Doesn't need Node:**
-
-- `make setup` (uv sync + pre-commit hooks)
-- `make test` (pytest only — 128 tests, ~12 s)
-- `make install-local` (editable wheel install)
-- `make lint` / `make format`
-- Iterating on FastAPI routes / pipeline / models / adapters
-
-**Needs Node:**
-
-- `make frontend-build` — Vite build, copies SPA into `src/.../static/`.
-- `make frontend-dev` — Vite dev server on `:5173`.
-- `make build` — depends on `frontend-build` so the wheel ships with the SPA.
-- `make openapi-export` — uses `npx openapi-typescript`.
-- `make docker-build` — Dockerfile's first stage builds the SPA.
-
-End users running `pgdp-prep` (uv-tool wheel install) **never need Node** —
-the published wheel ships with the prebuilt SPA bundle.
-
-## Quick start
-
-Two paths depending on what you're doing.
-
-### A. Just developing pdomain-prep-for-pgdp (no pdomain-book-tools edits)
+## Registry-based development
 
 ```sh
-git clone https://github.com/pdomain/pdomain-prep-for-pgdp.git
-cd pdomain-prep-for-pgdp
 make setup
+uv run pgdp-prep
 ```
 
-Syncs dev deps from `pyproject.toml` (including `pdomain-book-tools` at the pinned
-git tag), installs pre-commit hooks. You can now run `uv run pgdp-prep`
-without a system install.
+Setup synchronizes the development environment and installs hooks. The environment is `.venv` by default,
+or `UV_PROJECT_ENVIRONMENT` when set. Sibling dependencies normally resolve from explicit registry constraints
+in `pyproject.toml`, not pinned Git tags.
 
-### B. Editing pdomain-prep-for-pgdp **and** pdomain-book-tools side-by-side
+## Editing sibling libraries
 
 ```sh
-git clone https://github.com/pdomain/pdomain-prep-for-pgdp.git
-cd pdomain-prep-for-pgdp
+make setup
 make local-setup
+make local-dev
+make local-check
+make local-run
 ```
 
-`local-setup` clones `pdomain-book-tools` to `../pdomain-book-tools` (or skips if
-present) and runs `make dev-local`, which:
+`local-setup` only clones missing pdomain-book-tools, pdomain-ops, and pdomain-ui siblings beside the canonical
+checkout. It does not activate local mode. `local-dev` installs the two Python siblings editably, builds/links
+the UI package, and writes `.pdomain-local-mode` in the active environment. Run setup first.
 
-1. `uv sync --group dev` — installs deps from `pyproject.toml`.
-2. `uv pip install -e ../pdomain-book-tools` — replaces the pinned tag with the
-   sibling editable checkout.
-3. `make check-local-editable` — verifies imports resolve to the sibling,
-   not the cached tag.
+Use `local-run` to restore editables/UI links and launch without synchronization undoing those overlays.
+`local-install` installs a uv tool with editable Python siblings. `local-uninstall` removes that tool;
+it does not remove the project marker or overlays. Legacy local command names remain deprecation aliases.
 
-After that, `uv run pgdp-prep` picks up changes in either repo without a
-reinstall. Use `make install-local` to put the editable build on PATH as a
-uv tool.
-
-To revert to the pinned tag:
-
-```sh
-make uninstall-local
-curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-prep-for-pgdp/master/install.sh | sh
-```
+For dependency upgrades, follow the [local upgrade runbook](docs/runbooks/dev-local-upgrade-flow.md).
+To return deliberately to registry mode, remove the current environment's `.pdomain-local-mode` marker
+and run `make reset`. Uninstall a separately installed tool with `make local-uninstall` when needed.
 
 ## Frontend dev
 
 ```sh
-make frontend-dev      # Vite dev server on :5173 (auto-installs deps first)
+make frontend-dev
 ```
 
-In a separate terminal, run the backend with the Vite-dev passthrough:
+Run the backend in a second terminal:
 
 ```sh
 uv run pgdp-prep --reload --frontend-dev http://localhost:5173
 ```
 
-`--frontend-dev` makes FastAPI redirect `/` and unknown asset paths to the
-Vite dev server, while still owning `/api/*`, `/cdn/*`, and `/env.js`. No
-proxy config needed.
+FastAPI owns API, asset, and runtime-config routes while forwarding SPA requests to Vite.
+For bundled-SPA testing, run `make build`, then `uv run pgdp-prep`.
 
-For production-shape testing in dev:
+Optional `make mise-setup` installs pinned tools and writes trust roots. It does not edit shell startup files.
+Use `make mise-doctor` to inspect resolution; interactive shell activation is optional.
 
-```sh
-make build         # builds SPA + wheel
-uv run pgdp-prep   # serves the bundled SPA from package resources
-```
-
-## Optional: pinned tool versions via mise
-
-The repo's [`mise.toml`](mise.toml) declares Node 24, Python 3.13, and the
-latest `uv`. Use mise if you want every contributor's machine to match:
+## Checks
 
 ```sh
-make mise-download     # one-time: fetch mise binary into ~/.local/bin/
-make mise-setup        # one-time: install Node + Python + uv per mise.toml
-make mise-doctor       # show which versions are resolved
+make test AI=1
+make frontend-test
+make ci AI=1
+make e2e AI=1
 ```
 
-`make mise-setup` does **not** edit your `~/.bashrc`. The `frontend-*` and
-`openapi-export` targets dispatch through `mise exec` automatically when the
-mise binary is present; your interactive shell stays unchanged.
+The backend target runs `uv run pytest tests/ -v --ignore=tests/e2e -n auto`; slow tests are excluded by configuration.
+Playwright is a separate target. Full local CI includes lint, type checks, OpenAPI generation, SPA build,
+backend tests, frontend formatting/lint/tests, and knip. See [testing](docs/architecture/07-testing.md).
+`AI=1` captures verbose output in `.ci-ai.log`.
 
-If you also want `node` / `npm` directly in your shell, add this to your
-shell init yourself:
+`make lint`, `make format`, and `make pre-commit-check` provide focused tooling.
+Hooks run on commits after setup. Always run full CI before committing.
 
-```sh
-eval "$(~/.local/bin/mise activate bash)"   # or zsh / fish
-```
+## Builds and releases
 
-Don't want mise? Install Node 24 yourself, or add the devcontainer Node
-feature (`ghcr.io/devcontainers/features/node:1`). All make targets fall
-back to whatever's on PATH.
+`make build` builds the SPA before the wheel. Hatch derives versions from Git tags and requires the SPA bundle.
+`make ci-slow AI=1` adds distribution builds and slow tests.
 
-## Running tests
+Release patch/minor/major targets invoke `scripts/do-release.sh` and `scripts/release-common.sh`.
+They perform local preflight and tag/push operations according to script options. Invoking a release target
+is a publication action, not an ordinary validation command.
 
-```sh
-make test
-# or, equivalent:
-uv run pytest tests/ -v
-```
+This checkout has no GitHub Actions workflow directory. Do not assume push-triggered CI, release dispatch,
+or wheel publication is provided by absent workflow files. The installer still expects a release wheel asset.
 
-Expected: ~800 tests passing. Tests run with `gpu_backend="cpu"` and
-`storage_backend="filesystem"` by default — no Node, no Modal, no GPU
-hardware required.
+## Source map
 
-The full suite is documented in [`docs/architecture/07-testing.md`](docs/architecture/07-testing.md).
+Backend code lives under `src/pdomain_prep_for_pgdp/`; current stage execution is under `core/pipeline/`.
+Numbering uses `core/numbering*.py`. Shared remote GPU classes come from pdomain-ops.
+Frontend pipeline tools live in `frontend/src/pages/pipeline/`; project management lives under
+`frontend/src/pages/projects/`. There is no standalone PageWorkbenchPage.
+Tests live in `tests/` and alongside frontend source.
 
-## Lint / format
-
-```sh
-make lint        # ruff check (with import sort + autofix)
-make format      # ruff format, then lint
-make pre-commit-check
-```
-
-`pre-commit` hooks run on every commit if you ran `make setup`.
-
-## Building releases
-
-```sh
-make build         # builds SPA + wheel
-make release-patch # runs release preflight, tags, pushes, and dispatches release
-make release-minor # ditto, minor
-make release-major # ditto, major
-```
-
-Releases are workflow-dispatch based and must be started by `make release-patch`,
-`make release-minor`, or `make release-major`. Tag pushes alone are not the supported
-publish path. This repo does not publish a container image from GitHub Actions.
-
-`hatch-vcs` derives the wheel version from the git tag at build time. The
-`release.yml` workflow builds the wheel (with the prebuilt SPA bundled) and
-attaches it to the GitHub Release for the tag. `install.sh` resolves the
-latest tag from the `tags` API, downloads the `.whl` asset from that
-release, and runs `uv tool install <wheel-path>[extras]`. There's no PyPI
-publish, and end users don't need Node/npm because the SPA is already in
-the wheel.
-
-## Repo layout
-
-```
-pdomain-prep-for-pgdp/
-├── src/pdomain_prep_for_pgdp/   # Python backend (FastAPI + pipeline)
-│   ├── api/                # routes (data/, gpu/, auth/, cdn, env_js)
-│   ├── core/               # mode-agnostic pipeline + models + OCR
-│   ├── adapters/           # storage / database / auth / gpu (swappable)
-│   └── dispatcher/         # immediate / batched (managed mode)
-├── frontend/               # React 19 + Vite + TS + Konva + TanStack Query
-├── tests/                  # pytest (128 tests)
-├── docs/                   # architecture writeup
-├── docs/architecture/       # current architecture
-├── pyproject.toml          # backend deps + extras + console script
-├── mise.toml               # optional pinned tool versions
-├── Makefile                # dev workflows
-├── Dockerfile              # managed-mode container
-├── install.sh / .ps1       # one-line end-user installer
-└── .github/workflows/      # CI and dispatch-based release workflows
-```
-
-## Architecture ↔ implementation map
-
-| Area | Code |
-|---|---|
-| Configuration | `core/{models,config_resolver,prefix,assign_prefixes}.py` |
-| Pipeline | `core/{ingest,pipeline/,ocr,illustrations,text_postprocess,packaging}.py` |
-| UI layout | `frontend/src/pages/*.tsx` |
-| GPU | `adapters/gpu/*.py` |
-| Illustrations | `core/illustrations.py` |
-| Workbench | `frontend/src/pages/PageWorkbenchPage.tsx` |
-| API | `api/{auth,data,gpu}/*.py`, `api/cdn.py`, `api/env_js.py` |
-| Data models | `core/models.py` |
-| Deployment | `Dockerfile`, `install.sh`, `Makefile`, `.github/workflows/` |
-
-See [`docs/architecture/01-overview.md`](docs/architecture/01-overview.md) for the full module tour.
-
-## CI
-
-`.github/workflows/ci.yml` runs on push and pull request. `.github/workflows/release.yml`
-runs only by workflow dispatch from the local release script.
-
-| Job | Trigger | What |
-|---|---|---|
-| CI jobs | push / pull request | uv sync, ruff, pytest, frontend build, and wheel checks |
-| `release-ci` | workflow dispatch | release-grade validation from the exact tag |
-| `publish` | workflow dispatch after `release-ci` | builds the wheel and attaches it to the GitHub Release |
-
-CI does not depend on mise; it pins versions in the workflow file directly.
-
-## Roadmap
-
-[`docs/plans/roadmap.md`](docs/plans/roadmap.md) tracks what's coming, in priority
-order. Highlights:
-
-- **P0:** Modal app S3 wiring, Postgres adapter, install.sh exercise.
-- **P1:** Per-page batch progress, OcrWord bbox highlight, text diff, Vitest setup.
-- **P2:** Konva rotate/flip, JWT profile dropdown, soft-delete, page text search.
-- **P3:** CUDA `LocalBackend`, shared GPU container, retry-with-payload-override.
-
-The live work queue (kept in sync) is at
-`~/.claude/projects/-workspaces-ocr-container-pdomain-prep-for-pgdp/memory/project_state.md`.
+Verified from source on 2026-11-07 against Makefile, mise.toml, pyproject.toml, local-mode scripts,
+release scripts, and the current source tree. The [roadmap](docs/plans/roadmap.md) and
+[current state](docs/context/current-state.md) are the forward queue.

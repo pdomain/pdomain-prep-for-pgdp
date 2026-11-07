@@ -60,7 +60,7 @@ defects.
 
 The July review fixes shipped. Their contracts are in
 [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
-Broader documentation verification remains W3.8.
+The 2026-11-07 source audit completed W3.8. Current architecture and the retirement ledger preserve its findings.
 
 ## Open issues
 
@@ -90,16 +90,8 @@ The tombstone is in [decisions](../context/decisions.md).
 - [reindex --heal coverage (W3.5)](2026-07-21-w35-reindex-heal.md)
 - [Job/stage cancel path (W3.6)](2026-07-21-w36-job-stage-cancel.md)
 - [Cookie secure + CORS allowlist (W3.7)](2026-07-21-w37-cookie-cors-hardening.md)
-- [Stale architecture docs refresh (W3.8)](2026-07-21-w38-stale-docs-refresh.md)
 - [page_order P4 OCR-folios (W3.9)](2026-07-21-w39-page-order-ocr-folios.md)
 - [Save-a-copy export and archive inventory (W3.10)](2026-07-21-w310-save-copy-archive.md)
-
-### Tooling
-
-- [Lint gate runs a different ruff than the project
-  does](2026-08-08-ruff-version-skew.md)
-- [dep-refresh cannot auto-land: dated branches, no
-  delete-on-merge](2026-08-08-dep-refresh-cannot-auto-land.md)
 
 Resolved reports are deleted, so this index tracks open work only. Past
 resolutions live in the `docs/context/decisions.md` tombstones and in git

@@ -4,7 +4,7 @@
 
 - **Kind:** decision
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** evaluating a change to a locked architecture choice.
 - **Search terms:** architecture decisions, locked decisions, topology, data model.
 
@@ -20,6 +20,21 @@ diverge in code.
 ---
 
 ## AD-1. Pipeline task model — per-page stage DAG (locked 2026-05-07)
+
+**Implementation review, 2026-11-07:** the entries below preserve locked choices and their original context.
+Current implementation uses 24 v2 stages (16 page, 8 project), registry schema 3, and
+`get_stage_impl` / `V2_STAGE_IMPL`; `STAGE_IMPL` remains legacy. The five current job types are documented in
+[events and jobs](../architecture/05-events-and-jobs.md#job-runner-flow). Old project fan-out job names and
+awaiting-review auto-resume descriptions below are historical, not current API instructions.
+
+The universal transaction guarantee in AD-2 is not achieved by every current path. Synchronous page writers
+support rollback; deferred page writes optimistically update the row before disk; project jobs write artifact,
+row, and best-effort events separately. These are implementation deviations, not newly approved policy.
+Current page state uses shared aggregates with `PrepPageExtension`; project-stage rows use `project_stages.db`.
+See [persistence limits](../architecture/05-events-and-jobs.md#persistence-limits).
+
+AD-10's installer defect and workflow discussion is dated history. Current release commands are local scripts;
+this checkout has no GitHub workflows. This review did not establish the old installer defect still exists.
 
 Current authority: [pipeline architecture](../architecture/03-pipeline.md).
 

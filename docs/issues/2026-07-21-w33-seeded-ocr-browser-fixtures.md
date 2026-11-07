@@ -2,19 +2,19 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: issue
 Level: I1
 ---
 
-# W6.2 text_review / wordcheck browser skips need seeded OCR fixtures (W3.3)
+# Text-review approval needs fixture-backed browser coverage (W3.3)
 
 ## Agent Index
 
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Resolution:** Open
 - **Severity:** Medium — interactive text-chain UI untested in browser preflight
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
@@ -24,16 +24,15 @@ Level: I1
 
 ## Summary
 
-Playwright gap tests intentionally skip the text_review approval flow (and
-related wordcheck / naming paths that need real page text) because populating
-OCR artifacts requires either slow live DocTR or a pre-seeded fixture that
-does not yet exist for the browser suite. Grayscale and page_order e2e already
-seed disk/API state; the same pattern is missing for OCR → text_review.
+The text-review approval browser test is a passing documentation stub, not an executed approval flow or
+a pytest-marked skip. Wordcheck already has browser rendering coverage. A fixture-backed review/approval
+flow remains absent. Production review hydration reads wordcheck flags from unattested pages;
+OCR text artifacts alone do not populate that queue.
 
 ## Impact
 
 - Interactive text-chain approval never runs in local preflight e2e.
-- Regressions in TextReviewTool queue / approve paths only show up manually.
+- The browser gate does not exercise the complete TextReviewTool queue and approval flow.
 - Blocks W3.2 from honestly covering text tools beyond “tool slot renders.”
 
 ## Environment / versions
@@ -47,7 +46,16 @@ reference pattern: tests/e2e/test_grayscale_browser.py (`_seed_grayscale_project
 
 ## Evidence
 
-### 1. Explicit skip with seed requirement
+### Current source verification — 2026-11-07
+
+The approval browser test is a passing documentation stub. Production review hydration is live and reads
+wordcheck flags from unattested pages, not MOCK_ITEMS. Checked test_w62_gap_tests.py, TextReviewTool.tsx, and
+services/tools/textReviewTool.ts.
+
+This is source inspection, not a fresh browser/GPU run. Older source excerpts and July review dates below
+are historical snapshots; the current findings above take precedence where implementation changed.
+
+### 1. Historical documentation stub with seed requirement
 
 ```
 # tests/e2e/test_w62_gap_tests.py ~912–926
@@ -75,32 +83,30 @@ seeded or GPU suites.
 No parallel helper writes `pages/<id>/stages/ocr/{raw.txt,words.json}` +
 dual-write `page_stages` rows for text tools.
 
-### 3. Production UI still mock-seeded without OCR
+### 3. Production queue hydration is live
 
-`TextReviewTool.tsx` mounts with `MOCK_ITEMS` when live hydrate is absent —
-browser tests cannot assert real queue behavior without disk seeds (see also
-W1.4 live SSE work).
+`loadTextReviewQueue` in `frontend/src/services/tools/textReviewTool.ts` lists pages, excludes attested pages,
+and builds review items from their wordcheck flags. No flags means an empty queue.
+`TextReviewTool.tsx` permits test injection but does not invent production items.
+The fixture must seed flags, stage rows, and attestation state consumed by this loader.
 
 ## Root-cause hypotheses
 
 1. **(Most likely) No hermetic OCR artifact fixture** — authors avoided DocTR
    cost and never added a dual-write seed of known `raw.txt` / `words.json`.
-2. **Tool still mock-first** — even with seeds, TextReviewTool may prefer
-   MOCK_ITEMS until hydrate is wired (W1.4 dependency).
+2. **Fixture shape lagged production hydration** — OCR artifacts alone do not provide the flags and review state.
 
 ## Defects to fix
 
-1. **Seeded OCR fixture helper** — dual-write OCR (and optional wordcheck /
-   text_review) artifacts for N synthetic pages without DocTR. (Primary)
-2. **Promote `test_text_review_approval_*`** from skip stub to real Playwright
+1. **Seed a real review queue** — wordcheck flags, page-stage rows, and attestation state for synthetic pages.
+   Include OCR prose and words when the tested interaction consumes them; avoid live DocTR. (Primary)
+2. **Promote `test_text_review_approval_*`** from documentation stub to real Playwright
    flow using the fixture.
-3. **Optional wordcheck browser path** using same seed (flags + text once
-   W0 text-chain contract is fixed).
+3. **Extend wordcheck interaction coverage** beyond the existing rendering test using the same seeded data.
 
 ## Next steps
 
-1. Add `tests/fixtures/seed_ocr_artifacts.py` (or extend `seed_pages_in_store`)
-   writing dual-write-shaped OCR outputs and clean stage rows.
+1. Add a helper alongside `seed_pages_in_store` that creates the flags and review state the live loader reads.
 2. Implement the three-step approval assert listed in the skip docstring.
 3. Close W6.2 skip notes; keep heavy live-DocTR paths out of default smoke
    (W3.2).

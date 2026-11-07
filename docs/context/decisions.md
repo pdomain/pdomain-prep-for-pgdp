@@ -268,3 +268,46 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Evidence: `e575a58`, `5c51cbd`, `2138459`, `5486c4b`, `3b45464`, `6aadd44`, `7dbf3fa`, and `29f60ca`.
 - Remaining work: none of the original nine tasks. W3.8 remains open for broader architecture verification.
   This supersedes the umbrella's partial-task-8 assessment and its obsolete claim that W0.4 remained open.
+
+## 2026-11-07 source verification and warning audit
+
+The audit reviewed all 36 age warnings against repository source, configuration, tests, or normative pointers.
+Verification dates on historical research cover its current repository boundary only; external research,
+licenses, release state, benchmark estimates, and live deployments were not rechecked.
+Normative owner rules were preserved. Architecture now distinguishes implementation deviations from locked intent.
+The earlier numbering receipt's reference to an unfinished advance gate is corrected by current source:
+`fetchFolios`, reconciliation, and `sequenceClean` exist; real detector integration remains W3.9.
+
+### Retired: Ruff version-skew report
+
+- Old path: `docs/issues/2026-08-08-ruff-version-skew.md`
+- Outcome: implemented
+- Superseded by: [lint toolchain](../architecture/07-testing.md#lint-toolchain)
+- Removal commit: pending warning-audit commit
+- Evidence: `9e6ebf1`, `tests/test_lint_toolchain_pinned.py`, pre-commit, pyproject.toml, and uv.lock.
+  Hook, lock, and minimum now agree on 0.16.7, with hook/lock and floor guards.
+- Rationale kept: independent hook/project versions must be compared, not merely bumped once.
+- Remaining work: none of this report. August counts and findings remain historical in Git.
+
+### Retired: dependency-refresh auto-land report
+
+- Old path: `docs/issues/2026-08-08-dep-refresh-cannot-auto-land.md`
+- Outcome: superseded
+- Superseded by: [local build/release commands](../architecture/06-deployment.md#build-and-release-commands)
+- Removal commit: pending warning-audit commit
+- Evidence: `e22bdd2` removed workflows. The repository no longer has a dependency-refresh scheduler.
+- Rationale kept: dated branches can accumulate under the former design; local release scripts now own this checkout.
+- Remaining work: none for the removed workflow. No remote repository settings or sibling branch counts were rechecked.
+
+### Retired: architecture freshness report W3.8
+
+- Old path: `docs/issues/2026-07-21-w38-stale-docs-refresh.md`
+- Outcome: implemented
+- Superseded by: [overview](../architecture/01-overview.md), [backend](../architecture/02-backend.md),
+  [frontend](../architecture/04-frontend.md), and [convergence history/current corrections](../architecture/statechart-convergence-notes.md)
+- Removal commit: pending warning-audit commit
+- Evidence: source audit of registry, bootstrap, job/stage writers, API inventory, frontend services/tools,
+  current dependency constraints, and repository build/release scripts on 2026-11-07.
+- Rationale kept: current contracts must be separated from convergence-era design and dated decision history.
+- Remaining work: product gaps remain in their active issues, including W2.1–W2.5 and W3.2–W3.7/W3.9/W3.10.
+  Their existence does not make an accurately documented missing feature a remaining W3.8 defect.

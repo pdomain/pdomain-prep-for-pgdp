@@ -4,7 +4,7 @@
 
 - **Kind:** process
 - **Status:** active
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** checking released and unreleased behavior changes.
 - **Search terms:** changelog, releases, unreleased changes.
 
@@ -13,6 +13,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+These entries record the historical event-store migration, not current dependency minimums.
+Current constraints are in `pyproject.toml`: book-tools `>=0.28.0`, ops `>=0.11.2`, and eventsourcing `>=9.5`.
+Repository integration was reviewed on 2026-11-07; this is not a new release declaration.
 
 ### Changed
 

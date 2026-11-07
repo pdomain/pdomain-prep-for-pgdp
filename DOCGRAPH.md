@@ -5,6 +5,7 @@
 
 - **Kind:** process
 - **Status:** active
+- **Last verified:** 2026-11-07
 - **Read when:** starting docgraph work, retrieving repo docs, checking doc
   lifecycle state, or updating docgraph-managed context.
 - **Search terms:** docgraph rules, retrieval ladder, lifecycle semantics,
