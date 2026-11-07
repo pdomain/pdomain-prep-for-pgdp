@@ -25,13 +25,16 @@ Level: I1
 
 ## Summary
 
-Several architecture notes lag the shipped code: `docs/architecture/03-pipeline.md`
-still says a GPU fast path is “not yet shipped” while `stage_registry.py`
-registers CuPy/`"gpu"` impls for image-prep stages; `statechart-convergence-notes.md`
-open questions still describe a **0.17.1** book-tools pin missing denoise/dewarp
+Some architecture notes still lag the shipped code. `statechart-convergence-notes.md`
+open questions describe a **0.17.1** book-tools pin missing denoise/dewarp
 APIs though `pyproject.toml` requires **`pdomain-book-tools>=0.21.0`**; design
 statecharts document cancel and other routes that are missing or soft-failed
 (W3.6). Agents that trust docs alone will make wrong sequencing decisions.
+
+The 2026-11-07 consolidation corrected the pipeline and roadmap CPU-only claims.
+It also retired the July review-fixes plan: its original frontend route/auth correction shipped in `29f60ca`.
+The older evidence below remains historical. This issue stays open for the remaining statechart/pin claims
+and the broader per-stage region-editing verification requested by `04-frontend.md`.
 
 ## Impact
 
@@ -104,8 +107,7 @@ book-tools pin notes | Doc matches code; docgraph check clean.”
 
 ## Defects to fix
 
-1. **Rewrite 03-pipeline GPU section** to match V2_STAGE_IMPL cpu/gpu keys and
-   honest limits (which stages, CuPy optional). (Primary)
+1. **Resolved 2026-11-07:** the pipeline GPU section now links the supported stages and CPU/GPU limits.
 2. **Retire or rewrite book-tools 0.17 open question** against `>=0.21.0`.
 3. **Annotate missing-route statechart claims** (cancel, etc.) or point to
    DIVERGENCES / issues.
@@ -122,8 +124,7 @@ book-tools pin notes | Doc matches code; docgraph check clean.”
 
 - Runtime GPU optional path does not depend on the stale sentence.
 - Code pin already satisfies denoise/dewarp API availability relative to 0.17 notes.
-- Parallel review-fixes task 8 (frontend architecture doc) is a separate file
-  (`04-frontend.md`).
+- The original July frontend route/auth correction shipped. Broader region-editing verification remains here.
 
 ## Resolution
 

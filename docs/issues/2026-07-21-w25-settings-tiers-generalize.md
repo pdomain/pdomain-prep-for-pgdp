@@ -33,7 +33,7 @@ all-tier, source-tier badges, dedicated tests). Other image-prep stages
 settings surface — ISR inline controls are schema fiction (W2.2) and do not
 present tier source or all-tier app defaults. Wave 2.5 done when “At least
 threshold + deskew + denoise” use the shared 3-tier pattern. Parent design
-plan: `docs/plans/grayscale-gpu-and-shared-settings-tiers.md`.
+plan: `docs/architecture/09-image-prep-settings.md`.
 
 ## Impact
 
@@ -55,7 +55,7 @@ backend: src/pdomain_prep_for_pgdp/core/pipeline/stage_settings.py
 grayscale UI: frontend/src/pages/pipeline/tools/grayscale/*
   GrayscaleTiers.test.tsx, GrayscaleSettingsAll.tsx, GrayscalePipelineEditor.tsx
 API: page/project/all stage settings routes (types.gen.ts tier operations)
-plan: docs/plans/grayscale-gpu-and-shared-settings-tiers.md
+architecture: docs/architecture/09-image-prep-settings.md
 parent: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.5
 ```
 
@@ -63,10 +63,9 @@ parent: docs/plans/2026-07-21-pipeline-completion-review.md §Wave 2 W2.5
 
 ### 1. Backend model is already shared, not grayscale-only
 
-`stage_settings.py` documents five-level resolution including page, project,
-all (pdomain-ops prefs), and registry defaults; “Applies to **all tunable
-stages**” was the S1 intent in
-`docs/plans/grayscale-gpu-and-shared-settings-tiers.md` Phase S1.
+The [shared-settings architecture](../architecture/09-image-prep-settings.md#shared-settings-resolution)
+describes page, project, app-wide, and registry resolution. Shared tunable-stage support was Phase S1
+of the retired plan; it does not prove every stage has matching frontend controls.
 
 `STAGE_SETTINGS_DEFAULTS` already includes denoise, deskew, canvas_map,
 post_transform_crop, post_ocr_crop, crop, grayscale — but **not threshold**
@@ -95,12 +94,10 @@ Rerun ignores draft (W2.2). There is no tier badge, no “save as project
 default,” and no app Settings section for those stages comparable to
 `GrayscaleSettingsAll`.
 
-### 4. Plan OC-2 and Wave 2.5 text
+### 4. Grayscale-first scope and Wave 2.5
 
-From `grayscale-gpu-and-shared-settings-tiers.md`:
-
-- Shared model covers all tunable stages; “only grayscale exposes per-page
-  UI initially (others later).”
+The [current settings architecture](../architecture/09-image-prep-settings.md#shared-settings-resolution)
+records shared resolution and grayscale-only tier controls. The retired plan's OC-2 deferred other per-page UI.
 
 From pipeline completion Wave 2.5:
 
@@ -133,7 +130,7 @@ From pipeline completion Wave 2.5:
 
 ## Next steps
 
-1. Read `docs/plans/grayscale-gpu-and-shared-settings-tiers.md` and grayscale
+1. Read `docs/architecture/09-image-prep-settings.md` and grayscale
    FE service module as the reference implementation.
 2. Sequence with **W2.2**: lock backend keys first, then build tier UI on
    real knobs only.

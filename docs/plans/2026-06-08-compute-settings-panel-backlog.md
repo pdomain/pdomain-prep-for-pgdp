@@ -1,5 +1,9 @@
 ---
-status: backlog
+status: active
+kind: plan
+owner: CT
+created: 2026-06-08
+last_verified: 2026-11-07
 priority: later
 repo: pdomain/pdomain-prep-for-pgdp
 ---

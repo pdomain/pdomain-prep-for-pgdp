@@ -51,6 +51,15 @@ generated OpenAPI.
 
 ## Deferred
 
+- Add a visible Compute panel before enabling device warmup. Preserve the factory/hook, device-state display,
+  conditional CUDA guidance, and panel/warmup tests in the [backlog](../plans/2026-06-08-compute-settings-panel-backlog.md).
+- Add faithful upper-case Roman and alphabetic numbering controls and round trips. Current frontend mappings
+  lose those distinctions; see [numbering limits](../architecture/08-page-numbering.md#limits-and-remaining-work).
+- Revisit the broader first-class Source back/duplicate/inserted-kind model separately from the existing durable
+  back/duplicate role labels. OCR folios and their reconciliation gate remain [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
+- Generalize grayscale settings controls beyond grayscale under [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md).
+  Real archive-copy export remains [W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
+
 - Validate GPU memory and throughput on a representative multi-page book. The historical 20-page benchmark was
   planned but not recorded as run.
 - Improve search normalization, ranking, and optional cross-project scope beyond the shipped project-scoped text index.

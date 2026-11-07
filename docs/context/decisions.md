@@ -214,3 +214,57 @@ retained rationale, and remaining work; this literal list makes the per-document
   A corrupt decision file is treated as empty.
   A failed OCR load during hydrate keeps the live channel closed until the tool is opened again.
   Wave 2 and later stay on the completion plan.
+
+## 2026-11-07 plan consolidation
+
+### Retired: numbering-runs P1–P3 implementation plan
+
+- Old path: `docs/plans/2026-06-17-page-numbering-runs-model.md`
+- Outcome: implemented
+- Superseded by: [page-numbering architecture](../architecture/08-page-numbering.md)
+- Removal commit: pending migration commit
+- Rationale kept: runs, counted blanks, marker handling, persistence, manifest v2, registry-v3 migration,
+  and the interior-skip correction remain in architecture.
+- Evidence: `814510d`, `29144a8`, `af6c807`, `f57b5f0`, `1e36ce5`, and the numbering tests cited there.
+- Remaining work: OCR-folio detector, persisted flags and advance gate (W3.9); broader Source
+  back/duplicate/inserted-kind design; faithful upper-case Roman and alphabetic UI round trips (intent map).
+
+### Retired: Source/grayscale completion and fidelity plans
+
+- Old path: `docs/plans/hifi-loader-source-grayscale-complete.md`
+- Old path: `docs/plans/hifi-deferred-items-fixes.md`
+- Outcome: implemented
+- Superseded by: [image preparation and settings](../architecture/09-image-prep-settings.md)
+- Removal commit: pending migration commit
+- Rationale kept: ingest thumbnails, reversible removal, event-recorded mutations, project-channel SSE,
+  real grayscale images, and distinct durable back/duplicate labels remain in architecture.
+- Evidence: `0c12b37`, `363bfaf`, `a2e09d8`, `bbe6e66`, `805053f`, and the tests cited there.
+- Remaining work: archived-project Save a copy was explicitly outside these arcs and remains W3.10.
+  Live screenshot/GPU verification was not repeated during this consolidation.
+
+### Retired: original GPU grayscale and shared-settings plan
+
+- Old path: `docs/plans/grayscale-gpu-and-shared-settings-tiers.md`
+- Outcome: superseded by shipped implementation and the active W2.5 follow-up
+- Superseded by: [image preparation and settings](../architecture/09-image-prep-settings.md)
+- Removal commit: pending migration commit
+- Rationale kept: tier storage and precedence, CUDA-to-GPU dispatch, device selection, and the composable
+  grayscale pipeline replace the earlier flat mode/gamma design.
+- Evidence: `9df1101`, `825f287`, `244cbc0`, `aadd1a7`, `8159659`, `7894d32`, and the tests cited there.
+- Deviation: app-wide preferences have no project event log; the proposal's all-tier event logging did not ship literally.
+- Remaining work: non-grayscale settings UI is W2.5. Compute panel and representative-book GPU validation remain deferred.
+
+### Retired: July review-fixes plan and residual umbrella
+
+- Old path: `docs/plans/2026-07-14-review-fixes.md`
+- Old path: `docs/issues/2026-07-21-parallel-2026-07-14-review-fixes.md`
+- Outcome: implemented
+- Superseded by: [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards)
+  and [frontend authentication](../architecture/04-frontend.md#auth-in-the-spa)
+- Removal commit: pending migration commit
+- Rationale kept: suite middleware avoids included-router topology traps; preferences migrate without clobbering;
+  enqueue resolves device; timeouts do not kill OS threads; ZIP reads leave the event loop; rerun creates jobs;
+  SPA suite calls authenticate. The dependency pin already exceeds the requested minimum.
+- Evidence: `e575a58`, `5c51cbd`, `2138459`, `5486c4b`, `3b45464`, `6aadd44`, `7dbf3fa`, and `29f60ca`.
+- Remaining work: none of the original nine tasks. W3.8 remains open for broader architecture verification.
+  This supersedes the umbrella's partial-task-8 assessment and its obsolete claim that W0.4 remained open.

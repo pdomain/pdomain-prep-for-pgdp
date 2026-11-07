@@ -4,7 +4,7 @@
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Read when:** selecting open product or engineering work.
 - **Search terms:** roadmap, open work, deferred work, priorities, pipeline completion.
 
@@ -58,13 +58,12 @@ engineering.
 Summary of remaining blockers (detail and evidence in that plan +
 [docs/issues](../issues/README.md)):
 
-- **Wordcheck / text-chain artifact contract** (flags JSON vs UTF-8 text DAG) and OCR compound parent-load (`output.*` only)
-- Pack job kwargs mismatch (validation → zip → submit_check)
-- Text-review attestation never becomes clean on disk
-- Shell runs only page `0000` for most page stages
-- OCR / wordcheck / text_review UI live queues incomplete
-- Illustrations extract + package path incomplete
-- Regex stage not full text postprocess
+- Wave 0 and Wave 1 shipped. Their current contracts are in
+  [pipeline architecture](../architecture/03-pipeline.md#book-path-contracts).
+- Wave 2 remains open: real shared image-review thumbnails, backend-aligned controls, canvas-map data,
+  text-zone editing, and settings tiers beyond grayscale.
+- Wave 3 remains open: browser CI, job recovery/cancellation, reindex repair, authentication hardening,
+  broader documentation verification, OCR folios, and archive export.
 
 ## P0 — Daily-use blockers (historical)
 
@@ -162,14 +161,9 @@ is back in scope.
 
 ### D5. CUDA `STAGE_IMPL` entries
 
-Today every `STAGE_IMPL[stage_id]` only has a `"cpu"` entry. A
-real GPU host would benefit from CUDA primitives for the
-proofing-chain stages (`grayscale`, `threshold`,
-`find_content_edges`, `auto_deskew`, `morph_fill`, `rescale`,
-`canvas_map`) backed by `pdomain_book_tools.image_processing.cupy_processing`,
-behind a `[cuda]` extra so the wheel install stays slim. Track as
-a slice when the registry is the only call path (already true
-post-M6).
+GPU registry implementations and CUDA dispatch already ship; see
+[supported stages](../architecture/09-image-prep-settings.md#cpu-and-gpu-execution).
+Representative-book GPU memory and throughput verification remains deferred.
 
 ### D6. Shared GPU container backend
 

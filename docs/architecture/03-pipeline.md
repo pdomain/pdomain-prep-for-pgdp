@@ -295,11 +295,9 @@ For `page_type ∈ {blank, plate_b, plate_r}` the registry short-circuits to
 `blank_proof.create_blank_proof` (canonical-aspect blank PNG) — this is the
 `blank_proof_synth` stage.
 
-A GPU fast path is not yet shipped: every `STAGE_IMPL[stage_id]` only has a
-`"cpu"` entry today. A `"cuda"` device key backed by
-`pdomain_book_tools.image_processing.cupy_processing` primitives is parked under
-roadmap §D5 (Deferred — remote / cloud mode); the registry is already the
-only call path so wiring it would be additive.
+GPU implementations ship in the v2 registry. CUDA requests map to its `gpu` key.
+See [image preparation and settings](09-image-prep-settings.md#cpu-and-gpu-execution)
+for supported stages and device selection.
 
 ## Stage `ocr_crop` — crop for OCR
 
@@ -396,9 +394,10 @@ def resolve_page_config(
 
 Resolution rule: **page override > project default override > system default**.
 
-`compute_prefix(idx0, project, pages_by_idx)` derives `f###` / `p###` /
-`p###[bpr]` from the proof / frontmatter / bodymatter ranges + page types.
-*Known off-by-one* in the spec's loop: `range(start, min(idx0, end+1))` is
-empty when `idx0 == start`, so the first frontmatter page resolves to `f000`
-not `f001`. Implementation matches spec verbatim; test asserts current
-behaviour.
+Current package naming derives from persisted numbering runs, leaf assignments, and scan order.
+The old range-based prefix description is superseded by
+[page-numbering runs](08-page-numbering.md). Registry version 3 migrates old ranges;
+the page-order naming manifest is version 2.
+
+Stage settings separately resolve page/project/app-wide/registry inheritance and are applied before dispatch.
+See [shared settings resolution](09-image-prep-settings.md#shared-settings-resolution).

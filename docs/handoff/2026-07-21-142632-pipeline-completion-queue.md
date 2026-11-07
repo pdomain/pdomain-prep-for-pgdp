@@ -49,8 +49,8 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Wave 1 shipped on
 - Confirm W0.0 design with CT: compound wordcheck vs DAG rewire vs runner
   fan-in.
 - Failing golden-path test skeleton (W0.6) not landed.
-- Update draft status of `docs/plans/2026-07-14-review-fixes.md` (still says
-  open work; code already fixed most tasks).
+- The July review-fixes plan and its residual issue retired on 2026-11-07 after the shipped contracts moved
+  to backend architecture. Broader architecture verification remains W3.8.
 - Separate open handoff still active: issue-tracker GH migration
   (`docs/handoff/2026-07-17-issue-tracker-migration.md`) — note that
   `docs/issues/` now exists for *pipeline* issues; GH tracker migration of the
@@ -89,8 +89,8 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Wave 1 shipped on
 - `docs/issues/README.md` — open issue index
 - `docs/architecture/03-pipeline.md` — Book path contracts (Wave 0 and Wave 1)
 - `docs/context/decisions.md` — Wave 0 and Wave 1 retirement tombstones
-- `docs/issues/2026-07-21-parallel-2026-07-14-review-fixes.md` — residual only
-- `docs/plans/2026-07-14-review-fixes.md` — draft plan text still stale
+- `docs/architecture/02-backend.md` — shipped July safeguards
+- `docs/issues/2026-07-21-w38-stale-docs-refresh.md` — broader architecture verification
 - `src/pdomain_prep_for_pgdp/core/pipeline/stage_runner.py` — load by consumer need
 - `src/pdomain_prep_for_pgdp/core/pipeline/steps/wordcheck.py` — flags.json + output.txt
 - `src/pdomain_prep_for_pgdp/core/pipeline/project_stage_kwargs.py` — project stage kwargs
@@ -104,5 +104,4 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Wave 1 shipped on
    `docs/issues/README.md`. Wave 0 and Wave 1 are shipped.
 2. Use worktrees for implementation; `make ci AI=1` before each commit; do not
    push without say-so.
-3. Optionally mark `docs/plans/2026-07-14-review-fixes.md` residual/shipped so
-   agents stop re-opening fixed suite/device tasks.
+3. Treat the July fixes as shipped. Use backend architecture for their contracts and W3.8 for remaining doc verification.

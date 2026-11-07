@@ -57,13 +57,13 @@ full-bleed.
 ## Auth in the SPA
 
 `__ENV__.AUTH_MODE` (injected by `env.js` at runtime) selects one of three
-modes. Requests do **not** always carry a Bearer token — only jwt mode does.
+modes. API-key mode uses a cookie. Other modes may attach a stored or environment token.
 Verified against `frontend/src/api/client.ts` and `App.tsx`.
 
 **`none` mode** — no auth at all. `getAuthToken()` still checks
 `localStorage`/`__ENV__.API_TOKEN` as a fallback (see jwt mode below) but
-nothing sets those in none mode, so requests carry neither a cookie nor a
-header. `UserMenu` renders `null`.
+the login flow does not populate them in none mode. If a token is already stored or supplied by the environment,
+the client can still attach it. Requests always use `credentials: "include"`. `UserMenu` renders `null`.
 
 **`apikey` mode** — httpOnly session cookie, no token ever touches JS:
 
@@ -86,8 +86,7 @@ header. `UserMenu` renders `null`.
 - `getAuthToken()` reads that key first, then falls back to
   `__ENV__.API_TOKEN`.
 - `request()` adds `Authorization: Bearer <token>` whenever `getAuthToken()`
-  returns non-null — in practice this only fires in jwt mode, since apikey
-  mode forces `null` and none mode has nothing populating the token.
+  returns non-null. API-key mode forces `null`; none mode also uses this token lookup.
 - `request()` still sets `credentials: "include"` (harmless in this mode —
   there is no session cookie to send).
 
@@ -146,6 +145,10 @@ let consumers switch on `type` instead of parsing `status`.
   Yes / Cancel" inline replacement.
 
 ## What's shipped, what's deferred
+
+Source persistence, real grayscale previews, and grayscale tier controls are described in
+[image preparation and settings](09-image-prep-settings.md).
+The persisted page-order tool and its style limitations are described in [numbering runs](08-page-numbering.md).
 
 - **OpenAPI codegen + drift guard** — shipped. `make openapi-export`
   regenerates `frontend/src/api/types.ts`; `tests/test_openapi_spec_committed.py`

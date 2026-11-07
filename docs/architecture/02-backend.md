@@ -58,6 +58,41 @@ Everything on `app.state` (`storage`, `database`, `auth`, `gpu_backend`,
 `dispatcher`, `job_events`, `settings`) is what FastAPI dependencies pull
 through `api/dependencies.py`.
 
+## Suite identity, authentication, and job safeguards
+
+Suite routes mount with the bundled app identity `pdomain-prep-for-pgdp`.
+Startup migrates an old `unknown` app's compute preference without overwriting an existing real-app value.
+
+`SuiteAuthMiddleware` guards POST, PUT, PATCH, and DELETE under `/api/suite/`.
+It uses the shared user resolver, including cookie-first verification in API-key mode.
+Suite GET requests and `/healthz` remain open. The middleware checks method and path because included routers
+need not appear as ordinary `APIRoute` objects; adding dependencies through an `app.routes` loop misses mutations.
+
+Job enqueue resolves the device from app preference, suite preference, then automatic detection.
+The payload carries that decision. The batched page-stage rerun route creates one job per requested page,
+rather than only marking rows dirty.
+
+`PGDP_JOB_HANDLER_TIMEOUT_SECONDS` defaults to 900 seconds. Setting `job_handler_timeout_seconds=None`
+disables the bound. A timeout marks the job failed and releases its runner slot.
+Cancelling the await does not terminate an underlying worker OS thread.
+
+ZIP decompression runs through `anyio.to_thread.run_sync`; async storage writes and collision bookkeeping
+stay on the event loop. Size-limit checks still apply.
+
+The SPA's suite preference, installed-app, and launch calls use the authenticated API client.
+See [frontend authentication](04-frontend.md#auth-in-the-spa) for mode-specific behavior.
+
+### Safeguard evidence
+
+- Code: `bootstrap.py`, `api/middleware/suite_auth.py`, `core/device_resolution.py`, `core/job_runner.py`,
+  `core/ingest.py`, and `api/data/project_stages.py` under `src/pdomain_prep_for_pgdp/`; `frontend/src/App.tsx`.
+- Tests: `tests/test_suite_routes_auth.py`, `tests/test_bootstrap_suite_app.py`, `tests/test_device_resolution.py`,
+  `tests/test_job_runner_timeout.py`, `tests/test_ingest_zip_thread_offload.py`, `tests/test_w4_aggregates.py`,
+  and `frontend/src/App.test.tsx`.
+- History: `e575a58`, `5c51cbd`, `2138459`, `5486c4b`, `3b45464`, `6aadd44`, `7dbf3fa`, and `29f60ca`.
+- Verified: 2026-11-07 by source inspection and the repository CI gate. This section does not re-verify
+  every older route description below.
+
 ## Adapter Protocols
 
 Each adapter is a `Protocol` so anything that quacks like one works:

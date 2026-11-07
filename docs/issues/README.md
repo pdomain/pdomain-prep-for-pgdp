@@ -58,8 +58,9 @@ defects.
 
 [Pipeline completion review and continuation plan](../plans/2026-07-21-pipeline-completion-review.md)
 
-Parallel bug track (not Wave 0 exit):
-[2026-07-14 review fixes](../plans/2026-07-14-review-fixes.md)
+The July review fixes shipped. Their contracts are in
+[backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
+Broader documentation verification remains W3.8.
 
 ## Open issues
 
@@ -92,11 +93,6 @@ The tombstone is in [decisions](../context/decisions.md).
 - [Stale architecture docs refresh (W3.8)](2026-07-21-w38-stale-docs-refresh.md)
 - [page_order P4 OCR-folios (W3.9)](2026-07-21-w39-page-order-ocr-folios.md)
 - [Save-a-copy export and archive inventory (W3.10)](2026-07-21-w310-save-copy-archive.md)
-
-### Parallel track
-
-- [2026-07-14 review fixes residual (tasks 1–7,9 shipped; docs
-  leftover)](2026-07-21-parallel-2026-07-14-review-fixes.md)
 
 ### Tooling
 

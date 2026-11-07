@@ -315,17 +315,12 @@ Dewarp and canvas_map control schemas do not match backend knobs.
 
 ### Known bug-fix plan (parallel, mostly shipped)
 
-[2026-07-14 review fixes](2026-07-14-review-fixes.md) listed nine bugs.
-**Re-verified 2026-07-21:** tasks **1–7 and 9 are shipped** (suite auth
-middleware, suite `app_id`, `resolve_job_device`, job timeout, zip off-loop,
-rerun `put_job`, AppShell `api.*` client, `pdomain-ops>=0.11.2`).
-
-Residual: plan file still marked draft with open wording; task 8 / broader
-stale architecture docs → [W3.8](../issues/2026-07-21-w38-stale-docs-refresh.md)
-and [parallel residual issue](../issues/2026-07-21-parallel-2026-07-14-review-fixes.md).
-
-Do **not** re-implement shipped tasks. W0.4 still needs multi-page shell
-orchestration; batch rerun enqueue (task 6) is already available if used.
+All nine July review fixes shipped, including the frontend route/auth correction in `29f60ca`.
+The retired plan's durable contracts are in
+[backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
+Its residual umbrella is closed. Broader architecture verification remains
+[W3.8](../issues/2026-07-21-w38-stale-docs-refresh.md).
+Do not reimplement those fixes. Wave 0 also completed the multi-page shell orchestration.
 
 ### Deferred product (correctly parked)
 
@@ -335,7 +330,7 @@ From roadmap and intent-map:
 - Postgres page_stages + FTS
 - S3 dual-write writer (stage artifacts are Path-local)
 - Compute settings panel (no warmup without visible UI)
-- page_order P4 OCR-folios; P5 source back/duplicate first-class
+- page_order P4 OCR-folios; broader P5 Source back/duplicate/inserted-kind model
 - PDF export, multi-user sharing, i18n
 - Save-a-copy project export (`comingSoon`)
 - Scanno research productization (`docs/research/findings-scannos.md`)
@@ -401,7 +396,8 @@ Wave 0 shipped on 2026-11-06. Behavior and tests: [Book path contracts](../archi
 | W0.5 | shipped | text_zones APPLY_SPLIT FE/BE (B7) | APPLY_SPLIT succeeds in API + service test |
 | W0.6 | shipped | Golden-path regression in default CI | Asserts real text, clean attestation, N-page dual-write, matched png/txt |
 
-**Parallel track (not Wave 0 exit):** remaining [2026-07-14 review fixes](2026-07-14-review-fixes.md) tasks 1–5, 7–9 (suite auth, app_id, device, timeout, zip off-loop, AppShell client, docs, pin). Each task uses its own red/green test from that plan.
+**July review fixes:** shipped; see [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
+Broader documentation verification remains W3.8.
 
 **Wave 0 exit criteria (all required):**
 
@@ -458,7 +454,7 @@ leaving the pipeline shell.
 | W3.9 | [w39-page-order-ocr-folios](../issues/2026-07-21-w39-page-order-ocr-folios.md) | page_order P4 OCR-folios | Folio chips real |
 | W3.10 | [w310-save-copy-archive](../issues/2026-07-21-w310-save-copy-archive.md) | Save-a-copy + archive inventory | No `comingSoon` stub |
 
-**Parallel track:** [2026-07-14 review fixes umbrella](../issues/2026-07-21-parallel-2026-07-14-review-fixes.md)
+**Documentation follow-up:** [W3.8 architecture verification](../issues/2026-07-21-w38-stale-docs-refresh.md).
 
 ### Explicitly later (do not start unless local path is solid)
 
@@ -474,7 +470,8 @@ leaving the pipeline shell.
 ## Recommended next session sequence
 
 1. Start at Wave 2. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
-2. Residual: update draft 2026-07-14 plan status; W3.8 for remaining doc drift.
+2. Use [W3.8](../issues/2026-07-21-w38-stale-docs-refresh.md) for remaining architecture verification.
+   The July review-fixes plan has retired.
 
 Use worktrees for implementation branches. Run `make ci AI=1` before each
 commit. Prefer pure-function TDD for adapter and artifact-key logic.
@@ -502,7 +499,7 @@ The file paths below are the 2026-07-21 review snapshot. Current book-path behav
 | Pack pure path | `steps/build_package.py`; legacy cover/oxipng `core/packaging.py` |
 | E2E stops at gate | `tests/test_e2e_pipeline.py` |
 | Browser suite | `tests/e2e/` (excluded from `make ci`) |
-| Review bug list | [2026-07-14-review-fixes.md](2026-07-14-review-fixes.md) |
+| Shipped July safeguards | [Backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards) |
 | Design handoff | `docs/plans/design_handoff_pgdp_app/` |
 | Prior roadmap | [roadmap.md](roadmap.md) |
 | Reindex heal | `cli/reindex.py` / dual-write docs |

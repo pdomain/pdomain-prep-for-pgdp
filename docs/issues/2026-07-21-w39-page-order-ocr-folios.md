@@ -21,7 +21,7 @@ Level: I1
 - **Read when:** implementing OCR folio detection, page_order ledger, or book-tools detector work.
 - **Search terms:** ocr_folio, P4, page_order, FOLIO_PUSH, readingFolios, folio detector, W3.9
 - **Relates to:** [pipeline completion review](../plans/2026-07-21-pipeline-completion-review.md),
-  [page-numbering runs model](../plans/2026-06-17-page-numbering-runs-model.md)
+  [page-numbering runs model](../architecture/08-page-numbering.md)
 
 ## Summary
 
@@ -42,7 +42,8 @@ landing P4 when the detector is available.
 ## Environment / versions
 
 ```
-plan: docs/plans/2026-06-17-page-numbering-runs-model.md (P4 deferred)
+architecture: docs/architecture/08-page-numbering.md (P4 deferred)
+retirement: docs/context/decisions.md, 2026-11-07 plan consolidation
 models: core/models.py Page.ocr_folio; core/prep_extension.py
 FE: frontend/src/services/tools/pageOrderTool.ts ocrFolio: p.ocr_folio ?? null
 numbering: core/numbering.py compare vs leaf.ocr_folio
@@ -51,16 +52,14 @@ pin: pdomain-book-tools>=0.21.0 (detector may still be missing or incomplete)
 
 ## Evidence
 
-### 1. Numbering plan deferral
+### 1. Numbering deferral
 
-```
-# docs/plans/2026-06-17-page-numbering-runs-model.md ~25–28
-This plan covers **P1–P3 only**. Two spec phases are deferred…
-- **P4 — OCR-folio detection** (the `readingFolios` / `FOLIO_PUSH` reading
-  stage + persisted reconciliation flags + the `sequenceClean` advance gate
-  that depends on real folios). *Why deferred:* it needs a new folio-reading
-  stage … and detector work in `pdomain-book-tools`…
-```
+The [numbering architecture](../architecture/08-page-numbering.md#limits-and-remaining-work)
+preserves the P4 deferral. It requires detector integration, `readingFolios` / `FOLIO_PUSH`, persisted
+reconciliation flags, and the `sequenceClean` advance gate. The lightweight-stage versus OCR-integration
+choice and detector work in book-tools remain open.
+The [consolidation tombstone](../context/decisions.md#retired-numbering-runs-p1p3-implementation-plan)
+records why the P1–P3 execution plan retired.
 
 ### 2. Schema always nullable in product path
 

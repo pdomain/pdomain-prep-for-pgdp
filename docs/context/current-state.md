@@ -4,6 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** active
+- **Last verified:** 2026-11-07
 - **Read when:** starting work or checking the repository's current operational shape.
 - **Search terms:** current state, active architecture, risks, verification.
 
@@ -17,8 +18,13 @@ and [deployment architecture](../architecture/06-deployment.md).
 
 ## In-flight work
 
-This migration initializes docgraph and repairs retrieval links. It also removes implemented or superseded
-execution documents after preserving their durable content. The migration includes no product feature work.
+Wave 0 and Wave 1 shipped. The active [completion queue](../plans/2026-07-21-pipeline-completion-review.md)
+starts at Wave 2. The [roadmap](../plans/roadmap.md) retains deferred product and deployment work.
+
+Shipped numbering, Source/grayscale, shared settings, and July safeguards now live in architecture docs.
+See [numbering runs](../architecture/08-page-numbering.md),
+[image preparation and settings](../architecture/09-image-prep-settings.md), and
+[backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards).
 
 ## Current risks
 

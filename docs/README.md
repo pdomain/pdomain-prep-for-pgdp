@@ -1,9 +1,18 @@
+---
+Kind: process
+Status: active
+Owner: CT
+Created: 2026-07-14
+Last verified: 2026-11-07
+---
+
 # docs/
 
 ## Agent Index
 
 - **Kind:** process
 - **Status:** active
+- **Last verified:** 2026-11-07
 - **Read when:** locating current architecture, intent, decisions, plans, research, or runbooks.
 - **Search terms:** documentation index, architecture, plans, process, context.
 
@@ -24,8 +33,10 @@ This index explains where each type of repository documentation belongs and link
 
 Empty folders are intentional and tracked via `.gitkeep`.
 
-Active docs map to GitHub issues. See this repository's issue tracker for their status. The layout follows the
-workspace standard in `/workspaces/ocr-container/docs/README.md`.
+The active pipeline queue lives in [local issue reports](issues/README.md) and the
+[completion plan](plans/2026-07-21-pipeline-completion-review.md).
+The separate GitHub tracker migration remains recorded in its handoff.
+This consolidation does not migrate or delete GitHub issues.
 
 ## Current documentation
 
@@ -35,15 +46,14 @@ workspace standard in `/workspaces/ocr-container/docs/README.md`.
   [pipeline](architecture/03-pipeline.md), [frontend](architecture/04-frontend.md),
   [events and jobs](architecture/05-events-and-jobs.md), [deployment](architecture/06-deployment.md),
   [testing](architecture/07-testing.md), and
-  [statechart convergence](architecture/statechart-convergence-notes.md).
+  [statechart convergence](architecture/statechart-convergence-notes.md),
+  [page numbering](architecture/08-page-numbering.md), and
+  [image preparation and settings](architecture/09-image-prep-settings.md).
 - Durable decisions: [architecture decisions](decisions/architecture-decisions.md) and
   [API-key server-side proxy](decisions/2026-05-23-apikey-server-side-proxy.md).
 - Plans: [roadmap](plans/roadmap.md),
-  [compute settings backlog](plans/2026-06-08-compute-settings-panel-backlog.md),
-  [page-numbering runs](plans/2026-06-17-page-numbering-runs-model.md),
-  [GPU/shared settings tiers](plans/grayscale-gpu-and-shared-settings-tiers.md),
-  [hi-fi deferred fixes](plans/hifi-deferred-items-fixes.md), and
-  [loader/source/grayscale completion](plans/hifi-loader-source-grayscale-complete.md).
+  [compute settings backlog](plans/2026-06-08-compute-settings-panel-backlog.md), and
+  [pipeline completion queue](plans/2026-07-21-pipeline-completion-review.md).
 - Process and operations: [lint deviations](process/lint-deviations.md),
   [writing style](process/writing-style.md), and [local upgrade flow](runbooks/dev-local-upgrade-flow.md).
 - Research: [scanno findings](research/findings-scannos.md).
