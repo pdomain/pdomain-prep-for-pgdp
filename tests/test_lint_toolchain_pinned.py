@@ -23,6 +23,7 @@ See `docs/issues/2026-08-08-ruff-version-skew.md` for the full report.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -38,11 +39,18 @@ _RUFF_HOOK_REPO = "ruff-pre-commit"
 
 def _hook_ruff_version() -> str:
     """The ruff version the pre-commit gate runs, from its `rev:` pin."""
-    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text())
+    text = PRE_COMMIT_CONFIG.read_text()
+    config = yaml.safe_load(text)
     for repo in config["repos"]:
         if _RUFF_HOOK_REPO in repo["repo"]:
-            # Tags are `vX.Y.Z`; a frozen SHA would carry `# frozen: vX.Y.Z`.
-            return str(repo["rev"]).lstrip("v")
+            rev = str(repo["rev"])
+            if re.fullmatch(r"[0-9a-f]{40}", rev):
+                frozen = re.search(
+                    rf"^\s+rev:\s+{rev}\s+#\s+frozen:\s+(v\d+\.\d+\.\d+)\s*$", text, re.MULTILINE
+                )
+                assert frozen is not None, "frozen Ruff revision must record its release version"
+                return frozen[1].lstrip("v")
+            return rev.lstrip("v")
     msg = f"no {_RUFF_HOOK_REPO} repo found in {PRE_COMMIT_CONFIG.name}"
     raise AssertionError(msg)
 
