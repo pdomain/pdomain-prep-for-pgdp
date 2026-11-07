@@ -222,7 +222,7 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Old path: `docs/plans/2026-06-17-page-numbering-runs-model.md`
 - Outcome: implemented
 - Superseded by: [page-numbering architecture](../architecture/08-page-numbering.md)
-- Removal commit: pending migration commit
+- Removal commit: e0d64e0bbba5cec43ccc4f8936d19fc569d531a8
 - Rationale kept: runs, counted blanks, marker handling, persistence, manifest v2, registry-v3 migration,
   and the interior-skip correction remain in architecture.
 - Evidence: `814510d`, `29144a8`, `af6c807`, `f57b5f0`, `1e36ce5`, and the numbering tests cited there.
@@ -235,7 +235,7 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Old path: `docs/plans/hifi-deferred-items-fixes.md`
 - Outcome: implemented
 - Superseded by: [image preparation and settings](../architecture/09-image-prep-settings.md)
-- Removal commit: pending migration commit
+- Removal commit: e0d64e0bbba5cec43ccc4f8936d19fc569d531a8
 - Rationale kept: ingest thumbnails, reversible removal, event-recorded mutations, project-channel SSE,
   real grayscale images, and distinct durable back/duplicate labels remain in architecture.
 - Evidence: `0c12b37`, `363bfaf`, `a2e09d8`, `bbe6e66`, `805053f`, and the tests cited there.
@@ -247,7 +247,7 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Old path: `docs/plans/grayscale-gpu-and-shared-settings-tiers.md`
 - Outcome: superseded by shipped implementation and the active W2.5 follow-up
 - Superseded by: [image preparation and settings](../architecture/09-image-prep-settings.md)
-- Removal commit: pending migration commit
+- Removal commit: e0d64e0bbba5cec43ccc4f8936d19fc569d531a8
 - Rationale kept: tier storage and precedence, CUDA-to-GPU dispatch, device selection, and the composable
   grayscale pipeline replace the earlier flat mode/gamma design.
 - Evidence: `9df1101`, `825f287`, `244cbc0`, `aadd1a7`, `8159659`, `7894d32`, and the tests cited there.
@@ -261,7 +261,7 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Outcome: implemented
 - Superseded by: [backend safeguards](../architecture/02-backend.md#suite-identity-authentication-and-job-safeguards)
   and [frontend authentication](../architecture/04-frontend.md#auth-in-the-spa)
-- Removal commit: pending migration commit
+- Removal commit: e0d64e0bbba5cec43ccc4f8936d19fc569d531a8
 - Rationale kept: suite middleware avoids included-router topology traps; preferences migrate without clobbering;
   enqueue resolves device; timeouts do not kill OS threads; ZIP reads leave the event loop; rerun creates jobs;
   SPA suite calls authenticate. The dependency pin already exceeds the requested minimum.
