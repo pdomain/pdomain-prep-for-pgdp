@@ -206,7 +206,7 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Old path: `docs/issues/2026-07-21-w17-build-package-cover-oxipng.md`
 - Outcome: implemented
 - Superseded by: `docs/architecture/03-pipeline.md` section Book path contracts
-- Removal commit: (fill after commit)
+- Removal commit: 2633a4dba7dc6ec4b3f639409611a3a80c7c56d5
 - Rationale kept: `docs/architecture/03-pipeline.md` and the tests named in that section
 - Remaining work: regex can still join a kept hyphen when the prefix is on the join list.
   A hyphen POST does not mark project stages dirty.
