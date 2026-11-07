@@ -13,7 +13,7 @@ kind: plan
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-11-06
+- **Last verified:** 2026-11-07
 - **Read when:** picking the next pipeline workstream, assessing E2E readiness, or reconciling roadmap vs code.
 - **Search terms:** pipeline gaps, stage completeness, E2E book path, continuation plan, text chain, pack chain, hi-fi backlog, wordcheck contract.
 
@@ -414,15 +414,17 @@ Wave 0 shipped on 2026-11-06. Behavior and tests: [Book path contracts](../archi
 
 ### Wave 1 — Text and pack product path (2–3 weeks)
 
+Wave 1 shipped on 2026-11-07. Behavior and tests: [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+
 | ID | Issue | Work | Done when |
 |----|-------|------|-----------|
-| W1.1 | [w11-regex-full-postprocess](../issues/2026-07-21-w11-regex-full-postprocess.md) | Wire `regex` to full `postprocess_text` | Runner asserts scanno apply |
-| W1.2 | [w12-wordcheck-scanno-list](../issues/2026-07-21-w12-wordcheck-scanno-list.md) | Real system scanno list; flags = side product | Flags on bad fixture; package text still correct |
-| W1.3 | [w13-hyphen-join-decisions](../issues/2026-07-21-w13-hyphen-join-decisions.md) | Persist hyphen decisions end-to-end | Decision survives reload; text changes |
-| W1.4 | [w14-text-tools-live-sse](../issues/2026-07-21-w14-text-tools-live-sse.md) | OCR / wordcheck / text_review live queues | Tools leave scanning without test hooks |
-| W1.5 | [w15-illustrations-extract](../issues/2026-07-21-w15-illustrations-extract.md) | Illustrations extract + pack path | Zip has `images/` when region present |
-| W1.6 | [w16-validation-preflight](../issues/2026-07-21-w16-validation-preflight.md) | PREFLIGHT fan-in validation → build | Build gate reflects validation report |
-| W1.7 | [w17-build-package-cover-oxipng](../issues/2026-07-21-w17-build-package-cover-oxipng.md) | cover.png + oxipng or CT defer | Cover alias or signed defer note |
+| W1.1 | shipped | **Regex full postprocess** | Runner applies scannos, quotes, and dashes |
+| W1.2 | shipped | System scanno list; flags stay a side product | Flags on a bad fixture; package text stays prose |
+| W1.3 | shipped | Persist hyphen decisions end-to-end | Decision survives reload; text changes |
+| W1.4 | shipped | OCR / wordcheck / text_review live queues | Tools leave scanning without test hooks |
+| W1.5 | shipped | Illustrations extract and pack path | Zip has `images/` when a crop manifest names files |
+| W1.6 | shipped | PREFLIGHT fan-in validation → build | Build gate reflects the validation report |
+| W1.7 | shipped | cover.png and oxipng | Cover alias and oxipng level 4 when optimize_png is on |
 
 **Exit criteria:** Expert user completes one short book zip → downloadable
 package with attested **correct** text, matched png/txt pairs, and at least
@@ -471,7 +473,7 @@ leaving the pipeline shell.
 
 ## Recommended next session sequence
 
-1. Start at Wave 1. Wave 0 is shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+1. Start at Wave 2. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 2. Residual: update draft 2026-07-14 plan status; W3.8 for remaining doc drift.
 
 Use worktrees for implementation branches. Run `make ci AI=1` before each

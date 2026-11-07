@@ -1,7 +1,7 @@
 ---
 Status: active
 Kind: decision
-Last verified: 2026-11-06
+Last verified: 2026-11-07
 ---
 
 # Decisions and lifecycle tombstones
@@ -10,7 +10,7 @@ Last verified: 2026-11-06
 
 - **Kind:** decision
 - **Status:** active
-- **Last verified:** 2026-11-06
+- **Last verified:** 2026-11-07
 - **Read when:** researching durable choices, implementation deviations, or retired documents.
 - **Search terms:** decisions, tombstones, retired specs, implementation deviations.
 
@@ -194,3 +194,23 @@ retained rationale, and remaining work; this literal list makes the per-document
 - Removal commit: 6b2db15c51323f539ebce28d8b7d517dbd78a54f
 - Rationale kept: `docs/architecture/03-pipeline.md` and the tests named in that section
 - Remaining work: none for Wave 0. Wave 1 and later stay on the completion plan.
+
+### 2026-11-07 Retired: Wave 1 text and pack issues
+
+- Old path: `docs/issues/2026-07-21-w11-regex-full-postprocess.md`
+- Old path: `docs/issues/2026-07-21-w12-wordcheck-scanno-list.md`
+- Old path: `docs/issues/2026-07-21-w13-hyphen-join-decisions.md`
+- Old path: `docs/issues/2026-07-21-w14-text-tools-live-sse.md`
+- Old path: `docs/issues/2026-07-21-w15-illustrations-extract.md`
+- Old path: `docs/issues/2026-07-21-w16-validation-preflight.md`
+- Old path: `docs/issues/2026-07-21-w17-build-package-cover-oxipng.md`
+- Outcome: implemented
+- Superseded by: `docs/architecture/03-pipeline.md` section Book path contracts
+- Removal commit: (fill after commit)
+- Rationale kept: `docs/architecture/03-pipeline.md` and the tests named in that section
+- Remaining work: regex can still join a kept hyphen when the prefix is on the join list.
+  A hyphen POST does not mark project stages dirty.
+  A failed decision commit can leave `decisions.json` ahead of `output.txt`.
+  A corrupt decision file is treated as empty.
+  A failed OCR load during hydrate keeps the live channel closed until the tool is opened again.
+  Wave 2 and later stay on the completion plan.

@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-07-21
+Last verified: 2026-11-07
 Kind: process
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** process
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-07-21
+- **Last verified:** 2026-11-07
 - **Read when:** filing a bug / defect / investigation report, or looking up an
   open issue's status, evidence, or resolution.
 - **Search terms:** issues folder, bug report, defect report, issue template,
@@ -69,13 +69,9 @@ The tombstone is in [decisions](../context/decisions.md).
 
 ### Wave 1 — Text and pack product path
 
-- [Wire regex stage to full postprocess_text (W1.1)](2026-07-21-w11-regex-full-postprocess.md)
-- [Wordcheck system scanno list (W1.2)](2026-07-21-w12-wordcheck-scanno-list.md)
-- [Hyphen_join decision persistence (W1.3)](2026-07-21-w13-hyphen-join-decisions.md)
-- [OCR / wordcheck / text_review live queues (W1.4)](2026-07-21-w14-text-tools-live-sse.md)
-- [Illustrations extract and package path (W1.5)](2026-07-21-w15-illustrations-extract.md)
-- [Validation PREFLIGHT fan-in to build_package (W1.6)](2026-07-21-w16-validation-preflight.md)
-- [build_package cover.png and oxipng (W1.7)](2026-07-21-w17-build-package-cover-oxipng.md)
+Shipped on 2026-11-07. The reports were retired.
+Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+The tombstone is in [decisions](../context/decisions.md).
 
 ### Wave 2 — Image-prep honesty and hi-fi
 

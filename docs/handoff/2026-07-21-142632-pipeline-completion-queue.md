@@ -25,7 +25,8 @@ supersedes: ""
 ## Goal
 
 Make a real book finishable on `make run`: fix live pipeline blockers, then
-deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Resume at Wave 1.
+deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Wave 1 shipped on
+2026-11-07. Resume at Wave 2.
 
 ## Done this session
 
@@ -69,10 +70,9 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Resume at Wave 1.
 
 - Forward queue is the completion plan + `docs/issues/`, not roadmap P0–P3
   historical “all shipped.”
-- Wave 0, including golden-path CI, shipped on 2026-11-06. See
+- Wave 0, including golden-path CI, shipped on 2026-11-06. Wave 1, including
+  cover.png and oxipng, shipped on 2026-11-07. See
   `docs/architecture/03-pipeline.md` (Book path contracts).
-- `build_package` is PARTIAL for product packaging (no cover.png / oxipng vs
-  legacy `core/packaging.py`).
 - Local-first remains ahead of Modal/Postgres/S3 dual-write.
 
 ## Current state
@@ -81,14 +81,14 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Resume at Wave 1.
   commit; check `git status` / `git log origin/master..HEAD` before push).
 - Working tree clean after handoff commit (except this handoff file until
   committed).
-- Implementation entry: Wave 1 issues under `docs/issues/README.md`.
+- Implementation entry: Wave 2 issues under `docs/issues/README.md`.
 
 ## Pointers
 
 - `docs/plans/2026-07-21-pipeline-completion-review.md` — authoritative plan
 - `docs/issues/README.md` — open issue index
-- `docs/architecture/03-pipeline.md` — Book path contracts (Wave 0)
-- `docs/context/decisions.md` — Wave 0 retirement tombstone
+- `docs/architecture/03-pipeline.md` — Book path contracts (Wave 0 and Wave 1)
+- `docs/context/decisions.md` — Wave 0 and Wave 1 retirement tombstones
 - `docs/issues/2026-07-21-parallel-2026-07-14-review-fixes.md` — residual only
 - `docs/plans/2026-07-14-review-fixes.md` — draft plan text still stale
 - `src/pdomain_prep_for_pgdp/core/pipeline/stage_runner.py` — load by consumer need
@@ -100,8 +100,8 @@ deepen text/pack/UI. Wave 0 shipped on 2026-11-06. Resume at Wave 1.
 
 ## Resume steps
 
-1. Read `docs/plans/2026-07-21-pipeline-completion-review.md` Wave 1 table and
-   `docs/issues/README.md`. Wave 0 is shipped.
+1. Read `docs/plans/2026-07-21-pipeline-completion-review.md` Wave 2 table and
+   `docs/issues/README.md`. Wave 0 and Wave 1 are shipped.
 2. Use worktrees for implementation; `make ci AI=1` before each commit; do not
    push without say-so.
 3. Optionally mark `docs/plans/2026-07-14-review-fixes.md` residual/shipped so

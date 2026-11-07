@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-07-14
+- **Last verified:** 2026-11-07
 - **Read when:** changing pipeline stages, dependencies, or execution.
 - **Search terms:** pipeline, stage registry, DAG, OCR, artifacts, wordcheck flags, attestation, golden path.
 
@@ -76,6 +76,107 @@ For a 3-page book it checks:
 - a clean `text_review` row on every page
 - a zip with matched png and txt names
 
+The regex stage runs `postprocess_text` in this order:
+
+1. Curly quotes
+2. Em dashes
+3. The system hyphenation join list
+4. The system scanno table
+5. The project scanno table
+6. Custom regex passes
+
+A prefix matches the system hyphenation join list after case-folding.
+Entries on that list also drop a trailing hyphen before the compare.
+
+An empty text config still turns curly quotes into straight quotes.
+It still turns an em dash, U+2014, into `--`.
+
+Regex does not read hyphen decisions.
+A prefix on the join list can still be joined after the user chose keep.
+
+Wordcheck writes flags for the workbench.
+The package text stays the page prose.
+
+The system bad-word list is the pptext scanno seed plus the existing OCR misspellings.
+
+A project good word suppresses a flag.
+A project bad word is added.
+
+Regex does not replace those words in the prose.
+
+Hyphen join with no saved decisions leaves the page text unchanged.
+
+Saved decisions live in `stages/hyphen_join/decisions.json`.
+
+A join splices the prefix and suffix at the saved offset when that span still matches.
+A keep leaves the end-of-line hyphen and the newline.
+
+The decision POST writes `source.txt` and `decisions.json` before the stage commit.
+
+A failed commit can leave the stage clean while the decision file is ahead of `output.txt`.
+
+A missing, unreadable, or corrupt decision file is treated as no decisions.
+A later POST can overwrite it.
+
+That POST marks later page stages dirty.
+It does not mark project stages dirty.
+It does not emit the stage-status events a stage re-run emits.
+`build_package` stays clean until it runs again.
+
+OCR, wordcheck, and text review load their queues from the API.
+Demo and missing project ids settle empty and do not fetch.
+
+A batch OCR clean event carries `idx0`.
+A clean event with no `idx0` is ignored.
+
+A later running snapshot does not replace a finished row.
+
+The OCR tool returns to recognising while any row is still running.
+
+Pages that finish while the OCR list is loading are read before the tool can leave recognising.
+
+If one of those reads fails, the tool shows the error and does not open confirm.
+After that failure, the live channel stays closed until the tool is opened again.
+
+Illustration packing reads `illustrations/crops.json` when that file exists.
+The zip writes each kept image as `images/{prefix}_{NN}.{ext}` in manifest order.
+`NN` is the 1-based position, written as two digits.
+
+An empty, unreadable, or non-object manifest packs no illustration images.
+A present manifest whose `crops` value is not a list also packs none.
+
+Only a missing `crops.json` uses the legacy `extract_illustrations/` directory.
+
+A successful illustrations commit that writes `crops.json` deletes leftover crop images
+in that stage directory whose names are not in the commit.
+
+Packed illustration images are copied as stored and are not run through oxipng.
+
+`POST /api/gpu/extract-illustration` returns 501.
+
+Build's gate is passed only when `passed` is true and `blocker_count` is 0.
+Any other readable report is blocked.
+A warnings-only report with `passed` true and `blocker_count` 0 is passed.
+
+Build reads the validation artifact on mount.
+A missing or unreadable artifact, including a 404, stays unknown.
+The demo project does not fetch.
+
+`build_submission_zip` writes the first cover page's canvas PNG
+as both `{prefix}.png` and `cover.png`, with the same bytes.
+
+That function defaults `optimize_png` to false.
+`ProjectConfig` defaults the same flag to true.
+`build_package_v2_cpu` passes true when config is missing, the flag is missing,
+or the flag is not a boolean.
+
+When `optimize_png` is true, proofing PNGs go through oxipng at level 4,
+and `pgdp.json` records `oxipng_skipped_pages`.
+When it is false, the PNG bytes are unchanged.
+
+Looking up cover page ids does not create a page store
+when the project events database is absent.
+
 ## Evidence
 
 - Code: `src/pdomain_prep_for_pgdp/core/pipeline/steps/wordcheck.py`,
@@ -96,10 +197,33 @@ For a 3-page book it checks:
   (`test_golden_path_three_page_book_prose_attest_and_zip`),
   `frontend/src/services/pipeline.w04.test.ts`,
   `frontend/src/services/tools/textZonesTool.w05.test.ts`
+- Code: `src/pdomain_prep_for_pgdp/core/pipeline/stage_registry.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/steps/scanno_seed.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/steps/hyphen_decisions.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/steps/hyphen_join.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/steps/build_package.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/project_ocr_fanout.py`,
+  `src/pdomain_prep_for_pgdp/core/pipeline/page_stage_writer.py`,
+  `frontend/src/pages/pipeline/tools/OcrTool.tsx`,
+  `frontend/src/services/tools/preflightStatus.ts`
+- Tests: `tests/test_w11_regex_full_postprocess.py`
+  (`test_regex_callable_applies_scanno_quote_and_dash`),
+  `tests/test_w12_wordcheck_scanno_list.py`
+  (`test_default_wordcheck_flags_pptext_word_and_keeps_prose`),
+  `tests/test_w13_hyphen_join_decisions.py`
+  (`test_post_join_survives_reload_and_rewrites_output`),
+  `tests/test_w15_illustrations_extract.py`
+  (`test_crops_manifest_packs_named_files_and_skips_leftovers`),
+  `tests/test_w17_cover_oxipng.py`
+  (`test_cover_page_is_aliased_to_cover_png`),
+  `frontend/src/pages/pipeline/tools/OcrTool.test.tsx`
+  (`does not offer confirm until a page that finished during hydrate is loaded`),
+  `frontend/src/services/tools/preflightStatus.test.ts`
 - Artifacts: none
-- Verified: 2026-11-06 with `uv run pytest` on the Python tests named above.
+- Verified: 2026-11-06 with `uv run pytest` on the Python tests in the first Tests list.
   18 passed, including the golden path.
-  Vitest ran the frontend tests in this list through `mise exec`.
+  Vitest ran the frontend tests in that same first list through `mise exec`.
+  2026-11-07 `make ci AI=1` passed, including the Wave 1 tests in the second Tests list.
 
 ## Stage-to-code map
 
