@@ -283,7 +283,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Old path: `docs/issues/2026-08-08-ruff-version-skew.md`
 - Outcome: implemented
 - Superseded by: [lint toolchain](../architecture/07-testing.md#lint-toolchain)
-- Removal commit: pending warning-audit commit
+- Removal commit: 2a78a794303a20707740cb399e6efc05fffee10f
 - Evidence: `9e6ebf1`, `tests/test_lint_toolchain_pinned.py`, pre-commit, pyproject.toml, and uv.lock.
   Hook, lock, and minimum now agree on 0.16.7, with hook/lock and floor guards.
 - Rationale kept: independent hook/project versions must be compared, not merely bumped once.
@@ -294,7 +294,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Old path: `docs/issues/2026-08-08-dep-refresh-cannot-auto-land.md`
 - Outcome: superseded
 - Superseded by: [local build/release commands](../architecture/06-deployment.md#build-and-release-commands)
-- Removal commit: pending warning-audit commit
+- Removal commit: 2a78a794303a20707740cb399e6efc05fffee10f
 - Evidence: `e22bdd2` removed workflows. The repository no longer has a dependency-refresh scheduler.
 - Rationale kept: dated branches can accumulate under the former design; local release scripts now own this checkout.
 - Remaining work: none for the removed workflow. No remote repository settings or sibling branch counts were rechecked.
@@ -305,7 +305,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Outcome: implemented
 - Superseded by: [overview](../architecture/01-overview.md), [backend](../architecture/02-backend.md),
   [frontend](../architecture/04-frontend.md), and [convergence history/current corrections](../architecture/statechart-convergence-notes.md)
-- Removal commit: pending warning-audit commit
+- Removal commit: 2a78a794303a20707740cb399e6efc05fffee10f
 - Evidence: source audit of registry, bootstrap, job/stage writers, API inventory, frontend services/tools,
   current dependency constraints, and repository build/release scripts on 2026-11-07.
 - Rationale kept: current contracts must be separated from convergence-era design and dated decision history.
