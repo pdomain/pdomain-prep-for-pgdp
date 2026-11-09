@@ -353,7 +353,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Old path: `docs/archive/research/M5-Hi-Fi.html` and empty placeholder folders
 - Outcome: deleted; retired docs live in Git history, not an archive folder
 - Superseded by: [frontend architecture](../architecture/04-frontend.md)
-- Removal commit: (fill after commit)
+- Removal commit: `c72b00db`
 - Rationale kept: The file was a self-contained hi-fi mock for M5 built on synthetic data. Nothing linked
   to it. Read it with `git show fdd88cd:docs/archive/research/M5-Hi-Fi.html`.
 - Remaining work: none
