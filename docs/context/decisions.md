@@ -311,3 +311,26 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Rationale kept: current contracts must be separated from convergence-era design and dated decision history.
 - Remaining work: product gaps remain in their active issues, including W2.1–W2.5 and W3.2–W3.7/W3.9/W3.10.
   Their existence does not make an accurately documented missing feature a remaining W3.8 defect.
+
+### 2026-11-09 Retired: Issue-tracker migration handoff (2026-07-17)
+
+- Old path: `docs/handoff/2026-07-17-issue-tracker-migration.md`
+- Outcome: abandoned
+- Superseded by: the GitHub issue migration entry in [intent map](intent-map.md)
+- Removal commit: (fill after commit)
+- Rationale kept: The migration never started. All 48 issues are still open on GitHub. Only the
+  `docs/issues/` scaffold from `6d8c4ac` shipped. The open work and the where-to-file question now
+  live in the intent map.
+- Remaining work: the GitHub issue migration in the intent map
+
+### 2026-11-09 Retired: Pipeline completion queue handoff (2026-07-21)
+
+- Old path: `docs/handoff/2026-07-21-142632-pipeline-completion-queue.md`
+- Outcome: superseded
+- Superseded by: [completion plan](../plans/2026-07-21-pipeline-completion-review.md) and
+  [current state](current-state.md)
+- Removal commit: (fill after commit)
+- Rationale kept: Wave 0 and Wave 1 shipped, with removal commits `6b2db15` and `2633a4d` recorded
+  above. The local-first priority is in the intent map. The queue resumes at Wave 2 under the issues
+  index.
+- Remaining work: Wave 2 onward, already tracked in the issues index

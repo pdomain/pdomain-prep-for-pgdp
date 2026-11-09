@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-14
-Last verified: 2026-11-07
+Last verified: 2026-11-09
 Kind: plan
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** plan
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-09
 - **Read when:** choosing work, checking deferred ideas, or identifying owner decisions.
 - **Search terms:** active intent, deferred work, rejected direction, owner decision, pipeline issues.
 
@@ -48,6 +48,14 @@ generated OpenAPI.
   Wave 0 shipped on 2026-11-06. Current book-path behavior is in
   [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
   Start the remaining queue at Wave 2 under [docs/issues](../issues/README.md).
+- **GitHub issue migration (not started):** 48 issues are still open on `pdomain/pdomain-prep-for-pgdp`
+  (checked 2026-11-09). 43 are `kind:feature` issues #156–#198 for the pd-ui design handoff, and #152
+  is the spec issue that tracks them. The other four are three bugs and one chore: #131 the Postgres
+  adapter lacks `IDatabase` methods, #132 progress updates can undo a cancellation, #135 authenticated
+  SSE bypasses the bearer-token client, and #146 CI lacks dependency vulnerability audits. Move their content into repo
+  docs first, and delete an issue from GitHub only after the owner says go. Archiving the 131 closed
+  issues is optional. Pattern:
+  `../pdomain-ocr-cli/docs/decisions/2026-07-19-github-issues-cutover.md`.
 
 ## Deferred
 
@@ -82,6 +90,10 @@ generated OpenAPI.
 
 No decision blocks this migration. Managed-mode priority, some remote execution choices, and optional UX
 expansions remain deferred product choices.
+
+- Where migrated GitHub issues go: all 48 into `docs/issues/`, or the 43 features and their spec into
+  `docs/plans/roadmap.md` with only #131, #132, #135 and #146 in `docs/issues/`. The issues README already
+  keeps feature work on the roadmap.
 
 ## Legacy-unverified sweep
 
