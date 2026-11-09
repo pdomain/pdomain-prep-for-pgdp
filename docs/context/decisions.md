@@ -345,8 +345,9 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
   #135 was narrowed: apikey-mode streams work since `e0b83cf`, and only JWT mode remains.
 - Spec #152 and features #156–#198 went to the [roadmap](../plans/roadmap.md). Their plan and spec were
   already retired in `fdd88cd`. The audit found 18 shipped, 9 partial, 10 superseded and 6 open.
-- Remaining work: deleting the 48 issues from GitHub waits for the owner's go. The 131 closed issues stay
-  on GitHub.
+- All 179 issues, open and closed, were archived verbatim in `17d3dcb` and removed from the tree in `95795ca`.
+  The 48 open issues were deleted from GitHub on 2026-11-09 with the owner's go.
+- Remaining work: deleting the 131 closed issues waits for a separate owner go.
 
 ### 2026-11-09 Retired: the archive folder
 

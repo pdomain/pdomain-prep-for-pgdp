@@ -48,12 +48,13 @@ generated OpenAPI.
   Wave 0 shipped on 2026-11-06. Current book-path behavior is in
   [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
   Start the remaining queue at Wave 2 under [docs/issues](../issues/README.md).
-- **GitHub issue migration (docs done 2026-11-09; GitHub deletion awaits the owner):** all 48 open issues
-  on `pdomain/pdomain-prep-for-pgdp` were checked against `14f0ba8` and moved into repo docs. #131, #132,
-  #135 and #146 are governed reports in [`docs/issues/`](../issues/README.md). #152 and #156–#198 are in the
-  [roadmap](../plans/roadmap.md) section "Former pd-ui design handoff". The ledger is in the
-  [cutover decision](../decisions/2026-11-09-github-issues-cutover.md). The 48 GitHub issues stay open until
-  the owner says to delete them; the 131 closed issues stay unless the owner asks for an archive.
+- **GitHub issue migration (open issues done 2026-11-09; closed deletion awaits the owner):** all 48 open
+  issues on `pdomain/pdomain-prep-for-pgdp` were checked against `14f0ba8`, moved into repo docs, and deleted
+  from GitHub. #131, #132, #135 and #146 are governed reports in [`docs/issues/`](../issues/README.md). #152
+  and #156–#198 are in the [roadmap](../plans/roadmap.md) section "Former pd-ui design handoff". All 179
+  issues, open and closed, are archived verbatim in commit `17d3dcb`. The ledger and deletion journal are in the
+  [cutover decision](../decisions/2026-11-09-github-issues-cutover.md). The 131 closed issues are still on
+  GitHub.
 
 ## Deferred
 
@@ -89,9 +90,9 @@ generated OpenAPI.
 No decision blocks this migration. Managed-mode priority, some remote execution choices, and optional UX
 expansions remain deferred product choices.
 
-- Delete the 48 migrated GitHub issues (#131, #132, #135, #146, #152, #156–#198): waiting for the owner's
-  go. Where they went was decided on 2026-11-09: the four review findings in `docs/issues/`, the handoff
-  spec and features on the roadmap. See the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
+- Delete the 131 closed GitHub issues: waiting for the owner's go. They are archived verbatim in commit
+  `17d3dcb`. The 48 open issues were deleted on 2026-11-09. See the
+  [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
 
 ## Legacy-unverified sweep
 
