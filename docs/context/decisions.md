@@ -317,7 +317,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Old path: `docs/handoff/2026-07-17-issue-tracker-migration.md`
 - Outcome: abandoned
 - Superseded by: the GitHub issue migration entry in [intent map](intent-map.md)
-- Removal commit: (fill after commit)
+- Removal commit: `18ccd86b`
 - Rationale kept: The migration never started. All 48 issues are still open on GitHub. Only the
   `docs/issues/` scaffold from `6d8c4ac` shipped. The open work and the where-to-file question now
   live in the intent map.
@@ -329,7 +329,7 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
 - Outcome: superseded
 - Superseded by: [completion plan](../plans/2026-07-21-pipeline-completion-review.md) and
   [current state](current-state.md)
-- Removal commit: (fill after commit)
+- Removal commit: `18ccd86b`
 - Rationale kept: Wave 0 and Wave 1 shipped, with removal commits `6b2db15` and `2633a4d` recorded
   above. The local-first priority is in the intent map. The queue resumes at Wave 2 under the issues
   index.
