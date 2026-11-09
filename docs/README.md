@@ -35,8 +35,8 @@ Empty folders are intentional and tracked via `.gitkeep`.
 
 The active pipeline queue lives in [local issue reports](issues/README.md) and the
 [completion plan](plans/2026-07-21-pipeline-completion-review.md).
-The separate GitHub tracker migration remains recorded in its handoff.
-This consolidation does not migrate or delete GitHub issues.
+Open work no longer lives in GitHub Issues. The 2026-11-09
+[cutover decision](decisions/2026-11-09-github-issues-cutover.md) maps each former issue to its new place.
 
 ## Current documentation
 

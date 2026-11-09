@@ -334,3 +334,16 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
   above. The local-first priority is in the intent map. The queue resumes at Wave 2 under the issues
   index.
 - Remaining work: Wave 2 onward, already tracked in the issues index
+
+## 2026-11-09 GitHub Issues cutover
+
+### 2026-11-09 Decided: open GitHub issues move into repo docs
+
+- Decision: [GitHub Issues cutover to repo docs](../decisions/2026-11-09-github-issues-cutover.md)
+- Scope: the 48 open issues on `pdomain/pdomain-prep-for-pgdp`, each checked against `14f0ba8`.
+- Review findings #131, #132, #135 and #146 became governed reports in [`docs/issues/`](../issues/README.md).
+  #135 was narrowed: apikey-mode streams work since `e0b83cf`, and only JWT mode remains.
+- Spec #152 and features #156–#198 went to the [roadmap](../plans/roadmap.md). Their plan and spec were
+  already retired in `fdd88cd`. The audit found 18 shipped, 9 partial, 10 superseded and 6 open.
+- Remaining work: deleting the 48 issues from GitHub waits for the owner's go. The 131 closed issues stay
+  on GitHub.

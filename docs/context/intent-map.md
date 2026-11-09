@@ -48,14 +48,12 @@ generated OpenAPI.
   Wave 0 shipped on 2026-11-06. Current book-path behavior is in
   [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
   Start the remaining queue at Wave 2 under [docs/issues](../issues/README.md).
-- **GitHub issue migration (not started):** 48 issues are still open on `pdomain/pdomain-prep-for-pgdp`
-  (checked 2026-11-09). 43 are `kind:feature` issues #156–#198 for the pd-ui design handoff, and #152
-  is the spec issue that tracks them. The other four are three bugs and one chore: #131 the Postgres
-  adapter lacks `IDatabase` methods, #132 progress updates can undo a cancellation, #135 authenticated
-  SSE bypasses the bearer-token client, and #146 CI lacks dependency vulnerability audits. Move their content into repo
-  docs first, and delete an issue from GitHub only after the owner says go. Archiving the 131 closed
-  issues is optional. Pattern:
-  `../pdomain-ocr-cli/docs/decisions/2026-07-19-github-issues-cutover.md`.
+- **GitHub issue migration (docs done 2026-11-09; GitHub deletion awaits the owner):** all 48 open issues
+  on `pdomain/pdomain-prep-for-pgdp` were checked against `14f0ba8` and moved into repo docs. #131, #132,
+  #135 and #146 are governed reports in [`docs/issues/`](../issues/README.md). #152 and #156–#198 are in the
+  [roadmap](../plans/roadmap.md) section "Former pd-ui design handoff". The ledger is in the
+  [cutover decision](../decisions/2026-11-09-github-issues-cutover.md). The 48 GitHub issues stay open until
+  the owner says to delete them; the 131 closed issues stay unless the owner asks for an archive.
 
 ## Deferred
 
@@ -91,9 +89,9 @@ generated OpenAPI.
 No decision blocks this migration. Managed-mode priority, some remote execution choices, and optional UX
 expansions remain deferred product choices.
 
-- Where migrated GitHub issues go: all 48 into `docs/issues/`, or the 43 features and their spec into
-  `docs/plans/roadmap.md` with only #131, #132, #135 and #146 in `docs/issues/`. The issues README already
-  keeps feature work on the roadmap.
+- Delete the 48 migrated GitHub issues (#131, #132, #135, #146, #152, #156–#198): waiting for the owner's
+  go. Where they went was decided on 2026-11-09: the four review findings in `docs/issues/`, the handoff
+  spec and features on the roadmap. See the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
 
 ## Legacy-unverified sweep
 

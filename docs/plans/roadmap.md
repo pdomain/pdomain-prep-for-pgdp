@@ -97,6 +97,48 @@ Items that prevented a user from completing a real book end-to-end in
 
 ---
 
+## Former pd-ui design handoff (GH #152, #156–#198)
+
+GitHub spec issue #152 tracked 43 feature issues, #156–#198, from the pd-ui design handoff. The handoff plan
+assumed per-stage routes and stage-level pd-ui components. The statechart convergence built the same
+capabilities as pipeline tools in `TOOL_REGISTRY` instead, and the plan was retired in `fdd88cd`. A
+2026-11-09 audit against `14f0ba8` found 18 shipped, 9 partly shipped, 10 superseded, and 6 not built. The
+per-issue ledger is in the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md). The `#NNN`
+tags below are provenance, not live tracker links.
+
+Recover the original plan and spec text with:
+
+```bash
+git show fdd88cd^:docs/plans/pd-ui-design-handoff-implementation.md
+git show fdd88cd^:docs/specs/2026-05-24-pd-ui-design-handoff-implementation.md
+```
+
+### H1. Not built and not tracked elsewhere
+
+- **Validation auto-fix (former GH #180).** Add `POST /api/projects/{id}/validate/{check}/fix` for checks
+  with a safe, whitelisted fix such as a rename. Validation today has only run, artifact, and waive routes.
+- **Stage-jump popover (former GH #183).** A searchable stage list on a shortcut. Today the StageStrip dots
+  are the only stage navigation, and mod+k opens search.
+- **Mobile upload fallback below 768px (former GH #195).** The create-project dialog has no narrow-viewport
+  layout. Low priority while the app is a desktop tool.
+- **N-gram evidence for hyphen-join decisions (part of former GH #174 and #177).** Hyphen detection is the
+  regex in `steps/hyphen_join.py`; no n-gram data or cache exists. The handoff expected an n-gram SQLite
+  store from pdomain-book-tools.
+
+### H2. Remaining gaps already tracked elsewhere
+
+| Former GH | Gap | Tracked in |
+| --- | --- | --- |
+| #164 | Select flagged crops and re-run them in bulk | [intent map](../context/intent-map.md) Deferred: bulk crop-quality actions |
+| #166 | Crop overview tab and deeper crop settings | [W2.2](../issues/2026-07-21-w22-schema-backend-alignment.md), [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) |
+| #168 | Page-order detection from OCR folios | [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md) |
+| #172 | Global rule library across books | [intent map](../context/intent-map.md) Deferred: global hyphen/scanno library management |
+| #177 | Hyphen-join settings tab, now a placeholder | [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) |
+| #185, #189 | Split overlay and text_zones labeling canvas | [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) |
+| #193 | Save a copy from the Manage tab | [W3.10](../issues/2026-07-21-w310-save-copy-archive.md) |
+
+---
+
 ## P5 — Stretch (post-daily-use)
 
 ### S1. PDF export
@@ -132,6 +174,8 @@ Complete and verify remote artifact transport and local-store replacement before
 
 The builder selects Postgres for configured URLs, but stage-related adapter methods remain incomplete.
 A live Postgres test service and full database-contract coverage are still required.
+The missing methods and the fail-fast option are recorded in
+[the Postgres adapter issue](../issues/2026-11-09-postgres-adapter-incomplete.md) (former GH #131).
 
 ### D3. install.sh end-to-end exercise
 

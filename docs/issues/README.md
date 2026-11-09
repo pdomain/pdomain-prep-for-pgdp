@@ -93,6 +93,16 @@ The tombstone is in [decisions](../context/decisions.md).
 - [page_order P4 OCR-folios (W3.9)](2026-07-21-w39-page-order-ocr-folios.md)
 - [Save-a-copy export and archive inventory (W3.10)](2026-07-21-w310-save-copy-archive.md)
 
+### Migrated from GitHub Issues (2026-11-09)
+
+Each report was checked against the code at `14f0ba8` before it was written. See the
+[cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
+
+- [Postgres adapter lacks eight IDatabase methods (former GH #131)](2026-11-09-postgres-adapter-incomplete.md)
+- [Progress updates overwrite a cancelled job (former GH #132)](2026-11-09-progress-overwrites-cancel.md)
+- [SSE streams cannot authenticate in JWT mode (former GH #135)](2026-11-09-jwt-sse-auth.md)
+- [CI does not audit dependencies (former GH #146)](2026-11-09-dependency-audit-gate.md)
+
 Resolved reports are deleted, so this index tracks open work only. Past
 resolutions live in the `docs/context/decisions.md` tombstones and in git
 history.
