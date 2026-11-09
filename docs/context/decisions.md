@@ -347,7 +347,9 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
   already retired in `fdd88cd`. The audit found 18 shipped, 9 partial, 10 superseded and 6 open.
 - All 179 issues, open and closed, were archived verbatim in `17d3dcb` and removed from the tree in `95795ca`.
   The 48 open issues were deleted from GitHub on 2026-11-09 with the owner's go.
-- Remaining work: deleting the 131 closed issues waits for a separate owner go.
+- The 131 closed issues were deleted the same day after a separate owner go. GitHub now holds no issues for
+  this repository.
+- Remaining work: none for the cutover.
 
 ### 2026-11-09 Retired: the archive folder
 
