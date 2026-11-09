@@ -34,7 +34,6 @@
     "docs/plans/**",
     // Archived plans and process docs — historical snapshots, not
     // authoritative. Frozen at the form they shipped in.
-    "docs/archive/**",
     // Audit reports — generated reference dumps, not prose docs.
     // Long lines in finding descriptions are expected.
     "docs/audit/**",

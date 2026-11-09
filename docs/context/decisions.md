@@ -347,3 +347,13 @@ The earlier numbering receipt's reference to an unfinished advance gate is corre
   already retired in `fdd88cd`. The audit found 18 shipped, 9 partial, 10 superseded and 6 open.
 - Remaining work: deleting the 48 issues from GitHub waits for the owner's go. The 131 closed issues stay
   on GitHub.
+
+### 2026-11-09 Retired: the archive folder
+
+- Old path: `docs/archive/research/M5-Hi-Fi.html` and empty placeholder folders
+- Outcome: deleted; retired docs live in Git history, not an archive folder
+- Superseded by: [frontend architecture](../architecture/04-frontend.md)
+- Removal commit: (fill after commit)
+- Rationale kept: The file was a self-contained hi-fi mock for M5 built on synthetic data. Nothing linked
+  to it. Read it with `git show fdd88cd:docs/archive/research/M5-Hi-Fi.html`.
+- Remaining work: none
