@@ -606,16 +606,15 @@ export const pageOrderToolMachine = setup({
           totals: PageOrderTotals;
         },
       ): Partial<PageOrderToolContext> => {
-        // computeLabels assigns folioLabel per leaf based on run configuration.
-        // On initial load, use the server-provided totals as-is — they are the
-        // authoritative sequencing analysis. reconcile() is only called on
-        // subsequent local mutations (reorder, role assignment) where a fresh
-        // flag derivation is needed.
-        const leaves = computeLabels(params.leaves, params.runs);
+        const { leaves, totals } = reconcile(
+          computeLabels(params.leaves, params.runs),
+          params.totals,
+        );
         return {
           leaves,
           runs: params.runs,
-          totals: params.totals,
+          // The loader's scanned count stands; reconcile counts only folios read so far.
+          totals: { ...totals, scanned: params.totals.scanned },
           partialLeaves: [],
         };
       },

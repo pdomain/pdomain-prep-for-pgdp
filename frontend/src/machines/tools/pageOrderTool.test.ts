@@ -134,6 +134,29 @@ describe("pageOrderTool — loading lifecycle (W5.5)", () => {
     actor.stop();
   });
 
+  it("flags a persisted folio that disagrees with its computed label on load", async () => {
+    const services = makeServices({
+      fetchFolios: vi.fn().mockResolvedValue({
+        leaves: [
+          makeLeaf({ scan: 1, ocrFolio: "1" }),
+          makeLeaf({ scan: 2, ocrFolio: "9" }),
+        ],
+        runs: [makeRun()],
+        totals: { total: 2, scanned: 2, outOfSeq: 0, gaps: 0, duplicates: 0 },
+      }),
+    });
+    const actor = createActor(pageOrderToolMachine, {
+      input: makeInput({ services }),
+    });
+    actor.start();
+    await waitForState(actor, (s) => s.matches("workspace"));
+    const { leaves, totals } = actor.getSnapshot().context;
+    expect(leaves[1]?.flags).toEqual(["outOfSequence"]);
+    expect(totals?.outOfSeq).toBe(1);
+    expect(totals?.scanned).toBe(2);
+    actor.stop();
+  });
+
   it("fetchFolios rejection transitions to loadError", async () => {
     const services = makeServices({
       fetchFolios: vi.fn().mockRejectedValue(new Error("network error")),
@@ -523,9 +546,9 @@ describe("pageOrderTool — confirm advance", () => {
     actor.start();
     actor.send({
       type: "FOLIOS_DONE",
-      leaves: [makeLeaf()],
+      leaves: [makeLeaf({ ocrFolio: "9" })],
       runs: [makeRun()],
-      totals: { total: 1, scanned: 1, outOfSeq: 1, gaps: 0, duplicates: 0 },
+      totals: { total: 1, scanned: 1, outOfSeq: 0, gaps: 0, duplicates: 0 },
     });
     actor.send({ type: "CONFIRM_ADVANCE" });
     // Should still be in workspace (guard blocks)
