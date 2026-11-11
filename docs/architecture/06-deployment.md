@@ -35,6 +35,7 @@ would use about 16 GB, but actual storage depends on outputs and compression.
 `pgdp-prep reindex <project_id>` reports drift. With `--heal`, orphan files move to
 `.orphan-stage-artifacts` with a manifest; missing artifacts mark rows failed, and hash/version drift marks rows
 dirty with downstream invalidation. Heal does not reclaim durable running jobs.
+The [reindex and heal runbook](../runbooks/reindex-heal.md) has the commands and expected results.
 
 ## Self-hosted
 

@@ -5,8 +5,9 @@ Spec: `docs/specs/pipeline-task-model.md` §"Dual-write reconciliation"
 
 Read-only by default; ``--heal`` mutates:
 
-- **orphan files** (on-disk under ``pages/<id>/stages/`` with no matching
-  clean DB row, or with mismatched hash relative to the row): moved to
+- **orphan files** (on-disk under ``pages/<id>/stages/`` for an unknown
+  stage, with no DB row, with a row that never produced output, or as an
+  extra ``output.*`` beside the primary file): moved to
   ``<project_root>/.orphan-stage-artifacts/<original_relpath>`` with a
   manifest entry recording why and when.
 - **missing files** (DB row says ``clean`` but no file at the expected
@@ -599,6 +600,7 @@ def _print_heal_summary(
             "orphans_moved": counts.orphans_moved,
             "missing_marked_failed": counts.missing_marked_failed,
             "hash_mismatches_marked_dirty": counts.hash_mismatches_marked_dirty,
+            "stale_versions_marked_dirty": counts.stale_versions_marked_dirty,
             "descendants_marked_dirty": counts.descendants_marked_dirty,
             "fts_entries_rebuilt": counts.fts_entries_rebuilt,
         }
@@ -610,6 +612,7 @@ def _print_heal_summary(
         f"{counts.orphans_moved} orphan(s) quarantined, "
         f"{counts.missing_marked_failed} row(s) marked failed, "
         f"{counts.hash_mismatches_marked_dirty} row(s) marked dirty, "
+        f"{counts.stale_versions_marked_dirty} stale-version row(s) marked dirty, "
         f"{counts.descendants_marked_dirty} descendant(s) cascaded to dirty, "
         f"{counts.fts_entries_rebuilt} FTS entry/entries rebuilt",
         file=stdout,

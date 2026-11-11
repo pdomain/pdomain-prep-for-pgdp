@@ -771,10 +771,11 @@ async def reconcile_page(
     3. For each row with status `clean`: file must exist at the expected
        path AND hash must match `input_hash`. Report `MissingFile` or
        `HashMismatch` accordingly.
-    4. For each on-disk file: must have a matching `clean` row at the
-       expected path AND that row's `input_hash` must match the file's
-       sha256. Report `OrphanFile(reason="no-row")` if the row is missing
-       or non-clean; `OrphanFile(reason="stale-hash")` if the hash differs.
+    4. For each on-disk file under a known stage: report
+       `OrphanFile(reason="no-row")` if the row is missing and
+       `OrphanFile(reason="non-clean-row")` if the row says the stage never
+       produced output (`not_run` or `not_applicable`). Dirty, failed and
+       running rows keep their last output, so their files are not orphans.
     """
     rows = await database.list_page_stages_for_page(project_id, page_id)
     rows_by_stage: dict[str, PageStageState] = {r.stage_id: r for r in rows}
@@ -887,7 +888,8 @@ async def reconcile_page(
             )
             continue
         row = rows_by_stage.get(stage_id)
-        if row is None or row.status != PageStageStatus.clean:
+        # A dirty, failed or running row keeps its last output until the next run replaces it.
+        if row is None or row.status in {PageStageStatus.not_run, PageStageStatus.not_applicable}:
             rel = path.relative_to(data_root).as_posix()
             orphans.append(
                 OrphanFile(

@@ -14,6 +14,7 @@ baseline.
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 from datetime import UTC, datetime
@@ -533,3 +534,81 @@ async def test_reindex_heal_marks_stale_version_rows_dirty(
         f"reindex --heal should mark stale-version clean row as dirty, got {threshold.status}"
     )
     await db2.close()
+
+
+async def test_heal_repairs_every_drift_kind_in_one_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project broken in all four documented ways reports drift, heals, then scans clean."""
+    import pdomain_prep_for_pgdp.cli.reindex as r
+    from pdomain_prep_for_pgdp.core.pipeline import stage_dag
+    from pdomain_prep_for_pgdp.settings import Settings
+
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    db_url = f"sqlite:///{(tmp_path / 'state.db').as_posix()}"
+    db = SqliteDatabase(db_url)
+    await db.initialize()
+    await db.put_project(_project())
+    seed_pages_in_store(
+        data_root,
+        "proj1",
+        [PageRecord(project_id="proj1", idx0=i, prefix=f"p{i:03d}", source_stem=f"s{i}") for i in range(4)],
+    )
+    for page_id, stage_id in (
+        ("0000", "threshold"),
+        ("0001", "threshold"),
+        ("0002", "threshold"),
+        ("0003", "deskew"),
+    ):
+        await db.init_page_stages_for_page("proj1", page_id)
+        await commit_stage_artifact(
+            data_root=data_root,
+            database=db,
+            project_id="proj1",
+            page_id=page_id,
+            stage_id=stage_id,
+            artifact_bytes=b"original",
+        )
+    stage_artifact_path(data_root, "proj1", "0000", "threshold").unlink()
+    stage_artifact_path(data_root, "proj1", "0001", "threshold").write_bytes(b"changed on disk")
+    orphan = stage_artifact_path(data_root, "proj1", "0002", "dewarp")
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"no row claims this")
+    monkeypatch.setattr(stage_dag, "V2_STAGE_VERSIONS", dict(stage_dag.V2_STAGE_VERSIONS, deskew=2))
+
+    settings = Settings(
+        data_root=data_root,
+        config_dir=tmp_path / "config",
+        database_url=db_url,
+        gpu_backend="cpu",
+        auth_mode="none",
+        dispatch_interval_seconds=0,
+    )
+    monkeypatch.setattr(r, "Settings", lambda: settings)
+
+    def args(*extra: str) -> argparse.Namespace:
+        parsed = _parse_args(list(extra))
+        parsed.data_root = data_root
+        return parsed
+
+    assert await _run(args(), stdout=io.StringIO()) == 2
+    summary = io.StringIO()
+    assert await _run(args("--heal"), stdout=summary) == 0
+    assert "1 orphan(s) quarantined" in summary.getvalue()
+    assert "1 row(s) marked failed" in summary.getvalue()
+    assert "1 stale-version row(s) marked dirty" in summary.getvalue()
+    assert await _run(args(), stdout=io.StringIO()) == 0
+
+    assert not stage_artifact_path(data_root, "proj1", "0000", "threshold").exists()
+    assert stage_artifact_path(data_root, "proj1", "0001", "threshold").read_bytes() == b"changed on disk"
+    assert not orphan.exists()
+    quarantine = data_root / "projects" / "proj1" / ".orphan-stage-artifacts"
+    assert any(path.name == orphan.name for path in quarantine.rglob("*"))
+    missing = await db.get_page_stage("proj1", "0000", "threshold")
+    mismatched = await db.get_page_stage("proj1", "0001", "threshold")
+    stale = await db.get_page_stage("proj1", "0003", "deskew")
+    assert missing is not None and missing.status == PageStageStatus.failed
+    assert mismatched is not None and mismatched.status == PageStageStatus.dirty
+    assert stale is not None and stale.status == PageStageStatus.dirty
+    await db.close()
