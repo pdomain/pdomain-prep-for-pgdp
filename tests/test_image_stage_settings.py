@@ -406,3 +406,38 @@ def test_rerun_response_keeps_page_identity_and_image_links(
     assert (row["idx"], row["prefix"], row["idx0"], row["state"]) == ("0000", "p001", 0, "flagged")
     assert "afterUrl" not in row
     assert row["beforeUrl"] == f"/api/data/projects/proj1/pages/0/stages/crop/artifact?v={parent_run}"
+
+
+@pytest.mark.parametrize(
+    ("stage_id", "values"),
+    [
+        ("threshold", {"threshold_level": 150}),
+        ("deskew", {"skip_auto_deskew": False}),
+        ("denoise", {"min_component_area": 20}),
+    ],
+)
+def test_each_tier_is_reported_as_the_setting_source(
+    client_and_settings: tuple[TestClient, Settings],
+    stage_id: str,
+    values: dict[str, object],
+) -> None:
+    client, _ = client_and_settings
+    key, value = next(iter(values.items()))
+    resolved = f"/api/data/projects/proj1/pages/0/stages/{stage_id}/settings/resolved"
+
+    assert client.get(resolved).json()["sources"][key] == "registry"
+
+    assert client.put(f"/api/data/settings/stages/{stage_id}", json=values).status_code == 200
+    assert client.get(resolved).json()["sources"][key] == "all"
+
+    assert client.put(f"/api/data/projects/proj1/stages/{stage_id}/settings", json=values).status_code == 200
+    assert client.get(resolved).json()["sources"][key] == "project"
+
+    page = f"/api/data/projects/proj1/pages/0/stages/{stage_id}/settings/page"
+    assert client.put(page, json=values).status_code == 200
+    body = client.get(resolved).json()
+    assert body["sources"][key] == "page"
+    assert body["effective"][key] == value
+
+    other_page = client.get(f"/api/data/projects/proj1/pages/12/stages/{stage_id}/settings/resolved")
+    assert other_page.json()["sources"][key] == "project"

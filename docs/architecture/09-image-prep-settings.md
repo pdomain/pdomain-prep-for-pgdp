@@ -56,8 +56,8 @@ Its current nested configuration covers flattening, converter/channel choice, co
 The older mode/gamma proposal is historical, not the current settings schema.
 
 Grayscale shows resolved-source badges and supports page saves, project defaults, and an app Settings editor.
-Generalizing that UI to threshold, deskew, and denoise remains
-[W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md).
+The image-stage review editor offers the same page and project saves and source badges for every stage with controls,
+plus Clear page override. The app Settings page has app-wide sections for threshold, deskew, and denoise.
 
 ## CPU and GPU execution
 

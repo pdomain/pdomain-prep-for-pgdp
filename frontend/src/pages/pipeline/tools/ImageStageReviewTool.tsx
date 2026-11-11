@@ -51,6 +51,9 @@ import {
   type FlagKindDef,
   type ControlDef,
 } from "./stageSchemas";
+import { ControlEditor } from "./StageControls";
+import { SourceTierBadge } from "./SourceTierBadge";
+import { useStageTiers } from "./useStageTiers";
 import { Button } from "@/components/ui/Button";
 import { buildRealImageStageReviewServices } from "@/services/tools/imageStageReview";
 import { subscribeProjectPageStageChannel } from "@/services/sse";
@@ -341,235 +344,12 @@ function ComparisonPane({
   );
 }
 
-const INSET_EDGES = ["Top", "Bottom", "Left", "Right"] as const;
 const REFRESH_DELAY_MS = 300;
-
-function sliderReadout(ctrl: ControlDef, value: unknown): string {
-  if (typeof value === "number") return String(value);
-  return ctrl.autoLabel ?? "";
-}
-
-function InsetSliders({
-  ctrl,
-  value,
-  onPatch,
-}: {
-  ctrl: ControlDef;
-  value: unknown;
-  onPatch: (patch: Record<string, unknown>) => void;
-}) {
-  const [min, max, step] = ctrl.range ?? [0, 200, 1];
-  const insets = Array.isArray(value) ? (value as number[]) : [0, 0, 0, 0];
-  return (
-    <div style={{ display: "grid", gap: 4 }}>
-      {INSET_EDGES.map((edge, edgeIndex) => (
-        <label
-          key={edge}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "48px 1fr 32px",
-            gap: 6,
-            alignItems: "center",
-            fontSize: 11,
-            color: "var(--ink-3)",
-          }}
-        >
-          {edge}
-          <input
-            type="range"
-            aria-label={`${ctrl.label} ${edge}`}
-            data-testid={`slider-${ctrl.key}-${edgeIndex}`}
-            min={min}
-            max={max}
-            step={step}
-            value={insets[edgeIndex] ?? 0}
-            onChange={(e) =>
-              onPatch({
-                [ctrl.key]: insets.map((inset, i) =>
-                  i === edgeIndex ? parseFloat(e.target.value) : inset,
-                ),
-              })
-            }
-          />
-          <span style={{ fontFamily: "monospace" }}>
-            {insets[edgeIndex] ?? 0}
-          </span>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-/** Control editor for inline page-level parameter tuning */
-function ControlEditor({
-  controls,
-  draft,
-  onPatch,
-}: {
-  controls: ControlDef[];
-  draft: Record<string, unknown>;
-  onPatch: (patch: Record<string, unknown>) => void;
-}) {
-  if (controls.length === 0) {
-    return (
-      <div
-        data-testid="control-editor-empty"
-        style={{ fontSize: 11.5, color: "var(--ink-3)" }}
-      >
-        This stage has no adjustable settings. Re-run repeats it with the
-        current pipeline.
-      </div>
-    );
-  }
-  return (
-    <div
-      data-testid="control-editor"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        padding: "10px 12px",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 7,
-      }}
-    >
-      {controls.map((ctrl) => {
-        const currentVal =
-          draft[ctrl.key] !== undefined ? draft[ctrl.key] : ctrl.defaultValue;
-        return (
-          <div
-            key={ctrl.key}
-            data-testid={`control-${ctrl.key}`}
-            style={{ display: "flex", flexDirection: "column", gap: 5 }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>
-                {ctrl.label}
-              </span>
-              {ctrl.kind === "slider" && (
-                <span
-                  data-testid={`readout-${ctrl.key}`}
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "var(--ink-1)",
-                  }}
-                >
-                  {sliderReadout(ctrl, currentVal)}
-                </span>
-              )}
-            </div>
-            {ctrl.description && (
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--ink-4)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {ctrl.description}
-              </div>
-            )}
-            {ctrl.kind === "slider" && ctrl.range && (
-              <input
-                type="range"
-                aria-label={ctrl.label}
-                data-testid={`slider-${ctrl.key}`}
-                min={ctrl.range[0]}
-                max={ctrl.range[1]}
-                step={ctrl.range[2]}
-                value={
-                  typeof currentVal === "number" ? currentVal : ctrl.range[0]
-                }
-                onChange={(e) =>
-                  onPatch({ [ctrl.key]: parseFloat(e.target.value) })
-                }
-                style={{ width: "100%" }}
-              />
-            )}
-            {ctrl.kind === "slider" && ctrl.autoLabel && (
-              <button
-                type="button"
-                data-testid={`auto-${ctrl.key}`}
-                aria-pressed={currentVal === null}
-                onClick={() => onPatch({ [ctrl.key]: null })}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid var(--border-2)",
-                  background:
-                    currentVal === null ? "var(--accent)" : "var(--bg-raised)",
-                  color: currentVal === null ? "#fff" : "var(--ink-2)",
-                  fontSize: 11.5,
-                  cursor: "pointer",
-                  alignSelf: "flex-start",
-                }}
-              >
-                {ctrl.autoLabel}
-              </button>
-            )}
-            {ctrl.kind === "insets" && (
-              <InsetSliders ctrl={ctrl} value={currentVal} onPatch={onPatch} />
-            )}
-            {ctrl.kind === "toggle" && (
-              <button
-                type="button"
-                data-testid={`toggle-${ctrl.key}`}
-                aria-pressed={Boolean(currentVal)}
-                onClick={() => onPatch({ [ctrl.key]: !currentVal })}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid var(--border-2)",
-                  background: currentVal ? "var(--accent)" : "var(--bg-raised)",
-                  color: currentVal ? "#fff" : "var(--ink-2)",
-                  fontSize: 11.5,
-                  cursor: "pointer",
-                  alignSelf: "flex-start",
-                }}
-              >
-                {currentVal ? "On" : "Off"}
-              </button>
-            )}
-            {ctrl.kind === "select" && ctrl.options && (
-              <select
-                aria-label={ctrl.label}
-                data-testid={`select-${ctrl.key}`}
-                value={String(currentVal)}
-                onChange={(e) =>
-                  onPatch({
-                    [ctrl.key]: ctrl.options?.find(
-                      (option) => String(option) === e.target.value,
-                    ),
-                  })
-                }
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid var(--border-2)",
-                  background: "var(--bg-raised)",
-                  color: "var(--ink-1)",
-                  fontSize: 11.5,
-                }}
-              >
-                {ctrl.options.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 /** Inline page editor — exclusive, one at a time */
 function InlineEditor({
+  projectId,
+  stageId,
   row,
   draft,
   applyTo,
@@ -581,6 +361,8 @@ function InlineEditor({
   onRerun,
   onCancel,
 }: {
+  projectId: string;
+  stageId: string;
   row: PageRow;
   draft: Record<string, unknown>;
   applyTo: "this" | "selected" | "sameIssue";
@@ -592,6 +374,13 @@ function InlineEditor({
   onRerun: () => void;
   onCancel: () => void;
 }) {
+  const tiers = useStageTiers(projectId, stageId, row.idx0);
+  const hasEdits = Object.keys(draft).length > 0;
+  const hasPageOverride = Object.values(tiers.current.sources).includes("page");
+  const saveFailed =
+    tiers.savePage.isError ||
+    tiers.saveProject.isError ||
+    tiers.clearPage.isError;
   return (
     <div
       data-testid={`inline-editor-${row.idx}`}
@@ -669,7 +458,78 @@ function InlineEditor({
 
       {/* Controls */}
       <div style={{ padding: 12 }}>
-        <ControlEditor controls={controls} draft={draft} onPatch={onPatch} />
+        <ControlEditor
+          controls={controls}
+          values={{ ...tiers.current.effective, ...draft }}
+          onPatch={onPatch}
+          badgeFor={(key) =>
+            key in draft ? (
+              <span
+                data-testid={`edited-${key}`}
+                style={{ fontSize: 9.5, color: "var(--accent)" }}
+              >
+                edited
+              </span>
+            ) : tiers.current.sources[key] ? (
+              <SourceTierBadge
+                tier={tiers.current.sources[key]}
+                testId={`source-${key}`}
+              />
+            ) : null
+          }
+        />
+        {tiers.resolved.isError && (
+          <div
+            role="alert"
+            style={{ marginTop: 6, fontSize: 11.5, color: "var(--mismatch)" }}
+          >
+            Could not load this page's saved settings.
+          </div>
+        )}
+        {tiers.resolved.isSuccess && controls.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasEdits || tiers.savePage.isPending}
+              onClick={() => tiers.savePage.mutate(draft)}
+            >
+              Save for this page
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!hasEdits || tiers.saveProject.isPending}
+              onClick={() => tiers.saveProject.mutate(draft)}
+            >
+              Save as project default
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!hasPageOverride || tiers.clearPage.isPending}
+              onClick={() => tiers.clearPage.mutate()}
+            >
+              Clear page override
+            </Button>
+            {saveFailed && (
+              <span
+                role="alert"
+                style={{ fontSize: 11.5, color: "var(--mismatch)" }}
+              >
+                Could not save the settings.
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Apply-to selector */}
@@ -1242,6 +1102,8 @@ export function ImageStageReviewTool({
               {/* Inline editor (exclusive) */}
               {isOpen && editingRow && !isRerunning && (
                 <InlineEditor
+                  projectId={projectId}
+                  stageId={stageId}
                   row={editingRow}
                   draft={ctx.draft ?? {}}
                   applyTo={ctx.applyTo}

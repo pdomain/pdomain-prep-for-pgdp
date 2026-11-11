@@ -22,6 +22,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { api } from "@/api/client";
 import { ImageStageReviewTool } from "./ImageStageReviewTool";
 import type { ToolSlotProps } from "../toolSlot";
 import type {
@@ -91,15 +94,34 @@ const TEST_SERVICES: ImageStageReviewServices = {
   confirmStage: () => Promise.resolve({ ok: true }),
 };
 
+function Providers({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/"]}>{children}</MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+beforeEach(() => {
+  vi.spyOn(api, "get").mockResolvedValue({ effective: {}, sources: {} });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 function renderReview(stageId: string) {
   return render(
-    <MemoryRouter>
+    <Providers>
       <ImageStageReviewTool
         stageId={stageId}
         runnerRef={MOCK_RUNNER_REF}
         _testServices={TEST_SERVICES}
       />
-    </MemoryRouter>,
+    </Providers>,
   );
 }
 
@@ -648,15 +670,15 @@ function servicesWith(rows: PageRow[]): ImageStageReviewServices {
   };
 }
 
-function renderWith(services: ImageStageReviewServices) {
+function renderWith(services: ImageStageReviewServices, stageId = "threshold") {
   return render(
-    <MemoryRouter>
+    <Providers>
       <ImageStageReviewTool
-        stageId="threshold"
+        stageId={stageId}
         runnerRef={MOCK_RUNNER_REF}
         _testServices={services}
       />
-    </MemoryRouter>,
+    </Providers>,
   );
 }
 
@@ -751,5 +773,107 @@ describe("ImageStageReviewTool — refresh after a run", () => {
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     expect(fetchStagePages).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ImageStageReviewTool — settings tiers", () => {
+  const RESOLVED = {
+    effective: { min_component_area: 12, median_kernel_size: 3 },
+    sources: { min_component_area: "page", median_kernel_size: "project" },
+  };
+  const PAGE_URL =
+    "/api/data/projects/mock-project/pages/1/stages/denoise/settings";
+
+  async function openDenoise() {
+    vi.spyOn(api, "get").mockResolvedValue(RESOLVED);
+    renderWith(servicesWith([IMAGE_ROW]), "denoise");
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    await screen.findByTestId("source-min_component_area");
+  }
+
+  it("shows each saved value and the tier it came from", async () => {
+    await openDenoise();
+
+    expect(screen.getByTestId("source-min_component_area").textContent).toBe(
+      "from: page",
+    );
+    expect(screen.getByTestId("source-median_kernel_size").textContent).toBe(
+      "from: project",
+    );
+    expect(
+      screen.getByTestId<HTMLInputElement>("slider-min_component_area").value,
+    ).toBe("12");
+  });
+
+  it("marks a changed field as edited", async () => {
+    await openDenoise();
+
+    fireEvent.change(screen.getByTestId("slider-min_component_area"), {
+      target: { value: "20" },
+    });
+
+    expect(
+      await screen.findByTestId("edited-min_component_area"),
+    ).toBeDefined();
+    expect(screen.queryByTestId("source-min_component_area")).toBeNull();
+  });
+
+  it("saves a page override and keeps the page's other fields", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("select-median_kernel_size"), {
+      target: { value: "5" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save for this page" }));
+
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledWith(`${PAGE_URL}/page`, {
+        min_component_area: 12,
+        median_kernel_size: 5,
+      });
+    });
+  });
+
+  it("saves a project default and keeps the project's other fields", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("slider-min_component_area"), {
+      target: { value: "20" },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save as project default" }),
+    );
+
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledWith(
+        "/api/data/projects/mock-project/stages/denoise/settings",
+        { median_kernel_size: 3, min_component_area: 20 },
+      );
+    });
+  });
+
+  it("clears the page override", async () => {
+    const del = vi.spyOn(api, "delete").mockResolvedValue({});
+    await openDenoise();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear page override" }),
+    );
+
+    await waitFor(() => {
+      expect(del).toHaveBeenCalledWith(`${PAGE_URL}/page`);
+    });
+  });
+
+  it("disables saving until a field changes", async () => {
+    await openDenoise();
+
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Save for this page",
+      }).disabled,
+    ).toBe(true);
   });
 });

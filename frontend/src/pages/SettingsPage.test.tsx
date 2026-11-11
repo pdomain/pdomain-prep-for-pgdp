@@ -264,3 +264,41 @@ describe("SettingsPage — grayscale all-tier form load", () => {
     });
   });
 });
+
+describe("SettingsPage — image stage app defaults", () => {
+  it("offers app-wide threshold, deskew and denoise settings", async () => {
+    server.use(
+      http.get("/api/data/system/defaults", () =>
+        HttpResponse.json(mockDefaults),
+      ),
+      http.get("/api/data/settings/stages/grayscale", () =>
+        HttpResponse.json(GRAYSCALE_CONFIG_DEFAULTS),
+      ),
+      http.get("/api/data/settings/stages/threshold", () =>
+        HttpResponse.json({ threshold_level: 150 }),
+      ),
+      http.get("/api/data/settings/stages/deskew", () =>
+        HttpResponse.json({ skip_auto_deskew: true }),
+      ),
+      http.get("/api/data/settings/stages/denoise", () =>
+        HttpResponse.json({
+          min_component_area: 6,
+          median_kernel_size: 0,
+          skip_denoise: null,
+        }),
+      ),
+    );
+
+    renderWithProviders(<SettingsPage />);
+
+    expect(
+      await screen.findByTestId("readout-threshold_level"),
+    ).toHaveTextContent("150");
+    expect(
+      await screen.findByTestId("toggle-skip_auto_deskew"),
+    ).toHaveTextContent("On");
+    expect(
+      await screen.findByTestId("slider-min_component_area"),
+    ).toBeInTheDocument();
+  });
+});
