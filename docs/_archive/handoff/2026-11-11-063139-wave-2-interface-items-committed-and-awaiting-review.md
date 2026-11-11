@@ -1,7 +1,6 @@
 ---
-kind: handoff
-status: "active"
-created: "2026-11-11"
+kind: archive
+status: retired
 created_at: "2026-11-11T06:31:41Z"
 owner: "CT"
 branch: "feat/wave2-interface"
@@ -11,9 +10,13 @@ base_commit: "36fd0fc07d2f218ceceb66dae92ccca4fae18b61"
 supersedes: "2026-11-11-052844-job-reliability-fixes-committed-and-awaiting-merge.md"
 handoff_reason: "stopping"
 host: "claude-code"
+created: "2026-11-11"
+last_verified: "2026-11-11"
 ---
 
 # Wave 2 interface items are committed on the branch and await owner review
+
+> **Retired — superseded by `docs/handoff/2026-11-11-072044-night-wave3-browser-fixes-and-issue-work.md`.**
 
 ## Goal
 
