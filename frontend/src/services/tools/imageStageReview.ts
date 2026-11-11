@@ -25,25 +25,9 @@ async function fetchStagePages(
   projectId: string,
   stageId: string,
 ): Promise<{ rows: PageRow[]; totals: Totals }> {
-  try {
-    const result = await api.get<{ rows: PageRow[]; totals: Totals }>(
-      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/pages`,
-    );
-    return result;
-  } catch {
-    return {
-      rows: [],
-      totals: {
-        total: 0,
-        clean: 0,
-        flagged: 0,
-        done: 0,
-        reviewed: 0,
-        errors: 0,
-        running: 0,
-      },
-    };
-  }
+  return api.get<{ rows: PageRow[]; totals: Totals }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/pages`,
+  );
 }
 
 /**
@@ -60,22 +44,11 @@ async function reRunPages(
   draft: Record<string, unknown>,
   pageIds: string[],
 ): Promise<PageRow[]> {
-  try {
-    const result = await api.post<{ rows: PageRow[] }>(
-      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/rerun`,
-      { page_ids: pageIds, settings: draft },
-    );
-    return result.rows;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return pageIds.map((idx, i) => ({
-      idx,
-      prefix: idx,
-      state: "failed",
-      flags: [msg],
-      pageNumber: i,
-    }));
-  }
+  const result = await api.post<{ rows: PageRow[] }>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/rerun`,
+    { page_ids: pageIds, settings: draft },
+  );
+  return result.rows;
 }
 
 // The image-stage-review bespoke confirm routes (W4 Group 1) are project-level

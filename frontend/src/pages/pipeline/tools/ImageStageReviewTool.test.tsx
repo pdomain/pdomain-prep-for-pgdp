@@ -877,3 +877,51 @@ describe("ImageStageReviewTool — settings tiers", () => {
     ).toBe(true);
   });
 });
+
+describe("ImageStageReviewTool — failed refresh and stale saves", () => {
+  it("keeps the rows when a refresh fails", async () => {
+    vi.stubGlobal("EventSource", vi.fn());
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+    fetchStagePages.mockRejectedValue(new Error("offline"));
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "threshold",
+      status: "clean",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(fetchStagePages).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("img", { name: "Page p002" })).toBeDefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("disables saving while reopened settings reload", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue({
+      effective: { min_component_area: 12 },
+      sources: { min_component_area: "page" },
+    });
+    renderWith(servicesWith([IMAGE_ROW]), "denoise");
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    await screen.findByTestId("source-min_component_area");
+    fireEvent.click(screen.getByTestId("editor-close-btn"));
+    get.mockReturnValue(new Promise(() => undefined));
+
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    fireEvent.change(await screen.findByTestId("slider-min_component_area"), {
+      target: { value: "20" },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", {
+          name: "Save for this page",
+        }).disabled,
+      ).toBe(true);
+    });
+  });
+});

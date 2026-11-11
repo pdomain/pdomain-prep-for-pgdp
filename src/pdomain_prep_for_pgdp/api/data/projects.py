@@ -634,7 +634,7 @@ async def export_project_copy(
         indent=2,
     ).encode("utf-8")
 
-    export_dir = _prepare_export_dir(settings.data_root)
+    export_dir = await asyncio.to_thread(_prepare_export_dir, settings.data_root)
     destination = export_dir / f"{uuid.uuid4().hex}.zip"
     try:
         await asyncio.to_thread(

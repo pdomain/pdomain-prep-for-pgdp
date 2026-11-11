@@ -441,3 +441,34 @@ def test_each_tier_is_reported_as_the_setting_source(
 
     other_page = client.get(f"/api/data/projects/proj1/pages/12/stages/{stage_id}/settings/resolved")
     assert other_page.json()["sources"][key] == "project"
+
+
+def test_rerun_rejects_an_unknown_page_before_any_write(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, settings = client_and_settings
+
+    response = client.post(
+        "/api/data/projects/proj1/project-stages/threshold/rerun",
+        json={"page_ids": ["0000", "5"], "settings": {"threshold_level": 170}},
+    )
+
+    assert response.status_code == 422
+    assert "5" in response.json()["message"]
+    assert _store(settings).get_page_override("proj1", "threshold", "0000") is None
+    assert _queued_rerun_jobs(settings) == []
+
+
+def test_rerun_queues_a_repeated_page_once(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, settings = client_and_settings
+
+    response = client.post(
+        "/api/data/projects/proj1/project-stages/threshold/rerun",
+        json={"page_ids": ["0000", "0000"]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()["rows"]) == 1
+    assert _queued_rerun_jobs(settings) == ["0000"]

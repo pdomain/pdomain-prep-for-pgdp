@@ -273,7 +273,7 @@ function CanvasMapExtras({
           <div style={{ fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>
             Re-derive sets the canvas to the median page shape, then re-runs
             every page. Pages more than 5% away from the median are outliers and
-            do not change it much.
+            do not change it much. Pages with their own saved ratio keep it.
           </div>
           <div
             style={{

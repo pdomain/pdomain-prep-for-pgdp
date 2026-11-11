@@ -193,3 +193,12 @@ def test_the_stub_post_route_is_gone(
     client, _ = client_and_settings
 
     assert client.post("/api/data/projects/proj1/export").status_code == 405
+
+
+def test_zip_fails_rather_than_copying_a_damaged_database_raw(tmp_path: Path) -> None:
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "events.db").write_bytes(b"SQLite format 3\x00" + b"\xff" * 200)
+
+    with pytest.raises(sqlite3.DatabaseError):
+        write_project_zip(project_dir, b"{}", tmp_path / "copy.zip")

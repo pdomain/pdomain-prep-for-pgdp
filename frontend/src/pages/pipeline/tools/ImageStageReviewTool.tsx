@@ -499,7 +499,11 @@ function InlineEditor({
             <Button
               variant="outline"
               size="sm"
-              disabled={!hasEdits || tiers.savePage.isPending}
+              disabled={
+                !hasEdits ||
+                tiers.resolved.isFetching ||
+                tiers.savePage.isPending
+              }
               onClick={() => tiers.savePage.mutate(draft)}
             >
               Save for this page
@@ -507,7 +511,11 @@ function InlineEditor({
             <Button
               variant="outline"
               size="sm"
-              disabled={!hasEdits || tiers.saveProject.isPending}
+              disabled={
+                !hasEdits ||
+                tiers.resolved.isFetching ||
+                tiers.saveProject.isPending
+              }
               onClick={() => tiers.saveProject.mutate(draft)}
             >
               Save as project default
@@ -840,15 +848,25 @@ export function ImageStageReviewTool({
     if (typeof EventSource === "undefined") return;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let active = true;
+    let latestRequest = 0;
     const unsubscribe = subscribeProjectPageStageChannel(projectId, (event) => {
       if (event.type !== "stage-status" || event.stage_id !== stageId) return;
       if (event.status !== "clean" && event.status !== "failed") return;
       // A batch finishes one page at a time; one fetch covers a burst of events.
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
-        void services.fetchStagePages(projectId, stageId).then(({ rows }) => {
-          if (active) send({ type: "ROWS_REFRESHED", rows });
-        });
+        latestRequest += 1;
+        const request = latestRequest;
+        services
+          .fetchStagePages(projectId, stageId)
+          .then(({ rows }) => {
+            if (active && request === latestRequest) {
+              send({ type: "ROWS_REFRESHED", rows });
+            }
+          })
+          .catch(() => {
+            // The shown rows stay valid, and the next finished page refreshes them.
+          });
       }, REFRESH_DELAY_MS);
     });
     return () => {

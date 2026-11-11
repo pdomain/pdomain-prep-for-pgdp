@@ -598,3 +598,66 @@ describe("ROWS_REFRESHED", () => {
     actor.stop();
   });
 });
+
+describe("ROWS_REFRESHED state changes", () => {
+  async function startRunning() {
+    return startAndLoad({
+      services: makeServices({
+        fetchStagePages: vi.fn().mockResolvedValue({
+          rows: [makeRow({ idx: "p001", state: "running", pageNumber: 1 })],
+          totals: makeTotals({ running: 1 }),
+        }),
+      }),
+    });
+  }
+
+  it("stays running while a page is still running", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "running", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().value).toBe("running");
+    actor.stop();
+  });
+
+  it("moves from running to review when a page is flagged", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "flagged", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().matches("review")).toBe(true);
+    actor.stop();
+  });
+
+  it("moves from running to settled when every page is clean", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "clean", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().value).toBe("settled");
+    actor.stop();
+  });
+
+  it("reopens review from settled when a page becomes flagged", async () => {
+    const actor = await startAndLoad({
+      services: makeServices({
+        fetchStagePages: vi.fn().mockResolvedValue({
+          rows: [makeRow({ idx: "p001", state: "clean", pageNumber: 1 })],
+          totals: makeTotals({ clean: 1 }),
+        }),
+      }),
+    });
+    expect(actor.getSnapshot().value).toBe("settled");
+
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "flagged", pageNumber: 1 })],
+    });
+
+    expect(actor.getSnapshot().matches("review")).toBe(true);
+    actor.stop();
+  });
+});

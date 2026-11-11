@@ -45,6 +45,7 @@ All project-stage routes enforce the registry-version 409 guard.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -1674,18 +1675,24 @@ async def get_canvas_map_aspect_points(
         s.page_id for s in all_stages if s.stage_id == input_stage and s.status == PageStageStatus.clean
     }
 
-    measured: list[tuple[PageRecord, int, int]] = []
-    for page in list_page_records(page_service, project_id):
-        page_id = f"{page.idx0:04d}"
-        if page_id not in clean_pages:
-            continue
-        path = stage_artifact_path(settings.data_root, project_id, page_id, input_stage)
-        if not path.exists():
-            continue
-        with path.open("rb") as image:
-            dimensions = png_dimensions(image.read(PNG_HEADER_BYTES))
-        if dimensions is not None and dimensions[0] > 0:
-            measured.append((page, dimensions[0], dimensions[1]))
+    pages = list_page_records(page_service, project_id)
+
+    def measure_pages() -> list[tuple[PageRecord, int, int]]:
+        found: list[tuple[PageRecord, int, int]] = []
+        for page in pages:
+            page_id = f"{page.idx0:04d}"
+            if page_id not in clean_pages:
+                continue
+            path = stage_artifact_path(settings.data_root, project_id, page_id, input_stage)
+            if not path.exists():
+                continue
+            with path.open("rb") as image:
+                dimensions = png_dimensions(image.read(PNG_HEADER_BYTES))
+            if dimensions is not None and dimensions[0] > 0:
+                found.append((page, dimensions[0], dimensions[1]))
+        return found
+
+    measured = await asyncio.to_thread(measure_pages)
 
     ratios = [height / width for _, width, height in measured]
     body_ratio, is_body = split_body_pages(ratios)
@@ -1727,7 +1734,8 @@ def _save_rerun_settings(
     settings: Settings,
     project_id: str,
     stage_id: str,
-    body: _BatchRerunRequest,
+    page_ids: list[str],
+    values: dict[str, object],
     *,
     actor_id: str,
 ) -> None:
@@ -1737,7 +1745,7 @@ def _save_rerun_settings(
     )
 
     registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
-    unknown = sorted(set(body.settings) - set(registry_default))
+    unknown = sorted(set(values) - set(registry_default))
     if unknown:
         raise HTTPException(422, f"stage {stage_id!r} has no settings named: {', '.join(unknown)}")
 
@@ -1745,13 +1753,13 @@ def _save_rerun_settings(
     db_path.parent.mkdir(parents=True, exist_ok=True)
     store = StageSettingsStore(db_path)
     app, aggregate = _load_settings_aggregate(settings, project_id)
-    for page_id in body.page_ids:
+    for page_id in page_ids:
         existing = store.get_page_override(project_id, stage_id, page_id) or {}
         store.save_page_override(
             project_id,
             stage_id,
             page_id,
-            {**existing, **body.settings},
+            {**existing, **values},
             aggregate=aggregate,
             registry_default=registry_default,
             actor_id=actor_id,
@@ -1802,8 +1810,17 @@ async def rerun_project_stage_pages(
     if _rv is not None:
         return _rv
 
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    all_pages = list_page_records(page_service, project_id)
+    position_and_page = {f"{page.idx0:04d}": (i, page) for i, page in enumerate(all_pages)}
+    page_ids = list(dict.fromkeys(body.page_ids))
+    unknown_pages = [page_id for page_id in page_ids if page_id not in position_and_page]
+    if unknown_pages:
+        raise HTTPException(422, f"unknown page ids: {', '.join(unknown_pages)}")
+
     if body.settings:
-        _save_rerun_settings(settings, project_id, stage_id, body, actor_id=user.user_id)
+        _save_rerun_settings(settings, project_id, stage_id, page_ids, body.settings, actor_id=user.user_id)
 
     # Resolved once and reused for every job in the batch — the compute
     # device preference doesn't change mid-request.
@@ -1812,13 +1829,8 @@ async def rerun_project_stage_pages(
     # Mark each requested page as dirty for this stage and enqueue its
     # run_page_stage job, mirroring the async per-page route (pages.py
     # run_page_stage's `?async=true` branch).
-    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
-
-    all_pages = list_page_records(page_service, project_id)
-    position_and_page = {f"{page.idx0:04d}": (i, page) for i, page in enumerate(all_pages)}
-
     updated_rows: list[dict[str, object]] = []
-    for i, page_id in enumerate(body.page_ids):
+    for page_id in page_ids:
         # Mark dirty in page_stages.
         await db.put_page_stage(
             PageStageState(
@@ -1843,15 +1855,10 @@ async def rerun_project_stage_pages(
             },
         )
         await db.put_job(job)
-        located = position_and_page.get(page_id)
-        if located is not None:
-            states = {
-                (s.page_id, s.stage_id): s for s in await db.list_page_stages_for_page(project_id, page_id)
-            }
-            links = _page_image_links(project_id, located[1], stage_id, states)
-            updated_rows.append(_build_page_row(located[1], PageStageStatus.dirty, located[0], None, links))
-        else:
-            updated_rows.append({"idx": page_id, "prefix": page_id, "state": "flagged", "pageNumber": i})
+        position, page = position_and_page[page_id]
+        states = {(s.page_id, s.stage_id): s for s in await db.list_page_stages_for_page(project_id, page_id)}
+        links = _page_image_links(project_id, page, stage_id, states)
+        updated_rows.append(_build_page_row(page, PageStageStatus.dirty, position, None, links))
 
     return JSONResponse(content={"rows": updated_rows})
 

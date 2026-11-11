@@ -9,18 +9,21 @@ from pathlib import Path
 
 MANIFEST_NAME = "pgdp-prep-export.json"
 _SQLITE_SIDECARS = ("-wal", "-shm")
-_DATABASE_SUFFIX = ".db"
+_SQLITE_HEADER = b"SQLite format 3\x00"
 
 
-def _sqlite_snapshot(source: Path, working_dir: Path) -> Path | None:
-    """Copy a live SQLite file consistently; None means the file is not SQLite."""
+def _is_sqlite(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(len(_SQLITE_HEADER)) == _SQLITE_HEADER
+
+
+def _sqlite_snapshot(source: Path, working_dir: Path) -> Path:
+    """Copy a live SQLite file consistently; a raw copy would lose its WAL contents."""
     snapshot = working_dir / f"{source.name}.snapshot"
     source_db = sqlite3.connect(f"{source.as_uri()}?mode=ro", uri=True)
     target_db = sqlite3.connect(snapshot)
     try:
         source_db.backup(target_db)
-    except sqlite3.DatabaseError:
-        return None
     finally:
         source_db.close()
         target_db.close()
@@ -40,7 +43,7 @@ def write_project_zip(project_dir: Path, manifest: bytes, destination: Path) -> 
             if not path.is_file() or path.name.endswith(_SQLITE_SIDECARS):
                 continue
             arcname = f"project/{path.relative_to(project_dir).as_posix()}"
-            snapshot = _sqlite_snapshot(path, Path(working)) if path.suffix == _DATABASE_SUFFIX else None
+            snapshot = _sqlite_snapshot(path, Path(working)) if _is_sqlite(path) else None
             archive.write(snapshot or path, arcname)
             if snapshot is not None:
                 snapshot.unlink()

@@ -24,6 +24,8 @@ export function useStageTiers(
     queryKey: [...stageKey, idx0],
     queryFn: () => fetchResolved(projectId, stageId, idx0 ?? 0),
     enabled: idx0 !== undefined,
+    // A re-run writes page overrides, and a save built on old values would undo them.
+    refetchOnMount: "always",
   });
   const current = resolved.data ?? EMPTY;
 

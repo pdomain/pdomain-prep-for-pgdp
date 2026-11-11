@@ -302,6 +302,14 @@ export const imageStageReviewMachine = setup({
       return running === 0 && flagged === 0;
     },
 
+    refreshStillRunning: ({ event }) =>
+      event.type === "ROWS_REFRESHED" &&
+      event.rows.some((r) => r.state === "running"),
+
+    refreshHasFlags: ({ context, event }) =>
+      event.type === "ROWS_REFRESHED" &&
+      keepReviewed(context.rows, event.rows).some((r) => r.state === "flagged"),
+
     /**
      * YAML: `allFlagsReviewed: totals.flagged === 0 || totals.flagged === totals.reviewed`
      * Guards CONFIRM_ADVANCE — enabled only when every flagged page has been reviewed.
@@ -679,6 +687,15 @@ export const imageStageReviewMachine = setup({
 
     running: {
       on: {
+        ROWS_REFRESHED: [
+          { guard: "refreshStillRunning", actions: ["assignRefreshedRows"] },
+          {
+            target: "review",
+            guard: "refreshHasFlags",
+            actions: ["assignRefreshedRows"],
+          },
+          { target: "settled", actions: ["assignRefreshedRows"] },
+        ],
         PAGE_PUSH: [
           {
             target: "review",
@@ -824,6 +841,14 @@ export const imageStageReviewMachine = setup({
     settled: {
       entry: ["emitResolved"],
       on: {
+        ROWS_REFRESHED: [
+          {
+            target: "review",
+            guard: "refreshHasFlags",
+            actions: ["assignRefreshedRows"],
+          },
+          { actions: ["assignRefreshedRows"] },
+        ],
         OPEN_EDITOR: {
           target: "review.editing",
           actions: ["assignEditing", "beginDraft"],
