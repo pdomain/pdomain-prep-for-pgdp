@@ -80,6 +80,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStageStatus,
     StageRunRequest,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
     ProjectStageStore,
     StageReviewStore,
@@ -888,12 +889,7 @@ async def confirm_submit_check(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -1045,12 +1041,7 @@ async def _confirm_stage_impl(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -1388,12 +1379,7 @@ async def put_page_order_naming(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -3211,12 +3197,7 @@ async def put_project_stage_settings(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = PrepApplication(env=event_store_env(_events_db))
         try:
             _proj_uuid = _uuid.UUID(project_id)
         except ValueError:

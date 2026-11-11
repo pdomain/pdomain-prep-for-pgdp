@@ -9,6 +9,8 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -258,12 +260,7 @@ def test_prep_aggregate_persists_and_loads(tmp_path: Path) -> None:
     )
 
     db_path = tmp_path / "events.db"
-    app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(db_path),
-        }
-    )
+    app = PrepApplication(env=event_store_env(db_path))
 
     project_id = uuid.uuid4()
     agg = PrepProjectAggregate(project_id=project_id)

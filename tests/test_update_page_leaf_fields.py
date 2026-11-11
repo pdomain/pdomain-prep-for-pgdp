@@ -26,6 +26,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.settings import Settings
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -255,12 +256,7 @@ def test_patch_leaf_role_records_event(tmp_path: Path) -> None:
     assert events_db.exists(), "events.db not created"
 
     agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
-    ev_app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(events_db),
-        }
-    )
+    ev_app = PrepApplication(env=event_store_env(events_db))
     loaded = ev_app.repository.get(agg_id)
     assert loaded.version >= 1  # type: ignore[attr-defined]
 
@@ -282,12 +278,7 @@ def test_patch_run_id_records_event(tmp_path: Path) -> None:
 
     events_db = settings.data_root / "projects" / "proj1" / "events.db"
     agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
-    ev_app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(events_db),
-        }
-    )
+    ev_app = PrepApplication(env=event_store_env(events_db))
     loaded = ev_app.repository.get(agg_id)
     assert loaded.version >= 1  # type: ignore[attr-defined]
 

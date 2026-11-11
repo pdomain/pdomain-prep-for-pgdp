@@ -25,6 +25,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast
 
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 from .ingest import generate_thumbnails, unzip_source
@@ -521,12 +522,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     try:
         from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
-        _agg_app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-            }
-        )
+        _agg_app = PrepApplication(env=event_store_env(data_root / "projects" / project_id / "events.db"))
         agg_id = _uuid.UUID(project_id) if len(project_id) == 36 else None
         if agg_id is not None:
             _agg_uuid = PrepProjectAggregate.create_id(agg_id)
@@ -677,10 +673,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
             _agg_app2 = PrepApplication(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-                }
+                env=event_store_env(data_root / "projects" / project_id / "events.db")
             )
             agg_id2 = _uuid.UUID(project_id) if len(project_id) == 36 else None
             if agg_id2 is not None:
@@ -758,10 +751,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
             _agg_app3 = PrepApplication(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-                }
+                env=event_store_env(data_root / "projects" / project_id / "events.db")
             )
             agg_id3 = _uuid.UUID(project_id) if len(project_id) == 36 else None
             if agg_id3 is not None:

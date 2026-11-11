@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
+
 if TYPE_CHECKING:
     pass
 
@@ -37,12 +39,7 @@ def _make_prep_app(tmp_path: Path):
     )
 
     db_path = tmp_path / "events.db"
-    app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(db_path),
-        }
-    )
+    app = PrepApplication(env=event_store_env(db_path))
     project_id = uuid.uuid4()
     agg = PrepProjectAggregate(project_id=project_id)
     app.save(agg)
@@ -194,12 +191,7 @@ class TestW21PageStageEvents:
         events_db = settings.data_root / "projects" / project_id / "events.db"
         assert events_db.exists(), "events.db not created by run_stage"
 
-        app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        app = PrepApplication(env=event_store_env(events_db))
         # Find the aggregate by UUID derived from project_id.
         _agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, project_id))
         try:
@@ -328,12 +320,7 @@ class TestW21PageStageEvents:
         events_db = settings.data_root / "projects" / project_id / "events.db"
         assert events_db.exists(), "events.db not created"
 
-        app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        app = PrepApplication(env=event_store_env(events_db))
         _agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, project_id))
         try:
             loaded = app.repository.get(_agg_id)
@@ -442,12 +429,7 @@ class TestW22W31PageReorder:
         events_db = settings.data_root / "projects" / "proj1" / "events.db"
         assert events_db.exists(), "events.db not created by reorder route"
 
-        app_ev = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        app_ev = PrepApplication(env=event_store_env(events_db))
         _agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
         try:
             loaded = app_ev.repository.get(_agg_id)
@@ -634,12 +616,7 @@ class TestW23SubmitCheckConfirm:
         events_db = settings.data_root / "projects" / "proj1" / "events.db"
         assert events_db.exists(), "events.db not created by confirm route"
 
-        app_ev = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        app_ev = PrepApplication(env=event_store_env(events_db))
         _agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
         try:
             loaded = app_ev.repository.get(_agg_id)
@@ -780,12 +757,7 @@ class TestW24SettingsChangeEvents:
         events_db = settings.data_root / "projects" / "proj1" / "events.db"
         assert events_db.exists(), "events.db not created by PUT settings"
 
-        app_ev = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        app_ev = PrepApplication(env=event_store_env(events_db))
         _agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
         try:
             loaded = app_ev.repository.get(_agg_id)

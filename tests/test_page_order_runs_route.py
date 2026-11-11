@@ -25,6 +25,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.settings import Settings
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -202,12 +203,7 @@ def test_put_runs_records_numbering_runs_changed_event(tmp_path: Path) -> None:
 
     # Reconstruct aggregate and verify version advanced (event appended).
     agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
-    ev_app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(events_db),
-        }
-    )
+    ev_app = PrepApplication(env=event_store_env(events_db))
     loaded = ev_app.repository.get(agg_id)
     assert loaded.version >= 1  # type: ignore[attr-defined]
 

@@ -1,6 +1,10 @@
+import contextlib
+import sqlite3
 import uuid
 from pathlib import Path
+from typing import Any
 
+import eventsourcing.sqlite
 import pytest
 from pdomain_ops.page_aggregate import PageAggregate, ProjectAggregate
 from pdomain_ops.pages import PageRecord, ProjectRecord, get_extension, set_extension
@@ -65,3 +69,33 @@ def test_separate_projects_isolated(tmp_path: Path, project_id: str) -> None:
     build_page_service(tmp_path, project_id)
     pd_pages = tmp_path / "projects" / project_id / ".pd-pages"
     assert (pd_pages / "events.db").exists()
+
+
+class _RecordingSqlite3:
+    """Stands in for the ``sqlite3`` module inside the event library and records its SQL."""
+
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(sqlite3, name)
+
+    def connect(self, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+        connection = sqlite3.connect(*args, **kwargs)
+        connection.set_trace_callback(self.statements.append)
+        return connection
+
+
+def test_event_library_never_switches_a_new_store_to_wal_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recording = _RecordingSqlite3()
+    monkeypatch.setattr(eventsourcing.sqlite, "sqlite3", recording)
+
+    _ = build_page_service(tmp_path, "fresh-store")
+
+    assert recording.statements
+    assert not [s for s in recording.statements if "journal_mode=" in s.replace(" ", "").lower()]
+    events_db = tmp_path / "projects" / "fresh-store" / ".pd-pages" / "events.db"
+    with contextlib.closing(sqlite3.connect(events_db)) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
