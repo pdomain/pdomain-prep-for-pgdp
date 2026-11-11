@@ -1407,9 +1407,8 @@ function ManageTabPanel({
             id="saveCopy"
             label="Save a copy…"
             desc="Download a zip of the full project to a different location. The original remains untouched."
-            meta="choose destination"
-            comingSoon
-            onAction={() => {}} // no-op until export route exists
+            meta="browser download"
+            onAction={() => manageSend({ type: "SAVE_COPY" })}
           />
           <ManageRow
             id="delete"
@@ -1436,10 +1435,9 @@ function ManageTabPanel({
           <ManageRow
             id="saveCopy"
             label="Save a copy…"
-            desc="Download the archived zip to a different location. The original archive remains here."
-            meta={`${project.size} · choose destination`}
-            comingSoon
-            onAction={() => {}} // no-op until export artifact route exists
+            desc="Download a zip of the archived project to a different location. The original remains here."
+            meta={`${project.size} · browser download`}
+            onAction={() => manageSend({ type: "SAVE_COPY" })}
           />
           <ManageRow
             id="delete"
@@ -1617,7 +1615,6 @@ function ManageRow({
   danger,
   twoStep,
   buttonLabel,
-  comingSoon,
   onAction,
 }: {
   id: ManageAction;
@@ -1627,7 +1624,6 @@ function ManageRow({
   danger?: boolean;
   twoStep?: boolean;
   buttonLabel?: string;
-  comingSoon?: boolean;
   onAction: () => void;
 }) {
   return (
@@ -1673,10 +1669,8 @@ function ManageRow({
         size="sm"
         data-testid={`manage-action-btn-${id}`}
         onClick={onAction}
-        disabled={comingSoon}
-        title={comingSoon ? "Coming soon" : undefined}
       >
-        {comingSoon ? "Coming soon" : (buttonLabel ?? label.replace("…", ""))}
+        {buttonLabel ?? label.replace("…", "")}
       </Button>
     </div>
   );

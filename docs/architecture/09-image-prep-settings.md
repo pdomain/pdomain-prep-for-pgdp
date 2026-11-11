@@ -73,8 +73,10 @@ That work remains in the [Compute panel backlog](../plans/2026-06-08-compute-set
 
 ## Remaining product work
 
-Archived-project Save a copy still reports a coming-soon action rather than downloading an export.
-[W3.10](../issues/2026-07-21-w310-save-copy-archive.md) tracks real export and archive inventory.
+Save a copy downloads `GET /api/data/projects/{id}/export`: every file under the project directory, with SQLite files
+copied through the backup API, plus `pgdp-prep-export.json` holding the project and page-stage rows. There is no import
+path yet. The archive keep list is still placeholder data, tracked by
+[W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
 The active [completion plan](../plans/2026-07-21-pipeline-completion-review.md) owns the remaining image-prep queue.
 
 ## Evidence

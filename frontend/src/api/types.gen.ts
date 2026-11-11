@@ -263,17 +263,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
          * Export Project Copy
-         * @description Create a copy of the project configuration for backup or transfer.
-         *
-         *     At I1: creates a stub export record. Full artifact copy (source + stages)
-         *     deferred to I2 when storage adapter supports multi-key copy.
-         *     W4 Group 4.
+         * @description Download a zip of the project's on-disk files plus its project and page-stage rows.
          */
-        post: operations["export_project_copy"];
+        get: operations["export_project_copy"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4199,15 +4195,6 @@ export interface components {
             /** Reclaimed Bytes */
             reclaimed_bytes: number;
         };
-        /** _ExportResponse */
-        _ExportResponse: {
-            /** Project Id */
-            project_id: string;
-            /** Copy Id */
-            copy_id: string;
-            /** Created At */
-            created_at: string;
-        };
         /**
          * _IllustrationRegionPatchRequest
          * @description Request body for PATCH .../illustrations/regions/{region_id}.
@@ -4780,14 +4767,21 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Zip of the project's files and stage rows. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["_ExportResponse"];
+                    "application/zip": unknown;
                 };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4797,6 +4791,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Export needs filesystem storage. */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
