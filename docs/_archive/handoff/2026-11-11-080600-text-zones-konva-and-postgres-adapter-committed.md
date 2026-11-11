@@ -1,7 +1,6 @@
 ---
-kind: handoff
-status: "active"
-created: "2026-11-11"
+kind: archive
+status: retired
 created_at: "2026-11-11T08:06:03Z"
 owner: "CT"
 branch: "feat/night-prep4"
@@ -11,9 +10,13 @@ base_commit: "3e2ecd4450d370258e879d85aac33ead865853ac"
 supersedes: "2026-11-11-072044-night-wave3-browser-fixes-and-issue-work.md"
 handoff_reason: "stopping"
 host: "claude-code"
+created: "2026-11-11"
+last_verified: "2026-11-11"
 ---
 
 # Text zones now edits real page images, and the Postgres adapter is complete
+
+> **Retired — superseded by `docs/handoff/2026-11-11-084911-submission-zip-entries-stamped-with-built_at.md`.**
 
 ## Goal
 
