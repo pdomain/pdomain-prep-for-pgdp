@@ -103,6 +103,10 @@ Each report was checked against the code at `14f0ba8` before it was written. See
 - [SSE streams cannot authenticate in JWT mode (former GH #135)](2026-11-09-jwt-sse-auth.md)
 - [CI does not audit dependencies (former GH #146)](2026-11-09-dependency-audit-gate.md)
 
+### Found during job reliability work (2026-11-11)
+
+- [Submission zip entries carry the current time](2026-11-11-submission-zip-entry-timestamps.md)
+
 Resolved reports are deleted, so this index tracks open work only. Past
 resolutions live in the `docs/context/decisions.md` tombstones and in git
 history.
