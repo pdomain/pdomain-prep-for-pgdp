@@ -480,6 +480,24 @@ class SqliteDatabase:
 
         return await self._run(_go)
 
+    async def cancel_active_stage_jobs(self, owner_id: str, project_id: str, stage_id: str) -> int:
+        def _go() -> int:
+            with self._cursor() as cur:
+                _ = cur.execute(
+                    """
+                    UPDATE jobs SET body = json_set(body, '$.status', 'cancelled')
+                    WHERE owner_id = ?
+                      AND json_extract(body, '$.project_id') = ?
+                      AND json_extract(body, '$.status') NOT IN ('complete', 'error', 'cancelled')
+                      AND (json_extract(body, '$.payload.stage_id') = ?
+                           OR (? = 'ocr' AND json_extract(body, '$.type') = 'run_project_ocr_batch'))
+                    """,
+                    (owner_id, project_id, stage_id, stage_id),
+                )
+                return cur.rowcount
+
+        return await self._run(_go)
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         def _go() -> list[Job]:
             with self._cursor() as cur:

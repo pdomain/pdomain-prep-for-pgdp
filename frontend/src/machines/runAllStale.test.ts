@@ -308,6 +308,28 @@ describe("runAllStale — cancellation while running", () => {
     actor.stop();
   });
 
+  it("reports a rejected cancel to onCancelled", async () => {
+    const onCancelled = vi.fn();
+    const actor = createActor(runAllStaleMachine, {
+      input: makeInput({
+        staleIndices: [0, 1],
+        onCancelled,
+        services: makeServices({
+          cancelInFlight: vi.fn().mockRejectedValue(new Error("HTTP 500")),
+        }),
+      }),
+    });
+    actor.start();
+    actor.send({ type: "CONFIRM" });
+    actor.send({ type: "CANCEL" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(actor.getSnapshot().matches("cancelled")).toBe(true);
+    expect(onCancelled).toHaveBeenCalledWith(
+      "Could not cancel this stage: HTTP 500",
+    );
+    actor.stop();
+  });
+
   it("cancelling resolves to cancelled", async () => {
     const onCancelled = vi.fn();
     const actor = createActor(runAllStaleMachine, {

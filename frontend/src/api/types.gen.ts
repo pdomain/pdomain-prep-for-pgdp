@@ -426,6 +426,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/stages/{stage_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Stage Jobs
+         * @description Cancel this project's unfinished jobs for one stage.
+         *
+         *     A page already in a worker thread finishes and may still write its artifact.
+         */
+        post: operations["cancel_stage_jobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/page-stages/ocr/run-batch": {
         parameters: {
             query?: never;
@@ -3756,6 +3778,11 @@ export interface components {
             /** Children */
             children: components["schemas"]["PageRecord"][];
         };
+        /** StageCancelResponse */
+        StageCancelResponse: {
+            /** Cancelled */
+            cancelled: number;
+        };
         /**
          * StageRunRequest
          * @description Request body for POST .../stages/{stage_id}/run (page and project).
@@ -4927,6 +4954,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_stage_jobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                stage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageCancelResponse"];
                 };
             };
             /** @description Validation Error */

@@ -88,6 +88,10 @@ class IDatabase(Protocol):
         """Atomically replace an existing job row unless it is cancelled; True when written."""
         ...
 
+    async def cancel_active_stage_jobs(self, owner_id: str, project_id: str, stage_id: str) -> int:
+        """Atomically cancel a project's unfinished jobs for one stage; return how many changed."""
+        ...
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]: ...
 
     # ── Page stages (per-page DAG state, M1) ────────────────────────────────

@@ -255,6 +255,22 @@ class PostgresDatabase:
             )
             return cur.rowcount == 1
 
+    async def cancel_active_stage_jobs(self, owner_id: str, project_id: str, stage_id: str) -> int:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                UPDATE jobs SET body = jsonb_set(body, '{status}', '"cancelled"')
+                WHERE owner_id = %s
+                  AND body->>'project_id' = %s
+                  AND body->>'status' NOT IN ('complete', 'error', 'cancelled')
+                  AND (body->'payload'->>'stage_id' = %s
+                       OR (%s::text = 'ocr' AND body->>'type' = 'run_project_ocr_batch'))
+                """,
+                (owner_id, project_id, stage_id, stage_id),
+            )
+            return cur.rowcount
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         conn = self._require_conn()
         async with conn.cursor() as cur:

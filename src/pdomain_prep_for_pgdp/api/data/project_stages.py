@@ -484,6 +484,36 @@ async def run_project_stage(
     return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
 
 
+class StageCancelResponse(BaseModel):
+    cancelled: int
+
+
+@router.post(
+    "/projects/{project_id}/stages/{stage_id}/cancel",
+    response_model=StageCancelResponse,
+    operation_id="cancel_stage_jobs",
+)
+async def cancel_stage_jobs(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+) -> StageCancelResponse:
+    """Cancel this project's unfinished jobs for one stage.
+
+    A page already in a worker thread finishes and may still write its artifact.
+    """
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    cancelled = await db.cancel_active_stage_jobs(user.user_id, project_id, stage_id)
+    return StageCancelResponse(cancelled=cancelled)
+
+
 # ─── Project-scoped OCR batch run (Phase 3) ──────────────────────────────────
 
 
