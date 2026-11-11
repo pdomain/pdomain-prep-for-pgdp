@@ -51,7 +51,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, Response
@@ -2468,14 +2468,17 @@ async def get_text_zones_pages_aggregate(
         else:
             state = "clean"
 
+        # ``idx`` is the zero-padded idx0 that the per-page routes and the
+        # page_stages rows use; ``prefix`` is the display name.
         row: dict[str, object] = {
-            "idx": page_id_key,
-            "prefix": page_id_key,
+            "idx": zero_padded,
+            "idx0": page.idx0,
+            "prefix": page.prefix or zero_padded,
             "state": state,
             "pageNumber": i,
         }
 
-        # Enrich with zone count from the artifact when row is clean
+        # Enrich with the stored zone boxes when the row is clean
         if stage_status == PageStageStatus.clean:
             import contextlib
 
@@ -2483,7 +2486,9 @@ async def get_text_zones_pages_aggregate(
                 artifact_path = stage_artifact_path(settings.data_root, project_id, zero_padded, "text_zones")
                 if artifact_path.exists():
                     data = _json.loads(artifact_path.read_bytes())
-                    row["zones"] = len(data.get("zones", []))
+                    canvas_zones = _zones_for_canvas(data)
+                    row["zones"] = len(canvas_zones)
+                    row["_zones"] = canvas_zones
 
         rows.append(row)
 
@@ -2505,6 +2510,53 @@ async def get_text_zones_pages_aggregate(
     }
 
     return JSONResponse(content={"rows": rows, "totals": totals})
+
+
+def _zones_for_canvas(artifact: object) -> list[dict[str, object]]:
+    """Return a text_zones artifact's zones in the frontend ``Zone`` shape.
+
+    The stage writes detector output (pixel ``bbox`` plus ``image_width`` and
+    ``image_height``). A saved layout already holds normalised ``Zone`` dicts.
+    Both are accepted; zones in neither shape are dropped.
+    """
+    if not isinstance(artifact, dict):
+        return []
+    data = cast("dict[str, object]", artifact)
+    raw_zones = data.get("zones")
+    if not isinstance(raw_zones, list):
+        return []
+    width = data.get("image_width")
+    height = data.get("image_height")
+    has_size = isinstance(width, int | float) and isinstance(height, int | float) and width > 0 and height > 0
+    out: list[dict[str, object]] = []
+    for order_i, raw_zone in enumerate(cast("list[object]", raw_zones), start=1):
+        if not isinstance(raw_zone, dict):
+            continue
+        zone = cast("dict[str, object]", raw_zone)
+        if all(k in zone for k in ("x", "y", "w", "h")):
+            out.append(zone)
+            continue
+        bbox = zone.get("bbox")
+        if not has_size or not isinstance(bbox, list):
+            continue
+        coords = [v for v in cast("list[object]", bbox) if isinstance(v, int | float)]
+        if len(coords) != 4:
+            continue
+        img_w = float(cast("float", width))
+        img_h = float(cast("float", height))
+        bx, by, bw, bh = (float(v) for v in coords)
+        out.append(
+            {
+                "id": str(zone.get("zone_id", f"z{order_i:03d}")),
+                "type": "body",
+                "x": bx / img_w,
+                "y": by / img_h,
+                "w": bw / img_w,
+                "h": bh / img_h,
+                "order": order_i,
+            }
+        )
+    return out
 
 
 class _RedetectLayoutRequest(BaseModel):

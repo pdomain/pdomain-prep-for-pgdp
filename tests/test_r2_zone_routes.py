@@ -469,3 +469,78 @@ class TestPersistLayout:
             )
 
         assert resp.status_code == 409
+
+
+# ── 1b. W2.4 — aggregate rows carry page identity and zone boxes ──────────────
+
+
+def _seed_clean_text_zones_row(settings: Settings, page_id: str) -> None:
+    async def seed() -> None:
+        db = SqliteDatabase(settings.derived_database_url)
+        await db.initialize()
+        await _seed_page_stage_clean(
+            db,
+            "proj1",
+            page_id,
+            "text_zones",
+            f"projects/proj1/pages/{page_id}/stages/text_zones/output.json",
+        )
+        await db.close()
+
+    asyncio.run(seed())
+
+
+class TestZoneAggregateCanvasFields:
+    """The zone canvas needs the page's idx0 and its stored zone boxes."""
+
+    def test_rows_are_keyed_by_zero_padded_idx0_and_keep_the_prefix(self, tmp_path):
+        settings = _settings(tmp_path)
+        _seed_project(settings, page_count=2)
+        app = build_app(settings)
+
+        with TestClient(app) as client:
+            rows = client.get("/api/data/projects/proj1/project-stages/text_zones/pages-aggregate").json()[
+                "rows"
+            ]
+
+        assert [(r["idx"], r["prefix"], r["idx0"]) for r in rows] == [
+            ("0000", "p001", 0),
+            ("0001", "p002", 1),
+        ]
+
+    def test_detector_artifact_zones_are_normalised_for_the_canvas(self, tmp_path):
+        settings = _settings(tmp_path)
+        _seed_project(settings, page_count=1)
+        zones = [
+            {"zone_id": "z001", "bbox": [0, 0, 400, 150], "zone_type": "text", "area": 60000},
+            {"zone_id": "z002", "bbox": [100, 300, 200, 60], "zone_type": "text", "area": 12000},
+        ]
+        _write_zone_artifact(settings.data_root, "proj1", "0000", zones, image_width=400, image_height=600)
+        _seed_clean_text_zones_row(settings, "0000")
+        app = build_app(settings)
+
+        with TestClient(app) as client:
+            row = client.get("/api/data/projects/proj1/project-stages/text_zones/pages-aggregate").json()[
+                "rows"
+            ][0]
+
+        assert row["_zones"] == [
+            {"id": "z001", "type": "body", "x": 0.0, "y": 0.0, "w": 1.0, "h": 0.25, "order": 1},
+            {"id": "z002", "type": "body", "x": 0.25, "y": 0.5, "w": 0.5, "h": 0.1, "order": 2},
+        ]
+
+    def test_saved_layout_zones_pass_through_unchanged(self, tmp_path):
+        settings = _settings(tmp_path)
+        _seed_project(settings, page_count=1)
+        saved = [{"id": "u1", "type": "illustration", "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "order": None}]
+        _write_zone_artifact(settings.data_root, "proj1", "0000", saved)
+        _seed_clean_text_zones_row(settings, "0000")
+        app = build_app(settings)
+
+        with TestClient(app) as client:
+            row = client.get("/api/data/projects/proj1/project-stages/text_zones/pages-aggregate").json()[
+                "rows"
+            ][0]
+
+        assert row["_zones"] == saved
+        assert row["zones"] == 1

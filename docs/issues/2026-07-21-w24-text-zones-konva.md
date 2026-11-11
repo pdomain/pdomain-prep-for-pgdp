@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-11-07
+Last verified: 2026-11-11
 Kind: issue
 Level: I1
 ---
@@ -14,8 +14,8 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-07
-- **Resolution:** Open
+- **Last verified:** 2026-11-11
+- **Resolution:** Fixed on `feat/night-prep4`, awaiting merge
 - **Severity:** Medium — split/zone QA blocked on schematic canvas; W0.5 body contract is shipped
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
 - **Read when:** implementing text_zones hi-fi Konva board, split overlays, or after W0.5 split contract lands
@@ -162,4 +162,20 @@ works on a real page.”
 
 ## Resolution
 
-*Open.*
+Fixed on `feat/night-prep4`, not yet merged. Retire this report through `doc-retirer` after merge.
+
+- Page cards show the page's ingest thumbnail. Split children now get a thumbnail of their own crop at split time.
+- The zone editor is a Konva board over the `post_transform_crop` image, falling back to the ingest thumbnail. It
+  draws the stored zones from the pages aggregate, adds a zone by dragging, and re-types or deletes zones from a list.
+- Save layout and Keep as one now call the layout route and close only on success. Before, both were no-ops.
+- The zone editor opens the split editor for any page. The split editor shows the source image with the gutter,
+  moves it by dragging or with a slider, previews both children, and applies the split.
+- The pages aggregate keys rows by the zero-padded `idx0` and carries `idx0` and `_zones`. Rows were keyed by prefix,
+  so per-page calls parsed `p0001` as `NaN`.
+
+Verified in Chromium by `tests/e2e/test_text_zones_canvas_browser.py`: stored zones on the page image, a drawn zone
+saved and read back, and a dragged 40% gutter producing children with crops `(0, 0, 320, 600)` and
+`(320, 0, 480, 600)` on an 800x600 scan.
+
+Not done: the lasso tool, drag-to-reorder reading order, "apply to all splits", and the zone-type chart on the
+Overview tab. The detector still suggests no splits, so the Splits filter stays at zero.

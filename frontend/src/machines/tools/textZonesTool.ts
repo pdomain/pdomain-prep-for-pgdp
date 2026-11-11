@@ -362,6 +362,29 @@ export const textZonesToolMachine = setup({
       ),
     ),
 
+    /**
+     * YAML: `persistLayout` — PUT the page layout (zones, or a dismissed split).
+     * W2.4: was a no-op action; now an invoked actor so the editor only
+     * closes after the server has the layout. `{ ok: false }` is a failure.
+     */
+    persistLayout: fromPromise<
+      { ok: boolean },
+      {
+        projectId: string;
+        pageId: string;
+        data: { zones?: Zone[]; dismissed?: boolean };
+        services: TextZonesToolServices;
+      }
+    >(async ({ input }) => {
+      const result = await input.services.persistLayout(
+        input.projectId,
+        input.pageId,
+        input.data,
+      );
+      if (!result.ok) throw new Error("layout was not saved");
+      return result;
+    }),
+
     /** YAML: `invoke.src: confirmStage` */
     confirmStage: fromPromise<
       { ok: boolean },
@@ -628,9 +651,16 @@ export const textZonesToolMachine = setup({
             totals: recountZone([...context.rows, ...childRows]),
           };
         }
+        // The split does not rename the parent: keep its row fields
+        // (prefix, zones) and take the new state from the server.
+        const mergedParent: ZonePageRow = {
+          ...context.rows[idx],
+          ...parentRow,
+          prefix: context.rows[idx]?.prefix ?? parentRow.prefix,
+        };
         const newRows = [
           ...context.rows.slice(0, idx),
-          parentRow,
+          mergedParent,
           ...childRows,
           ...context.rows.slice(idx + 1),
         ];
@@ -691,13 +721,8 @@ export const textZonesToolMachine = setup({
 
     // Side-effect slots — no-op at F5; wired at I1.
 
-    /**
-     * YAML: `persistLayout` — SIDE EFFECT: PUT page layout (zones + order | dismissed split)
-     * Called from SAVE_LAYOUT and KEEP_AS_ONE transitions.
-     */
-    persistLayout: () => {
-      // SIDE EFFECT: at I1, PUT /api/projects/:id/stages/text_zones/pages/:pageId/layout
-    },
+    /** Drop the zone draft when the zone editor hands the page to the split editor. */
+    clearZoneDraft: assign({ zoneDraft: () => null }),
 
     /**
      * YAML: `emitZonesChanged` — illustration zones changed → illustrationsTool UPSTREAM_CHANGED
@@ -846,15 +871,10 @@ export const textZonesToolMachine = setup({
             DELETE_ZONE: { actions: ["removeZone"] },
             REORDER_ZONE: { actions: ["moveZoneOrder"] },
             REDETECT: { target: "redetecting" },
-            SAVE_LAYOUT: {
-              target: "browsing",
-              actions: [
-                "commitZones",
-                "persistLayout",
-                "markReviewed",
-                "clearEditor",
-                "emitZonesChanged",
-              ],
+            SAVE_LAYOUT: { target: "savingLayout" },
+            OPEN_SPLIT_EDITOR: {
+              target: "editingSplit",
+              actions: ["clearZoneDraft", "assignEditing", "beginSplitDraft"],
             },
             CANCEL: { target: "browsing", actions: ["clearEditor"] },
           },
@@ -869,17 +889,78 @@ export const textZonesToolMachine = setup({
             SET_AXIS: { actions: ["patchSplit"] },
             DRAG_GUTTER: { actions: ["patchSplit"] },
             APPLY_SPLIT: { target: "applyingSplit" },
-            KEEP_AS_ONE: {
+            KEEP_AS_ONE: { target: "dismissingSplit" },
+            CANCEL: { target: "browsing", actions: ["clearEditor"] },
+          },
+        },
+
+        /** W2.4 — PUT the drafted zones; close the editor only on success. */
+        savingLayout: {
+          invoke: {
+            id: "persistLayout",
+            src: "persistLayout",
+            input: ({ context }) => ({
+              projectId: context.projectId,
+              pageId: context.editing ?? "",
+              data: { zones: context.zoneDraft ?? [] },
+              services: context.services,
+            }),
+            onDone: {
               target: "browsing",
               actions: [
+                "clearError",
+                "commitZones",
+                "markReviewed",
+                "clearEditor",
+                "emitZonesChanged",
+              ],
+            },
+            onError: {
+              target: "editingZones",
+              actions: [
+                {
+                  type: "assignError",
+                  params: ({ event }: { event: { error: unknown } }) => ({
+                    error: event.error,
+                  }),
+                },
+              ],
+            },
+          },
+        },
+
+        /** W2.4 — PUT `{ dismissed: true }` for KEEP_AS_ONE. */
+        dismissingSplit: {
+          invoke: {
+            id: "dismissSplitLayout",
+            src: "persistLayout",
+            input: ({ context }) => ({
+              projectId: context.projectId,
+              pageId: context.editing ?? "",
+              data: { dismissed: true },
+              services: context.services,
+            }),
+            onDone: {
+              target: "browsing",
+              actions: [
+                "clearError",
                 "dismissSplit",
-                "persistLayout",
                 "markReviewed",
                 "recount",
                 "clearEditor",
               ],
             },
-            CANCEL: { target: "browsing", actions: ["clearEditor"] },
+            onError: {
+              target: "editingSplit",
+              actions: [
+                {
+                  type: "assignError",
+                  params: ({ event }: { event: { error: unknown } }) => ({
+                    error: event.error,
+                  }),
+                },
+              ],
+            },
           },
         },
 

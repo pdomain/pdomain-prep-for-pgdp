@@ -8,7 +8,8 @@
  * - zone-editor-redetect button click transitions machine to redetecting
  */
 
-import { describe, it, expect } from "vitest";
+import type { ReactNode } from "react";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { TextZonesTool } from "./TextZonesTool";
@@ -18,6 +19,20 @@ import type {
   ZoneTotals,
 } from "@/machines/tools/textZonesTool";
 import { stubStageSettingsServices } from "@/machines/tools/stageSettings";
+
+// jsdom has no canvas; render Konva primitives as plain DOM.
+vi.mock("react-konva", () => {
+  const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+  return {
+    Stage: Box,
+    Layer: Box,
+    Group: Box,
+    Image: () => null,
+    Text: () => null,
+    Line: () => null,
+    Rect: () => null,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Minimal runnerRef stub (unused at F5 — wired at I1)

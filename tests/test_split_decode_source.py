@@ -378,3 +378,42 @@ async def test_split_child_source_differs_when_bbox_differs(tmp_path: Path) -> N
     assert hash_a is not None
     assert hash_b is not None
     assert hash_a != hash_b, "different bbox regions must produce different child source blobs"
+
+
+@pytest.mark.asyncio
+async def test_split_child_gets_a_thumbnail_of_its_own_crop(tmp_path: Path) -> None:
+    """W2.4: a split child needs an ingest thumbnail so page grids can show it.
+
+    The parent is a 400x200 spread; each child takes one half. Each child's
+    thumbnail must decode to the child's aspect (1:1), not the parent's (2:1).
+    """
+    project_id = "proj-thumb"
+    parent_png = _solid_color_png(400, 200, (40, 40, 40))
+    parent_uuid, parent_hash = _seed_parent_with_source(tmp_path, project_id, parent_png)
+    service = build_page_service(tmp_path, project_id)
+
+    children = split_page_in_store(
+        service=service,
+        project_id=project_id,
+        parent_page_id=parent_uuid,
+        parent_idx0=0,
+        parent_prefix="p000",
+        parent_source_stem="page_0",
+        bboxes=[(0, 0, 200, 200), (200, 0, 200, 200)],
+        split_at_stage="text_zones",
+        suffixes=["a", "b"],
+        parent_source_blob_hash=parent_hash,
+    )
+
+    thumb_hashes: list[str] = []
+    for child in children:
+        ext = get_extension(child, "prep", PrepPageExtension)
+        assert ext is not None
+        assert ext.thumbnail_blob_hash is not None
+        thumb = cv2.imdecode(
+            np.frombuffer(service.blobs.read(ext.thumbnail_blob_hash), np.uint8), cv2.IMREAD_UNCHANGED
+        )
+        assert thumb is not None
+        assert thumb.shape[0] == thumb.shape[1]
+        thumb_hashes.append(ext.thumbnail_blob_hash)
+    assert len(thumb_hashes) == 2
