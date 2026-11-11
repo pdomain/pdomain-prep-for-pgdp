@@ -577,3 +577,24 @@ describe("imageStageReview — BULK_ACCEPT settle from selecting", () => {
     actor.stop();
   });
 });
+
+describe("ROWS_REFRESHED", () => {
+  it("replaces rows, keeps client-side reviews and recounts", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "ACCEPT_AS_IS" });
+
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [
+        makeRow({ idx: "p002", state: "flagged", pageNumber: 2 }),
+        makeRow({ idx: "p004", state: "clean", pageNumber: 4 }),
+      ],
+    });
+
+    const { rows, totals } = actor.getSnapshot().context;
+    expect(rows.map((r) => r.state)).toEqual(["reviewed", "clean"]);
+    expect(totals).toMatchObject({ total: 2, reviewed: 1, clean: 1 });
+    actor.stop();
+  });
+});

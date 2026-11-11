@@ -35,6 +35,9 @@ import { setup, assign, fromPromise } from "xstate";
 export interface PageRow {
   idx: string;
   idx0?: number;
+  thumbUrl?: string;
+  beforeUrl?: string;
+  afterUrl?: string;
   prefix: string;
   state: "running" | "clean" | "flagged" | "reviewed" | "failed";
   flags?: string[];
@@ -119,6 +122,7 @@ export interface ImageStageReviewContext {
 export type ImageStageReviewEvent =
   | { type: "RETRY" }
   | { type: "PAGE_PUSH"; row: PageRow }
+  | { type: "ROWS_REFRESHED"; rows: PageRow[] }
   | { type: "SELECT_PAGE"; idx: string }
   | { type: "CLEAR_SELECTION" }
   | { type: "BULK_ACCEPT" }
@@ -184,6 +188,18 @@ export function rerunPageIds(
     return [...new Set([editing, ...matching])];
   }
   return [editing];
+}
+
+/** Reviews are only held client-side, so a server refresh must not undo them. */
+function keepReviewed(previous: PageRow[], incoming: PageRow[]): PageRow[] {
+  const reviewed = new Set(
+    previous.filter((r) => r.state === "reviewed").map((r) => r.idx),
+  );
+  return incoming.map((r) =>
+    r.state === "flagged" && reviewed.has(r.idx)
+      ? { ...r, state: "reviewed" as const }
+      : r,
+  );
 }
 
 function toggleXor(arr: string[], item: string): string[] {
@@ -380,6 +396,9 @@ export const imageStageReviewMachine = setup({
         const {
           idx: _idx,
           idx0: _idx0,
+          thumbUrl: _thumbUrl,
+          beforeUrl: _beforeUrl,
+          afterUrl: _afterUrl,
           prefix: _prefix,
           state: _state,
           flags: _flags,
@@ -475,6 +494,17 @@ export const imageStageReviewMachine = setup({
       },
     ),
 
+    assignRefreshedRows: assign({
+      rows: ({ context, event }) =>
+        event.type === "ROWS_REFRESHED"
+          ? keepReviewed(context.rows, event.rows)
+          : context.rows,
+      totals: ({ context, event }) =>
+        event.type === "ROWS_REFRESHED"
+          ? recount(keepReviewed(context.rows, event.rows))
+          : context.totals,
+    }),
+
     /** YAML: `markStale` */
     markStale: assign({ stale: () => true }),
 
@@ -539,6 +569,7 @@ export const imageStageReviewMachine = setup({
   // Global events — available in all states (except where overridden by child)
   on: {
     UPSTREAM_CHANGED: { actions: ["markStale"] },
+    ROWS_REFRESHED: { actions: ["assignRefreshedRows"] },
     RERUN_STAGE: { target: ".running", actions: ["requestStageRun"] },
     REDERIVE: { target: ".running", actions: ["requestRederive"] },
     CONFIRM_ADVANCE: {

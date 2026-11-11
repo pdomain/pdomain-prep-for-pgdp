@@ -26,8 +26,8 @@
  *   - runnerRef: StageRunnerRef — passed through but not used yet at F5
  *
  * Machine:
- *   The component instantiates imageStageReviewMachine with the mock service
- *   adapter. At I1 replace makeImageStageReviewServices() with real API calls.
+ *   The component instantiates imageStageReviewMachine with the real API
+ *   services and refreshes its rows when a stage run finishes.
  *
  * @see src/machines/imageStageReview.ts
  * @see src/pages/pipeline/tools/stageSchemas.ts
@@ -35,7 +35,7 @@
  * @see docs/plans/design_handoff_pgdp_app/final/threshold/threshold.jsx
  */
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
@@ -53,6 +53,8 @@ import {
 } from "./stageSchemas";
 import { Button } from "@/components/ui/Button";
 import { buildRealImageStageReviewServices } from "@/services/tools/imageStageReview";
+import { subscribeProjectPageStageChannel } from "@/services/sse";
+import { RealThumb } from "./source/RealThumb";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -247,7 +249,7 @@ function FlagChip({
   );
 }
 
-/** Fake page thumbnail for the grid */
+/** Grid thumbnail: the stage output, or its parent while the stage has no output. */
 function PageThumb({ row }: { row: PageRow }) {
   const isFlagged = row.state === "flagged";
   return (
@@ -257,20 +259,16 @@ function PageThumb({ row }: { row: PageRow }) {
         width: 80,
         height: 108,
         position: "relative",
-        background: isFlagged ? "oklch(0.92 0.02 60)" : "oklch(0.93 0 0)",
         borderRadius: 3,
         border: `1.5px solid ${isFlagged ? "var(--fuzzy)" : "var(--border-2)"}`,
         overflow: "hidden",
       }}
     >
-      {/* Simulated page content */}
-      <div
-        style={{
-          position: "absolute",
-          inset: "12% 14%",
-          backgroundImage: `repeating-linear-gradient(to bottom, oklch(0.32 0 0) 0 1.5px, transparent 1.5px 6px)`,
-          opacity: 0.65,
-        }}
+      <RealThumb
+        {...(row.thumbUrl !== undefined ? { thumbnailKey: row.thumbUrl } : {})}
+        alt={`Page ${row.prefix}`}
+        width={77}
+        height={105}
       />
       <span
         style={{
@@ -289,7 +287,62 @@ function PageThumb({ row }: { row: PageRow }) {
   );
 }
 
+function ComparisonPane({
+  label,
+  src,
+  emptyText,
+}: {
+  label: string;
+  src: string | undefined;
+  emptyText: string;
+}) {
+  return (
+    <figure
+      style={{
+        margin: 0,
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
+      <figcaption
+        style={{
+          padding: "4px 0",
+          textAlign: "center",
+          fontSize: 10,
+          color: "var(--ink-4)",
+          fontFamily: "monospace",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </figcaption>
+      {src ? (
+        <img
+          src={src}
+          alt={label}
+          style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }}
+        />
+      ) : (
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 11,
+            color: "var(--ink-3)",
+          }}
+        >
+          {emptyText}
+        </div>
+      )}
+    </figure>
+  );
+}
+
 const INSET_EDGES = ["Top", "Bottom", "Left", "Right"] as const;
+const REFRESH_DELAY_MS = 300;
 
 function sliderReadout(ctrl: ControlDef, value: unknown): string {
   if (typeof value === "number") return String(value);
@@ -591,45 +644,27 @@ function InlineEditor({
         </button>
       </div>
 
-      {/* Before/after wipe placeholder */}
+      {/* Parent stage output beside this stage's output */}
       <div
         data-testid="wipe-viewer"
         style={{
-          height: 160,
+          height: 320,
           background: "var(--bg-page)",
           display: "grid",
           gridTemplateColumns: "1fr 6px 1fr",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
-            color: "var(--ink-4)",
-            fontFamily: "monospace",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          before
-        </div>
+        <ComparisonPane
+          label="Before"
+          src={row.beforeUrl}
+          emptyText="The previous stage has no output yet."
+        />
         <div style={{ background: "var(--border-2)" }} />
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
-            color: "var(--ink-4)",
-            fontFamily: "monospace",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          after
-        </div>
+        <ComparisonPane
+          label="After"
+          src={row.afterUrl}
+          emptyText="Re-run this page to see its output."
+        />
       </div>
 
       {/* Controls */}
@@ -940,6 +975,28 @@ export function ImageStageReviewTool({
   const [snapshot, send] = actorOverride
     ? ([actorOverride.snapshot, actorOverride.send] as const)
     : ownActor;
+
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let active = true;
+    const unsubscribe = subscribeProjectPageStageChannel(projectId, (event) => {
+      if (event.type !== "stage-status" || event.stage_id !== stageId) return;
+      if (event.status !== "clean" && event.status !== "failed") return;
+      // A batch finishes one page at a time; one fetch covers a burst of events.
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void services.fetchStagePages(projectId, stageId).then(({ rows }) => {
+          if (active) send({ type: "ROWS_REFRESHED", rows });
+        });
+      }, REFRESH_DELAY_MS);
+    });
+    return () => {
+      active = false;
+      clearTimeout(refreshTimer);
+      unsubscribe();
+    };
+  }, [projectId, stageId, services, send]);
 
   const ctx = snapshot.context;
 

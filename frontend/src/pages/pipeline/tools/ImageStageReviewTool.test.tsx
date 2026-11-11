@@ -19,7 +19,7 @@
  * @see src/pages/pipeline/tools/stageSchemas.ts
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ImageStageReviewTool } from "./ImageStageReviewTool";
@@ -28,6 +28,26 @@ import type {
   ImageStageReviewServices,
   PageRow,
 } from "@/machines/imageStageReview";
+
+const sse = vi.hoisted(() => ({
+  listeners: [] as ((event: {
+    type: string;
+    stage_id: string;
+    status: string;
+  }) => void)[],
+}));
+
+vi.mock("@/services/sse", () => ({
+  subscribeProjectPageStageChannel: (
+    _projectId: string,
+    listener: (typeof sse.listeners)[number],
+  ) => {
+    sse.listeners.push(listener);
+    return () => {
+      sse.listeners.splice(sse.listeners.indexOf(listener), 1);
+    };
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -592,5 +612,144 @@ describe("ImageStageReviewTool — controls match backend settings", () => {
       "slider-post_transform_crop_insets-0",
     );
     expect(top.value).toBe("0");
+  });
+});
+
+const IMAGE_ROW = {
+  idx: "0001",
+  idx0: 1,
+  prefix: "p002",
+  state: "flagged",
+  flags: ["speckle"],
+  pageNumber: 1,
+  thumbUrl: "/thumb.png?v=1",
+  beforeUrl: "/before.png?v=1",
+  afterUrl: "/after.png?v=2",
+} satisfies PageRow;
+
+const { thumbUrl: _thumbUrl, ...rowWithoutThumb } = IMAGE_ROW;
+
+function servicesWith(rows: PageRow[]): ImageStageReviewServices {
+  return {
+    ...TEST_SERVICES,
+    fetchStagePages: () =>
+      Promise.resolve({
+        rows,
+        totals: {
+          total: rows.length,
+          clean: rows.filter((r) => r.state === "clean").length,
+          flagged: rows.filter((r) => r.state === "flagged").length,
+          done: rows.length,
+          reviewed: 0,
+          errors: 0,
+          running: 0,
+        },
+      }),
+  };
+}
+
+function renderWith(services: ImageStageReviewServices) {
+  return render(
+    <MemoryRouter>
+      <ImageStageReviewTool
+        stageId="threshold"
+        runnerRef={MOCK_RUNNER_REF}
+        _testServices={services}
+      />
+    </MemoryRouter>,
+  );
+}
+
+describe("ImageStageReviewTool — real images", () => {
+  it("shows the stage thumbnail in the grid", async () => {
+    renderWith(servicesWith([IMAGE_ROW]));
+
+    const thumb = await screen.findByRole("img", { name: "Page p002" });
+
+    expect(thumb.getAttribute("src")).toBe("/thumb.png?v=1");
+  });
+
+  it("uses the paper placeholder when a page has no image", async () => {
+    renderWith(servicesWith([rowWithoutThumb]));
+
+    await screen.findByTestId("page-thumb-0001");
+
+    expect(screen.queryByRole("img", { name: "Page p002" })).toBeNull();
+  });
+
+  it("compares the parent and stage outputs in the editor", async () => {
+    renderWith(servicesWith([IMAGE_ROW]));
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+
+    const before = await screen.findByRole("img", { name: "Before" });
+    const after = screen.getByRole("img", { name: "After" });
+
+    expect(before.getAttribute("src")).toBe("/before.png?v=1");
+    expect(after.getAttribute("src")).toBe("/after.png?v=2");
+  });
+
+  it("says when the stage has no output to compare", async () => {
+    const { afterUrl: _afterUrl, ...withoutOutput } = IMAGE_ROW;
+    renderWith(servicesWith([withoutOutput]));
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+
+    expect(
+      await screen.findByText("Re-run this page to see its output."),
+    ).toBeDefined();
+    expect(screen.queryByRole("img", { name: "After" })).toBeNull();
+  });
+});
+
+describe("ImageStageReviewTool — refresh after a run", () => {
+  beforeEach(() => {
+    vi.stubGlobal("EventSource", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads new images when this stage finishes a page", async () => {
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+    fetchStagePages.mockImplementation(
+      servicesWith([{ ...IMAGE_ROW, thumbUrl: "/thumb.png?v=9" }])
+        .fetchStagePages,
+    );
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "threshold",
+      status: "clean",
+    });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("img", { name: "Page p002" }).getAttribute("src"),
+        ).toBe("/thumb.png?v=9");
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("ignores events from other stages", async () => {
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "deskew",
+      status: "clean",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(fetchStagePages).toHaveBeenCalledTimes(1);
   });
 });

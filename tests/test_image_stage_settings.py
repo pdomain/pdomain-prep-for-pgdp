@@ -324,3 +324,85 @@ def test_changing_threshold_level_changes_the_output(
 
     assert low != high
     assert low == low_again
+
+
+async def _commit_clean(settings: Settings, stage_id: str) -> float:
+    db = SqliteDatabase(settings.derived_database_url)
+    await db.initialize()
+    try:
+        _ = await db.init_page_stages_for_page("proj1", "0000")
+        state = await commit_stage_artifact(
+            data_root=settings.data_root,
+            database=db,
+            project_id="proj1",
+            page_id="0000",
+            stage_id=stage_id,
+            artifact_bytes=_gradient_png(),
+        )
+    finally:
+        await db.close()
+    assert state.last_run_at is not None
+    return state.last_run_at
+
+
+def _first_row(client: TestClient, stage_id: str) -> dict[str, object]:
+    response = client.get(f"/api/data/projects/proj1/project-stages/{stage_id}/pages")
+    assert response.status_code == 200, response.text
+    rows: list[dict[str, object]] = response.json()["rows"]
+    return rows[0]
+
+
+def test_clean_page_row_links_stage_and_parent_images(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, settings = client_and_settings
+    parent_run = asyncio.run(_commit_clean(settings, "crop"))
+    stage_run = asyncio.run(_commit_clean(settings, "threshold"))
+
+    row = _first_row(client, "threshold")
+
+    base = "/api/data/projects/proj1/pages/0/stages"
+    assert row["thumbUrl"] == f"{base}/threshold/thumbnail?v={stage_run}"
+    assert row["afterUrl"] == f"{base}/threshold/artifact?v={stage_run}"
+    assert row["beforeUrl"] == f"{base}/crop/artifact?v={parent_run}"
+
+
+def test_page_without_stage_output_shows_the_parent_image(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, settings = client_and_settings
+    parent_run = asyncio.run(_commit_clean(settings, "crop"))
+
+    row = _first_row(client, "threshold")
+
+    assert "afterUrl" not in row
+    assert row["thumbUrl"] == f"/api/data/projects/proj1/pages/0/stages/crop/thumbnail?v={parent_run}"
+
+
+def test_page_with_no_outputs_has_no_image_links(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, _ = client_and_settings
+
+    row = _first_row(client, "threshold")
+
+    assert not {"thumbUrl", "afterUrl", "beforeUrl"} & row.keys()
+
+
+def test_rerun_response_keeps_page_identity_and_image_links(
+    client_and_settings: tuple[TestClient, Settings],
+) -> None:
+    client, settings = client_and_settings
+    parent_run = asyncio.run(_commit_clean(settings, "crop"))
+    _ = asyncio.run(_commit_clean(settings, "threshold"))
+
+    response = client.post(
+        "/api/data/projects/proj1/project-stages/threshold/rerun",
+        json={"page_ids": ["0000"]},
+    )
+
+    assert response.status_code == 200, response.text
+    row = response.json()["rows"][0]
+    assert (row["idx"], row["prefix"], row["idx0"], row["state"]) == ("0000", "p001", 0, "flagged")
+    assert "afterUrl" not in row
+    assert row["beforeUrl"] == f"/api/data/projects/proj1/pages/0/stages/crop/artifact?v={parent_run}"

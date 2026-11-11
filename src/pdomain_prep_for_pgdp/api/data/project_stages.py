@@ -90,6 +90,7 @@ from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     check_registry_version,
     migrate_if_needed,
 )
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_v2_stage
 from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
     V2_STAGE_IMPL,
 )
@@ -1492,11 +1493,56 @@ _STAGE_STATUS_TO_ROW_STATE: dict[str, str] = {
 }
 
 
+_IMAGE_OUTPUT_TYPES: frozenset[str] = frozenset({"image_bytes", "image", "gray", "binary", "jpeg_bytes"})
+
+
+def _page_image_links(
+    project_id: str,
+    page: PageRecord,
+    stage_id: str,
+    states: dict[tuple[str, str], PageStageState],
+) -> dict[str, object]:
+    """Return browser URLs for a review row; a page only links outputs that are clean."""
+    if stage_id not in V2_PAGE_STAGE_IDS or get_v2_stage(stage_id).output_type not in _IMAGE_OUTPUT_TYPES:
+        return {}
+
+    page_id = f"{page.idx0:04d}"
+    base = f"/api/data/projects/{project_id}/pages/{page.idx0}/stages"
+
+    def clean_run(candidate: str) -> float | None:
+        state = states.get((page_id, candidate))
+        if state is None or state.status != PageStageStatus.clean:
+            return None
+        return state.last_run_at
+
+    links: dict[str, object] = {}
+    run = clean_run(stage_id)
+    if run is not None:
+        links["thumbUrl"] = f"{base}/{stage_id}/thumbnail?v={run}"
+        links["afterUrl"] = f"{base}/{stage_id}/artifact?v={run}"
+
+    parent = next(
+        (
+            dep
+            for dep in get_v2_stage(stage_id).depends_on
+            if dep in V2_PAGE_STAGE_IDS and get_v2_stage(dep).output_type in _IMAGE_OUTPUT_TYPES
+        ),
+        None,
+    )
+    parent_run = clean_run(parent) if parent is not None else None
+    if parent is not None and parent_run is not None:
+        links["beforeUrl"] = f"{base}/{parent}/artifact?v={parent_run}"
+        if "thumbUrl" not in links:
+            links["thumbUrl"] = f"{base}/{parent}/thumbnail?v={parent_run}"
+    return links
+
+
 def _build_page_row(
     page: PageRecord,
     stage_status: PageStageStatus | None,
     page_number: int,
     error_message: str | None = None,
+    image_links: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Build a PageRow dict for the imageStageReview machine."""
     state = _STAGE_STATUS_TO_ROW_STATE.get((stage_status.value if stage_status else "not_run"), "clean")
@@ -1509,6 +1555,8 @@ def _build_page_row(
     }
     if error_message:
         row["flags"] = [error_message]
+    if image_links:
+        row.update(image_links)
     return row
 
 
@@ -1568,12 +1616,14 @@ async def get_project_stage_pages(
     # Fetch all page_stage rows for this stage_id.
     all_stages = await db.list_page_stages_by_project(project_id)
     stage_by_page: dict[str, PageStageState] = {s.page_id: s for s in all_stages if s.stage_id == stage_id}
+    states = {(s.page_id, s.stage_id): s for s in all_stages}
 
     rows: list[dict[str, object]] = []
     for i, page in enumerate(all_pages):
         page_stage = stage_by_page.get(f"{page.idx0:04d}")
         error_msg = page_stage.error_message if page_stage else None
-        rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg))
+        links = _page_image_links(project_id, page, stage_id, states)
+        rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg, links))
 
     return JSONResponse(content={"rows": rows, "totals": _build_totals(rows)})
 
@@ -1707,7 +1757,11 @@ async def rerun_project_stage_pages(
         await db.put_job(job)
         located = position_and_page.get(page_id)
         if located is not None:
-            updated_rows.append(_build_page_row(located[1], PageStageStatus.dirty, located[0]))
+            states = {
+                (s.page_id, s.stage_id): s for s in await db.list_page_stages_for_page(project_id, page_id)
+            }
+            links = _page_image_links(project_id, located[1], stage_id, states)
+            updated_rows.append(_build_page_row(located[1], PageStageStatus.dirty, located[0], None, links))
         else:
             updated_rows.append({"idx": page_id, "prefix": page_id, "state": "flagged", "pageNumber": i})
 
