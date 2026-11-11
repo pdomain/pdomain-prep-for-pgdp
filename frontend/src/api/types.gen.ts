@@ -800,8 +800,9 @@ export interface paths {
          * Rerun Project Stage Pages
          * @description Queue a batched rerun of a page-scoped stage for selected pages.
          *
-         *     For each page_id in the request, marks the page_stage row as dirty
-         *     (queuing it for processing) and enqueues a run_page_stage Job.
+         *     For each page_id in the request, saves ``settings`` over the page's existing
+         *     page-tier override, marks the page_stage row as dirty and enqueues a
+         *     run_page_stage Job. Keys the stage does not define are rejected with 422.
          *
          *     Returns { rows: PageRow[] } with the updated state for each requested page.
          *
@@ -4166,6 +4167,10 @@ export interface components {
         _BatchRerunRequest: {
             /** Page Ids */
             page_ids: string[];
+            /** Settings */
+            settings?: {
+                [key: string]: unknown;
+            };
         };
         /** _CleanResponse */
         _CleanResponse: {

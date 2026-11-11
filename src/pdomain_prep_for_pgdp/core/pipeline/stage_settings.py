@@ -73,10 +73,15 @@ CREATE INDEX IF NOT EXISTS stage_settings_proj ON stage_settings(project_id);
 # Stages absent from this map have no tunable stage-level settings.
 
 STAGE_SETTINGS_DEFAULTS: dict[str, dict[str, Any]] = {
+    # threshold: fixed binarisation level; None selects Otsu
+    "threshold": {
+        "threshold_level": None,
+    },
     # denoise (W1.2): component-area and median-kernel thresholds
     "denoise": {
         "min_component_area": 6,
         "median_kernel_size": 0,
+        "skip_denoise": None,
     },
     # deskew (W1.3): skip_auto_deskew (default True = always skip in registry)
     "deskew": {
@@ -134,6 +139,9 @@ _SETTINGS_KEY_TO_FIELD: dict[str, str] = {
     # (migrate_grayscale_settings + GrayscaleConfigModel.from_settings → .grayscale)
     # rather than flat-field assignment, so its keys do not appear here.
 }
+
+# PageConfigOverrides can also set these fields, so an unset tier must not erase that value.
+_KEEP_CONFIG_WHEN_NONE: frozenset[str] = frozenset({"threshold_level", "skip_denoise"})
 
 
 def migrate_grayscale_settings(d: dict[str, Any]) -> dict[str, Any]:
@@ -223,6 +231,8 @@ def apply_stage_settings_to_config(
     for key, value in effective_settings.items():
         if key not in registry_defaults:
             # Unknown key — future-compat ignore.
+            continue
+        if value is None and key in _KEEP_CONFIG_WHEN_NONE:
             continue
         field = _SETTINGS_KEY_TO_FIELD.get(key, key)
         if not hasattr(cfg, field):

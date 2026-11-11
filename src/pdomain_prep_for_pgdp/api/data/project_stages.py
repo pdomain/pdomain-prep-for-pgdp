@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pdomain_prep_for_pgdp.api.dependencies import (
     DatabaseDep,
@@ -100,6 +100,8 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
     from pdomain_prep_for_pgdp.core.models import Project
+    from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+    from pdomain_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -1450,6 +1452,33 @@ async def put_page_order_naming(
     return JSONResponse(content={"stage_id": "page_order", "naming": body.naming})
 
 
+def _load_settings_aggregate(
+    settings: Settings,
+    project_id: str,
+) -> tuple[PrepApplication | None, PrepProjectAggregate | None]:
+    """Load the project's aggregate for settings events; (None, None) means record no event."""
+    from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+
+    try:
+        events_db = settings.data_root / "projects" / project_id / "events.db"
+        events_db.parent.mkdir(parents=True, exist_ok=True)
+        app = PrepApplication(env=event_store_env(events_db))
+        try:
+            project_uuid = uuid.UUID(project_id)
+        except ValueError:
+            project_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        try:
+            loaded = app.repository.get(PrepProjectAggregate.create_id(project_uuid))
+        except Exception:
+            return app, PrepProjectAggregate(project_id=project_uuid)
+        if isinstance(loaded, PrepProjectAggregate):
+            return app, loaded
+        return app, PrepProjectAggregate(project_id=project_uuid)
+    except Exception as exc:
+        log.warning("settings aggregate could not be loaded (non-fatal): %s", exc)
+        return None, None
+
+
 # ─── W4 Group 3 — Stage aggregate routes ─────────────────────────────────────
 
 # Status → PageRow.state mapping for the imageStageReview machine.
@@ -1472,7 +1501,8 @@ def _build_page_row(
     """Build a PageRow dict for the imageStageReview machine."""
     state = _STAGE_STATUS_TO_ROW_STATE.get((stage_status.value if stage_status else "not_run"), "clean")
     row: dict[str, object] = {
-        "idx": page.prefix or str(page.idx0),
+        "idx": f"{page.idx0:04d}",
+        "idx0": page.idx0,
         "prefix": page.prefix or str(page.idx0),
         "state": state,
         "pageNumber": page_number,
@@ -1541,11 +1571,7 @@ async def get_project_stage_pages(
 
     rows: list[dict[str, object]] = []
     for i, page in enumerate(all_pages):
-        page_stage = stage_by_page.get(page.prefix or str(page.idx0))
-        # Also try zero-padded page_id convention
-        zero_padded = f"{page.idx0:04d}"
-        if page_stage is None:
-            page_stage = stage_by_page.get(zero_padded)
+        page_stage = stage_by_page.get(f"{page.idx0:04d}")
         error_msg = page_stage.error_message if page_stage else None
         rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg))
 
@@ -1556,6 +1582,47 @@ class _BatchRerunRequest(BaseModel):
     """POST /project-stages/{stage_id}/rerun request body."""
 
     page_ids: list[str]
+    settings: dict[str, object] = Field(default_factory=dict)
+
+
+def _save_rerun_settings(
+    settings: Settings,
+    project_id: str,
+    stage_id: str,
+    body: _BatchRerunRequest,
+    *,
+    actor_id: str,
+) -> None:
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        StageSettingsStore,
+    )
+
+    registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
+    unknown = sorted(set(body.settings) - set(registry_default))
+    if unknown:
+        raise HTTPException(422, f"stage {stage_id!r} has no settings named: {', '.join(unknown)}")
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = StageSettingsStore(db_path)
+    app, aggregate = _load_settings_aggregate(settings, project_id)
+    for page_id in body.page_ids:
+        existing = store.get_page_override(project_id, stage_id, page_id) or {}
+        store.save_page_override(
+            project_id,
+            stage_id,
+            page_id,
+            {**existing, **body.settings},
+            aggregate=aggregate,
+            registry_default=registry_default,
+            actor_id=actor_id,
+        )
+    if app is not None and aggregate is not None:
+        try:
+            app.save(aggregate)
+        except Exception as exc:
+            log.warning("rerun settings aggregate persist failed: %s", exc)
 
 
 @router.post(
@@ -1580,8 +1647,9 @@ async def rerun_project_stage_pages(
 ) -> JSONResponse:
     """Queue a batched rerun of a page-scoped stage for selected pages.
 
-    For each page_id in the request, marks the page_stage row as dirty
-    (queuing it for processing) and enqueues a run_page_stage Job.
+    For each page_id in the request, saves ``settings`` over the page's existing
+    page-tier override, marks the page_stage row as dirty and enqueues a
+    run_page_stage Job. Keys the stage does not define are rejected with 422.
 
     Returns { rows: PageRow[] } with the updated state for each requested page.
 
@@ -1596,6 +1664,9 @@ async def rerun_project_stage_pages(
     if _rv is not None:
         return _rv
 
+    if body.settings:
+        _save_rerun_settings(settings, project_id, stage_id, body, actor_id=user.user_id)
+
     # Resolved once and reused for every job in the batch — the compute
     # device preference doesn't change mid-request.
     device = resolve_job_device()
@@ -1603,6 +1674,11 @@ async def rerun_project_stage_pages(
     # Mark each requested page as dirty for this stage and enqueue its
     # run_page_stage job, mirroring the async per-page route (pages.py
     # run_page_stage's `?async=true` branch).
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    all_pages = list_page_records(page_service, project_id)
+    position_and_page = {f"{page.idx0:04d}": (i, page) for i, page in enumerate(all_pages)}
+
     updated_rows: list[dict[str, object]] = []
     for i, page_id in enumerate(body.page_ids):
         # Mark dirty in page_stages.
@@ -1629,14 +1705,11 @@ async def rerun_project_stage_pages(
             },
         )
         await db.put_job(job)
-        updated_rows.append(
-            {
-                "idx": page_id,
-                "prefix": page_id,
-                "state": "flagged",  # dirty → flagged in frontend state machine
-                "pageNumber": i,
-            }
-        )
+        located = position_and_page.get(page_id)
+        if located is not None:
+            updated_rows.append(_build_page_row(located[1], PageStageStatus.dirty, located[0]))
+        else:
+            updated_rows.append({"idx": page_id, "prefix": page_id, "state": "flagged", "pageNumber": i})
 
     return JSONResponse(content={"rows": updated_rows})
 
@@ -3199,8 +3272,6 @@ async def put_project_stage_settings(
     Equivalent to "save as default" — applies to all pages in this project
     that have no page-level override for that field. Appends a SettingsChange event.
     """
-    import uuid as _uuid
-
     from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
         STAGE_SETTINGS_DEFAULTS,
         StageSettingsStore,
@@ -3218,40 +3289,19 @@ async def put_project_stage_settings(
     store = StageSettingsStore(db_path)
     registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
 
-    _agg_app = _agg = None
-    try:
-        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
-            PrepApplication,
-            PrepProjectAggregate,
-        )
-
-        _events_db = settings.data_root / "projects" / project_id / "events.db"
-        _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = PrepApplication(env=event_store_env(_events_db))
-        try:
-            _proj_uuid = _uuid.UUID(project_id)
-        except ValueError:
-            _proj_uuid = _uuid.uuid5(_uuid.NAMESPACE_OID, project_id)
-        _agg_id = PrepProjectAggregate.create_id(_proj_uuid)
-        try:
-            _agg = _app.repository.get(_agg_id)  # type: ignore[assignment]
-        except Exception:
-            _agg = PrepProjectAggregate(project_id=_proj_uuid)
-        _agg_app = _app
-    except Exception as _e:
-        log.warning("put_project_stage_settings: could not load aggregate (non-fatal): %s", _e)
+    _agg_app, _agg = _load_settings_aggregate(settings, project_id)
 
     store.save_as_default(
         project_id,
         stage_id,
         body,
-        aggregate=_agg,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        aggregate=_agg,
         registry_default=registry_default,
         actor_id=user.user_id,
     )
     if _agg_app is not None and _agg is not None:
         try:
-            _agg_app.save(_agg)  # type: ignore[arg-type]
+            _agg_app.save(_agg)
         except Exception as _e_save:
             log.warning("put_project_stage_settings aggregate persist failed: %s", _e_save)
 

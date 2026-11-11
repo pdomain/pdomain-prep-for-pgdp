@@ -25,18 +25,20 @@
 // Control types
 // ---------------------------------------------------------------------------
 
-export type ControlKind = "slider" | "toggle" | "select" | "info";
+export type ControlKind = "slider" | "toggle" | "select" | "insets";
 
 export interface ControlDef {
-  /** Machine event param key (passed in SET_PARAM.patch) */
+  /** Backend stage-settings key, sent unchanged on re-run */
   key: string;
   /** Human label */
   label: string;
   kind: ControlKind;
-  /** For slider: [min, max, step] */
+  /** For slider and insets: [min, max, step] */
   range?: [number, number, number];
   /** For select: option values */
-  options?: string[];
+  options?: (string | number)[];
+  /** For slider: offers a button that sets the value to null */
+  autoLabel?: string;
   /** Default value (used for display when no draft) */
   defaultValue?: unknown;
   /** Short description shown below the label */
@@ -91,38 +93,14 @@ const THRESHOLD_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "method",
-      label: "Method",
-      kind: "select",
-      options: ["sauvola", "otsu", "adaptive"],
-      defaultValue: "sauvola",
-      description: "Binarization algorithm. Sauvola is best for newsprint.",
-    },
-    {
-      key: "threshold",
-      label: "Threshold",
+      key: "threshold_level",
+      label: "Threshold level",
       kind: "slider",
       range: [0, 255, 1],
-      defaultValue: 140,
+      defaultValue: null,
+      autoLabel: "Auto (Otsu)",
       description:
-        "Global cut point (0–255). Values below go black, above go white.",
-    },
-    {
-      key: "windowSize",
-      label: "Window size",
-      kind: "slider",
-      range: [11, 101, 2],
-      defaultValue: 25,
-      description:
-        "Local window size (px) for Sauvola/adaptive. Larger = smoother.",
-    },
-    {
-      key: "kFactor",
-      label: "k factor",
-      kind: "slider",
-      range: [0.05, 0.5, 0.01],
-      defaultValue: 0.34,
-      description: "Sauvola k sensitivity. Higher = darker output.",
+        "Fixed cut point (0-255). Auto picks the level for each page with Otsu.",
     },
   ],
   confirmLabel: "Confirm threshold",
@@ -143,20 +121,11 @@ const DESKEW_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "maxAngleDeg",
-      label: "Max angle (°)",
-      kind: "slider",
-      range: [0.5, 15, 0.5],
-      defaultValue: 5,
-      description: "Pages with |angle| > max are flagged for review.",
-    },
-    {
-      key: "algorithm",
-      label: "Algorithm",
-      kind: "select",
-      options: ["projection", "hough", "auto"],
-      defaultValue: "auto",
-      description: "Skew detection algorithm. Auto selects by page type.",
+      key: "skip_auto_deskew",
+      label: "Skip automatic deskew",
+      kind: "toggle",
+      defaultValue: true,
+      description: "When on, the page keeps its current rotation.",
     },
   ],
   confirmLabel: "Confirm deskew",
@@ -181,29 +150,27 @@ const DENOISE_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "blobSizeMin",
-      label: "Min blob size (px²)",
+      key: "min_component_area",
+      label: "Minimum mark area (px²)",
       kind: "slider",
       range: [1, 50, 1],
-      defaultValue: 4,
-      description: "Components smaller than this are removed as noise.",
+      defaultValue: 6,
+      description: "Marks with fewer pixels than this are removed as noise.",
     },
     {
-      key: "blobSizeMax",
-      label: "Max blob size (px²)",
-      kind: "slider",
-      range: [50, 500, 10],
-      defaultValue: 200,
-      description:
-        "Components larger than this are protected (likely intentional).",
+      key: "median_kernel_size",
+      label: "Median filter size",
+      kind: "select",
+      options: [0, 3, 5, 7],
+      defaultValue: 0,
+      description: "Blurs out single-pixel noise first. 0 turns it off.",
     },
     {
-      key: "protectFootMarks",
-      label: "Protect foot marks",
+      key: "skip_denoise",
+      label: "Skip denoise",
       kind: "toggle",
-      defaultValue: true,
-      description:
-        "Keep the first-pass detector's protected components intact.",
+      defaultValue: false,
+      description: "When on, the page passes through unchanged.",
     },
   ],
   confirmLabel: "Confirm denoise",
@@ -222,31 +189,7 @@ const DEWARP_SCHEMA: StageSchema = {
     { key: "gutter", label: "Gutter shadow-sm", tone: "var(--ocr)" },
     { key: "illustration", label: "Illustration", tone: "var(--ink-3)" },
   ],
-  controls: [
-    {
-      key: "model",
-      label: "Dewarp model",
-      kind: "select",
-      options: ["thin_plate_spline", "polynomial", "cylinder"],
-      defaultValue: "thin_plate_spline",
-      description: "Deformation model. TPS is best for book scans.",
-    },
-    {
-      key: "stiffness",
-      label: "Stiffness",
-      kind: "slider",
-      range: [0.0, 1.0, 0.05],
-      defaultValue: 0.4,
-      description: "Higher = smoother warp (less aggressive).",
-    },
-    {
-      key: "gutterRemove",
-      label: "Remove gutter shadow-sm",
-      kind: "toggle",
-      defaultValue: true,
-      description: "Crop the inner gutter shadow-sm before dewarp.",
-    },
-  ],
+  controls: [],
   confirmLabel: "Confirm dewarp",
 };
 
@@ -268,36 +211,12 @@ const POST_TRANSFORM_CROP_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "marginTop",
-      label: "Top margin (px)",
-      kind: "slider",
-      range: [0, 60, 1],
-      defaultValue: 4,
-      description: "Extra margin added after transform crop (top edge).",
-    },
-    {
-      key: "marginBottom",
-      label: "Bottom margin (px)",
-      kind: "slider",
-      range: [0, 60, 1],
-      defaultValue: 4,
-      description: "Extra margin added after transform crop (bottom edge).",
-    },
-    {
-      key: "marginLeft",
-      label: "Left margin (px)",
-      kind: "slider",
-      range: [0, 60, 1],
-      defaultValue: 4,
-      description: "Extra margin added after transform crop (left edge).",
-    },
-    {
-      key: "marginRight",
-      label: "Right margin (px)",
-      kind: "slider",
-      range: [0, 60, 1],
-      defaultValue: 4,
-      description: "Extra margin added after transform crop (right edge).",
+      key: "post_transform_crop_insets",
+      label: "Crop insets (px)",
+      kind: "insets",
+      range: [0, 200, 1],
+      defaultValue: [0, 0, 0, 0],
+      description: "Pixels removed from each edge after the transforms.",
     },
   ],
   confirmLabel: "Confirm post-transform crop",
@@ -324,60 +243,19 @@ const CANVAS_MAP_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "targetCanvas",
-      label: "Target canvas",
-      kind: "select",
-      options: ["body", "a4", "letter", "custom"],
-      defaultValue: "body",
-      description: "What sets the common canvas dimensions.",
-    },
-    {
-      key: "marginTop",
-      label: "Top margin (mm)",
-      kind: "slider",
-      range: [0, 40, 1],
-      defaultValue: 16,
-      description: "Top margin applied to all pages on the canvas.",
-    },
-    {
-      key: "marginOuter",
-      label: "Outer margin (mm)",
-      kind: "slider",
-      range: [0, 40, 1],
-      defaultValue: 20,
-      description: "Outer margin (left on verso, right on recto).",
-    },
-    {
-      key: "marginInner",
-      label: "Inner margin (mm)",
-      kind: "slider",
-      range: [0, 40, 1],
-      defaultValue: 14,
-      description: "Inner margin (gutter side). Mirrors on facing pages.",
-    },
-    {
-      key: "marginBottom",
-      label: "Bottom margin (mm)",
-      kind: "slider",
-      range: [0, 40, 1],
-      defaultValue: 18,
-      description: "Bottom margin applied to all pages on the canvas.",
-    },
-    {
-      key: "mirrorFacingMargins",
-      label: "Mirror facing margins",
+      key: "do_morph",
+      label: "Close gaps in text strokes",
       kind: "toggle",
-      defaultValue: true,
-      description:
-        "Swap outer/inner between verso and recto so spreads read symmetric.",
+      defaultValue: false,
+      description: "Applies a morphological fill before mapping.",
     },
     {
-      key: "fitOutliersWithin",
-      label: "Fit outliers within canvas",
-      kind: "toggle",
-      defaultValue: true,
-      description:
-        "Scale plates / foldouts to fit rather than letting them set the size.",
+      key: "page_h_w_ratio",
+      label: "Page height / width",
+      kind: "slider",
+      range: [1.0, 2.0, 0.001],
+      defaultValue: 1.294,
+      description: "Aspect ratio of the common canvas.",
     },
   ],
   confirmLabel: "Confirm canvas map",
@@ -406,20 +284,12 @@ const POST_OCR_CROP_SCHEMA: StageSchema = {
   ],
   controls: [
     {
-      key: "marginPx",
-      label: "Margin (px)",
-      kind: "slider",
-      range: [0, 40, 1],
-      defaultValue: 8,
-      description: "Padding added around the text-zone bounding box.",
-    },
-    {
-      key: "includeIllustrations",
-      label: "Include illustrations",
-      kind: "toggle",
-      defaultValue: true,
-      description:
-        "When enabled, illustration zones are included in the crop bounds.",
+      key: "ocr_crop",
+      label: "Crop insets (px)",
+      kind: "insets",
+      range: [0, 200, 1],
+      defaultValue: [0, 0, 0, 0],
+      description: "Pixels removed from each edge before OCR.",
     },
   ],
   confirmLabel: "Confirm post-OCR crop",

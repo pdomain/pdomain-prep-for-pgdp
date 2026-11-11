@@ -289,6 +289,64 @@ function PageThumb({ row }: { row: PageRow }) {
   );
 }
 
+const INSET_EDGES = ["Top", "Bottom", "Left", "Right"] as const;
+
+function sliderReadout(ctrl: ControlDef, value: unknown): string {
+  if (typeof value === "number") return String(value);
+  return ctrl.autoLabel ?? "";
+}
+
+function InsetSliders({
+  ctrl,
+  value,
+  onPatch,
+}: {
+  ctrl: ControlDef;
+  value: unknown;
+  onPatch: (patch: Record<string, unknown>) => void;
+}) {
+  const [min, max, step] = ctrl.range ?? [0, 200, 1];
+  const insets = Array.isArray(value) ? (value as number[]) : [0, 0, 0, 0];
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      {INSET_EDGES.map((edge, edgeIndex) => (
+        <label
+          key={edge}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "48px 1fr 32px",
+            gap: 6,
+            alignItems: "center",
+            fontSize: 11,
+            color: "var(--ink-3)",
+          }}
+        >
+          {edge}
+          <input
+            type="range"
+            aria-label={`${ctrl.label} ${edge}`}
+            data-testid={`slider-${ctrl.key}-${edgeIndex}`}
+            min={min}
+            max={max}
+            step={step}
+            value={insets[edgeIndex] ?? 0}
+            onChange={(e) =>
+              onPatch({
+                [ctrl.key]: insets.map((inset, i) =>
+                  i === edgeIndex ? parseFloat(e.target.value) : inset,
+                ),
+              })
+            }
+          />
+          <span style={{ fontFamily: "monospace" }}>
+            {insets[edgeIndex] ?? 0}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 /** Control editor for inline page-level parameter tuning */
 function ControlEditor({
   controls,
@@ -299,6 +357,17 @@ function ControlEditor({
   draft: Record<string, unknown>;
   onPatch: (patch: Record<string, unknown>) => void;
 }) {
+  if (controls.length === 0) {
+    return (
+      <div
+        data-testid="control-editor-empty"
+        style={{ fontSize: 11.5, color: "var(--ink-3)" }}
+      >
+        This stage has no adjustable settings. Re-run repeats it with the
+        current pipeline.
+      </div>
+    );
+  }
   return (
     <div
       data-testid="control-editor"
@@ -313,7 +382,8 @@ function ControlEditor({
       }}
     >
       {controls.map((ctrl) => {
-        const currentVal = draft[ctrl.key] ?? ctrl.defaultValue;
+        const currentVal =
+          draft[ctrl.key] !== undefined ? draft[ctrl.key] : ctrl.defaultValue;
         return (
           <div
             key={ctrl.key}
@@ -326,6 +396,7 @@ function ControlEditor({
               </span>
               {ctrl.kind === "slider" && (
                 <span
+                  data-testid={`readout-${ctrl.key}`}
                   style={{
                     fontFamily: "monospace",
                     fontSize: 11,
@@ -333,12 +404,7 @@ function ControlEditor({
                     color: "var(--ink-1)",
                   }}
                 >
-                  {typeof currentVal === "number"
-                    ? currentVal
-                    : typeof ctrl.defaultValue === "string" ||
-                        typeof ctrl.defaultValue === "number"
-                      ? String(ctrl.defaultValue)
-                      : ""}
+                  {sliderReadout(ctrl, currentVal)}
                 </span>
               )}
             </div>
@@ -356,6 +422,7 @@ function ControlEditor({
             {ctrl.kind === "slider" && ctrl.range && (
               <input
                 type="range"
+                aria-label={ctrl.label}
                 data-testid={`slider-${ctrl.key}`}
                 min={ctrl.range[0]}
                 max={ctrl.range[1]}
@@ -369,9 +436,35 @@ function ControlEditor({
                 style={{ width: "100%" }}
               />
             )}
+            {ctrl.kind === "slider" && ctrl.autoLabel && (
+              <button
+                type="button"
+                data-testid={`auto-${ctrl.key}`}
+                aria-pressed={currentVal === null}
+                onClick={() => onPatch({ [ctrl.key]: null })}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 5,
+                  border: "1px solid var(--border-2)",
+                  background:
+                    currentVal === null ? "var(--accent)" : "var(--bg-raised)",
+                  color: currentVal === null ? "#fff" : "var(--ink-2)",
+                  fontSize: 11.5,
+                  cursor: "pointer",
+                  alignSelf: "flex-start",
+                }}
+              >
+                {ctrl.autoLabel}
+              </button>
+            )}
+            {ctrl.kind === "insets" && (
+              <InsetSliders ctrl={ctrl} value={currentVal} onPatch={onPatch} />
+            )}
             {ctrl.kind === "toggle" && (
               <button
+                type="button"
                 data-testid={`toggle-${ctrl.key}`}
+                aria-pressed={Boolean(currentVal)}
                 onClick={() => onPatch({ [ctrl.key]: !currentVal })}
                 style={{
                   padding: "4px 8px",
@@ -389,13 +482,16 @@ function ControlEditor({
             )}
             {ctrl.kind === "select" && ctrl.options && (
               <select
+                aria-label={ctrl.label}
                 data-testid={`select-${ctrl.key}`}
-                value={
-                  typeof currentVal === "string"
-                    ? currentVal
-                    : String(ctrl.defaultValue)
+                value={String(currentVal)}
+                onChange={(e) =>
+                  onPatch({
+                    [ctrl.key]: ctrl.options?.find(
+                      (option) => String(option) === e.target.value,
+                    ),
+                  })
                 }
-                onChange={(e) => onPatch({ [ctrl.key]: e.target.value })}
                 style={{
                   padding: "4px 8px",
                   borderRadius: 5,

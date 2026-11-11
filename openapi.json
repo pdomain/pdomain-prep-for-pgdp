@@ -1914,7 +1914,7 @@
           "project-stages"
         ],
         "summary": "Rerun Project Stage Pages",
-        "description": "Queue a batched rerun of a page-scoped stage for selected pages.\n\nFor each page_id in the request, marks the page_stage row as dirty\n(queuing it for processing) and enqueues a run_page_stage Job.\n\nReturns { rows: PageRow[] } with the updated state for each requested page.\n\nReplaces the per-page loop in imageStageReview.ts reRunPages.\nW4 Group 3 \u2014 batched rerun (seam-remediation plan).",
+        "description": "Queue a batched rerun of a page-scoped stage for selected pages.\n\nFor each page_id in the request, saves ``settings`` over the page's existing\npage-tier override, marks the page_stage row as dirty and enqueues a\nrun_page_stage Job. Keys the stage does not define are rejected with 422.\n\nReturns { rows: PageRow[] } with the updated state for each requested page.\n\nReplaces the per-page loop in imageStageReview.ts reRunPages.\nW4 Group 3 \u2014 batched rerun (seam-remediation plan).",
         "operationId": "rerun_project_stage_pages",
         "security": [
           {
@@ -10712,6 +10712,11 @@
             },
             "type": "array",
             "title": "Page Ids"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
           }
         },
         "type": "object",

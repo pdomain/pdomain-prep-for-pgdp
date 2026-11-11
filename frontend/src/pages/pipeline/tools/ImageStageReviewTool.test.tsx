@@ -343,14 +343,14 @@ describe("ImageStageReviewTool — inline editor", () => {
     });
   });
 
-  it("threshold inline editor shows method control", async () => {
+  it("threshold inline editor shows threshold level control", async () => {
     renderReview("threshold");
     await waitFor(() => {
       expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
     });
     fireEvent.click(screen.getByTestId("page-thumb-page-2"));
     await waitFor(() => {
-      expect(screen.getByTestId("control-method")).toBeDefined();
+      expect(screen.getByTestId("control-threshold_level")).toBeDefined();
     });
   });
 
@@ -500,98 +500,97 @@ describe("ImageStageReviewTool — confirming state", () => {
 // Artboard: stageSchemas — controls per stage
 // ---------------------------------------------------------------------------
 
-describe("ImageStageReviewTool — controls via stageSchemas (threshold)", () => {
-  it("threshold controls include method select", async () => {
-    renderReview("threshold");
+async function openEditor(stageId: string) {
+  renderReview(stageId);
+  await waitFor(() => {
+    expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+  });
+  fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+}
+
+describe("ImageStageReviewTool — controls match backend settings", () => {
+  it("threshold starts on automatic and accepts a fixed level", async () => {
+    await openEditor("threshold");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "Auto (Otsu)",
+      );
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+
+    fireEvent.change(screen.getByTestId("slider-threshold_level"), {
+      target: { value: "170" },
+    });
+
     await waitFor(() => {
-      expect(screen.getByTestId("select-method")).toBeDefined();
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "170",
+      );
+    });
+    fireEvent.click(screen.getByTestId("auto-threshold_level"));
+    await waitFor(() => {
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "Auto (Otsu)",
+      );
     });
   });
 
-  it("threshold controls include threshold slider (0–255)", async () => {
-    renderReview("threshold");
+  it("deskew offers only the skip toggle", async () => {
+    await openEditor("deskew");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("toggle-skip_auto_deskew").textContent).toBe(
+        "On",
+      );
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-threshold")).toBeDefined();
-    });
+    expect(screen.queryByTestId("select-algorithm")).toBeNull();
   });
 
-  it("threshold controls include windowSize slider", async () => {
-    renderReview("threshold");
+  it("denoise median filter offers only odd sizes or off", async () => {
+    await openEditor("denoise");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("select-median_kernel_size")).toBeDefined();
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-windowSize")).toBeDefined();
-    });
+    const options = Array.from(
+      screen
+        .getByTestId("select-median_kernel_size")
+        .querySelectorAll("option"),
+    ).map((option) => option.value);
+    expect(options).toEqual(["0", "3", "5", "7"]);
+    expect(screen.getByTestId("slider-min_component_area")).toBeDefined();
+    expect(screen.getByTestId("toggle-skip_denoise")).toBeDefined();
   });
 
-  it("threshold controls include kFactor slider", async () => {
-    renderReview("threshold");
+  it("dewarp says it has no adjustable settings", async () => {
+    await openEditor("dewarp");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("control-editor-empty")).toBeDefined();
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-kFactor")).toBeDefined();
-    });
-  });
-});
-
-describe("ImageStageReviewTool — controls via stageSchemas (denoise)", () => {
-  it("denoise controls include protectFootMarks toggle", async () => {
-    renderReview("denoise");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
-    });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("toggle-protectFootMarks")).toBeDefined();
-    });
-  });
-});
-
-describe("ImageStageReviewTool — controls via stageSchemas (dewarp)", () => {
-  it("dewarp controls include model select", async () => {
-    renderReview("dewarp");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
-    });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("select-model")).toBeDefined();
-    });
+    expect(screen.queryByTestId("select-model")).toBeNull();
   });
 
-  it("dewarp controls include stiffness slider", async () => {
-    renderReview("dewarp");
+  it("post_transform_crop edits all four insets as one value", async () => {
+    await openEditor("post_transform_crop");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(
+        screen.getByTestId("slider-post_transform_crop_insets-2"),
+      ).toBeDefined();
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-stiffness")).toBeDefined();
-    });
-  });
-});
 
-describe("ImageStageReviewTool — controls via stageSchemas (post_transform_crop)", () => {
-  it("post_transform_crop controls include marginTop slider", async () => {
-    renderReview("post_transform_crop");
+    fireEvent.change(
+      screen.getByTestId("slider-post_transform_crop_insets-2"),
+      {
+        target: { value: "9" },
+      },
+    );
+
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      const slider = screen.getByTestId<HTMLInputElement>(
+        "slider-post_transform_crop_insets-2",
+      );
+      expect(slider.value).toBe("9");
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-marginTop")).toBeDefined();
-    });
+    const top = screen.getByTestId<HTMLInputElement>(
+      "slider-post_transform_crop_insets-0",
+    );
+    expect(top.value).toBe("0");
   });
 });

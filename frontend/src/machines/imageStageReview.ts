@@ -34,6 +34,7 @@ import { setup, assign, fromPromise } from "xstate";
 /** A row in the imageStageReview page grid. */
 export interface PageRow {
   idx: string;
+  idx0?: number;
   prefix: string;
   state: "running" | "clean" | "flagged" | "reviewed" | "failed";
   flags?: string[];
@@ -68,7 +69,7 @@ export interface ImageStageReviewServices {
   ): Promise<{ rows: PageRow[]; totals: Totals }>;
 
   /**
-   * POST /api/projects/:id/stages/:stageId/rerun { params, pageIds } -> PageRow[]
+   * POST /api/data/projects/:id/project-stages/:stageId/rerun { page_ids, settings } -> { rows }
    */
   reRunPages(
     projectId: string,
@@ -163,6 +164,26 @@ function setRowState(
   state: PageRow["state"],
 ): PageRow[] {
   return rows.map((r) => (idxList.includes(r.idx) ? { ...r, state } : r));
+}
+
+/** The pages a Re-run acts on, from the editor's apply-to choice. */
+export function rerunPageIds(
+  context: Pick<
+    ImageStageReviewContext,
+    "editing" | "selected" | "applyTo" | "rows"
+  >,
+): string[] {
+  const { editing, selected, applyTo, rows } = context;
+  if (!editing) return selected;
+  if (applyTo === "selected") return [...new Set([editing, ...selected])];
+  if (applyTo === "sameIssue") {
+    const flags = rows.find((r) => r.idx === editing)?.flags ?? [];
+    const matching = rows
+      .filter((r) => r.flags?.some((flag) => flags.includes(flag)))
+      .map((r) => r.idx);
+    return [...new Set([editing, ...matching])];
+  }
+  return [editing];
 }
 
 function toggleXor(arr: string[], item: string): string[] {
@@ -358,6 +379,7 @@ export const imageStageReviewMachine = setup({
         // Extract stage params from the row (all fields beyond base PageRow fields)
         const {
           idx: _idx,
+          idx0: _idx0,
           prefix: _prefix,
           state: _state,
           flags: _flags,
@@ -733,7 +755,7 @@ export const imageStageReviewMachine = setup({
               stageId: context.stageId,
               services: context.services,
               draft: context.draft ?? {},
-              pageIds: context.editing ? [context.editing] : context.selected,
+              pageIds: rerunPageIds(context),
             }),
             onDone: [
               {

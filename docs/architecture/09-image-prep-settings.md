@@ -46,6 +46,11 @@ App-wide defaults use `pdomain-ops` `LocalFilePrefs` under `stage_settings.<stag
 An old `stage_settings_all.json` file is a read fallback when the preference key is absent.
 App-wide preferences do not have a project event log. The earlier proposal to event-log every tier did not ship literally.
 
+The image-stage review editor uses the backend setting keys directly. `POST .../project-stages/{stage_id}/rerun` takes
+`page_ids` and optional `settings`. It merges `settings` into each page's page-tier override before queueing the jobs,
+and rejects a key the stage does not define with 422. `threshold_level` and `skip_denoise` default to `null`, which
+leaves the value from `PageConfigOverrides` in place. Dewarp has no adjustable settings.
+
 Grayscale normalizes legacy flat settings at each tier before merging them.
 Its current nested configuration covers flattening, converter/channel choice, color2gray, CLAHE, and output range.
 The older mode/gamma proposal is historical, not the current settings schema.

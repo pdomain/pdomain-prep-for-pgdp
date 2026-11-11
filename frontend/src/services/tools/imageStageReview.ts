@@ -50,19 +50,20 @@ async function fetchStagePages(
  * Re-run a stage for specific pages (batched).
  *
  * W4 Group 3: POST /api/data/projects/{id}/project-stages/{stageId}/rerun
- * Body: { page_ids: string[] }
+ * Body: { page_ids: string[], settings: draft }. The server saves the draft as
+ * each page's page-tier override before queueing the jobs.
  * Returns the updated PageRow[] for the re-run scope.
  */
 async function reRunPages(
   projectId: string,
   stageId: string,
-  _draft: Record<string, unknown>,
+  draft: Record<string, unknown>,
   pageIds: string[],
 ): Promise<PageRow[]> {
   try {
     const result = await api.post<{ rows: PageRow[] }>(
       `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/${encodeURIComponent(stageId)}/rerun`,
-      { page_ids: pageIds },
+      { page_ids: pageIds, settings: draft },
     );
     return result.rows;
   } catch (err) {
