@@ -1,19 +1,21 @@
 ---
-kind: handoff
-status: "active"
-created: "2026-11-11"
+kind: archive
+status: retired
 created_at: "2026-11-11T03:22:38Z"
 owner: "CT"
 branch: "fix/job-reliability"
 scope: "job-reliability"
 worktree: "/mnt/work/projects/pdomain/pdomain-prep-for-pgdp/.worktrees/fix-job-reliability"
 base_commit: "15d5f3c28c55739565de607ceedc2bf7fa28e29e"
-supersedes: ""
 handoff_reason: "user_requested"
 host: "claude-code"
+created: "2026-11-11"
+last_verified: "2026-11-11"
 ---
 
 # Job reliability work stopped before the first commit
+
+> **Retired — superseded by `docs/handoff/2026-11-11-052844-job-reliability-fixes-committed-and-awaiting-merge.md`.**
 
 ## Goal
 
