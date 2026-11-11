@@ -239,6 +239,16 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     # stacking, so callers don't double-log.
     configure_logging(settings.log_format)
 
+    if (
+        settings.auth_mode == "apikey"
+        and settings.session_cookie_secure is None
+        and not settings.is_loopback_host
+    ):
+        log.warning(
+            "session cookie is HTTPS-only because PGDP_HOST is not loopback; "
+            "login fails over plain HTTP unless PGDP_SESSION_COOKIE_SECURE=false"
+        )
+
     storage = build_storage(settings)
     database = build_database(settings)
     auth = build_auth(settings)
@@ -316,7 +326,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.effective_cors_allow_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )

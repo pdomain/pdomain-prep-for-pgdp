@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     generated at startup (sessions are lost on restart, which is fine locally).
     """
 
+    session_cookie_secure: bool | None = None
+    """Send the session cookie over HTTPS only. None means True unless `host` is loopback."""
+
+    cors_allow_origins: list[str] | None = None
+    """Allowed browser origins. None means any origin on loopback and none otherwise."""
+
     # ── GPU backend ──────────────────────────────────────────────────────────
     gpu_backend: GpuBackend | None = Field(
         default=None,
@@ -213,6 +219,20 @@ class Settings(BaseSettings):
                 stacklevel=2,
             )
         return self
+
+    @property
+    def is_loopback_host(self) -> bool:
+        return self.host in {"127.0.0.1", "localhost", "::1"}
+
+    @property
+    def effective_session_cookie_secure(self) -> bool:
+        return not self.is_loopback_host if self.session_cookie_secure is None else self.session_cookie_secure
+
+    @property
+    def effective_cors_allow_origins(self) -> list[str]:
+        if self.cors_allow_origins is not None:
+            return self.cors_allow_origins
+        return ["*"] if self.is_loopback_host else []
 
     @property
     def derived_database_url(self) -> str:
