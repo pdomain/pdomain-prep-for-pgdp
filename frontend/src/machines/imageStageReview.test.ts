@@ -293,6 +293,26 @@ describe("imageStageReview — exclusive inline editor", () => {
     actor.stop();
   });
 
+  it("OPEN_EDITOR on another page replaces the open editor and its draft", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "SET_PARAM", patch: { threshold: 0.7 } });
+    actor.send({ type: "OPEN_EDITOR", idx: "p003" });
+    expect(actor.getSnapshot().context.editing).toBe("p003");
+    expect(actor.getSnapshot().context.draft).toEqual({});
+    actor.stop();
+  });
+
+  it("DRAFT_SAVED empties the draft and keeps the editor open", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "SET_PARAM", patch: { threshold: 0.7 } });
+    actor.send({ type: "DRAFT_SAVED" });
+    expect(actor.getSnapshot().context.draft).toBeNull();
+    expect(actor.getSnapshot().context.editing).toBe("p002");
+    actor.stop();
+  });
+
   it("ACCEPT_AS_IS marks row as reviewed and returns to browsing", async () => {
     const actor = await startAndLoad();
     actor.send({ type: "OPEN_EDITOR", idx: "p002" });

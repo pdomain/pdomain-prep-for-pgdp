@@ -758,6 +758,33 @@ describe("ImageStageReviewTool — refresh after a run", () => {
     );
   });
 
+  it("refetches after a rerun returns, because the job can finish first", async () => {
+    const dirtyRow: PageRow = { ...IMAGE_ROW, state: "flagged" };
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([dirtyRow]).fetchStagePages);
+    const reRunPages = vi
+      .fn<ImageStageReviewServices["reRunPages"]>()
+      .mockResolvedValue([dirtyRow]);
+    renderWith({ ...TEST_SERVICES, fetchStagePages, reRunPages });
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    fetchStagePages.mockImplementation(
+      servicesWith([{ ...IMAGE_ROW, thumbUrl: "/thumb.png?v=9" }])
+        .fetchStagePages,
+    );
+
+    fireEvent.click(screen.getByTestId("rerun-btn"));
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("img", { name: "Page p002" }).getAttribute("src"),
+        ).toBe("/thumb.png?v=9");
+      },
+      { timeout: 2000 },
+    );
+  });
+
   it("ignores events from other stages", async () => {
     const fetchStagePages = vi
       .fn<ImageStageReviewServices["fetchStagePages"]>()
@@ -832,6 +859,23 @@ describe("ImageStageReviewTool — settings tiers", () => {
         min_component_area: 12,
         median_kernel_size: 5,
       });
+    });
+  });
+
+  it("drops the edited badge once the page override is saved", async () => {
+    vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("select-median_kernel_size"), {
+      target: { value: "5" },
+    });
+    expect(screen.getByTestId("edited-median_kernel_size")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save for this page" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("edited-median_kernel_size"),
+      ).not.toBeInTheDocument();
     });
   });
 

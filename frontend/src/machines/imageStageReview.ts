@@ -130,6 +130,7 @@ export type ImageStageReviewEvent =
   | { type: "OPEN_EDITOR"; idx: string }
   | { type: "DRAG_WIPE"; pct: number }
   | { type: "SET_PARAM"; patch: Record<string, unknown> }
+  | { type: "DRAFT_SAVED" }
   | { type: "SET_APPLY_TO"; value: "this" | "selected" | "sameIssue" }
   | { type: "ACCEPT_AS_IS" }
   | { type: "RERUN" }
@@ -776,6 +777,8 @@ export const imageStageReviewMachine = setup({
           on: {
             DRAG_WIPE: {},
             SET_PARAM: { actions: ["patchDraft"] },
+            DRAFT_SAVED: { actions: ["clearDraft"] },
+            OPEN_EDITOR: { actions: ["assignEditing", "beginDraft"] },
             SET_APPLY_TO: { actions: ["assignApplyTo"] },
             ACCEPT_AS_IS: {
               target: "browsing",

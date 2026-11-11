@@ -139,25 +139,22 @@ function matchesState(
  *
  * ## Tab synchronisation (hifi-source arc)
  * The pipeline shell's TabsBand renders the tab strip. When a tab is clicked,
- * `shellSend({ type: "SET_TAB", tab: "files" })` flows to the pipeline machine.
- * We intercept this call here to also update our local `activeTab` state, so
- * the content pane updates without a second tab strip.
- *
- * INTEGRATION ITEM (I-ST-1): To make this fully correct, `ToolSlotProps`
- * needs a `currentTab?: string` prop from PipelinePage so the initial tab
- * state can be read from the pipeline machine's `ctx.currentTab`. Until that
- * prop is added, `activeTab` starts at "files" (the most useful default for
- * new projects). If the user navigates in from a deep-link with
- * `?tab=settings` the tab strip will show the right selection but the content
- * won't match until the user clicks again.
+ * `shellSend({ type: "SET_TAB", tab })` updates the pipeline machine, and the
+ * `currentTab` prop carries that selection back to this pane.
  */
-export function SourceTool({ stageId }: ToolSlotProps): ReactNode {
+export function SourceTool({ stageId, currentTab }: ToolSlotProps): ReactNode {
   const { projectId = "demo" } = useParams<{ projectId: string }>();
 
   // ---------------------------------------------------------------------------
   // Tab state
   // ---------------------------------------------------------------------------
   const [activeTab, setActiveTab] = useState<SourceTab>("files");
+  const [seenShellTab, setSeenShellTab] = useState(currentTab);
+  if (currentTab !== seenShellTab) {
+    setSeenShellTab(currentTab);
+    const shellTab = _SOURCE_TAB_IDS.find((id) => id === currentTab);
+    if (shellTab) setActiveTab(shellTab);
+  }
 
   // ---------------------------------------------------------------------------
   // Machine wiring

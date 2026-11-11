@@ -252,6 +252,48 @@ async def test_handle_run_page_stage_uses_job_project_id_not_payload(
 
 
 @pytest.mark.asyncio
+async def test_handle_run_page_stage_passes_event_broker(
+    db: SqliteDatabase, storage: FilesystemStorage, tmp_path
+) -> None:
+    """Without the broker a queued page run finishes silently and open review screens never refresh."""
+    from unittest.mock import patch
+
+    from pdomain_prep_for_pgdp.core.job_runner import InProcessJobRunner
+    from pdomain_prep_for_pgdp.core.stage_events import StageEventBroker
+
+    await db.put_project(_project("real-project"))
+    await db.put_job(
+        Job(
+            id="j-broker",
+            project_id="real-project",
+            owner_id="default",
+            type=JobType.run_page_stage,
+            status=JobStatus.queued,
+            payload={"page_id": "0000", "stage_id": "threshold", "device": "cpu"},
+        )
+    )
+    calls: list[dict[str, object]] = []
+
+    async def fake_run_stage(**kwargs: object) -> None:
+        calls.append(dict(kwargs))
+
+    broker = StageEventBroker()
+    runner = InProcessJobRunner(
+        database=db,
+        storage=storage,
+        data_root=tmp_path / "runner-data",
+        poll_interval=0.05,
+        stage_events=broker,
+    )
+
+    with patch("pdomain_prep_for_pgdp.core.pipeline.stage_runner.run_stage", new=fake_run_stage):
+        await runner.run_pending(max_jobs=1)
+
+    assert len(calls) == 1
+    assert calls[0]["stage_events"] is broker
+
+
+@pytest.mark.asyncio
 async def test_run_page_stage_handler_data_root_from_runner_not_payload(
     db: SqliteDatabase, storage: FilesystemStorage, tmp_path
 ) -> None:

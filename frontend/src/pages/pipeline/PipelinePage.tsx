@@ -1291,6 +1291,7 @@ export function PipelinePage({
                 stageId={ctx.currentStageId}
                 runnerRef={currentRunnerRef}
                 shellSend={send}
+                currentTab={ctx.currentTab}
                 pageCount={ctx.pageCount}
               />
             ) : (

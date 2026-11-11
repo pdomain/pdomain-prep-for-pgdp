@@ -187,11 +187,11 @@ _STAGE_TOOL_TESTIDS: dict[str, tuple[str, ...]] = {
     "post_ocr_crop": ("image-stage-review-tool-post_ocr_crop",),
     "ocr": ("ocr-tool",),
     "page_order": ("page-order-tool",),
-    "wordcheck": ("wordcheck-tool",),
+    "wordcheck": ("wordcheck-tool", "wordcheck-tool-settled"),
     # Multi-state tools: any of these is a valid non-placeholder rendering
     "hyphen_join": ("hyphen-tool", "hyphen-tool-scanning", "hyphen-tool-failed", "hyphen-tool-settled"),
     "regex": ("regex-tool", "regex-tool-loading", "regex-tool-error", "regex-tool-clean"),
-    "text_review": ("text-review-tool",),
+    "text_review": ("text-review-tool", "text-review-tool-assembling", "text-review-tool-settled"),
     "illustrations": ("illustrations-tool",),
     "validation": ("validation-tool", "validation-checking", "validation-load-error"),
     "proof_pack": ("proof-pack-tool", "proof-pack-assembling", "proof-pack-failed"),
@@ -598,7 +598,7 @@ def test_source_tool_settings_save_as_default(live_server: LiveServer, page: Pag
     expect(page.locator('[data-testid="source-tool"]')).to_be_visible(timeout=10_000)
 
     # Click the "Stage settings" tab
-    settings_tab = page.get_by_role("tab", name="Stage settings")
+    settings_tab = page.get_by_role("button", name="Stage settings")
     expect(settings_tab).to_be_visible(timeout=5_000)
     settings_tab.click()
 
@@ -855,14 +855,15 @@ def test_wordcheck_decisions_flow_renders(live_server: LiveServer, page: Page) -
     assert errors == [], f"Errors on navigate: {errors}"
 
     # WordcheckTool container renders
-    expect(page.locator('[data-testid="wordcheck-tool"]')).to_be_visible(timeout=10_000)
+    wordcheck = page.locator('[data-testid="wordcheck-tool"], [data-testid="wordcheck-tool-settled"]')
+    expect(wordcheck).to_be_visible(timeout=10_000)
 
     # Brief wait for the tool to load data from the API
     page.wait_for_timeout(1_500)
 
     # No mock leak — the word "MOCK" should not appear in the tool content
     # (W5.4: mock-leak removed; the tool now uses real services)
-    tool_text = page.locator('[data-testid="wordcheck-tool"]').text_content() or ""
+    tool_text = wordcheck.text_content() or ""
     assert "MOCK_SUSPECTS" not in tool_text, (
         "W5.4 mock-leak detected: MOCK_SUSPECTS found in wordcheck tool content"
     )

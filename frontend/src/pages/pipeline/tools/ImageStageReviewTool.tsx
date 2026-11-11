@@ -35,7 +35,7 @@
  * @see docs/plans/design_handoff_pgdp_app/final/threshold/threshold.jsx
  */
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
@@ -356,6 +356,7 @@ function InlineEditor({
   controls,
   flagDefs,
   onPatch,
+  onDraftSaved,
   onSetApplyTo,
   onAcceptAsIs,
   onRerun,
@@ -369,6 +370,7 @@ function InlineEditor({
   controls: ControlDef[];
   flagDefs: FlagKindDef[];
   onPatch: (patch: Record<string, unknown>) => void;
+  onDraftSaved: () => void;
   onSetApplyTo: (value: "this" | "selected" | "sameIssue") => void;
   onAcceptAsIs: () => void;
   onRerun: () => void;
@@ -504,7 +506,9 @@ function InlineEditor({
                 tiers.resolved.isFetching ||
                 tiers.savePage.isPending
               }
-              onClick={() => tiers.savePage.mutate(draft)}
+              onClick={() =>
+                tiers.savePage.mutate(draft, { onSuccess: onDraftSaved })
+              }
             >
               Save for this page
             </Button>
@@ -516,7 +520,9 @@ function InlineEditor({
                 tiers.resolved.isFetching ||
                 tiers.saveProject.isPending
               }
-              onClick={() => tiers.saveProject.mutate(draft)}
+              onClick={() =>
+                tiers.saveProject.mutate(draft, { onSuccess: onDraftSaved })
+              }
             >
               Save as project default
             </Button>
@@ -844,15 +850,14 @@ export function ImageStageReviewTool({
     ? ([actorOverride.snapshot, actorOverride.send] as const)
     : ownActor;
 
+  const scheduleRefresh = useRef<() => void>(() => undefined);
+
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let active = true;
     let latestRequest = 0;
-    const unsubscribe = subscribeProjectPageStageChannel(projectId, (event) => {
-      if (event.type !== "stage-status" || event.stage_id !== stageId) return;
-      if (event.status !== "clean" && event.status !== "failed") return;
-      // A batch finishes one page at a time; one fetch covers a burst of events.
+    // A batch finishes one page at a time; one fetch covers a burst of events.
+    scheduleRefresh.current = () => {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {
         latestRequest += 1;
@@ -868,13 +873,32 @@ export function ImageStageReviewTool({
             // The shown rows stay valid, and the next finished page refreshes them.
           });
       }, REFRESH_DELAY_MS);
-    });
+    };
+    const unsubscribe =
+      typeof EventSource === "undefined"
+        ? undefined
+        : subscribeProjectPageStageChannel(projectId, (event) => {
+            if (event.type !== "stage-status" || event.stage_id !== stageId) {
+              return;
+            }
+            if (event.status === "clean" || event.status === "failed") {
+              scheduleRefresh.current();
+            }
+          });
     return () => {
       active = false;
       clearTimeout(refreshTimer);
-      unsubscribe();
+      unsubscribe?.();
     };
   }, [projectId, stageId, services, send]);
+
+  const rerunInFlight = snapshot.matches({ review: "rerunning" });
+  const wasRerunning = useRef(false);
+  useEffect(() => {
+    // A fast job can finish before the rerun response, which still carries the page as stale.
+    if (wasRerunning.current && !rerunInFlight) scheduleRefresh.current();
+    wasRerunning.current = rerunInFlight;
+  }, [rerunInFlight]);
 
   const ctx = snapshot.context;
 
@@ -1128,6 +1152,7 @@ export function ImageStageReviewTool({
                   controls={controls}
                   flagDefs={flagDefs}
                   onPatch={(patch) => send({ type: "SET_PARAM", patch })}
+                  onDraftSaved={() => send({ type: "DRAFT_SAVED" })}
                   onSetApplyTo={(value) =>
                     send({ type: "SET_APPLY_TO", value })
                   }
