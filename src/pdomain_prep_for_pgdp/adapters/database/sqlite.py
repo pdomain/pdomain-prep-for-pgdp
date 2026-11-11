@@ -11,6 +11,7 @@ import sqlite3
 import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import ParamSpec, TypeVar, cast
@@ -495,6 +496,25 @@ class SqliteDatabase:
                     (owner_id, project_id, stage_id, stage_id),
                 )
                 return cur.rowcount
+
+        return await self._run(_go)
+
+    async def fail_running_jobs(self, message: str) -> list[Job]:
+        completed_at = datetime.now(UTC).isoformat()
+
+        def _go() -> list[Job]:
+            with self._cursor() as cur:
+                _ = cur.execute(
+                    """
+                    UPDATE jobs
+                    SET body = json_set(body, '$.status', 'error', '$.error_message', ?, '$.completed_at', ?)
+                    WHERE json_extract(body, '$.status') = 'running'
+                    RETURNING body
+                    """,
+                    (message, completed_at),
+                )
+                rows = cast(list[tuple[str]], cur.fetchall())
+            return [Job.model_validate_json(row[0]) for row in rows]
 
         return await self._run(_go)
 

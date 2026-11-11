@@ -84,9 +84,10 @@ def _seed(settings: Settings, *, job_id: str, status: JobStatus, owner_id: str =
 @pytest.mark.parametrize("from_status", [JobStatus.running, JobStatus.scheduled])
 def test_cancel_live_job_flips_to_cancelled(tmp_path, from_status: JobStatus) -> None:
     settings = _settings(tmp_path)
-    _seed(settings, job_id="live", status=from_status)
     app = build_app(settings)
     with TestClient(app) as client:
+        # Seed after startup: the startup pass fails any job left running by a previous process.
+        _seed(settings, job_id="live", status=from_status)
         r = client.delete("/api/gpu/jobs/live")
         assert r.status_code == 204
 

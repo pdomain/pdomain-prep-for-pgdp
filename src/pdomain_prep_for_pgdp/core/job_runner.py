@@ -29,7 +29,7 @@ from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 from .ingest import generate_thumbnails, unzip_source
-from .models import Job, JobStatus, JobType, PageStageStatus
+from .models import Job, JobStatus, JobType, PageStageStatus, ProjectStageStatus
 from .page_service_helpers import list_page_records
 from .page_store_factory import build_page_service
 
@@ -56,6 +56,7 @@ log = logging.getLogger(__name__)
 # After this many consecutive poll-iteration failures, run_forever raises instead
 # of silently swallowing the error.  A transient blip resets the counter to 0.
 _CIRCUIT_BREAKER_MAX = 5
+_INTERRUPTED_MESSAGE = "interrupted: the server stopped while this work was running; run it again"
 
 
 class InProcessJobRunner:
@@ -312,6 +313,45 @@ class InProcessJobRunner:
             await self.emit(stored)
         return False
 
+    async def reclaim_interrupted_jobs(self) -> int:
+        """Fail jobs and stage rows the previous process left running; return the job count."""
+        reclaimed = await self._db.fail_running_jobs(_INTERRUPTED_MESSAGE)
+        for project_id in {job.project_id for job in reclaimed}:
+            await self._fail_running_stage_rows(project_id)
+        return len(reclaimed)
+
+    async def _fail_running_stage_rows(self, project_id: str) -> None:
+        for page_row in await self._db.list_page_stages_by_status(project_id, PageStageStatus.running):
+            await self._db.put_page_stage(
+                page_row.model_copy(
+                    update={
+                        "status": PageStageStatus.failed,
+                        "error_message": _INTERRUPTED_MESSAGE,
+                        "last_run_at": datetime.now(UTC).timestamp(),
+                    }
+                )
+            )
+        if self._data_root is None:
+            return
+        db_path = self._data_root / "projects" / project_id / "project_stages.db"
+        if not db_path.exists():
+            return
+
+        from .pipeline.project_stages import ProjectStageStore
+
+        store = ProjectStageStore(db_path)
+        for project_row in store.list_for_project(project_id):
+            if project_row.status == ProjectStageStatus.running:
+                store.write(
+                    project_row.model_copy(
+                        update={
+                            "status": ProjectStageStatus.failed,
+                            "error_message": _INTERRUPTED_MESSAGE,
+                            "last_run_at": datetime.now(UTC).timestamp(),
+                        }
+                    )
+                )
+
     async def is_cancelled(self, job_id: str) -> bool:
         stored = await self._db.get_job(job_id)
         return stored is not None and stored.status == JobStatus.cancelled
@@ -476,7 +516,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     from datetime import UTC, datetime
     from pathlib import Path
 
-    from .models import V2_PROJECT_STAGE_IDS, ProjectStageState, ProjectStageStatus
+    from .models import V2_PROJECT_STAGE_IDS, ProjectStageState
     from .pipeline.project_stages import ProjectStageStore
     from .pipeline.stage_registry import V2_STAGE_IMPL, StageNotImplemented
 

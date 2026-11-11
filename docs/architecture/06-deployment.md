@@ -52,6 +52,11 @@ Keep the session secret stable if API-key sessions should survive restarts. TLS 
 responsibility. The session cookie currently hardcodes `secure=False`; CORS origins are wildcard without
 credentialed cross-origin enablement. See [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
 
+At startup the server marks every job still `running` as `error`, with a message saying the server stopped while
+the work was running. For each such project it also marks `running` page-stage and project-stage rows as `failed`.
+Run the work again afterwards. This assumes one server process per database, so do not start two servers on the
+same data root. A page-stage row left `running` by a synchronous request has no job, so this pass does not reach it.
+
 S3 configuration uses `PGDP_S3_DATA_BUCKET`. Modal credentials use `PGDP_MODAL_TOKEN_ID` and
 `PGDP_MODAL_TOKEN_SECRET`. These settings expose adapter wiring, not a verified managed deployment.
 The Postgres builder exists, but its stage/database contract remains incomplete.

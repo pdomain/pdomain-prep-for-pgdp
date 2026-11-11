@@ -272,6 +272,12 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await database.initialize()
+        try:
+            reclaimed = await job_runner.reclaim_interrupted_jobs()
+            if reclaimed:
+                log.warning("marked %d interrupted job(s) as failed", reclaimed)
+        except Exception:
+            log.exception("could not reclaim interrupted jobs at startup")
         app.state.dispatcher_task = asyncio.create_task(dispatcher.run_forever())
         app.state.job_runner_task = asyncio.create_task(job_runner.run_forever())
         app.state.executor_task = asyncio.create_task(executor.run_drain_loop())

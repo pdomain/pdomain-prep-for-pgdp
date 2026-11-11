@@ -92,6 +92,10 @@ class IDatabase(Protocol):
         """Atomically cancel a project's unfinished jobs for one stage; return how many changed."""
         ...
 
+    async def fail_running_jobs(self, message: str) -> list[Job]:
+        """Atomically mark every running job as failed with `message`; return the changed jobs."""
+        ...
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]: ...
 
     # ── Page stages (per-page DAG state, M1) ────────────────────────────────
