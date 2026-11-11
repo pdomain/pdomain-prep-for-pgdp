@@ -15,6 +15,10 @@ Tests join that subset with `@pytest.mark.e2e_smoke`. It needs Chromium, which
 The full Playwright suite (`make e2e`) and slow packaging tests remain separate targets.
 No GitHub Actions CI workflow exists in this checkout.
 
+`make audit` checks the locked Python and frontend dependencies against public advisory databases. It skips the
+private `pdomain-*` packages, needs network access, and exits 1 when either audit reports a problem. It is separate
+from `make ci`.
+
 ## How to run
 
 ```sh

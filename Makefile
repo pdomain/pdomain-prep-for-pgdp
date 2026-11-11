@@ -19,7 +19,7 @@ $(_goals):
 else
 
 .PHONY: help setup install-hooks refresh-version install uninstall reset remove-venv lint format \
-        typecheck pre-commit-check update-hooks test test-slow e2e e2e-smoke build clean ci \
+        typecheck pre-commit-check update-hooks test test-slow e2e e2e-smoke audit build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
@@ -320,6 +320,9 @@ test-slow: frontend-build ## Run pytest including slow packaging tests (requires
 
 e2e: frontend-build ## Run Playwright E2E tests (requires `playwright install chromium`)
 	uv run --group e2e pytest tests/e2e -v
+
+audit: ## Check locked Python and frontend dependencies for published advisories (network; not part of `make ci`)
+	uv run scripts/dep_audit.py
 
 e2e-smoke: frontend-build ## Run the Playwright smoke subset that `make ci` gates on (requires `playwright install chromium`)
 	uv run --group e2e pytest tests/e2e -m e2e_smoke --no-cov -v
