@@ -19,10 +19,18 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, Self, cast
 
-from pdomain_prep_for_pgdp.core.models import Job, Project, SystemDefaults
+from pdomain_prep_for_pgdp.core.models import (
+    V2_PAGE_STAGE_IDS,
+    Job,
+    PageStageState,
+    PageStageStatus,
+    Project,
+    SystemDefaults,
+)
+
+from .base import SearchResult
 
 if TYPE_CHECKING:
-    from .base import SearchResult
 
     class _AsyncCursor(Protocol):
         @property
@@ -68,8 +76,54 @@ else:
 
 type _JsonTextRow = tuple[str]
 type _CountRow = tuple[int]
+type _OwnerRow = tuple[str]
+type _SearchRow = tuple[str, int, str, float]
+type _PageStageRow = tuple[
+    str,
+    str,
+    str,
+    str,
+    int,
+    str | None,
+    str | None,
+    str | None,
+    float | None,
+    int | None,
+    str | None,
+    str | None,
+]
 
-_SCHEMA = """
+_LONG_S = chr(0x17F)  # U+017F LATIN SMALL LETTER LONG S
+
+# Postgres holds no pre-v2 data, so only the v2 stage ids are valid here.
+_STAGE_ID_CHECK = ", ".join(f"'{s}'" for s in V2_PAGE_STAGE_IDS)
+_STATUS_CHECK = ", ".join(f"'{s.value}'" for s in PageStageStatus)
+
+
+def _normalize_for_fts(text: str) -> str:
+    """Expand long-s (U+017F) before indexing or querying, as SQLite does."""
+    return text.replace(_LONG_S, "s")
+
+
+def _row_to_page_stage(row: _PageStageRow) -> PageStageState:
+    """Hydrate a page_stages row; columns in table order, as every SELECT lists them."""
+    return PageStageState(
+        project_id=row[0],
+        page_id=row[1],
+        stage_id=row[2],
+        status=PageStageStatus(row[3]),
+        stage_version=row[4],
+        config_hash=row[5],
+        input_hash=row[6],
+        artifact_key=row[7],
+        last_run_at=row[8],
+        duration_ms=row[9],
+        error_message=row[10],
+        job_id=row[11],
+    )
+
+
+_SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS system_defaults (
     owner_id TEXT PRIMARY KEY,
     body     JSONB NOT NULL
@@ -90,6 +144,38 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(owner_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS page_stages (
+    project_id    TEXT    NOT NULL,
+    page_id       TEXT    NOT NULL,
+    stage_id      TEXT    NOT NULL,
+    status        TEXT    NOT NULL,
+    stage_version INTEGER NOT NULL,
+    config_hash   TEXT,
+    input_hash    TEXT,
+    artifact_key  TEXT,
+    last_run_at   DOUBLE PRECISION,
+    duration_ms   INTEGER,
+    error_message TEXT,
+    job_id        TEXT,
+    PRIMARY KEY (project_id, page_id, stage_id),
+    CHECK (status IN ({_STATUS_CHECK})),
+    CHECK (stage_id IN ({_STAGE_ID_CHECK}))
+);
+CREATE INDEX IF NOT EXISTS page_stages_proj_status ON page_stages(project_id, status);
+CREATE INDEX IF NOT EXISTS page_stages_proj_page ON page_stages(project_id, page_id);
+
+-- Full-text search. The 'simple' configuration matches SQLite FTS5's default
+-- tokenizer: lower-cased words, no stemming, no stop words.
+CREATE TABLE IF NOT EXISTS page_text (
+    project_id TEXT    NOT NULL,
+    page_id    TEXT    NOT NULL,
+    idx0       INTEGER NOT NULL,
+    ocr_text   TEXT    NOT NULL,
+    tsv        TSVECTOR GENERATED ALWAYS AS (to_tsvector('simple', ocr_text)) STORED,
+    PRIMARY KEY (project_id, page_id)
+);
+CREATE INDEX IF NOT EXISTS page_text_tsv ON page_text USING GIN (tsv);
 """
 
 
@@ -219,6 +305,7 @@ class PostgresDatabase:
     async def delete_project(self, project_id: str) -> None:
         conn = self._require_conn()
         async with conn.cursor() as cur:
+            _ = await cur.execute("DELETE FROM page_stages WHERE project_id = %s", (project_id,))
             _ = await cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
 
     # ── Jobs ────────────────────────────────────────────────────────────────
@@ -299,22 +386,186 @@ class PostgresDatabase:
             rows = cast(list[_JsonTextRow], await cur.fetchall())
         return [Job.model_validate_json(r[0]) for r in rows]
 
-    # ── Full-text search (stub — Postgres tsvector implementation deferred) ──
+    # ── Page stages (per-page DAG state) ────────────────────────────────────
 
-    async def upsert_page_text(
-        self,
-        _project_id: str,
-        _page_id: str,
-        _idx0: int,
-        _ocr_text: str,
-    ) -> None:
-        raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
+    async def _fetch_page_stages(self, query: str, params: Sequence[object]) -> list[PageStageState]:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(query, params)
+            rows = cast(list[_PageStageRow], await cur.fetchall())
+        return [_row_to_page_stage(r) for r in rows]
+
+    async def get_page_stage(self, project_id: str, page_id: str, stage_id: str) -> PageStageState | None:
+        rows = await self._fetch_page_stages(
+            """
+                SELECT project_id, page_id, stage_id, status, stage_version,
+                       config_hash, input_hash, artifact_key, last_run_at,
+                       duration_ms, error_message, job_id
+                FROM page_stages
+                WHERE project_id = %s AND page_id = %s AND stage_id = %s
+                """,
+            (project_id, page_id, stage_id),
+        )
+        return rows[0] if rows else None
+
+    async def put_page_stage(self, state: PageStageState) -> None:
+        """Idempotent upsert on the composite primary key."""
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                INSERT INTO page_stages
+                    (project_id, page_id, stage_id, status, stage_version,
+                     config_hash, input_hash, artifact_key, last_run_at,
+                     duration_ms, error_message, job_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (project_id, page_id, stage_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    stage_version = EXCLUDED.stage_version,
+                    config_hash = EXCLUDED.config_hash,
+                    input_hash = EXCLUDED.input_hash,
+                    artifact_key = EXCLUDED.artifact_key,
+                    last_run_at = EXCLUDED.last_run_at,
+                    duration_ms = EXCLUDED.duration_ms,
+                    error_message = EXCLUDED.error_message,
+                    job_id = EXCLUDED.job_id
+                """,
+                (
+                    state.project_id,
+                    state.page_id,
+                    state.stage_id,
+                    state.status.value,
+                    state.stage_version,
+                    state.config_hash,
+                    state.input_hash,
+                    state.artifact_key,
+                    state.last_run_at,
+                    state.duration_ms,
+                    state.error_message,
+                    state.job_id,
+                ),
+            )
+
+    async def list_page_stages_for_page(self, project_id: str, page_id: str) -> list[PageStageState]:
+        return await self._fetch_page_stages(
+            """
+                SELECT project_id, page_id, stage_id, status, stage_version,
+                       config_hash, input_hash, artifact_key, last_run_at,
+                       duration_ms, error_message, job_id
+                FROM page_stages
+                WHERE project_id = %s AND page_id = %s
+                """,
+            (project_id, page_id),
+        )
+
+    async def list_page_stages_by_status(
+        self, project_id: str, status: PageStageStatus
+    ) -> list[PageStageState]:
+        return await self._fetch_page_stages(
+            """
+                SELECT project_id, page_id, stage_id, status, stage_version,
+                       config_hash, input_hash, artifact_key, last_run_at,
+                       duration_ms, error_message, job_id
+                FROM page_stages
+                WHERE project_id = %s AND status = %s
+                """,
+            (project_id, status.value),
+        )
+
+    async def list_page_stages_by_project(self, project_id: str) -> list[PageStageState]:
+        return await self._fetch_page_stages(
+            """
+                SELECT project_id, page_id, stage_id, status, stage_version,
+                       config_hash, input_hash, artifact_key, last_run_at,
+                       duration_ms, error_message, job_id
+                FROM page_stages
+                WHERE project_id = %s
+                """,
+            (project_id,),
+        )
+
+    async def delete_page_stages_for_page(self, project_id: str, page_id: str) -> None:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                "DELETE FROM page_stages WHERE project_id = %s AND page_id = %s",
+                (project_id, page_id),
+            )
+
+    async def init_page_stages_for_page(self, project_id: str, page_id: str) -> int:
+        """Insert a ``not-run`` row for each v2 stage the page lacks; return how many were added."""
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                INSERT INTO page_stages (project_id, page_id, stage_id, status, stage_version)
+                SELECT %s, %s, stage_id, %s, 1 FROM unnest(%s::text[]) AS stage_id
+                ON CONFLICT (project_id, page_id, stage_id) DO NOTHING
+                """,
+                (project_id, page_id, PageStageStatus.not_run.value, list(V2_PAGE_STAGE_IDS)),
+            )
+            return cur.rowcount
+
+    # ── Full-text search (tsvector) ─────────────────────────────────────────
+
+    async def upsert_page_text(self, project_id: str, page_id: str, idx0: int, ocr_text: str) -> None:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                INSERT INTO page_text (project_id, page_id, idx0, ocr_text)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (project_id, page_id) DO UPDATE SET
+                    idx0 = EXCLUDED.idx0,
+                    ocr_text = EXCLUDED.ocr_text
+                """,
+                (project_id, page_id, idx0, _normalize_for_fts(ocr_text)),
+            )
 
     async def search(
         self,
-        _project_id: str,
-        _query: str,
-        _limit: int = 20,
-        _offset: int = 0,
+        project_id: str,
+        query: str,
+        limit: int = 20,
+        offset: int = 0,
     ) -> tuple[list[SearchResult], int]:
-        raise NotImplementedError("Postgres FTS (tsvector) not yet implemented")
+        """Rank pages by ``ts_rank``; scores fall in (0, 1) via normalisation flag 32."""
+        normalized = _normalize_for_fts(query)
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                SELECT COUNT(*) FROM page_text
+                WHERE project_id = %s AND tsv @@ plainto_tsquery('simple', %s)
+                """,
+                (project_id, normalized),
+            )
+            count_row = cast(_CountRow | None, await cur.fetchone())
+            _ = await cur.execute(
+                """
+                SELECT page_id, idx0,
+                       ts_headline('simple', ocr_text, q,
+                                   'StartSel="", StopSel="", MaxWords=15, MinWords=5'),
+                       ts_rank(tsv, q, 32)::double precision AS score
+                FROM page_text, plainto_tsquery('simple', %s) AS q
+                WHERE project_id = %s AND tsv @@ q
+                ORDER BY score DESC, idx0
+                LIMIT %s OFFSET %s
+                """,
+                (normalized, project_id, limit, offset),
+            )
+            rows = cast(list[_SearchRow], await cur.fetchall())
+        results = [
+            SearchResult(page_id=r[0], idx0=int(r[1]), snippet=r[2] or "", score=float(r[3])) for r in rows
+        ]
+        return results, count_row[0] if count_row else 0
+
+    # ── Multi-tenant enumeration ────────────────────────────────────────────
+
+    async def list_distinct_owner_ids(self) -> list[str]:
+        """Owners with at least one job, or ``["default"]`` when there are none."""
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute("SELECT DISTINCT owner_id FROM jobs ORDER BY owner_id")
+            rows = cast(list[_OwnerRow], await cur.fetchall())
+        return [r[0] for r in rows] or ["default"]

@@ -83,7 +83,7 @@ def build_database(settings: Settings) -> IDatabase:
             from .adapters.database.postgres import PostgresDatabase
         except ImportError as e:
             raise RuntimeError("Postgres requires the [postgres] extra") from e
-        return PostgresDatabase(url)  # pyright: ignore[reportReturnType]  -- PostgresDatabase partial impl; page_stage methods pending
+        return PostgresDatabase(url)
     raise RuntimeError(f"unrecognised PGDP_DATABASE_URL: {url!r}")
 
 

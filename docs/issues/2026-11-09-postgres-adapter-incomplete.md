@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-11-09
-Last verified: 2026-11-09
+Last verified: 2026-11-11
 Kind: issue
 Level: I1
 ---
@@ -14,8 +14,8 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-09
-- **Resolution:** Open
+- **Last verified:** 2026-11-11
+- **Resolution:** Fixed on `feat/night-prep4`, awaiting merge
 - **Severity:** Medium — Postgres deployments start, then fail at runtime on stage routes and job handlers
 - **Affected version:** pdomain-prep-for-pgdp master @ `14f0ba8`
 - **Read when:** working on the Postgres adapter, `build_database()`, managed persistence, or adapter contract tests.
@@ -103,5 +103,22 @@ runs the `IDatabase` contract against both adapters.
 
 ## Resolution
 
-_Open._ When fixed: set frontmatter and Agent Index `Status: retired`, add the resolving commit here, and
-route the retirement through `doc-retirer`.
+Fixed on `feat/night-prep4`, not yet merged. Retire this report through `doc-retirer` after merge.
+
+The adapter was finished rather than made to fail fast, because a real local Postgres could be tested.
+
+- `PostgresDatabase` implements all eight missing methods. Page stages live in a `page_stages` table with the same
+  key, indexes and CHECK constraints as SQLite, limited to the v2 stage ids.
+- Search uses a generated `tsvector` column with the `simple` configuration, `plainto_tsquery`, `ts_rank` with
+  normalisation 32 for scores in (0, 1), and `ts_headline` snippets. Long s is folded to s, as in SQLite.
+- `delete_project` also drops the project's page-stage rows, as SQLite does.
+- The `pyright: ignore` in `build_database()` is gone; basedpyright accepts the adapter as an `IDatabase`.
+- `tests/test_database_contract.py` runs one contract against SQLite and, when `PGDP_TEST_POSTGRES_URL` is set,
+  against Postgres. It also checks without a database that the adapter defines every protocol method.
+
+Verified against `postgres:17-alpine` in a throwaway Docker container on 127.0.0.1: 23 contract cases and the
+existing adapter tests passed. `make ci` does not start Postgres, so CI runs only the SQLite half.
+
+Not done: no migration path for an existing Postgres database created by the old schema, which lacked the new
+tables. `CREATE TABLE IF NOT EXISTS` adds them on the next start. Ranking differs from SQLite's BM25 in detail;
+the contract fixes only the order of clearly different matches.

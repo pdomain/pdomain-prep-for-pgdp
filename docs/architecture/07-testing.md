@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-11
 - **Read when:** running tests or choosing a regression gate.
 - **Search terms:** pytest, Vitest, Playwright, CI, lint toolchain.
 
@@ -72,7 +72,10 @@ Thumbnail workers are pinned to one to keep tests inexpensive.
 Some tests seed async database state before opening a client; they avoid reusing the client's loop.
 
 Real external services, heavy OCR model downloads, managed GPU dispatch, and live Postgres are not established
-by the hermetic suite. A passing local gate does not prove a clean-machine installation or remote deployment.
+by the hermetic suite. `tests/test_database_contract.py` runs the `IDatabase` contract against SQLite always, and
+against Postgres when `PGDP_TEST_POSTGRES_URL` is set and the `[postgres]` extra is installed; its docstring shows a
+throwaway container setup. `make ci` does not set that variable. A passing local gate does not prove a
+clean-machine installation or remote deployment.
 
 ## Lint toolchain
 

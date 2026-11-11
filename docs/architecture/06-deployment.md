@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-11
 - **Read when:** packaging or deploying the application.
 - **Search terms:** deployment, local install, container, cloud, release.
 
@@ -77,7 +77,8 @@ same data root. A page-stage row left `running` by a synchronous request has no 
 
 S3 configuration uses `PGDP_S3_DATA_BUCKET`. Modal credentials use `PGDP_MODAL_TOKEN_ID` and
 `PGDP_MODAL_TOKEN_SECRET`. These settings expose adapter wiring, not a verified managed deployment.
-The Postgres builder exists, but its stage/database contract remains incomplete.
+The Postgres adapter implements the full `IDatabase` contract and passes the shared contract test against a live
+Postgres. Page lifecycle data stays in the local event store, so this is not a managed deployment.
 
 ## Managed (Fargate + Modal)
 
