@@ -1628,6 +1628,94 @@ async def get_project_stage_pages(
     return JSONResponse(content={"rows": rows, "totals": _build_totals(rows)})
 
 
+@router.get(
+    "/projects/{project_id}/project-stages/canvas_map/aspect-points",
+    operation_id="get_canvas_map_aspect_points",
+    status_code=200,
+    responses={
+        200: {"description": "Measured page sizes and the canvas ratio."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_canvas_map_aspect_points(
+    project_id: str,
+    *,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return one size point per page with a clean canvas_map input image."""
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.pipeline.canvas_aspect import (
+        PNG_HEADER_BYTES,
+        png_dimensions,
+        split_body_pages,
+    )
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        AppWideStageSettings,
+        StageSettingsStore,
+    )
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
+
+    input_stage = get_v2_stage("canvas_map").depends_on[0]
+    all_stages = await db.list_page_stages_by_project(project_id)
+    clean_pages = {
+        s.page_id for s in all_stages if s.stage_id == input_stage and s.status == PageStageStatus.clean
+    }
+
+    measured: list[tuple[PageRecord, int, int]] = []
+    for page in list_page_records(page_service, project_id):
+        page_id = f"{page.idx0:04d}"
+        if page_id not in clean_pages:
+            continue
+        path = stage_artifact_path(settings.data_root, project_id, page_id, input_stage)
+        if not path.exists():
+            continue
+        with path.open("rb") as image:
+            dimensions = png_dimensions(image.read(PNG_HEADER_BYTES))
+        if dimensions is not None and dimensions[0] > 0:
+            measured.append((page, dimensions[0], dimensions[1]))
+
+    ratios = [height / width for _, width, height in measured]
+    body_ratio, is_body = split_body_pages(ratios)
+    points: list[dict[str, object]] = [
+        {
+            "pageId": f"{page.idx0:04d}",
+            "idx0": page.idx0,
+            "prefix": page.prefix or str(page.idx0),
+            "width": width,
+            "height": height,
+            "ratio": ratio,
+            "body": body,
+        }
+        for (page, width, height), ratio, body in zip(measured, ratios, is_body, strict=True)
+    ]
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    effective = StageSettingsStore(db_path).get_effective_3tier(
+        project_id,
+        "canvas_map",
+        None,
+        registry_default=STAGE_SETTINGS_DEFAULTS["canvas_map"],
+        app_wide=AppWideStageSettings(settings.data_root),
+    )
+    return JSONResponse(
+        content={"points": points, "bodyRatio": body_ratio, "canvasRatio": effective["page_h_w_ratio"]}
+    )
+
+
 class _BatchRerunRequest(BaseModel):
     """POST /project-stages/{stage_id}/rerun request body."""
 

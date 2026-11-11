@@ -1908,6 +1908,58 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/canvas_map/aspect-points": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Canvas Map Aspect Points",
+        "description": "Return one size point per page with a clean canvas_map input image.",
+        "operationId": "get_canvas_map_aspect_points",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Measured page sizes and the canvas ratio.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/{stage_id}/rerun": {
       "post": {
         "tags": [
