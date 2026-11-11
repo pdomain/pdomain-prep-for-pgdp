@@ -15,7 +15,7 @@ Level: I2
 - **Status:** active
 - **Level:** I2
 - **Last verified:** 2026-11-11
-- **Resolution:** Open
+- **Resolution:** Fixed on `fix/zip-entry-timestamps`, awaiting merge
 - **Severity:** Low — one determinism test can fail intermittently; package contents are correct
 - **Affected version:** pdomain-prep-for-pgdp master @ `15d5f3c`
 - **Read when:** working on `build_submission_zip`, zip reproducibility, or a failing `test_build_zip_chain_determinism`.
@@ -102,5 +102,14 @@ does not prove which field it was.
 
 ## Resolution
 
-_Open._ When fixed: set frontmatter and Agent Index `Status: retired`, add the resolving commit here, move the README
-pointer to "Resolved", and route the retirement through `doc-retirer`.
+Fixed on `fix/zip-entry-timestamps`, branched from `feat/night-prep4`, not yet merged. Retire this report through
+`doc-retirer` after merge.
+
+- Hypothesis 1 was confirmed. With the clock moved between two builds, the archives first differed at byte 10, the
+  modification time field of the first local file header.
+- `build_submission_zip` now writes all five entry kinds through `_zip_entry`, which builds a `ZipInfo` with the time
+  from `built_at`. `_zip_date_time` converts that time to UTC, reads a value with no zone as UTC, and clamps it to
+  1980-01-01.
+- Each entry keeps `ZIP_DEFLATED` and `external_attr = 0o600 << 16`, as `writestr` set before.
+- A call that omits `built_at` still uses the current time and is still not reproducible. The docstring now says so.
+- Tests: `tests/test_submission_zip_reproducible.py`.

@@ -96,6 +96,30 @@ if TYPE_CHECKING:
 
 _CROP_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
 
+# The zip format cannot store a time before 1980-01-01.
+_ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
+
+
+def _zip_date_time(built_at: str) -> tuple[int, int, int, int, int, int]:
+    """Entry time for every zip member, taken from ``built_at`` in UTC.
+
+    A value with no zone is read as UTC. Times before 1980 are clamped,
+    because the zip format cannot store them.
+    """
+    stamp = datetime.fromisoformat(built_at)
+    if stamp.tzinfo is not None:
+        stamp = stamp.astimezone(UTC)
+    date_time = (stamp.year, stamp.month, stamp.day, stamp.hour, stamp.minute, stamp.second)
+    return max(date_time, _ZIP_EPOCH)
+
+
+def _zip_entry(name: str, date_time: tuple[int, int, int, int, int, int]) -> zipfile.ZipInfo:
+    """A file entry with a fixed time, deflated, mode 0600 as ``writestr`` would set."""
+    info = zipfile.ZipInfo(filename=name, date_time=date_time)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o600 << 16
+    return info
+
 
 def _crop_image_files(stage_dir: Path) -> list[Path]:
     """Image files in one stage directory, sorted. JSON sidecars are skipped."""
@@ -249,9 +273,11 @@ def build_submission_zip(
             A failed page keeps its original bytes and increments
             ``oxipng_skipped_pages`` in the manifest. Default False so
             callers that do not opt in keep the bytes they wrote on disk.
-        built_at: ISO-format UTC timestamp for the pgdp.json manifest.
-            Pass a fixed value (e.g. the stage-run event timestamp) to get
-            a deterministic archive. When None, uses datetime.now(UTC).
+        built_at: ISO-format UTC timestamp for the pgdp.json manifest and
+            the time of every zip entry (converted to UTC, clamped to
+            1980 or later). Pass a fixed value (e.g. the stage-run event
+            timestamp) to get a deterministic archive. When None, uses
+            datetime.now(UTC), so the archive is not reproducible.
 
     Returns zip bytes.
 
@@ -261,6 +287,7 @@ def build_submission_zip(
     """
     if built_at is None:
         built_at = datetime.now(UTC).isoformat()
+    entry_time = _zip_date_time(built_at)
 
     # Apply skip exclusions before any processing.
     _skip: frozenset[str] = skip_ids if skip_ids is not None else frozenset()
@@ -311,21 +338,21 @@ def build_submission_zip(
                 img_bytes = img_path.read_bytes()
                 if optimize_png:
                     img_bytes = _optimize_png(img_bytes, skip_counter=skip_counter)
-                zf.writestr(f"{prefix}.png", img_bytes)
+                zf.writestr(_zip_entry(f"{prefix}.png", entry_time), img_bytes)
                 page_count += 1
                 if page_id in cover_ids and cover_prefix is None:
-                    zf.writestr("cover.png", img_bytes)
+                    zf.writestr(_zip_entry("cover.png", entry_time), img_bytes)
                     cover_prefix = prefix
 
             # Reviewed text
             txt_path = page_base / "text_review" / "output.txt"
             if txt_path.exists():
-                zf.writestr(f"{prefix}.txt", txt_path.read_bytes())
+                zf.writestr(_zip_entry(f"{prefix}.txt", entry_time), txt_path.read_bytes())
 
             # Illustration crops under images/
             crops = _collect_illustration_crops(page_base, prefix)
             for zip_name, data in crops:
-                zf.writestr(zip_name, data)
+                zf.writestr(_zip_entry(zip_name, entry_time), data)
                 illustration_count += 1
 
             page_manifest.append(
@@ -351,7 +378,7 @@ def build_submission_zip(
             manifest["cover_prefix"] = cover_prefix
         if optimize_png:
             manifest["oxipng_skipped_pages"] = skip_counter[0]
-        zf.writestr("pgdp.json", json.dumps(manifest, indent=2))
+        zf.writestr(_zip_entry("pgdp.json", entry_time), json.dumps(manifest, indent=2))
 
     return buf.getvalue()
 
