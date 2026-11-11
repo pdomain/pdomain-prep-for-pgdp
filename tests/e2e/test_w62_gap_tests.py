@@ -34,8 +34,6 @@ Additional tests as practical:
 Skipped with notes:
   - page reorder drag: Playwright drag reliability in headless is poor
     for complex canvas; skipped (see note in test file).
-  - text_review approval flow: requires seeded OCR output (real DocTR);
-    deferred to a separate heavy-test suite.
   - validation waiver flow: waiver route exists but waiver UI not yet wired
     to TOOL_REGISTRY ValidationTool (W4 gap — record and skip).
   - page_order naming preview: naming manifest requires a source run +
@@ -909,24 +907,6 @@ def test_validation_waiver_skipped() -> None:
       3. Fill reason field.
       4. Confirm → assert waiver row appears.
       5. Assert API returns waiver in validation aggregate.
-    """
-
-
-def test_text_review_approval_skipped() -> None:
-    """SKIP: text_review approval flow.
-
-    The text_review tool requires real OCR output to populate the page list
-    (each page needs a .txt artifact from the ocr stage). Running real DocTR
-    OCR in e2e tests is too slow for the local preflight suite.
-
-    This flow should be exercised in the GPU e2e suite (tests/e2e_gpu/) with:
-      1. A prebuilt OCR artifact cache.
-      2. A seeded text_review page list.
-      3. Approve-low-risk route assert.
-
-    Note: the text-review-tool testid IS covered in test 2
-    (test_all_stage_tool_slots_render_non_placeholder) — tool presence is
-    verified; this skip is only for the interactive approval flow.
     """
 
 
