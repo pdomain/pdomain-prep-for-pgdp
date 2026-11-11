@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import httpx
+import pytest
 from playwright.sync_api import Page, expect
 
 if TYPE_CHECKING:
@@ -35,6 +36,7 @@ def _create_project(base_url: str, name: str = "I2 Test Project") -> str:
 # ── I2 deliverable 1: App-loads test ───────────────────────────────────────────
 
 
+@pytest.mark.e2e_smoke
 def test_app_loads_no_console_errors(live_server: LiveServer, page: Page) -> None:
     """Root / renders the SPA; no JavaScript errors on initial load.
 

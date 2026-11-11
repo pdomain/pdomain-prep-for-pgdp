@@ -17,6 +17,7 @@ import zipfile
 from io import BytesIO
 from typing import TYPE_CHECKING
 
+import pytest
 from PIL import Image
 from playwright.sync_api import Page, expect
 
@@ -41,6 +42,7 @@ def _zip_bytes() -> bytes:
     return buf.getvalue()
 
 
+@pytest.mark.e2e_smoke
 def test_upload_zip_navigates_to_import_page(live_server: LiveServer, page: Page, tmp_path: Path) -> None:
     """Create project + upload zip → navigate to /projects/:id/import.
 

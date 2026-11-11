@@ -60,6 +60,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 
 import httpx
+import pytest
 from PIL import Image
 from playwright.sync_api import Page, expect
 
@@ -255,6 +256,7 @@ def test_create_project_and_import_source(live_server: LiveServer, page: Page, t
 # ── Priority test 2: all stage tool slots render non-placeholder ──────────────
 
 
+@pytest.mark.e2e_smoke
 def test_all_stage_tool_slots_render_non_placeholder(live_server: LiveServer, page: Page) -> None:
     """For all 24 stages, the registered tool renders — never the placeholder.
 

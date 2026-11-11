@@ -9,7 +9,11 @@
 - **Search terms:** pytest, Vitest, Playwright, CI, lint toolchain.
 
 The default gate is local `make ci AI=1`. It combines backend and frontend checks.
-Playwright and slow packaging tests remain separate targets; no GitHub Actions CI workflow exists in this checkout.
+`make ci` runs a Playwright smoke subset through `make e2e-smoke`: app load, all 24 tool slots, and zip upload.
+Tests join that subset with `@pytest.mark.e2e_smoke`. It needs Chromium, which
+`uv run --group e2e playwright install chromium` installs once per machine.
+The full Playwright suite (`make e2e`) and slow packaging tests remain separate targets.
+No GitHub Actions CI workflow exists in this checkout.
 
 ## How to run
 
