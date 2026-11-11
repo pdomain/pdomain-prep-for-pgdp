@@ -467,6 +467,19 @@ class SqliteDatabase:
 
         await self._run(_go)
 
+    async def update_job_unless_cancelled(self, job: Job) -> bool:
+        body = job.model_dump_json()
+
+        def _go() -> bool:
+            with self._cursor() as cur:
+                _ = cur.execute(
+                    "UPDATE jobs SET body = ? WHERE id = ? AND json_extract(body, '$.status') <> 'cancelled'",
+                    (body, job.id),
+                )
+                return cur.rowcount == 1
+
+        return await self._run(_go)
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         def _go() -> list[Job]:
             with self._cursor() as cur:

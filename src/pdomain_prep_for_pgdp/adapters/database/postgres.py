@@ -24,6 +24,9 @@ if TYPE_CHECKING:
     from .base import SearchResult
 
     class _AsyncCursor(Protocol):
+        @property
+        def rowcount(self) -> int: ...
+
         async def execute(self, query: str, params: Sequence[object] | None = None) -> object: ...
 
         async def executemany(
@@ -242,6 +245,15 @@ class PostgresDatabase:
                 """,
                 (job.id, job.owner_id, body, ts),
             )
+
+    async def update_job_unless_cancelled(self, job: Job) -> bool:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                "UPDATE jobs SET body = %s::jsonb WHERE id = %s AND body->>'status' <> 'cancelled'",
+                (job.model_dump_json(), job.id),
+            )
+            return cur.rowcount == 1
 
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         conn = self._require_conn()

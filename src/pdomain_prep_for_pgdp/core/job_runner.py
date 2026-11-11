@@ -160,8 +160,7 @@ class InProcessJobRunner:
                 "error_message": first_err if err else job.error_message,
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def run_forever(self) -> None:
         """Loop until `stop()` is called or the task is cancelled.
@@ -255,8 +254,8 @@ class InProcessJobRunner:
                 "started_at": datetime.now(UTC),
             }
         )
-        await self._db.put_job(job)
-        await self.emit(job)
+        if not await self._write_unless_cancelled(job):
+            return
 
         try:
             handler = _HANDLERS.get(job.type)
@@ -303,28 +302,29 @@ class InProcessJobRunner:
         latest = await self._db.get_job(job.id) or job
         await self._mark_complete(latest)
 
+    async def _write_unless_cancelled(self, job: Job) -> bool:
+        if await self._db.update_job_unless_cancelled(job):
+            await self.emit(job)
+            return True
+        stored = await self._db.get_job(job.id)
+        if stored is not None:
+            await self.emit(stored)
+        return False
+
+    async def is_cancelled(self, job_id: str) -> bool:
+        stored = await self._db.get_job(job_id)
+        return stored is not None and stored.status == JobStatus.cancelled
+
     async def _mark_complete(self, job: Job) -> None:
-        # If the user cancelled this job mid-execution, don't overwrite the
-        # cancelled status with `complete`. Best-effort guard — the SQLite
-        # adapter doesn't have CAS, so a tight race could still slip through.
-        latest = await self._db.get_job(job.id)
-        if latest is not None and latest.status == JobStatus.cancelled:
-            await self.emit(latest)
-            return
         updated = job.model_copy(
             update={
                 "status": JobStatus.complete,
                 "completed_at": datetime.now(UTC),
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def _mark_failed(self, job: Job, message: str) -> None:
-        latest = await self._db.get_job(job.id)
-        if latest is not None and latest.status == JobStatus.cancelled:
-            await self.emit(latest)
-            return
         updated = job.model_copy(
             update={
                 "status": JobStatus.error,
@@ -332,17 +332,17 @@ class InProcessJobRunner:
                 "error_message": message,
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def update_progress(self, job: Job, *, current: int, total: int, message: str = "") -> Job:
         progress = job.progress.model_copy(
             update={"current": current, "total": total, "message": message or job.progress.message}
         )
         updated = job.model_copy(update={"progress": progress})
-        await self._db.put_job(updated)
-        await self.emit(updated)
-        return updated
+        if await self._db.update_job_unless_cancelled(updated):
+            await self.emit(updated)
+            return updated
+        return await self._db.get_job(job.id) or updated
 
 
 # ─── Handlers ───────────────────────────────────────────────────────────────
@@ -395,6 +395,10 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
         total=result.page_count,
         message=f"unzipped {result.page_count} pages, {len(result.errors)} errors",
     )
+
+    # unzip_source saves the project aggregate last, so a cancel only stops the follow-up work.
+    if await runner.is_cancelled(job.id):
+        return
 
     # Chain Step 2 — thumbnails. Same project, fresh queued job. The user
     # sees both jobs in the JobsPage and can watch them in sequence.

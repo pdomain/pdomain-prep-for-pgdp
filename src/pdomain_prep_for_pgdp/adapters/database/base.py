@@ -84,6 +84,10 @@ class IDatabase(Protocol):
 
     async def put_job(self, job: Job) -> None: ...
 
+    async def update_job_unless_cancelled(self, job: Job) -> bool:
+        """Atomically replace an existing job row unless it is cancelled; True when written."""
+        ...
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]: ...
 
     # ── Page stages (per-page DAG state, M1) ────────────────────────────────
