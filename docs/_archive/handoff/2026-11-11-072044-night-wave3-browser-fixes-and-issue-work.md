@@ -1,7 +1,6 @@
 ---
-kind: handoff
-status: "active"
-created: "2026-11-11"
+kind: archive
+status: retired
 created_at: "2026-11-11T07:20:44Z"
 owner: "CT"
 branch: "feat/night-wave3"
@@ -11,9 +10,13 @@ base_commit: "a45325c42cc7666c751b936a135f7c09e47b58d8"
 supersedes: "2026-11-11-063139-wave-2-interface-items-committed-and-awaiting-review.md"
 handoff_reason: "stopping"
 host: "claude-code"
+created: "2026-11-11"
+last_verified: "2026-11-11"
 ---
 
 # The Wave 2 screens pass in a real browser, and four of five issues are done
+
+> **Retired — superseded by `docs/handoff/2026-11-11-080600-text-zones-konva-and-postgres-adapter-committed.md`.**
 
 ## Goal
 
