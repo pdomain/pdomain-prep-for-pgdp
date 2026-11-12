@@ -878,6 +878,7 @@ async def _handle_run_page_stage(runner: InProcessJobRunner, job: Job) -> None:
         device=device,
         storage=runner.storage,
         page_source_key=page_source_key,
+        stage_events=runner._stage_events,
     )
     _ = await runner.update_progress(
         job,

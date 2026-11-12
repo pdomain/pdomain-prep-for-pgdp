@@ -1,7 +1,6 @@
 ---
-kind: handoff
-status: "active"
-created: "2026-11-11"
+kind: archive
+status: retired
 created_at: "2026-11-11T05:28:44Z"
 owner: "CT"
 branch: "fix/job-reliability"
@@ -11,9 +10,13 @@ base_commit: "6bc1a072594ef45f905711057b5ad5c14672d140"
 supersedes: "2026-11-11-032238-job-reliability-work-stopped-before-the-first-commit.md"
 handoff_reason: "stopping"
 host: "claude-code"
+created: "2026-11-11"
+last_verified: "2026-11-11"
 ---
 
 # Job reliability fixes are committed on the branch and await owner review
+
+> **Retired — superseded by `docs/handoff/2026-11-11-063139-wave-2-interface-items-committed-and-awaiting-review.md`.**
 
 ## Goal
 

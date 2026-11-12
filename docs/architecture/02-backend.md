@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-11
 - **Read when:** changing bootstrap, adapters, routes, or backend concurrency.
 - **Search terms:** backend, FastAPI, bootstrap, adapters, concurrency.
 
@@ -24,8 +24,8 @@ Shutdown stops the runner, cancels and awaits background tasks, then closes the 
 The app mounts auth/data/GPU routes, suite routes, health/server info, runtime config, assets, and the SPA.
 
 Dependencies read `app.state` entries including storage, database, auth, GPU backend, dispatcher,
-job/stage event brokers, runner, and settings. The Postgres builder exists but selects a partial adapter;
-that is not a verified alternative to the local SQLite contract.
+job/stage event brokers, runner, and settings. The Postgres builder selects an adapter that implements the
+full `IDatabase` contract; it is checked against a live Postgres only when the contract test is pointed at one.
 
 ## Suite identity, authentication, and job safeguards
 
@@ -72,8 +72,8 @@ Filesystem storage confines paths beneath the configured root. S3 lazily loads i
 ### `IDatabase` (`adapters/database/base.py`)
 
 The application database owns project configuration, page-stage rows, jobs, search, and compatibility boundaries.
-SQLite uses a connection protected by a lock. The Postgres adapter has incomplete stage-related methods;
-live Postgres integration and managed persistence remain deferred.
+SQLite uses a connection protected by a lock. The Postgres adapter uses one async psycopg connection, stores
+page stages in a normalised table, and searches with a `simple` tsvector index. Managed persistence remains deferred.
 
 ### Page lifecycle service (`core/page_store_factory.py`)
 

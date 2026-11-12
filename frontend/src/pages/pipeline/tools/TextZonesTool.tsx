@@ -6,12 +6,11 @@
  * - **Pages**    — zone page grid, inline zone/split editors, confirm gate
  * - **Settings** — stage settings panel (minimal at F5; follows F5.1 pattern)
  *
- * At F5: mock-only wiring. The machine is driven with the mock server's
- * fetchZonePages / applySplit / redetectLayout / persistLayout / confirmStage.
- * Settings tab uses local state + no-op handlers (wired at I1).
- *
- * At I1: replace the mock services with real API calls; wire settings
- * to stageSettings machine pattern from F5.1 stageSettings.ts.
+ * Services are the real v2 routes (`buildRealTextZonesToolServices`).
+ * W2.4: page cards show the ingest thumbnail, and both inline editors are
+ * Konva boards over the real page image: the zone editor draws, selects,
+ * re-types and deletes zones, and the split editor moves the gutter before
+ * APPLY_SPLIT creates the sibling pages.
  *
  * @see src/machines/tools/textZonesTool.ts — machine + types
  * @see docs/plans/design_handoff_pgdp_app/final/text_zones/ — design canvas
@@ -20,6 +19,12 @@
 import type { ReactNode } from "react";
 import { useActor } from "@xstate/react";
 import { useMemo, useState } from "react";
+import type { Zone, ZoneType } from "@/machines/tools/textZonesTool";
+import { ZoneCanvas } from "./textZones/ZoneCanvas";
+import { ZONE_TYPE_COLORS } from "./textZones/zoneColors";
+import { SplitCanvas } from "./textZones/SplitCanvas";
+import type { NormBox } from "./textZones/geometry";
+import { pageImageUrls, pageThumbnailUrl, rowIdx0 } from "./textZones/geometry";
 import { useParams } from "react-router-dom";
 import type { ToolSlotProps } from "../toolSlot";
 import {
@@ -62,12 +67,22 @@ function totalsLabel(totals: ZoneTotals): string {
 }
 
 // ---------------------------------------------------------------------------
-// Zone card thumbnail (schematic — no real image at F5)
+// Zone card thumbnail — the page's ingest thumbnail; schematic only when the
+// thumbnail is missing.
 // ---------------------------------------------------------------------------
 
-function ZoneCardThumb({ row }: { row: ZonePageRow }): ReactNode {
+function ZoneCardThumb({
+  row,
+  projectId,
+}: {
+  row: ZonePageRow;
+  projectId: string;
+}): ReactNode {
   const isRunning = row.state === "running";
   const hasSplit = row.flags?.includes("splitSuggested") && !isRunning;
+  const thumbUrl = pageThumbnailUrl(projectId, rowIdx0(row));
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = failedUrl !== thumbUrl;
   return (
     <div
       data-testid="zone-card-thumb"
@@ -94,19 +109,36 @@ function ZoneCardThumb({ row }: { row: ZonePageRow }): ReactNode {
         />
       ) : (
         <>
-          {/* Schematic zone blocks */}
-          <div
-            style={{
-              position: "absolute",
-              top: "8%",
-              left: "10%",
-              right: "10%",
-              height: "72%",
-              opacity: 0.55,
-              backgroundImage:
-                "repeating-linear-gradient(to bottom, oklch(0.2 0 0) 0 1.5px, transparent 1.5px 5px)",
-            }}
-          />
+          {showImage ? (
+            <img
+              data-testid="zone-card-image"
+              alt={`Page ${row.prefix}`}
+              src={thumbUrl}
+              loading="lazy"
+              onError={() => setFailedUrl(thumbUrl)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            /* Schematic zone blocks — no thumbnail for this page yet */
+            <div
+              style={{
+                position: "absolute",
+                top: "8%",
+                left: "10%",
+                right: "10%",
+                height: "72%",
+                opacity: 0.55,
+                backgroundImage:
+                  "repeating-linear-gradient(to bottom, oklch(0.2 0 0) 0 1.5px, transparent 1.5px 5px)",
+              }}
+            />
+          )}
           {/* Split guide if applicable */}
           {hasSplit && row.split ? (
             <div
@@ -160,10 +192,12 @@ function ZoneCardThumb({ row }: { row: ZonePageRow }): ReactNode {
 
 function ZonePageCard({
   row,
+  projectId,
   isEditing,
   onClick,
 }: {
   row: ZonePageRow;
+  projectId: string;
   isEditing: boolean;
   onClick: () => void;
 }): ReactNode {
@@ -189,7 +223,7 @@ function ZonePageCard({
         cursor: "pointer",
       }}
     >
-      <ZoneCardThumb row={row} />
+      <ZoneCardThumb row={row} projectId={projectId} />
       <div
         style={{
           marginTop: 4,
@@ -214,20 +248,125 @@ function ZonePageCard({
 }
 
 // ---------------------------------------------------------------------------
-// Inline zone editor panel
+// Shared editor chrome
+// ---------------------------------------------------------------------------
+
+const ZONE_TYPES: readonly ZoneType[] = [
+  "body",
+  "heading",
+  "header",
+  "footer",
+  "caption",
+  "footnote",
+  "illustration",
+  "table",
+  "marginalia",
+];
+
+const secondaryButton = {
+  padding: "4px 12px",
+  borderRadius: 5,
+  border: "1px solid var(--border-2)",
+  background: "var(--bg-surface)",
+  cursor: "pointer",
+  fontSize: 12,
+  color: "var(--ink-2)",
+} as const;
+
+const primaryButton = {
+  padding: "4px 12px",
+  borderRadius: 5,
+  border: "none",
+  background: "var(--accent)",
+  color: "var(--accent-ink, #fff)",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 600,
+} as const;
+
+function segmentButton(active: boolean) {
+  return {
+    padding: "4px 10px",
+    borderRadius: 5,
+    border: "none",
+    background: active ? "var(--bg-surface)" : "transparent",
+    boxShadow: active ? "0 0 0 1px var(--border-1)" : "none",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: active ? 600 : 500,
+    color: active ? "var(--ocr)" : "var(--ink-3)",
+  } as const;
+}
+
+const segmentGroup = {
+  display: "inline-flex",
+  padding: 3,
+  gap: 2,
+  background: "var(--bg-raised)",
+  border: "1px solid var(--border-1)",
+  borderRadius: 7,
+} as const;
+
+function EditorError({ error }: { error: unknown }): ReactNode {
+  if (error === null || error === undefined) return null;
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "The request failed.";
+  return (
+    <div
+      data-testid="zone-editor-error"
+      role="alert"
+      style={{ fontSize: 12, color: "var(--mismatch)" }}
+    >
+      {message}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inline zone editor panel — Konva board over the page image
 // ---------------------------------------------------------------------------
 
 function ZoneEditorPanel({
   row,
+  projectId,
+  zones,
+  tool,
+  busy,
+  error,
+  onSetTool,
+  onDraw,
+  onRetype,
+  onDelete,
   onSave,
   onCancel,
   onRedetect,
+  onSplit,
 }: {
   row: ZonePageRow;
+  projectId: string;
+  zones: readonly Zone[];
+  tool: "select" | "box" | "lasso";
+  busy: boolean;
+  error: unknown;
+  onSetTool: (tool: "select" | "box") => void;
+  onDraw: (box: NormBox, zoneType: ZoneType) => void;
+  onRetype: (zoneId: string, zoneType: ZoneType) => void;
+  onDelete: (zoneId: string) => void;
   onSave: () => void;
   onCancel: () => void;
   onRedetect: () => void;
+  onSplit: () => void;
 }): ReactNode {
+  const [drawType, setDrawType] = useState<ZoneType>("body");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const imageUrls = useMemo(
+    () => pageImageUrls(projectId, rowIdx0(row)),
+    [projectId, row],
+  );
   return (
     <div
       data-testid="zone-editor-panel"
@@ -248,82 +387,221 @@ function ZoneEditorPanel({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: 10,
         }}
       >
         <span
+          style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)" }}
+        >
+          Edit layout · {row.prefix}
+        </span>
+        <span
           style={{
-            fontSize: 12.5,
-            fontWeight: 600,
-            color: "var(--ink-1)",
+            flex: 1,
+            fontSize: 11,
+            fontFamily: "var(--mono-font)",
+            color: "var(--ink-3)",
           }}
         >
-          Zone editor · {row.prefix}
+          {zones.length} zones · drag to draw · click a zone to select
         </span>
         <button
           data-testid="zone-editor-cancel"
           onClick={onCancel}
-          style={{
-            padding: "2px 10px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-surface)",
-            cursor: "pointer",
-            fontSize: 11,
-            color: "var(--ink-3)",
-          }}
+          style={{ ...secondaryButton, padding: "2px 10px", fontSize: 11 }}
         >
           Cancel
         </button>
       </div>
 
-      {/* Schematic page + zones area */}
       <div
-        data-testid="zone-canvas-area"
         style={{
-          height: 240,
-          background: "var(--bg-sunk)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 6,
           display: "grid",
-          placeItems: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
+          gridTemplateColumns: "minmax(0, 1fr) 300px",
+          gap: 16,
+          alignItems: "start",
         }}
       >
-        Page canvas with zone overlays (I1: Konva)
+        <div
+          data-testid="zone-canvas-area"
+          style={{
+            padding: 16,
+            background: "var(--bg-sunk)",
+            border: "1px solid var(--border-1)",
+            borderRadius: 6,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={segmentGroup}>
+              {(
+                [
+                  ["select", "Select"],
+                  ["box", "Draw box"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  data-testid={`zone-tool-${k}`}
+                  aria-pressed={tool === k}
+                  onClick={() => onSetTool(k)}
+                  style={segmentButton(tool === k)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>as</span>
+            <select
+              data-testid="zone-draw-type"
+              value={drawType}
+              onChange={(e) => setDrawType(e.target.value as ZoneType)}
+              style={{ fontSize: 12, padding: "3px 6px", borderRadius: 5 }}
+            >
+              {ZONE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <ZoneCanvas
+            imageUrls={imageUrls}
+            zones={zones}
+            selectedId={selectedId}
+            tool={tool}
+            onSelect={setSelectedId}
+            onDraw={(box) => onDraw(box, drawType)}
+          />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 600,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              color: "var(--ink-3)",
+            }}
+          >
+            Zones on this page
+          </div>
+          <div
+            data-testid="zone-list"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              maxHeight: 320,
+              overflow: "auto",
+            }}
+          >
+            {zones.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--ink-4)" }}>
+                No zones. Draw one on the page or re-detect.
+              </div>
+            ) : null}
+            {zones.map((z, i) => (
+              <div
+                key={z.id}
+                data-testid={`zone-list-item-${z.id}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "5px 8px",
+                  borderRadius: 6,
+                  background: "var(--bg-surface)",
+                  border: `1px solid ${z.id === selectedId ? ZONE_TYPE_COLORS[z.type] : "var(--border-1)"}`,
+                }}
+              >
+                <button
+                  data-testid={`zone-select-${z.id}`}
+                  aria-label={`Select zone ${i + 1}`}
+                  aria-pressed={z.id === selectedId}
+                  onClick={() => setSelectedId(z.id)}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    padding: 0,
+                    border: "none",
+                    borderRadius: 3,
+                    background: ZONE_TYPE_COLORS[z.type],
+                    color: "#fff",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    display: "grid",
+                    placeItems: "center",
+                    flex: "0 0 auto",
+                    cursor: "pointer",
+                  }}
+                >
+                  {z.order ?? i + 1}
+                </button>
+                <select
+                  data-testid={`zone-type-${z.id}`}
+                  aria-label={`Type of zone ${i + 1}`}
+                  value={z.type}
+                  onChange={(e) => onRetype(z.id, e.target.value as ZoneType)}
+                  style={{ flex: 1, fontSize: 12, padding: "2px 4px" }}
+                >
+                  {ZONE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  data-testid={`zone-delete-${z.id}`}
+                  aria-label={`Delete zone ${i + 1}`}
+                  onClick={() => {
+                    if (selectedId === z.id) setSelectedId(null);
+                    onDelete(z.id);
+                  }}
+                  style={{
+                    ...secondaryButton,
+                    padding: "1px 7px",
+                    fontSize: 11,
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
+      <EditorError error={error} />
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button
+          data-testid="zone-editor-split"
+          onClick={onSplit}
+          disabled={busy}
+          style={{ ...secondaryButton, marginRight: "auto" }}
+        >
+          Split page…
+        </button>
+        <button
           data-testid="zone-editor-redetect"
           onClick={onRedetect}
-          style={{
-            padding: "4px 12px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-surface)",
-            cursor: "pointer",
-            fontSize: 12,
-            color: "var(--ink-2)",
-          }}
+          disabled={busy}
+          style={secondaryButton}
         >
           Re-detect
         </button>
         <button
           data-testid="zone-editor-save"
           onClick={onSave}
-          style={{
-            padding: "4px 12px",
-            borderRadius: 5,
-            border: "none",
-            background: "var(--accent)",
-            color: "var(--accent-ink, #fff)",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 600,
-          }}
+          disabled={busy}
+          style={primaryButton}
         >
-          Save layout
+          {busy ? "Saving…" : "Save layout"}
         </button>
       </div>
     </div>
@@ -331,23 +609,46 @@ function ZoneEditorPanel({
 }
 
 // ---------------------------------------------------------------------------
-// Inline split editor panel
+// Inline split editor panel — gutter on the source page image
 // ---------------------------------------------------------------------------
+
+const DEFAULT_SPLIT: SplitDraft = {
+  axis: "col",
+  into: 2,
+  gutter: 0.5,
+  conf: 0,
+};
 
 function SplitEditorPanel({
   row,
+  projectId,
   splitDraft,
+  busy,
+  error,
+  onAxis,
+  onGutter,
   onApply,
   onKeepAsOne,
   onCancel,
 }: {
   row: ZonePageRow;
+  projectId: string;
   splitDraft: SplitDraft | null;
+  busy: boolean;
+  error: unknown;
+  onAxis: (axis: SplitDraft["axis"]) => void;
+  onGutter: (gutter: number) => void;
   onApply: () => void;
   onKeepAsOne: () => void;
   onCancel: () => void;
 }): ReactNode {
-  const split = splitDraft ?? row.split;
+  const split = splitDraft ?? row.split ?? DEFAULT_SPLIT;
+  const isCol = split.axis === "col";
+  const imageUrls = useMemo(
+    () => [pageThumbnailUrl(projectId, rowIdx0(row))],
+    [projectId, row],
+  );
+  const childLabels: [string, string] = [`${row.prefix}a`, `${row.prefix}b`];
   return (
     <div
       data-testid="split-editor-panel"
@@ -373,102 +674,108 @@ function SplitEditorPanel({
         <span
           style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-1)" }}
         >
-          Split editor · {row.prefix}
+          Split page · {row.prefix}
         </span>
         <button
           data-testid="split-editor-cancel"
           onClick={onCancel}
-          style={{
-            padding: "2px 10px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-surface)",
-            cursor: "pointer",
-            fontSize: 11,
-            color: "var(--ink-3)",
-          }}
+          style={{ ...secondaryButton, padding: "2px 10px", fontSize: 11 }}
         >
           Cancel
         </button>
       </div>
 
-      {split ? (
-        <div
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={segmentGroup} role="group" aria-label="Split axis">
+          {(
+            [
+              ["col", "Column"],
+              ["row", "Row"],
+            ] as const
+          ).map(([axis, label]) => (
+            <button
+              key={axis}
+              data-testid={`split-axis-${axis}`}
+              aria-pressed={split.axis === axis}
+              onClick={() => onAxis(axis)}
+              style={segmentButton(split.axis === axis)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: "var(--ink-3)",
+          }}
+        >
+          {isCol ? "Gutter X" : "Divider Y"}
+          <input
+            data-testid="split-gutter-slider"
+            type="range"
+            min={10}
+            max={90}
+            step={1}
+            value={Math.round(split.gutter * 100)}
+            onChange={(e) => onGutter(Number(e.target.value) / 100)}
+          />
+        </label>
+        <span
+          data-testid="split-gutter-value"
           style={{
             fontSize: 11.5,
             fontFamily: "var(--mono-font)",
             color: "var(--ink-3)",
           }}
         >
-          axis: {split.axis} · gutter: {Math.round(split.gutter * 100)}% · conf:{" "}
-          {Math.round(split.conf * 100)}%
-        </div>
-      ) : null}
-
-      {/* Schematic split preview */}
-      <div
-        data-testid="split-preview-canvas"
-        style={{
-          height: 200,
-          background: "var(--bg-sunk)",
-          border: "1px solid var(--border-1)",
-          borderRadius: 6,
-          display: "grid",
-          placeItems: "center",
-          color: "var(--ink-4)",
-          fontSize: 12,
-          position: "relative",
-        }}
-      >
-        Split preview (I1: Konva)
-        {split ? (
-          <span
-            data-testid="split-gutter-indicator"
-            style={{
-              position: "absolute",
-              top: split.axis === "col" ? "10%" : `${split.gutter * 100}%`,
-              left: split.axis === "col" ? `${split.gutter * 100}%` : "10%",
-              width: split.axis === "col" ? 2 : "80%",
-              height: split.axis === "row" ? 2 : "80%",
-              background: "var(--ocr)",
-              transform:
-                split.axis === "col" ? "translateX(-50%)" : "translateY(-50%)",
-            }}
-          />
-        ) : null}
+          axis: {split.axis} · gutter: {Math.round(split.gutter * 100)}%
+          {row.split
+            ? ` · detected at ${Math.round(row.split.conf * 100)}%`
+            : " · manual"}
+        </span>
       </div>
+
+      <SplitCanvas
+        imageUrls={imageUrls}
+        split={split}
+        childLabels={childLabels}
+        onGutter={onGutter}
+      />
+
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+        Children keep this page&apos;s stage history and re-flow through OCR on
+        their own.
+      </div>
+
+      <EditorError error={error} />
 
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <button
           data-testid="split-editor-keep-as-one"
           onClick={onKeepAsOne}
-          style={{
-            padding: "4px 12px",
-            borderRadius: 5,
-            border: "1px solid var(--border-2)",
-            background: "var(--bg-surface)",
-            cursor: "pointer",
-            fontSize: 12,
-            color: "var(--ink-2)",
-          }}
+          disabled={busy}
+          style={secondaryButton}
         >
           Keep as one
         </button>
         <button
           data-testid="split-editor-apply"
           onClick={onApply}
-          style={{
-            padding: "4px 12px",
-            borderRadius: 5,
-            border: "none",
-            background: "var(--accent)",
-            color: "var(--accent-ink, #fff)",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 600,
-          }}
+          disabled={busy}
+          style={primaryButton}
         >
-          Apply split
+          Apply split → 2 pages
         </button>
       </div>
     </div>
@@ -952,6 +1259,9 @@ export function TextZonesTool({
     splitDraft,
     splitsOn,
     granularity,
+    zoneDraft,
+    tool,
+    error,
   } = snapshot.context;
 
   // Tab state — local per F5.3-2 convention (view-only, not guarded by machine)
@@ -1238,6 +1548,7 @@ export function TextZonesTool({
                 <ZonePageCard
                   key={row.idx}
                   row={row}
+                  projectId={projectId}
                   isEditing={editing === row.idx}
                   onClick={() => {
                     if (editing === row.idx) return;
@@ -1255,15 +1566,46 @@ export function TextZonesTool({
           {/* Inline editors — exclusive */}
           {editingRow && editorKind === "zones" ? (
             <ZoneEditorPanel
+              key={editingRow.idx}
               row={editingRow}
+              projectId={projectId}
+              zones={zoneDraft ?? []}
+              tool={tool}
+              busy={
+                snapshot.matches({ reviewing: "savingLayout" }) ||
+                snapshot.matches({ reviewing: "redetecting" })
+              }
+              error={error}
+              onSetTool={(t) => send({ type: "SET_TOOL", tool: t })}
+              onDraw={(box, zoneType) =>
+                send({ type: "DRAW_ZONE", box, zoneType })
+              }
+              onRetype={(zoneId, zoneType) =>
+                send({ type: "RETYPE_ZONE", zoneId, zoneType })
+              }
+              onDelete={(zoneId) => send({ type: "DELETE_ZONE", zoneId })}
               onSave={() => send({ type: "SAVE_LAYOUT" })}
               onCancel={() => send({ type: "CANCEL" })}
               onRedetect={() => send({ type: "REDETECT" })}
+              onSplit={() =>
+                send({ type: "OPEN_SPLIT_EDITOR", idx: editingRow.idx })
+              }
             />
           ) : editingRow && editorKind === "split" ? (
             <SplitEditorPanel
+              key={editingRow.idx}
               row={editingRow}
+              projectId={projectId}
               splitDraft={splitDraft}
+              busy={
+                snapshot.matches({ reviewing: "applyingSplit" }) ||
+                snapshot.matches({ reviewing: "dismissingSplit" })
+              }
+              error={error}
+              onAxis={(axis) => send({ type: "SET_AXIS", patch: { axis } })}
+              onGutter={(gutter) =>
+                send({ type: "DRAG_GUTTER", patch: { gutter } })
+              }
               onApply={() => send({ type: "APPLY_SPLIT" })}
               onKeepAsOne={() => send({ type: "KEEP_AS_ONE" })}
               onCancel={() => send({ type: "CANCEL" })}

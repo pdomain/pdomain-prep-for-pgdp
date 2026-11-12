@@ -351,7 +351,7 @@ export async function saveAttributes(
  *   clean    → POST /api/data/projects/{id}/clean (W4 Group 4)
  *   archive  → POST /api/data/projects/{id}/archive
  *   restore  → POST /api/data/projects/{id}/unarchive
- *   saveCopy → POST /api/data/projects/{id}/export (W4 Group 4)
+ *   saveCopy → browser download of GET /api/data/projects/{id}/export
  *   delete   → DELETE /api/data/projects/{id}
  */
 export async function runManageAction(
@@ -387,9 +387,11 @@ export async function runManageAction(
       return { action, reclaimedBytes: cleanResult.reclaimed_bytes ?? 0 };
     }
     case "saveCopy": {
-      await api.post(
-        `/api/data/projects/${encodeURIComponent(projectId)}/export`,
-      );
+      // A project can be many gigabytes, so the browser saves it directly to disk.
+      const link = document.createElement("a");
+      link.href = `/api/data/projects/${encodeURIComponent(projectId)}/export`;
+      link.download = "";
+      link.click();
       return { action };
     }
   }

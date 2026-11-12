@@ -5,7 +5,6 @@ Routes tested:
   GET  /api/data/projects/{id}/attributes
   PATCH /api/data/projects/{id}/attributes/{section}
   POST /api/data/projects/{id}/clean
-  POST /api/data/projects/{id}/export
   POST /api/data/projects/{id}/pipeline/reset
   POST /api/data/projects/{id}/pipeline/purge
   POST /api/data/projects/{id}/project-stages/validation/waive
@@ -233,32 +232,6 @@ class TestManageClean:
         app = build_app(settings)
         with TestClient(app) as client:
             r = client.post("/api/data/projects/NOTEXIST/clean")
-        assert r.status_code == 404
-
-
-class TestManageExport:
-    """POST /projects/{id}/export — save copy."""
-
-    def test_export_returns_200(self, tmp_path: Path) -> None:
-        """POST /export → 200 with export info."""
-        from fastapi.testclient import TestClient
-
-        settings = _make_settings(tmp_path)
-        _seed_project(settings, "proj1")
-
-        app = build_app(settings)
-        with TestClient(app) as client:
-            r = client.post("/api/data/projects/proj1/export")
-        assert r.status_code == 200, r.text
-
-    def test_export_404_on_missing_project(self, tmp_path: Path) -> None:
-        """POST /export → 404 for unknown project."""
-        from fastapi.testclient import TestClient
-
-        settings = _make_settings(tmp_path)
-        app = build_app(settings)
-        with TestClient(app) as client:
-            r = client.post("/api/data/projects/NOTEXIST/export")
         assert r.status_code == 404
 
 

@@ -45,16 +45,17 @@ All project-stage routes enforce the registry-version 409 guard.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pdomain_prep_for_pgdp.api.dependencies import (
     DatabaseDep,
@@ -90,6 +91,7 @@ from pdomain_prep_for_pgdp.core.pipeline.registry_version import (
     check_registry_version,
     migrate_if_needed,
 )
+from pdomain_prep_for_pgdp.core.pipeline.stage_dag import get_v2_stage
 from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
     V2_STAGE_IMPL,
 )
@@ -100,6 +102,8 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
     from pdomain_prep_for_pgdp.core.models import Project
+    from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+    from pdomain_prep_for_pgdp.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -1450,6 +1454,33 @@ async def put_page_order_naming(
     return JSONResponse(content={"stage_id": "page_order", "naming": body.naming})
 
 
+def _load_settings_aggregate(
+    settings: Settings,
+    project_id: str,
+) -> tuple[PrepApplication | None, PrepProjectAggregate | None]:
+    """Load the project's aggregate for settings events; (None, None) means record no event."""
+    from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
+
+    try:
+        events_db = settings.data_root / "projects" / project_id / "events.db"
+        events_db.parent.mkdir(parents=True, exist_ok=True)
+        app = PrepApplication(env=event_store_env(events_db))
+        try:
+            project_uuid = uuid.UUID(project_id)
+        except ValueError:
+            project_uuid = uuid.uuid5(uuid.NAMESPACE_OID, project_id)
+        try:
+            loaded = app.repository.get(PrepProjectAggregate.create_id(project_uuid))
+        except Exception:
+            return app, PrepProjectAggregate(project_id=project_uuid)
+        if isinstance(loaded, PrepProjectAggregate):
+            return app, loaded
+        return app, PrepProjectAggregate(project_id=project_uuid)
+    except Exception as exc:
+        log.warning("settings aggregate could not be loaded (non-fatal): %s", exc)
+        return None, None
+
+
 # ─── W4 Group 3 — Stage aggregate routes ─────────────────────────────────────
 
 # Status → PageRow.state mapping for the imageStageReview machine.
@@ -1463,22 +1494,70 @@ _STAGE_STATUS_TO_ROW_STATE: dict[str, str] = {
 }
 
 
+_IMAGE_OUTPUT_TYPES: frozenset[str] = frozenset({"image_bytes", "image", "gray", "binary", "jpeg_bytes"})
+
+
+def _page_image_links(
+    project_id: str,
+    page: PageRecord,
+    stage_id: str,
+    states: dict[tuple[str, str], PageStageState],
+) -> dict[str, object]:
+    """Return browser URLs for a review row; a page only links outputs that are clean."""
+    if stage_id not in V2_PAGE_STAGE_IDS or get_v2_stage(stage_id).output_type not in _IMAGE_OUTPUT_TYPES:
+        return {}
+
+    page_id = f"{page.idx0:04d}"
+    base = f"/api/data/projects/{project_id}/pages/{page.idx0}/stages"
+
+    def clean_run(candidate: str) -> float | None:
+        state = states.get((page_id, candidate))
+        if state is None or state.status != PageStageStatus.clean:
+            return None
+        return state.last_run_at
+
+    links: dict[str, object] = {}
+    run = clean_run(stage_id)
+    if run is not None:
+        links["thumbUrl"] = f"{base}/{stage_id}/thumbnail?v={run}"
+        links["afterUrl"] = f"{base}/{stage_id}/artifact?v={run}"
+
+    parent = next(
+        (
+            dep
+            for dep in get_v2_stage(stage_id).depends_on
+            if dep in V2_PAGE_STAGE_IDS and get_v2_stage(dep).output_type in _IMAGE_OUTPUT_TYPES
+        ),
+        None,
+    )
+    parent_run = clean_run(parent) if parent is not None else None
+    if parent is not None and parent_run is not None:
+        links["beforeUrl"] = f"{base}/{parent}/artifact?v={parent_run}"
+        if "thumbUrl" not in links:
+            links["thumbUrl"] = f"{base}/{parent}/thumbnail?v={parent_run}"
+    return links
+
+
 def _build_page_row(
     page: PageRecord,
     stage_status: PageStageStatus | None,
     page_number: int,
     error_message: str | None = None,
+    image_links: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Build a PageRow dict for the imageStageReview machine."""
     state = _STAGE_STATUS_TO_ROW_STATE.get((stage_status.value if stage_status else "not_run"), "clean")
     row: dict[str, object] = {
-        "idx": page.prefix or str(page.idx0),
+        "idx": f"{page.idx0:04d}",
+        "idx0": page.idx0,
         "prefix": page.prefix or str(page.idx0),
         "state": state,
         "pageNumber": page_number,
     }
     if error_message:
         row["flags"] = [error_message]
+    if image_links:
+        row.update(image_links)
     return row
 
 
@@ -1538,24 +1617,158 @@ async def get_project_stage_pages(
     # Fetch all page_stage rows for this stage_id.
     all_stages = await db.list_page_stages_by_project(project_id)
     stage_by_page: dict[str, PageStageState] = {s.page_id: s for s in all_stages if s.stage_id == stage_id}
+    states = {(s.page_id, s.stage_id): s for s in all_stages}
 
     rows: list[dict[str, object]] = []
     for i, page in enumerate(all_pages):
-        page_stage = stage_by_page.get(page.prefix or str(page.idx0))
-        # Also try zero-padded page_id convention
-        zero_padded = f"{page.idx0:04d}"
-        if page_stage is None:
-            page_stage = stage_by_page.get(zero_padded)
+        page_stage = stage_by_page.get(f"{page.idx0:04d}")
         error_msg = page_stage.error_message if page_stage else None
-        rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg))
+        links = _page_image_links(project_id, page, stage_id, states)
+        rows.append(_build_page_row(page, page_stage.status if page_stage else None, i, error_msg, links))
 
     return JSONResponse(content={"rows": rows, "totals": _build_totals(rows)})
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/canvas_map/aspect-points",
+    operation_id="get_canvas_map_aspect_points",
+    status_code=200,
+    responses={
+        200: {"description": "Measured page sizes and the canvas ratio."},
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def get_canvas_map_aspect_points(
+    project_id: str,
+    *,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+    page_service: PageServiceDep,
+) -> JSONResponse:
+    """Return one size point per page with a clean canvas_map input image."""
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+    from pdomain_prep_for_pgdp.core.pipeline.canvas_aspect import (
+        PNG_HEADER_BYTES,
+        png_dimensions,
+        split_body_pages,
+    )
+    from pdomain_prep_for_pgdp.core.pipeline.page_stage_writer import stage_artifact_path
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        AppWideStageSettings,
+        StageSettingsStore,
+    )
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    _rv, project = await _check_registry(project, db, settings.data_root)
+    if _rv is not None:
+        return _rv
+
+    input_stage = get_v2_stage("canvas_map").depends_on[0]
+    all_stages = await db.list_page_stages_by_project(project_id)
+    clean_pages = {
+        s.page_id for s in all_stages if s.stage_id == input_stage and s.status == PageStageStatus.clean
+    }
+
+    pages = list_page_records(page_service, project_id)
+
+    def measure_pages() -> list[tuple[PageRecord, int, int]]:
+        found: list[tuple[PageRecord, int, int]] = []
+        for page in pages:
+            page_id = f"{page.idx0:04d}"
+            if page_id not in clean_pages:
+                continue
+            path = stage_artifact_path(settings.data_root, project_id, page_id, input_stage)
+            if not path.exists():
+                continue
+            with path.open("rb") as image:
+                dimensions = png_dimensions(image.read(PNG_HEADER_BYTES))
+            if dimensions is not None and dimensions[0] > 0:
+                found.append((page, dimensions[0], dimensions[1]))
+        return found
+
+    measured = await asyncio.to_thread(measure_pages)
+
+    ratios = [height / width for _, width, height in measured]
+    body_ratio, is_body = split_body_pages(ratios)
+    points: list[dict[str, object]] = [
+        {
+            "pageId": f"{page.idx0:04d}",
+            "idx0": page.idx0,
+            "prefix": page.prefix or str(page.idx0),
+            "width": width,
+            "height": height,
+            "ratio": ratio,
+            "body": body,
+        }
+        for (page, width, height), ratio, body in zip(measured, ratios, is_body, strict=True)
+    ]
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    effective = StageSettingsStore(db_path).get_effective_3tier(
+        project_id,
+        "canvas_map",
+        None,
+        registry_default=STAGE_SETTINGS_DEFAULTS["canvas_map"],
+        app_wide=AppWideStageSettings(settings.data_root),
+    )
+    return JSONResponse(
+        content={"points": points, "bodyRatio": body_ratio, "canvasRatio": effective["page_h_w_ratio"]}
+    )
 
 
 class _BatchRerunRequest(BaseModel):
     """POST /project-stages/{stage_id}/rerun request body."""
 
     page_ids: list[str]
+    settings: dict[str, object] = Field(default_factory=dict)
+
+
+def _save_rerun_settings(
+    settings: Settings,
+    project_id: str,
+    stage_id: str,
+    page_ids: list[str],
+    values: dict[str, object],
+    *,
+    actor_id: str,
+) -> None:
+    from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
+        STAGE_SETTINGS_DEFAULTS,
+        StageSettingsStore,
+    )
+
+    registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
+    unknown = sorted(set(values) - set(registry_default))
+    if unknown:
+        raise HTTPException(422, f"stage {stage_id!r} has no settings named: {', '.join(unknown)}")
+
+    db_path = settings.data_root / "projects" / project_id / "stage_settings.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    store = StageSettingsStore(db_path)
+    app, aggregate = _load_settings_aggregate(settings, project_id)
+    for page_id in page_ids:
+        existing = store.get_page_override(project_id, stage_id, page_id) or {}
+        store.save_page_override(
+            project_id,
+            stage_id,
+            page_id,
+            {**existing, **values},
+            aggregate=aggregate,
+            registry_default=registry_default,
+            actor_id=actor_id,
+        )
+    if app is not None and aggregate is not None:
+        try:
+            app.save(aggregate)
+        except Exception as exc:
+            log.warning("rerun settings aggregate persist failed: %s", exc)
 
 
 @router.post(
@@ -1580,8 +1793,9 @@ async def rerun_project_stage_pages(
 ) -> JSONResponse:
     """Queue a batched rerun of a page-scoped stage for selected pages.
 
-    For each page_id in the request, marks the page_stage row as dirty
-    (queuing it for processing) and enqueues a run_page_stage Job.
+    For each page_id in the request, saves ``settings`` over the page's existing
+    page-tier override, marks the page_stage row as dirty and enqueues a
+    run_page_stage Job. Keys the stage does not define are rejected with 422.
 
     Returns { rows: PageRow[] } with the updated state for each requested page.
 
@@ -1596,6 +1810,18 @@ async def rerun_project_stage_pages(
     if _rv is not None:
         return _rv
 
+    from pdomain_prep_for_pgdp.core.page_service_helpers import list_page_records
+
+    all_pages = list_page_records(page_service, project_id)
+    position_and_page = {f"{page.idx0:04d}": (i, page) for i, page in enumerate(all_pages)}
+    page_ids = list(dict.fromkeys(body.page_ids))
+    unknown_pages = [page_id for page_id in page_ids if page_id not in position_and_page]
+    if unknown_pages:
+        raise HTTPException(422, f"unknown page ids: {', '.join(unknown_pages)}")
+
+    if body.settings:
+        _save_rerun_settings(settings, project_id, stage_id, page_ids, body.settings, actor_id=user.user_id)
+
     # Resolved once and reused for every job in the batch — the compute
     # device preference doesn't change mid-request.
     device = resolve_job_device()
@@ -1604,7 +1830,7 @@ async def rerun_project_stage_pages(
     # run_page_stage job, mirroring the async per-page route (pages.py
     # run_page_stage's `?async=true` branch).
     updated_rows: list[dict[str, object]] = []
-    for i, page_id in enumerate(body.page_ids):
+    for page_id in page_ids:
         # Mark dirty in page_stages.
         await db.put_page_stage(
             PageStageState(
@@ -1629,14 +1855,10 @@ async def rerun_project_stage_pages(
             },
         )
         await db.put_job(job)
-        updated_rows.append(
-            {
-                "idx": page_id,
-                "prefix": page_id,
-                "state": "flagged",  # dirty → flagged in frontend state machine
-                "pageNumber": i,
-            }
-        )
+        position, page = position_and_page[page_id]
+        states = {(s.page_id, s.stage_id): s for s in await db.list_page_stages_for_page(project_id, page_id)}
+        links = _page_image_links(project_id, page, stage_id, states)
+        updated_rows.append(_build_page_row(page, PageStageStatus.dirty, position, None, links))
 
     return JSONResponse(content={"rows": updated_rows})
 
@@ -2246,14 +2468,17 @@ async def get_text_zones_pages_aggregate(
         else:
             state = "clean"
 
+        # ``idx`` is the zero-padded idx0 that the per-page routes and the
+        # page_stages rows use; ``prefix`` is the display name.
         row: dict[str, object] = {
-            "idx": page_id_key,
-            "prefix": page_id_key,
+            "idx": zero_padded,
+            "idx0": page.idx0,
+            "prefix": page.prefix or zero_padded,
             "state": state,
             "pageNumber": i,
         }
 
-        # Enrich with zone count from the artifact when row is clean
+        # Enrich with the stored zone boxes when the row is clean
         if stage_status == PageStageStatus.clean:
             import contextlib
 
@@ -2261,7 +2486,9 @@ async def get_text_zones_pages_aggregate(
                 artifact_path = stage_artifact_path(settings.data_root, project_id, zero_padded, "text_zones")
                 if artifact_path.exists():
                     data = _json.loads(artifact_path.read_bytes())
-                    row["zones"] = len(data.get("zones", []))
+                    canvas_zones = _zones_for_canvas(data)
+                    row["zones"] = len(canvas_zones)
+                    row["_zones"] = canvas_zones
 
         rows.append(row)
 
@@ -2283,6 +2510,53 @@ async def get_text_zones_pages_aggregate(
     }
 
     return JSONResponse(content={"rows": rows, "totals": totals})
+
+
+def _zones_for_canvas(artifact: object) -> list[dict[str, object]]:
+    """Return a text_zones artifact's zones in the frontend ``Zone`` shape.
+
+    The stage writes detector output (pixel ``bbox`` plus ``image_width`` and
+    ``image_height``). A saved layout already holds normalised ``Zone`` dicts.
+    Both are accepted; zones in neither shape are dropped.
+    """
+    if not isinstance(artifact, dict):
+        return []
+    data = cast("dict[str, object]", artifact)
+    raw_zones = data.get("zones")
+    if not isinstance(raw_zones, list):
+        return []
+    width = data.get("image_width")
+    height = data.get("image_height")
+    has_size = isinstance(width, int | float) and isinstance(height, int | float) and width > 0 and height > 0
+    out: list[dict[str, object]] = []
+    for order_i, raw_zone in enumerate(cast("list[object]", raw_zones), start=1):
+        if not isinstance(raw_zone, dict):
+            continue
+        zone = cast("dict[str, object]", raw_zone)
+        if all(k in zone for k in ("x", "y", "w", "h")):
+            out.append(zone)
+            continue
+        bbox = zone.get("bbox")
+        if not has_size or not isinstance(bbox, list):
+            continue
+        coords = [v for v in cast("list[object]", bbox) if isinstance(v, int | float)]
+        if len(coords) != 4:
+            continue
+        img_w = float(cast("float", width))
+        img_h = float(cast("float", height))
+        bx, by, bw, bh = (float(v) for v in coords)
+        out.append(
+            {
+                "id": str(zone.get("zone_id", f"z{order_i:03d}")),
+                "type": "body",
+                "x": bx / img_w,
+                "y": by / img_h,
+                "w": bw / img_w,
+                "h": bh / img_h,
+                "order": order_i,
+            }
+        )
+    return out
 
 
 class _RedetectLayoutRequest(BaseModel):
@@ -3199,8 +3473,6 @@ async def put_project_stage_settings(
     Equivalent to "save as default" — applies to all pages in this project
     that have no page-level override for that field. Appends a SettingsChange event.
     """
-    import uuid as _uuid
-
     from pdomain_prep_for_pgdp.core.pipeline.stage_settings import (
         STAGE_SETTINGS_DEFAULTS,
         StageSettingsStore,
@@ -3218,40 +3490,19 @@ async def put_project_stage_settings(
     store = StageSettingsStore(db_path)
     registry_default = dict(STAGE_SETTINGS_DEFAULTS.get(stage_id, {}))
 
-    _agg_app = _agg = None
-    try:
-        from pdomain_prep_for_pgdp.core.pipeline.prep_aggregate import (
-            PrepApplication,
-            PrepProjectAggregate,
-        )
-
-        _events_db = settings.data_root / "projects" / project_id / "events.db"
-        _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = PrepApplication(env=event_store_env(_events_db))
-        try:
-            _proj_uuid = _uuid.UUID(project_id)
-        except ValueError:
-            _proj_uuid = _uuid.uuid5(_uuid.NAMESPACE_OID, project_id)
-        _agg_id = PrepProjectAggregate.create_id(_proj_uuid)
-        try:
-            _agg = _app.repository.get(_agg_id)  # type: ignore[assignment]
-        except Exception:
-            _agg = PrepProjectAggregate(project_id=_proj_uuid)
-        _agg_app = _app
-    except Exception as _e:
-        log.warning("put_project_stage_settings: could not load aggregate (non-fatal): %s", _e)
+    _agg_app, _agg = _load_settings_aggregate(settings, project_id)
 
     store.save_as_default(
         project_id,
         stage_id,
         body,
-        aggregate=_agg,  # type: ignore[arg-type]  # pyright: ignore[reportArgumentType]
+        aggregate=_agg,
         registry_default=registry_default,
         actor_id=user.user_id,
     )
     if _agg_app is not None and _agg is not None:
         try:
-            _agg_app.save(_agg)  # type: ignore[arg-type]
+            _agg_app.save(_agg)
         except Exception as _e_save:
             log.warning("put_project_stage_settings aggregate persist failed: %s", _e_save)
 

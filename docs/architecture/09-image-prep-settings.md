@@ -29,8 +29,8 @@ the page service and record workflow events. Removing a page through Source is a
 Cover and blank remain distinct page types. Page actions use the page's actual `idx0`, not a filtered list position.
 
 The grayscale workbench displays real color input. Its page grid uses a grayscale stage thumbnail when available
-and falls back to the ingest thumbnail. These fixes do not establish real thumbnails in the shared image-stage
-review tool; that remains [W2.1](../issues/2026-07-21-w21-isr-real-thumbs.md).
+and falls back to the ingest thumbnail. The shared image-stage review tool shows the stage output, or the parent
+image while that stage has no output.
 
 One project-channel Server-Sent Events (SSE) bridge refreshes tool state and artifact cache keys as stages finish.
 See [events and jobs](05-events-and-jobs.md) for event ownership.
@@ -46,13 +46,18 @@ App-wide defaults use `pdomain-ops` `LocalFilePrefs` under `stage_settings.<stag
 An old `stage_settings_all.json` file is a read fallback when the preference key is absent.
 App-wide preferences do not have a project event log. The earlier proposal to event-log every tier did not ship literally.
 
+The image-stage review editor uses the backend setting keys directly. `POST .../project-stages/{stage_id}/rerun` takes
+`page_ids` and optional `settings`. It merges `settings` into each page's page-tier override before queueing the jobs,
+and rejects a key the stage does not define with 422. `threshold_level` and `skip_denoise` default to `null`, which
+leaves the value from `PageConfigOverrides` in place. Dewarp has no adjustable settings.
+
 Grayscale normalizes legacy flat settings at each tier before merging them.
 Its current nested configuration covers flattening, converter/channel choice, color2gray, CLAHE, and output range.
 The older mode/gamma proposal is historical, not the current settings schema.
 
 Grayscale shows resolved-source badges and supports page saves, project defaults, and an app Settings editor.
-Generalizing that UI to threshold, deskew, and denoise remains
-[W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md).
+The image-stage review editor offers the same page and project saves and source badges for every stage with controls,
+plus Clear page override. The app Settings page has app-wide sections for threshold, deskew, and denoise.
 
 ## CPU and GPU execution
 
@@ -68,9 +73,11 @@ That work remains in the [Compute panel backlog](../plans/2026-06-08-compute-set
 
 ## Remaining product work
 
-Archived-project Save a copy still reports a coming-soon action rather than downloading an export.
-[W3.10](../issues/2026-07-21-w310-save-copy-archive.md) tracks real export and archive inventory.
-The remaining image-prep queue is Wave 2 on the [roadmap](../plans/roadmap.md#now).
+Save a copy downloads `GET /api/data/projects/{id}/export`: every file under the project directory, with SQLite files
+copied through the backup API, plus `pgdp-prep-export.json` holding the project and page-stage rows. There is no import
+path yet. The archive keep list is still placeholder data, tracked by
+[W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
+Open work is on the [roadmap](../plans/roadmap.md#now). The July completion plan is the record of Waves 0–3, not the queue.
 
 ## Evidence
 

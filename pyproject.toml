@@ -333,6 +333,7 @@ asyncio_mode = "auto"
 
 markers = [
     "slow: marks tests as slow — excluded from `make test`; included in `make ci-slow`",
+    "e2e_smoke: Playwright smoke subset that `make ci` runs through `make e2e-smoke`",
 ]
 filterwarnings = [
     # Treat all warnings as errors — surfaces deprecation issues at LLM-iteration time.

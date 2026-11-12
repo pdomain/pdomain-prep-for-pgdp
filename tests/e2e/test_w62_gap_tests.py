@@ -34,8 +34,6 @@ Additional tests as practical:
 Skipped with notes:
   - page reorder drag: Playwright drag reliability in headless is poor
     for complex canvas; skipped (see note in test file).
-  - text_review approval flow: requires seeded OCR output (real DocTR);
-    deferred to a separate heavy-test suite.
   - validation waiver flow: waiver route exists but waiver UI not yet wired
     to TOOL_REGISTRY ValidationTool (W4 gap — record and skip).
   - page_order naming preview: naming manifest requires a source run +
@@ -60,6 +58,7 @@ from io import BytesIO
 from typing import TYPE_CHECKING
 
 import httpx
+import pytest
 from PIL import Image
 from playwright.sync_api import Page, expect
 
@@ -187,11 +186,11 @@ _STAGE_TOOL_TESTIDS: dict[str, tuple[str, ...]] = {
     "post_ocr_crop": ("image-stage-review-tool-post_ocr_crop",),
     "ocr": ("ocr-tool",),
     "page_order": ("page-order-tool",),
-    "wordcheck": ("wordcheck-tool",),
+    "wordcheck": ("wordcheck-tool", "wordcheck-tool-settled"),
     # Multi-state tools: any of these is a valid non-placeholder rendering
     "hyphen_join": ("hyphen-tool", "hyphen-tool-scanning", "hyphen-tool-failed", "hyphen-tool-settled"),
     "regex": ("regex-tool", "regex-tool-loading", "regex-tool-error", "regex-tool-clean"),
-    "text_review": ("text-review-tool",),
+    "text_review": ("text-review-tool", "text-review-tool-assembling", "text-review-tool-settled"),
     "illustrations": ("illustrations-tool",),
     "validation": ("validation-tool", "validation-checking", "validation-load-error"),
     "proof_pack": ("proof-pack-tool", "proof-pack-assembling", "proof-pack-failed"),
@@ -255,6 +254,7 @@ def test_create_project_and_import_source(live_server: LiveServer, page: Page, t
 # ── Priority test 2: all stage tool slots render non-placeholder ──────────────
 
 
+@pytest.mark.e2e_smoke
 def test_all_stage_tool_slots_render_non_placeholder(live_server: LiveServer, page: Page) -> None:
     """For all 24 stages, the registered tool renders — never the placeholder.
 
@@ -598,7 +598,7 @@ def test_source_tool_settings_save_as_default(live_server: LiveServer, page: Pag
     expect(page.locator('[data-testid="source-tool"]')).to_be_visible(timeout=10_000)
 
     # Click the "Stage settings" tab
-    settings_tab = page.get_by_role("tab", name="Stage settings")
+    settings_tab = page.get_by_role("button", name="Stage settings")
     expect(settings_tab).to_be_visible(timeout=5_000)
     settings_tab.click()
 
@@ -855,14 +855,15 @@ def test_wordcheck_decisions_flow_renders(live_server: LiveServer, page: Page) -
     assert errors == [], f"Errors on navigate: {errors}"
 
     # WordcheckTool container renders
-    expect(page.locator('[data-testid="wordcheck-tool"]')).to_be_visible(timeout=10_000)
+    wordcheck = page.locator('[data-testid="wordcheck-tool"], [data-testid="wordcheck-tool-settled"]')
+    expect(wordcheck).to_be_visible(timeout=10_000)
 
     # Brief wait for the tool to load data from the API
     page.wait_for_timeout(1_500)
 
     # No mock leak — the word "MOCK" should not appear in the tool content
     # (W5.4: mock-leak removed; the tool now uses real services)
-    tool_text = page.locator('[data-testid="wordcheck-tool"]').text_content() or ""
+    tool_text = wordcheck.text_content() or ""
     assert "MOCK_SUSPECTS" not in tool_text, (
         "W5.4 mock-leak detected: MOCK_SUSPECTS found in wordcheck tool content"
     )
@@ -906,24 +907,6 @@ def test_validation_waiver_skipped() -> None:
       3. Fill reason field.
       4. Confirm → assert waiver row appears.
       5. Assert API returns waiver in validation aggregate.
-    """
-
-
-def test_text_review_approval_skipped() -> None:
-    """SKIP: text_review approval flow.
-
-    The text_review tool requires real OCR output to populate the page list
-    (each page needs a .txt artifact from the ocr stage). Running real DocTR
-    OCR in e2e tests is too slow for the local preflight suite.
-
-    This flow should be exercised in the GPU e2e suite (tests/e2e_gpu/) with:
-      1. A prebuilt OCR artifact cache.
-      2. A seeded text_review page list.
-      3. Approve-low-risk route assert.
-
-    Note: the text-review-tool testid IS covered in test 2
-    (test_all_stage_tool_slots_render_non_placeholder) — tool presence is
-    verified; this skip is only for the interactive approval flow.
     """
 
 

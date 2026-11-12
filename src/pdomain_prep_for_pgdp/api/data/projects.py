@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 import shutil
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from pdomain_prep_for_pgdp.api.dependencies import (
     DatabaseDep,
@@ -27,6 +31,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStatus,
 )
 from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
+from pdomain_prep_for_pgdp.core.project_export import write_project_zip
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -572,38 +577,81 @@ async def clean_project(
     return _CleanResponse(project_id=project_id, reclaimed_bytes=reclaimed)
 
 
-class _ExportResponse(BaseModel):
-    project_id: str
-    copy_id: str
-    created_at: str
+_EXPORT_MAX_AGE_SECONDS = 86_400
 
 
-@router.post(
+def _export_download_name(project_name: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", project_name).strip("-") or "project"
+    return f"{stem}-copy.zip"
+
+
+def _prepare_export_dir(data_root: Path) -> Path:
+    """Return the working directory, removing zips a crash left behind."""
+    export_dir = data_root / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    (export_dir / ".nobackup").touch()
+    cutoff = time.time() - _EXPORT_MAX_AGE_SECONDS
+    for leftover in export_dir.glob("*.zip"):
+        if leftover.stat().st_mtime < cutoff:
+            leftover.unlink(missing_ok=True)
+    return export_dir
+
+
+@router.get(
     "/projects/{project_id}/export",
-    response_model=_ExportResponse,
     operation_id="export_project_copy",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "content": {"application/zip": {}},
+            "description": "Zip of the project's files and stage rows.",
+        },
+        404: {"description": "Project not found."},
+        501: {"description": "Export needs filesystem storage."},
+    },
 )
 async def export_project_copy(
     project_id: str,
     user: UserDep,
     db: DatabaseDep,
     settings: SettingsDep,
-) -> _ExportResponse:
-    """Create a copy of the project configuration for backup or transfer.
-
-    At I1: creates a stub export record. Full artifact copy (source + stages)
-    deferred to I2 when storage adapter supports multi-key copy.
-    W4 Group 4.
-    """
+) -> FileResponse:
+    """Download a zip of the project's on-disk files plus its project and page-stage rows."""
     project = await db.get_project(project_id)
     if project is None or project.owner_id != user.user_id:
         raise HTTPException(404, "project not found")
+    if settings.storage_backend != "filesystem":
+        raise HTTPException(501, "project export needs filesystem storage")
 
-    copy_id = uuid.uuid4().hex
-    return _ExportResponse(
-        project_id=project_id,
-        copy_id=copy_id,
-        created_at=datetime.now(UTC).isoformat(),
+    page_stages = await db.list_page_stages_by_project(project_id)
+    manifest = json.dumps(
+        {
+            "format_version": 1,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "project": project.model_dump(mode="json"),
+            "page_stages": [row.model_dump(mode="json") for row in page_stages],
+        },
+        indent=2,
+    ).encode("utf-8")
+
+    export_dir = await asyncio.to_thread(_prepare_export_dir, settings.data_root)
+    destination = export_dir / f"{uuid.uuid4().hex}.zip"
+    try:
+        await asyncio.to_thread(
+            write_project_zip,
+            settings.data_root / "projects" / project_id,
+            manifest,
+            destination,
+        )
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    return FileResponse(
+        destination,
+        media_type="application/zip",
+        filename=_export_download_name(project.name),
+        background=BackgroundTask(destination.unlink, missing_ok=True),
     )
 
 

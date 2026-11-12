@@ -34,6 +34,10 @@ import { setup, assign, fromPromise } from "xstate";
 /** A row in the imageStageReview page grid. */
 export interface PageRow {
   idx: string;
+  idx0?: number;
+  thumbUrl?: string;
+  beforeUrl?: string;
+  afterUrl?: string;
   prefix: string;
   state: "running" | "clean" | "flagged" | "reviewed" | "failed";
   flags?: string[];
@@ -68,7 +72,7 @@ export interface ImageStageReviewServices {
   ): Promise<{ rows: PageRow[]; totals: Totals }>;
 
   /**
-   * POST /api/projects/:id/stages/:stageId/rerun { params, pageIds } -> PageRow[]
+   * POST /api/data/projects/:id/project-stages/:stageId/rerun { page_ids, settings } -> { rows }
    */
   reRunPages(
     projectId: string,
@@ -118,6 +122,7 @@ export interface ImageStageReviewContext {
 export type ImageStageReviewEvent =
   | { type: "RETRY" }
   | { type: "PAGE_PUSH"; row: PageRow }
+  | { type: "ROWS_REFRESHED"; rows: PageRow[] }
   | { type: "SELECT_PAGE"; idx: string }
   | { type: "CLEAR_SELECTION" }
   | { type: "BULK_ACCEPT" }
@@ -125,6 +130,7 @@ export type ImageStageReviewEvent =
   | { type: "OPEN_EDITOR"; idx: string }
   | { type: "DRAG_WIPE"; pct: number }
   | { type: "SET_PARAM"; patch: Record<string, unknown> }
+  | { type: "DRAFT_SAVED" }
   | { type: "SET_APPLY_TO"; value: "this" | "selected" | "sameIssue" }
   | { type: "ACCEPT_AS_IS" }
   | { type: "RERUN" }
@@ -163,6 +169,38 @@ function setRowState(
   state: PageRow["state"],
 ): PageRow[] {
   return rows.map((r) => (idxList.includes(r.idx) ? { ...r, state } : r));
+}
+
+/** The pages a Re-run acts on, from the editor's apply-to choice. */
+export function rerunPageIds(
+  context: Pick<
+    ImageStageReviewContext,
+    "editing" | "selected" | "applyTo" | "rows"
+  >,
+): string[] {
+  const { editing, selected, applyTo, rows } = context;
+  if (!editing) return selected;
+  if (applyTo === "selected") return [...new Set([editing, ...selected])];
+  if (applyTo === "sameIssue") {
+    const flags = rows.find((r) => r.idx === editing)?.flags ?? [];
+    const matching = rows
+      .filter((r) => r.flags?.some((flag) => flags.includes(flag)))
+      .map((r) => r.idx);
+    return [...new Set([editing, ...matching])];
+  }
+  return [editing];
+}
+
+/** Reviews are only held client-side, so a server refresh must not undo them. */
+function keepReviewed(previous: PageRow[], incoming: PageRow[]): PageRow[] {
+  const reviewed = new Set(
+    previous.filter((r) => r.state === "reviewed").map((r) => r.idx),
+  );
+  return incoming.map((r) =>
+    r.state === "flagged" && reviewed.has(r.idx)
+      ? { ...r, state: "reviewed" as const }
+      : r,
+  );
 }
 
 function toggleXor(arr: string[], item: string): string[] {
@@ -265,6 +303,14 @@ export const imageStageReviewMachine = setup({
       return running === 0 && flagged === 0;
     },
 
+    refreshStillRunning: ({ event }) =>
+      event.type === "ROWS_REFRESHED" &&
+      event.rows.some((r) => r.state === "running"),
+
+    refreshHasFlags: ({ context, event }) =>
+      event.type === "ROWS_REFRESHED" &&
+      keepReviewed(context.rows, event.rows).some((r) => r.state === "flagged"),
+
     /**
      * YAML: `allFlagsReviewed: totals.flagged === 0 || totals.flagged === totals.reviewed`
      * Guards CONFIRM_ADVANCE — enabled only when every flagged page has been reviewed.
@@ -358,6 +404,10 @@ export const imageStageReviewMachine = setup({
         // Extract stage params from the row (all fields beyond base PageRow fields)
         const {
           idx: _idx,
+          idx0: _idx0,
+          thumbUrl: _thumbUrl,
+          beforeUrl: _beforeUrl,
+          afterUrl: _afterUrl,
           prefix: _prefix,
           state: _state,
           flags: _flags,
@@ -453,6 +503,17 @@ export const imageStageReviewMachine = setup({
       },
     ),
 
+    assignRefreshedRows: assign({
+      rows: ({ context, event }) =>
+        event.type === "ROWS_REFRESHED"
+          ? keepReviewed(context.rows, event.rows)
+          : context.rows,
+      totals: ({ context, event }) =>
+        event.type === "ROWS_REFRESHED"
+          ? recount(keepReviewed(context.rows, event.rows))
+          : context.totals,
+    }),
+
     /** YAML: `markStale` */
     markStale: assign({ stale: () => true }),
 
@@ -517,6 +578,7 @@ export const imageStageReviewMachine = setup({
   // Global events — available in all states (except where overridden by child)
   on: {
     UPSTREAM_CHANGED: { actions: ["markStale"] },
+    ROWS_REFRESHED: { actions: ["assignRefreshedRows"] },
     RERUN_STAGE: { target: ".running", actions: ["requestStageRun"] },
     REDERIVE: { target: ".running", actions: ["requestRederive"] },
     CONFIRM_ADVANCE: {
@@ -626,6 +688,15 @@ export const imageStageReviewMachine = setup({
 
     running: {
       on: {
+        ROWS_REFRESHED: [
+          { guard: "refreshStillRunning", actions: ["assignRefreshedRows"] },
+          {
+            target: "review",
+            guard: "refreshHasFlags",
+            actions: ["assignRefreshedRows"],
+          },
+          { target: "settled", actions: ["assignRefreshedRows"] },
+        ],
         PAGE_PUSH: [
           {
             target: "review",
@@ -706,6 +777,8 @@ export const imageStageReviewMachine = setup({
           on: {
             DRAG_WIPE: {},
             SET_PARAM: { actions: ["patchDraft"] },
+            DRAFT_SAVED: { actions: ["clearDraft"] },
+            OPEN_EDITOR: { actions: ["assignEditing", "beginDraft"] },
             SET_APPLY_TO: { actions: ["assignApplyTo"] },
             ACCEPT_AS_IS: {
               target: "browsing",
@@ -733,7 +806,7 @@ export const imageStageReviewMachine = setup({
               stageId: context.stageId,
               services: context.services,
               draft: context.draft ?? {},
-              pageIds: context.editing ? [context.editing] : context.selected,
+              pageIds: rerunPageIds(context),
             }),
             onDone: [
               {
@@ -771,6 +844,14 @@ export const imageStageReviewMachine = setup({
     settled: {
       entry: ["emitResolved"],
       on: {
+        ROWS_REFRESHED: [
+          {
+            target: "review",
+            guard: "refreshHasFlags",
+            actions: ["assignRefreshedRows"],
+          },
+          { actions: ["assignRefreshedRows"] },
+        ],
         OPEN_EDITOR: {
           target: "review.editing",
           actions: ["assignEditing", "beginDraft"],

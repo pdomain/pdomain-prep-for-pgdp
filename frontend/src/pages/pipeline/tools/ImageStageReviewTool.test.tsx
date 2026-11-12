@@ -19,15 +19,38 @@
  * @see src/pages/pipeline/tools/stageSchemas.ts
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { api } from "@/api/client";
 import { ImageStageReviewTool } from "./ImageStageReviewTool";
 import type { ToolSlotProps } from "../toolSlot";
 import type {
   ImageStageReviewServices,
   PageRow,
 } from "@/machines/imageStageReview";
+
+const sse = vi.hoisted(() => ({
+  listeners: [] as ((event: {
+    type: string;
+    stage_id: string;
+    status: string;
+  }) => void)[],
+}));
+
+vi.mock("@/services/sse", () => ({
+  subscribeProjectPageStageChannel: (
+    _projectId: string,
+    listener: (typeof sse.listeners)[number],
+  ) => {
+    sse.listeners.push(listener);
+    return () => {
+      sse.listeners.splice(sse.listeners.indexOf(listener), 1);
+    };
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,15 +94,34 @@ const TEST_SERVICES: ImageStageReviewServices = {
   confirmStage: () => Promise.resolve({ ok: true }),
 };
 
+function Providers({ children }: { children: ReactNode }) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return (
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/"]}>{children}</MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+beforeEach(() => {
+  vi.spyOn(api, "get").mockResolvedValue({ effective: {}, sources: {} });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 function renderReview(stageId: string) {
   return render(
-    <MemoryRouter>
+    <Providers>
       <ImageStageReviewTool
         stageId={stageId}
         runnerRef={MOCK_RUNNER_REF}
         _testServices={TEST_SERVICES}
       />
-    </MemoryRouter>,
+    </Providers>,
   );
 }
 
@@ -343,14 +385,14 @@ describe("ImageStageReviewTool — inline editor", () => {
     });
   });
 
-  it("threshold inline editor shows method control", async () => {
+  it("threshold inline editor shows threshold level control", async () => {
     renderReview("threshold");
     await waitFor(() => {
       expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
     });
     fireEvent.click(screen.getByTestId("page-thumb-page-2"));
     await waitFor(() => {
-      expect(screen.getByTestId("control-method")).toBeDefined();
+      expect(screen.getByTestId("control-threshold_level")).toBeDefined();
     });
   });
 
@@ -500,98 +542,430 @@ describe("ImageStageReviewTool — confirming state", () => {
 // Artboard: stageSchemas — controls per stage
 // ---------------------------------------------------------------------------
 
-describe("ImageStageReviewTool — controls via stageSchemas (threshold)", () => {
-  it("threshold controls include method select", async () => {
-    renderReview("threshold");
+async function openEditor(stageId: string) {
+  renderReview(stageId);
+  await waitFor(() => {
+    expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+  });
+  fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+}
+
+describe("ImageStageReviewTool — controls match backend settings", () => {
+  it("threshold starts on automatic and accepts a fixed level", async () => {
+    await openEditor("threshold");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "Auto (Otsu)",
+      );
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+
+    fireEvent.change(screen.getByTestId("slider-threshold_level"), {
+      target: { value: "170" },
+    });
+
     await waitFor(() => {
-      expect(screen.getByTestId("select-method")).toBeDefined();
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "170",
+      );
+    });
+    fireEvent.click(screen.getByTestId("auto-threshold_level"));
+    await waitFor(() => {
+      expect(screen.getByTestId("readout-threshold_level").textContent).toBe(
+        "Auto (Otsu)",
+      );
     });
   });
 
-  it("threshold controls include threshold slider (0–255)", async () => {
-    renderReview("threshold");
+  it("deskew offers only the skip toggle", async () => {
+    await openEditor("deskew");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("toggle-skip_auto_deskew").textContent).toBe(
+        "On",
+      );
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-threshold")).toBeDefined();
-    });
+    expect(screen.queryByTestId("select-algorithm")).toBeNull();
   });
 
-  it("threshold controls include windowSize slider", async () => {
-    renderReview("threshold");
+  it("denoise median filter offers only odd sizes or off", async () => {
+    await openEditor("denoise");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("select-median_kernel_size")).toBeDefined();
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-windowSize")).toBeDefined();
-    });
+    const options = Array.from(
+      screen
+        .getByTestId("select-median_kernel_size")
+        .querySelectorAll("option"),
+    ).map((option) => option.value);
+    expect(options).toEqual(["0", "3", "5", "7"]);
+    expect(screen.getByTestId("slider-min_component_area")).toBeDefined();
+    expect(screen.getByTestId("toggle-skip_denoise")).toBeDefined();
   });
 
-  it("threshold controls include kFactor slider", async () => {
-    renderReview("threshold");
+  it("dewarp says it has no adjustable settings", async () => {
+    await openEditor("dewarp");
     await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+      expect(screen.getByTestId("control-editor-empty")).toBeDefined();
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+    expect(screen.queryByTestId("select-model")).toBeNull();
+  });
+
+  it("post_transform_crop edits all four insets as one value", async () => {
+    await openEditor("post_transform_crop");
     await waitFor(() => {
-      expect(screen.getByTestId("slider-kFactor")).toBeDefined();
+      expect(
+        screen.getByTestId("slider-post_transform_crop_insets-2"),
+      ).toBeDefined();
     });
+
+    fireEvent.change(
+      screen.getByTestId("slider-post_transform_crop_insets-2"),
+      {
+        target: { value: "9" },
+      },
+    );
+
+    await waitFor(() => {
+      const slider = screen.getByTestId<HTMLInputElement>(
+        "slider-post_transform_crop_insets-2",
+      );
+      expect(slider.value).toBe("9");
+    });
+    const top = screen.getByTestId<HTMLInputElement>(
+      "slider-post_transform_crop_insets-0",
+    );
+    expect(top.value).toBe("0");
   });
 });
 
-describe("ImageStageReviewTool — controls via stageSchemas (denoise)", () => {
-  it("denoise controls include protectFootMarks toggle", async () => {
-    renderReview("denoise");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
-    });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("toggle-protectFootMarks")).toBeDefined();
-    });
+const IMAGE_ROW = {
+  idx: "0001",
+  idx0: 1,
+  prefix: "p002",
+  state: "flagged",
+  flags: ["speckle"],
+  pageNumber: 1,
+  thumbUrl: "/thumb.png?v=1",
+  beforeUrl: "/before.png?v=1",
+  afterUrl: "/after.png?v=2",
+} satisfies PageRow;
+
+const { thumbUrl: _thumbUrl, ...rowWithoutThumb } = IMAGE_ROW;
+
+function servicesWith(rows: PageRow[]): ImageStageReviewServices {
+  return {
+    ...TEST_SERVICES,
+    fetchStagePages: () =>
+      Promise.resolve({
+        rows,
+        totals: {
+          total: rows.length,
+          clean: rows.filter((r) => r.state === "clean").length,
+          flagged: rows.filter((r) => r.state === "flagged").length,
+          done: rows.length,
+          reviewed: 0,
+          errors: 0,
+          running: 0,
+        },
+      }),
+  };
+}
+
+function renderWith(services: ImageStageReviewServices, stageId = "threshold") {
+  return render(
+    <Providers>
+      <ImageStageReviewTool
+        stageId={stageId}
+        runnerRef={MOCK_RUNNER_REF}
+        _testServices={services}
+      />
+    </Providers>,
+  );
+}
+
+describe("ImageStageReviewTool — real images", () => {
+  it("shows the stage thumbnail in the grid", async () => {
+    renderWith(servicesWith([IMAGE_ROW]));
+
+    const thumb = await screen.findByRole("img", { name: "Page p002" });
+
+    expect(thumb.getAttribute("src")).toBe("/thumb.png?v=1");
+  });
+
+  it("uses the paper placeholder when a page has no image", async () => {
+    renderWith(servicesWith([rowWithoutThumb]));
+
+    await screen.findByTestId("page-thumb-0001");
+
+    expect(screen.queryByRole("img", { name: "Page p002" })).toBeNull();
+  });
+
+  it("compares the parent and stage outputs in the editor", async () => {
+    renderWith(servicesWith([IMAGE_ROW]));
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+
+    const before = await screen.findByRole("img", { name: "Before" });
+    const after = screen.getByRole("img", { name: "After" });
+
+    expect(before.getAttribute("src")).toBe("/before.png?v=1");
+    expect(after.getAttribute("src")).toBe("/after.png?v=2");
+  });
+
+  it("says when the stage has no output to compare", async () => {
+    const { afterUrl: _afterUrl, ...withoutOutput } = IMAGE_ROW;
+    renderWith(servicesWith([withoutOutput]));
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+
+    expect(
+      await screen.findByText("Re-run this page to see its output."),
+    ).toBeDefined();
+    expect(screen.queryByRole("img", { name: "After" })).toBeNull();
   });
 });
 
-describe("ImageStageReviewTool — controls via stageSchemas (dewarp)", () => {
-  it("dewarp controls include model select", async () => {
-    renderReview("dewarp");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
-    });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("select-model")).toBeDefined();
-    });
+describe("ImageStageReviewTool — refresh after a run", () => {
+  beforeEach(() => {
+    vi.stubGlobal("EventSource", vi.fn());
   });
 
-  it("dewarp controls include stiffness slider", async () => {
-    renderReview("dewarp");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads new images when this stage finishes a page", async () => {
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+    fetchStagePages.mockImplementation(
+      servicesWith([{ ...IMAGE_ROW, thumbUrl: "/thumb.png?v=9" }])
+        .fetchStagePages,
+    );
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "threshold",
+      status: "clean",
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
-    await waitFor(() => {
-      expect(screen.getByTestId("slider-stiffness")).toBeDefined();
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("img", { name: "Page p002" }).getAttribute("src"),
+        ).toBe("/thumb.png?v=9");
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("refetches after a rerun returns, because the job can finish first", async () => {
+    const dirtyRow: PageRow = { ...IMAGE_ROW, state: "flagged" };
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([dirtyRow]).fetchStagePages);
+    const reRunPages = vi
+      .fn<ImageStageReviewServices["reRunPages"]>()
+      .mockResolvedValue([dirtyRow]);
+    renderWith({ ...TEST_SERVICES, fetchStagePages, reRunPages });
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    fetchStagePages.mockImplementation(
+      servicesWith([{ ...IMAGE_ROW, thumbUrl: "/thumb.png?v=9" }])
+        .fetchStagePages,
+    );
+
+    fireEvent.click(screen.getByTestId("rerun-btn"));
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("img", { name: "Page p002" }).getAttribute("src"),
+        ).toBe("/thumb.png?v=9");
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("ignores events from other stages", async () => {
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "deskew",
+      status: "clean",
     });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(fetchStagePages).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("ImageStageReviewTool — controls via stageSchemas (post_transform_crop)", () => {
-  it("post_transform_crop controls include marginTop slider", async () => {
-    renderReview("post_transform_crop");
-    await waitFor(() => {
-      expect(screen.getByTestId("page-thumb-page-2")).toBeDefined();
+describe("ImageStageReviewTool — settings tiers", () => {
+  const RESOLVED = {
+    effective: { min_component_area: 12, median_kernel_size: 3 },
+    sources: { min_component_area: "page", median_kernel_size: "project" },
+  };
+  const PAGE_URL =
+    "/api/data/projects/mock-project/pages/1/stages/denoise/settings";
+
+  async function openDenoise() {
+    vi.spyOn(api, "get").mockResolvedValue(RESOLVED);
+    renderWith(servicesWith([IMAGE_ROW]), "denoise");
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    await screen.findByTestId("source-min_component_area");
+  }
+
+  it("shows each saved value and the tier it came from", async () => {
+    await openDenoise();
+
+    expect(screen.getByTestId("source-min_component_area").textContent).toBe(
+      "from: page",
+    );
+    expect(screen.getByTestId("source-median_kernel_size").textContent).toBe(
+      "from: project",
+    );
+    expect(
+      screen.getByTestId<HTMLInputElement>("slider-min_component_area").value,
+    ).toBe("12");
+  });
+
+  it("marks a changed field as edited", async () => {
+    await openDenoise();
+
+    fireEvent.change(screen.getByTestId("slider-min_component_area"), {
+      target: { value: "20" },
     });
-    fireEvent.click(screen.getByTestId("page-thumb-page-2"));
+
+    expect(
+      await screen.findByTestId("edited-min_component_area"),
+    ).toBeDefined();
+    expect(screen.queryByTestId("source-min_component_area")).toBeNull();
+  });
+
+  it("saves a page override and keeps the page's other fields", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("select-median_kernel_size"), {
+      target: { value: "5" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save for this page" }));
+
     await waitFor(() => {
-      expect(screen.getByTestId("slider-marginTop")).toBeDefined();
+      expect(put).toHaveBeenCalledWith(`${PAGE_URL}/page`, {
+        min_component_area: 12,
+        median_kernel_size: 5,
+      });
+    });
+  });
+
+  it("drops the edited badge once the page override is saved", async () => {
+    vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("select-median_kernel_size"), {
+      target: { value: "5" },
+    });
+    expect(screen.getByTestId("edited-median_kernel_size")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save for this page" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("edited-median_kernel_size"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("saves a project default and keeps the project's other fields", async () => {
+    const put = vi.spyOn(api, "put").mockResolvedValue({});
+    await openDenoise();
+    fireEvent.change(screen.getByTestId("slider-min_component_area"), {
+      target: { value: "20" },
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save as project default" }),
+    );
+
+    await waitFor(() => {
+      expect(put).toHaveBeenCalledWith(
+        "/api/data/projects/mock-project/stages/denoise/settings",
+        { median_kernel_size: 3, min_component_area: 20 },
+      );
+    });
+  });
+
+  it("clears the page override", async () => {
+    const del = vi.spyOn(api, "delete").mockResolvedValue({});
+    await openDenoise();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear page override" }),
+    );
+
+    await waitFor(() => {
+      expect(del).toHaveBeenCalledWith(`${PAGE_URL}/page`);
+    });
+  });
+
+  it("disables saving until a field changes", async () => {
+    await openDenoise();
+
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Save for this page",
+      }).disabled,
+    ).toBe(true);
+  });
+});
+
+describe("ImageStageReviewTool — failed refresh and stale saves", () => {
+  it("keeps the rows when a refresh fails", async () => {
+    vi.stubGlobal("EventSource", vi.fn());
+    const fetchStagePages = vi
+      .fn<ImageStageReviewServices["fetchStagePages"]>()
+      .mockImplementation(servicesWith([IMAGE_ROW]).fetchStagePages);
+    renderWith({ ...TEST_SERVICES, fetchStagePages });
+    await screen.findByRole("img", { name: "Page p002" });
+    fetchStagePages.mockRejectedValue(new Error("offline"));
+
+    sse.listeners[0]?.({
+      type: "stage-status",
+      stage_id: "threshold",
+      status: "clean",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(fetchStagePages).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("img", { name: "Page p002" })).toBeDefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("disables saving while reopened settings reload", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue({
+      effective: { min_component_area: 12 },
+      sources: { min_component_area: "page" },
+    });
+    renderWith(servicesWith([IMAGE_ROW]), "denoise");
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    await screen.findByTestId("source-min_component_area");
+    fireEvent.click(screen.getByTestId("editor-close-btn"));
+    get.mockReturnValue(new Promise(() => undefined));
+
+    fireEvent.click(await screen.findByTestId("page-thumb-0001"));
+    fireEvent.change(await screen.findByTestId("slider-min_component_area"), {
+      target: { value: "20" },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole<HTMLButtonElement>("button", {
+          name: "Save for this page",
+        }).disabled,
+      ).toBe(true);
     });
   });
 });

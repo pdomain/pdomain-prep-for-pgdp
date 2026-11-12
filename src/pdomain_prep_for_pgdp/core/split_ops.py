@@ -13,6 +13,7 @@ from pdomain_ops.page_aggregate import PageAggregate
 from pdomain_ops.pages import PageRecord as OpsPageRecord
 from pdomain_ops.pages import get_extension, set_extension
 
+from pdomain_prep_for_pgdp.core.ingest import make_page_thumbnail
 from pdomain_prep_for_pgdp.core.prep_extension import PrepPageExtension
 
 if TYPE_CHECKING:
@@ -34,13 +35,13 @@ def _crop_source_blob(
     service: PageService,
     parent_source_blob_hash: str,
     bbox: tuple[int, int, int, int],
-) -> str:
+) -> tuple[str, bytes]:
     """Crop the parent's source image to ``bbox`` and write the result as a new blob.
 
     Reads the parent's source bytes from the BlobStore, decodes to an ndarray,
     crops to ``bbox`` (``(x, y, w, h)`` in parent source-image coords), re-encodes
     to PNG, and writes the cropped bytes back to the BlobStore. Returns the new
-    blob hash (the CHILD's own ``source_blob_hash``).
+    blob hash (the CHILD's own ``source_blob_hash``) and the PNG bytes.
 
     This mirrors how ``ingest.unzip_source`` records a normal page's
     ``source_blob_hash`` via ``page_service.blobs.write(...)`` — only here the
@@ -72,7 +73,8 @@ def _crop_source_blob(
     ok, buf = cv2.imencode(".png", cropped)
     if not ok:
         raise RuntimeError("split crop: cv2.imencode failed for child crop")
-    return service.blobs.write(bytes(buf.tobytes()))
+    png = bytes(buf.tobytes())
+    return service.blobs.write(png), png
 
 
 def split_page_in_store(
@@ -128,12 +130,15 @@ def split_page_in_store(
     for i, suffix in enumerate(suffixes):
         child_bbox = child_bboxes[i]
         child_source_hash: str | None = None
+        child_thumb_hash: str | None = None
         if parent_source_blob_hash is not None:
-            child_source_hash = _crop_source_blob(
+            child_source_hash, child_png = _crop_source_blob(
                 service=service,
                 parent_source_blob_hash=parent_source_blob_hash,
                 bbox=child_bbox,
             )
+            # Page grids read the ingest thumbnail; give the child its own.
+            child_thumb_hash = service.blobs.write(make_page_thumbnail(child_png))
 
         child_page_id = _uuid.uuid4()
         child_record = OpsPageRecord(
@@ -153,6 +158,7 @@ def split_page_in_store(
             split_suffix=suffix,
             reading_order=i,
             source_blob_hash=child_source_hash,
+            thumbnail_blob_hash=child_thumb_hash,
         )
         set_extension(child_record, "prep", child_ext)
         child_agg = PageAggregate(record=child_record)

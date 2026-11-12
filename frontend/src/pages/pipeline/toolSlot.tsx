@@ -68,6 +68,8 @@ export interface ToolSlotProps {
   runnerRef: StageRunnerRef | null;
   /** W5.3: forward events to pipelineShell (e.g. STAGE_COMPLETED fan-out). */
   shellSend?: (event: PipelineShellEvent) => void;
+  /** The shell's selected tab; tools with their own panes follow it. */
+  currentTab?: string;
   /**
    * Total page count for the project. Used by SSE-bridge tools (e.g. GrayscaleTool)
    * to know when all pages have completed so the ``_total`` sentinel fires.

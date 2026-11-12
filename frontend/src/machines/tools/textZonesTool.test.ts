@@ -441,6 +441,7 @@ describe("textZonesTool — zone editor", () => {
     await flushPromises();
     actor.send({ type: "OPEN_ZONE_EDITOR", idx: "0" });
     actor.send({ type: "SAVE_LAYOUT" });
+    await flushPromises();
 
     const snap = actor.getSnapshot();
     expect(snap.value).toMatchObject({ reviewing: "browsing" });
@@ -550,6 +551,7 @@ describe("textZonesTool — split editor", () => {
     await flushPromises();
     actor.send({ type: "OPEN_SPLIT_EDITOR", idx: "2" });
     actor.send({ type: "KEEP_AS_ONE" });
+    await flushPromises();
 
     const snap = actor.getSnapshot();
     expect(snap.value).toMatchObject({ reviewing: "browsing" });
@@ -773,6 +775,124 @@ describe("textZonesTool — load error", () => {
     actor.send({ type: "RETRY" });
     await flushPromises();
     expect(actor.getSnapshot().context.error).toBeNull();
+    actor.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W2.4 — layout edits reach the server; the zone editor can open a split
+// ---------------------------------------------------------------------------
+
+describe("textZonesToolMachine — W2.4 persistence and split entry", () => {
+  const drawn: Zone = {
+    id: "u1",
+    type: "illustration",
+    x: 0.1,
+    y: 0.2,
+    w: 0.3,
+    h: 0.4,
+    order: null,
+  };
+
+  it("SAVE_LAYOUT persists the drafted zones before closing the editor", async () => {
+    let resolvePersist: (v: { ok: boolean }) => void = () => undefined;
+    const persistLayout = vi.fn(
+      () =>
+        new Promise<{ ok: boolean }>((resolve) => {
+          resolvePersist = resolve;
+        }),
+    );
+    const actor = createActor(textZonesToolMachine, {
+      input: {
+        projectId: "proj-1",
+        stageIndex: 9,
+        services: makeServices({ persistLayout }),
+      },
+    });
+    actor.start();
+    await flushPromises();
+    actor.send({ type: "OPEN_ZONE_EDITOR", idx: "0" });
+    actor.send({
+      type: "DRAW_ZONE",
+      box: { x: 0.1, y: 0.2, w: 0.3, h: 0.4 },
+      zoneType: "illustration",
+    });
+    const draft = actor.getSnapshot().context.zoneDraft ?? [];
+    actor.send({ type: "SAVE_LAYOUT" });
+
+    expect(actor.getSnapshot().value).toMatchObject({
+      reviewing: "savingLayout",
+    });
+    expect(persistLayout).toHaveBeenCalledWith("proj-1", "0", {
+      zones: draft,
+    });
+
+    resolvePersist({ ok: true });
+    await flushPromises();
+    const snap = actor.getSnapshot();
+    expect(snap.value).toMatchObject({ reviewing: "browsing" });
+    const row = snap.context.rows.find((r) => r.idx === "0");
+    expect(row?.zones).toBe(1);
+    expect(row?.state).toBe("reviewed");
+    actor.stop();
+  });
+
+  it("a failed save keeps the zone editor open with its draft", async () => {
+    const persistLayout = vi.fn().mockRejectedValue(new Error("disk full"));
+    const actor = createActor(textZonesToolMachine, {
+      input: {
+        projectId: "proj-1",
+        stageIndex: 9,
+        services: makeServices({ persistLayout }),
+      },
+    });
+    actor.start();
+    await flushPromises();
+    actor.send({ type: "OPEN_ZONE_EDITOR", idx: "0" });
+    actor.send({ type: "DRAW_ZONE", box: drawn, zoneType: "body" });
+    actor.send({ type: "SAVE_LAYOUT" });
+    await flushPromises();
+
+    const snap = actor.getSnapshot();
+    expect(snap.value).toMatchObject({ reviewing: "editingZones" });
+    expect(snap.context.zoneDraft).toHaveLength(1);
+    expect(snap.context.error).not.toBeNull();
+    expect(snap.context.rows.find((r) => r.idx === "0")?.state).toBe("clean");
+    actor.stop();
+  });
+
+  it("KEEP_AS_ONE persists the dismissal", async () => {
+    const services = makeServices();
+    const actor = createActor(textZonesToolMachine, {
+      input: { projectId: "proj-1", stageIndex: 9, services },
+    });
+    actor.start();
+    await flushPromises();
+    actor.send({ type: "OPEN_SPLIT_EDITOR", idx: "2" });
+    actor.send({ type: "KEEP_AS_ONE" });
+    await flushPromises();
+
+    expect(services.persistLayout).toHaveBeenCalledWith("proj-1", "2", {
+      dismissed: true,
+    });
+    actor.stop();
+  });
+
+  it("the zone editor can switch the same page to the split editor", async () => {
+    const actor = createActor(textZonesToolMachine, {
+      input: { projectId: "proj-1", stageIndex: 9, services: makeServices() },
+    });
+    actor.start();
+    await flushPromises();
+    actor.send({ type: "OPEN_ZONE_EDITOR", idx: "0" });
+    actor.send({ type: "OPEN_SPLIT_EDITOR", idx: "0" });
+
+    const snap = actor.getSnapshot();
+    expect(snap.value).toMatchObject({ reviewing: "editingSplit" });
+    expect(snap.context.editing).toBe("0");
+    expect(snap.context.editorKind).toBe("split");
+    expect(snap.context.zoneDraft).toBeNull();
+    expect(snap.context.splitDraft).toMatchObject({ axis: "col", gutter: 0.5 });
     actor.stop();
   });
 });

@@ -35,6 +35,7 @@ would use about 16 GB, but actual storage depends on outputs and compression.
 `pgdp-prep reindex <project_id>` reports drift. With `--heal`, orphan files move to
 `.orphan-stage-artifacts` with a manifest; missing artifacts mark rows failed, and hash/version drift marks rows
 dirty with downstream invalidation. Heal does not reclaim durable running jobs.
+The [reindex and heal runbook](../runbooks/reindex-heal.md) has the commands and expected results.
 
 ## Self-hosted
 
@@ -76,7 +77,8 @@ same data root. A page-stage row left `running` by a synchronous request has no 
 
 S3 configuration uses `PGDP_S3_DATA_BUCKET`. Modal credentials use `PGDP_MODAL_TOKEN_ID` and
 `PGDP_MODAL_TOKEN_SECRET`. These settings expose adapter wiring, not a verified managed deployment.
-The Postgres builder exists, but its stage/database contract remains incomplete.
+The Postgres adapter implements the full `IDatabase` contract and passes the shared contract test against a live
+Postgres. Page lifecycle data stays in the local event store, so this is not a managed deployment.
 
 ## Managed (Fargate + Modal)
 

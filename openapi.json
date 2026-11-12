@@ -714,12 +714,12 @@
       }
     },
     "/api/data/projects/{project_id}/export": {
-      "post": {
+      "get": {
         "tags": [
           "projects"
         ],
         "summary": "Export Project Copy",
-        "description": "Create a copy of the project configuration for backup or transfer.\n\nAt I1: creates a stub export record. Full artifact copy (source + stages)\ndeferred to I2 when storage adapter supports multi-key copy.\nW4 Group 4.",
+        "description": "Download a zip of the project's on-disk files plus its project and page-stage rows.",
         "operationId": "export_project_copy",
         "security": [
           {
@@ -739,14 +739,16 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Zip of the project's files and stage rows.",
             "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/_ExportResponse"
-                }
-              }
+              "application/zip": {}
             }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "501": {
+            "description": "Export needs filesystem storage."
           },
           "422": {
             "description": "Validation Error",
@@ -1908,13 +1910,65 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/canvas_map/aspect-points": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Get Canvas Map Aspect Points",
+        "description": "Return one size point per page with a clean canvas_map input image.",
+        "operationId": "get_canvas_map_aspect_points",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Measured page sizes and the canvas ratio.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/{stage_id}/rerun": {
       "post": {
         "tags": [
           "project-stages"
         ],
         "summary": "Rerun Project Stage Pages",
-        "description": "Queue a batched rerun of a page-scoped stage for selected pages.\n\nFor each page_id in the request, marks the page_stage row as dirty\n(queuing it for processing) and enqueues a run_page_stage Job.\n\nReturns { rows: PageRow[] } with the updated state for each requested page.\n\nReplaces the per-page loop in imageStageReview.ts reRunPages.\nW4 Group 3 \u2014 batched rerun (seam-remediation plan).",
+        "description": "Queue a batched rerun of a page-scoped stage for selected pages.\n\nFor each page_id in the request, saves ``settings`` over the page's existing\npage-tier override, marks the page_stage row as dirty and enqueues a\nrun_page_stage Job. Keys the stage does not define are rejected with 422.\n\nReturns { rows: PageRow[] } with the updated state for each requested page.\n\nReplaces the per-page loop in imageStageReview.ts reRunPages.\nW4 Group 3 \u2014 batched rerun (seam-remediation plan).",
         "operationId": "rerun_project_stage_pages",
         "security": [
           {
@@ -10712,6 +10766,11 @@
             },
             "type": "array",
             "title": "Page Ids"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
           }
         },
         "type": "object",
@@ -10738,29 +10797,6 @@
           "reclaimed_bytes"
         ],
         "title": "_CleanResponse"
-      },
-      "_ExportResponse": {
-        "properties": {
-          "project_id": {
-            "type": "string",
-            "title": "Project Id"
-          },
-          "copy_id": {
-            "type": "string",
-            "title": "Copy Id"
-          },
-          "created_at": {
-            "type": "string",
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "project_id",
-          "copy_id",
-          "created_at"
-        ],
-        "title": "_ExportResponse"
       },
       "_IllustrationRegionPatchRequest": {
         "properties": {

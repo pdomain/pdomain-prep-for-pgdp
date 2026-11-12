@@ -16,6 +16,7 @@ import {
 import { PageHeader } from "../components/shell/PageHeader";
 import { cn } from "@/lib/utils";
 import { GrayscaleSettingsAllSection } from "./pipeline/tools/grayscale/GrayscaleSettingsAll";
+import { StageSettingsAllSection } from "./pipeline/tools/StageSettingsAll";
 import {
   getAllTierSettings,
   putAllTierSettings,
@@ -271,6 +272,16 @@ export function SettingsPage() {
             {saveGrayscale.error.message}
           </span>
         )}
+      </FieldSet>
+
+      <FieldSet title="Threshold stage defaults">
+        <StageSettingsAllSection stageId="threshold" />
+      </FieldSet>
+      <FieldSet title="Deskew stage defaults">
+        <StageSettingsAllSection stageId="deskew" />
+      </FieldSet>
+      <FieldSet title="Denoise stage defaults">
+        <StageSettingsAllSection stageId="denoise" />
       </FieldSet>
 
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-border-1 bg-bg-surface px-0 py-3">

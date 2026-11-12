@@ -79,8 +79,10 @@ make e2e AI=1
 ```
 
 The backend target runs `uv run pytest tests/ -v --ignore=tests/e2e -n auto`; slow tests are excluded by configuration.
-Playwright is a separate target. Full local CI includes lint, type checks, OpenAPI generation, SPA build,
-backend tests, frontend formatting/lint/tests, and knip. See [testing](docs/architecture/07-testing.md).
+Full local CI includes lint, type checks, OpenAPI generation, SPA build, backend tests, frontend
+formatting/lint/tests, knip, and the Playwright smoke subset. See [testing](docs/architecture/07-testing.md).
+The smoke subset needs a browser, so run `uv run --group e2e playwright install chromium` once per machine.
+`make e2e AI=1` runs the whole browser suite and stays opt-in.
 `AI=1` captures verbose output in `.ci-ai.log`.
 
 `make lint`, `make format`, and `make pre-commit-check` provide focused tooling.

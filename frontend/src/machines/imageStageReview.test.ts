@@ -293,6 +293,26 @@ describe("imageStageReview — exclusive inline editor", () => {
     actor.stop();
   });
 
+  it("OPEN_EDITOR on another page replaces the open editor and its draft", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "SET_PARAM", patch: { threshold: 0.7 } });
+    actor.send({ type: "OPEN_EDITOR", idx: "p003" });
+    expect(actor.getSnapshot().context.editing).toBe("p003");
+    expect(actor.getSnapshot().context.draft).toEqual({});
+    actor.stop();
+  });
+
+  it("DRAFT_SAVED empties the draft and keeps the editor open", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "SET_PARAM", patch: { threshold: 0.7 } });
+    actor.send({ type: "DRAFT_SAVED" });
+    expect(actor.getSnapshot().context.draft).toBeNull();
+    expect(actor.getSnapshot().context.editing).toBe("p002");
+    actor.stop();
+  });
+
   it("ACCEPT_AS_IS marks row as reviewed and returns to browsing", async () => {
     const actor = await startAndLoad();
     actor.send({ type: "OPEN_EDITOR", idx: "p002" });
@@ -574,6 +594,90 @@ describe("imageStageReview — BULK_ACCEPT settle from selecting", () => {
     // p004 is still flagged — must NOT settle
     const snap = actor.getSnapshot();
     expect(snap.value).not.toBe("settled");
+    actor.stop();
+  });
+});
+
+describe("ROWS_REFRESHED", () => {
+  it("replaces rows, keeps client-side reviews and recounts", async () => {
+    const actor = await startAndLoad();
+    actor.send({ type: "OPEN_EDITOR", idx: "p002" });
+    actor.send({ type: "ACCEPT_AS_IS" });
+
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [
+        makeRow({ idx: "p002", state: "flagged", pageNumber: 2 }),
+        makeRow({ idx: "p004", state: "clean", pageNumber: 4 }),
+      ],
+    });
+
+    const { rows, totals } = actor.getSnapshot().context;
+    expect(rows.map((r) => r.state)).toEqual(["reviewed", "clean"]);
+    expect(totals).toMatchObject({ total: 2, reviewed: 1, clean: 1 });
+    actor.stop();
+  });
+});
+
+describe("ROWS_REFRESHED state changes", () => {
+  async function startRunning() {
+    return startAndLoad({
+      services: makeServices({
+        fetchStagePages: vi.fn().mockResolvedValue({
+          rows: [makeRow({ idx: "p001", state: "running", pageNumber: 1 })],
+          totals: makeTotals({ running: 1 }),
+        }),
+      }),
+    });
+  }
+
+  it("stays running while a page is still running", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "running", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().value).toBe("running");
+    actor.stop();
+  });
+
+  it("moves from running to review when a page is flagged", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "flagged", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().matches("review")).toBe(true);
+    actor.stop();
+  });
+
+  it("moves from running to settled when every page is clean", async () => {
+    const actor = await startRunning();
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "clean", pageNumber: 1 })],
+    });
+    expect(actor.getSnapshot().value).toBe("settled");
+    actor.stop();
+  });
+
+  it("reopens review from settled when a page becomes flagged", async () => {
+    const actor = await startAndLoad({
+      services: makeServices({
+        fetchStagePages: vi.fn().mockResolvedValue({
+          rows: [makeRow({ idx: "p001", state: "clean", pageNumber: 1 })],
+          totals: makeTotals({ clean: 1 }),
+        }),
+      }),
+    });
+    expect(actor.getSnapshot().value).toBe("settled");
+
+    actor.send({
+      type: "ROWS_REFRESHED",
+      rows: [makeRow({ idx: "p001", state: "flagged", pageNumber: 1 })],
+    });
+
+    expect(actor.getSnapshot().matches("review")).toBe(true);
     actor.stop();
   });
 });

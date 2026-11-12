@@ -19,7 +19,7 @@ $(_goals):
 else
 
 .PHONY: help setup install-hooks refresh-version install uninstall reset remove-venv lint format \
-        typecheck pre-commit-check update-hooks test test-slow e2e build clean ci \
+        typecheck pre-commit-check update-hooks test test-slow e2e e2e-smoke audit build clean ci \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         local-setup-py local-frontend-install local-frontend-build \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local \
@@ -321,6 +321,12 @@ test-slow: frontend-build ## Run pytest including slow packaging tests (requires
 e2e: frontend-build ## Run Playwright E2E tests (requires `playwright install chromium`)
 	uv run --group e2e pytest tests/e2e -v
 
+audit: ## Check locked Python and frontend dependencies for published advisories (network; not part of `make ci`)
+	uv run scripts/dep_audit.py
+
+e2e-smoke: frontend-build ## Run the Playwright smoke subset that `make ci` gates on (requires `playwright install chromium`)
+	uv run --group e2e pytest tests/e2e -m e2e_smoke --no-cov -v
+
 build: frontend-build ## Build the wheel and sdist (with frontend bundled)
 	# Build sdist and wheel SEPARATELY from the source tree (not the default
 	# sdist-then-wheel-from-sdist path). Without this, bare `uv build` builds
@@ -338,7 +344,7 @@ clean: ## Clean cache + build artifacts
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf dist/ src/pdomain_prep_for_pgdp/static/ frontend/dist/ 2>/dev/null || true
 
-ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip ## Full CI pipeline
+ci: setup frontend-install pre-commit-check typecheck openapi-export frontend-build test frontend-format-check frontend-lint frontend-test frontend-knip e2e-smoke ## Full CI pipeline
 
 ci-slow: ci build test-slow ## Full pre-flight for releases (CI + wheel build + slow packaging tests)
 

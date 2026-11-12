@@ -102,7 +102,7 @@ Targeted runs: `uv run pytest -k <pattern>`.
   [pipeline architecture](docs/architecture/03-pipeline.md).
 - **Dual-write contract:** every stage write = transaction across on-disk
   artifact + `page_stages` DB row. `pgdp-prep reindex` is source-of-truth
-  arbiter. Never bypass.
+  arbiter ([runbook](docs/runbooks/reindex-heal.md)). Never bypass.
 - **Splits = sibling pages:** split produces N new sibling `Page` rows with
   `parent_page_id` / `source_crop_bbox` / `split_index` / `split_at_stage`.
   Not config on `ocr_crop`.

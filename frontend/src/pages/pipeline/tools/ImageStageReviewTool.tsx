@@ -26,8 +26,8 @@
  *   - runnerRef: StageRunnerRef — passed through but not used yet at F5
  *
  * Machine:
- *   The component instantiates imageStageReviewMachine with the mock service
- *   adapter. At I1 replace makeImageStageReviewServices() with real API calls.
+ *   The component instantiates imageStageReviewMachine with the real API
+ *   services and refreshes its rows when a stage run finishes.
  *
  * @see src/machines/imageStageReview.ts
  * @see src/pages/pipeline/tools/stageSchemas.ts
@@ -35,7 +35,7 @@
  * @see docs/plans/design_handoff_pgdp_app/final/threshold/threshold.jsx
  */
 
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useActor } from "@xstate/react";
 import { useParams } from "react-router-dom";
 import type { SnapshotFrom } from "xstate";
@@ -51,8 +51,13 @@ import {
   type FlagKindDef,
   type ControlDef,
 } from "./stageSchemas";
+import { ControlEditor } from "./StageControls";
+import { SourceTierBadge } from "./SourceTierBadge";
+import { useStageTiers } from "./useStageTiers";
 import { Button } from "@/components/ui/Button";
 import { buildRealImageStageReviewServices } from "@/services/tools/imageStageReview";
+import { subscribeProjectPageStageChannel } from "@/services/sse";
+import { RealThumb } from "./source/RealThumb";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -247,7 +252,7 @@ function FlagChip({
   );
 }
 
-/** Fake page thumbnail for the grid */
+/** Grid thumbnail: the stage output, or its parent while the stage has no output. */
 function PageThumb({ row }: { row: PageRow }) {
   const isFlagged = row.state === "flagged";
   return (
@@ -257,20 +262,16 @@ function PageThumb({ row }: { row: PageRow }) {
         width: 80,
         height: 108,
         position: "relative",
-        background: isFlagged ? "oklch(0.92 0.02 60)" : "oklch(0.93 0 0)",
         borderRadius: 3,
         border: `1.5px solid ${isFlagged ? "var(--fuzzy)" : "var(--border-2)"}`,
         overflow: "hidden",
       }}
     >
-      {/* Simulated page content */}
-      <div
-        style={{
-          position: "absolute",
-          inset: "12% 14%",
-          backgroundImage: `repeating-linear-gradient(to bottom, oklch(0.32 0 0) 0 1.5px, transparent 1.5px 6px)`,
-          opacity: 0.65,
-        }}
+      <RealThumb
+        {...(row.thumbUrl !== undefined ? { thumbnailKey: row.thumbUrl } : {})}
+        alt={`Page ${row.prefix}`}
+        width={77}
+        height={105}
       />
       <span
         style={{
@@ -289,160 +290,99 @@ function PageThumb({ row }: { row: PageRow }) {
   );
 }
 
-/** Control editor for inline page-level parameter tuning */
-function ControlEditor({
-  controls,
-  draft,
-  onPatch,
+function ComparisonPane({
+  label,
+  src,
+  emptyText,
 }: {
-  controls: ControlDef[];
-  draft: Record<string, unknown>;
-  onPatch: (patch: Record<string, unknown>) => void;
+  label: string;
+  src: string | undefined;
+  emptyText: string;
 }) {
   return (
-    <div
-      data-testid="control-editor"
+    <figure
       style={{
+        margin: 0,
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        padding: "10px 12px",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-1)",
-        borderRadius: 7,
+        minHeight: 0,
       }}
     >
-      {controls.map((ctrl) => {
-        const currentVal = draft[ctrl.key] ?? ctrl.defaultValue;
-        return (
-          <div
-            key={ctrl.key}
-            data-testid={`control-${ctrl.key}`}
-            style={{ display: "flex", flexDirection: "column", gap: 5 }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11.5, color: "var(--ink-2)" }}>
-                {ctrl.label}
-              </span>
-              {ctrl.kind === "slider" && (
-                <span
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "var(--ink-1)",
-                  }}
-                >
-                  {typeof currentVal === "number"
-                    ? currentVal
-                    : typeof ctrl.defaultValue === "string" ||
-                        typeof ctrl.defaultValue === "number"
-                      ? String(ctrl.defaultValue)
-                      : ""}
-                </span>
-              )}
-            </div>
-            {ctrl.description && (
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: "var(--ink-4)",
-                  lineHeight: 1.4,
-                }}
-              >
-                {ctrl.description}
-              </div>
-            )}
-            {ctrl.kind === "slider" && ctrl.range && (
-              <input
-                type="range"
-                data-testid={`slider-${ctrl.key}`}
-                min={ctrl.range[0]}
-                max={ctrl.range[1]}
-                step={ctrl.range[2]}
-                value={
-                  typeof currentVal === "number" ? currentVal : ctrl.range[0]
-                }
-                onChange={(e) =>
-                  onPatch({ [ctrl.key]: parseFloat(e.target.value) })
-                }
-                style={{ width: "100%" }}
-              />
-            )}
-            {ctrl.kind === "toggle" && (
-              <button
-                data-testid={`toggle-${ctrl.key}`}
-                onClick={() => onPatch({ [ctrl.key]: !currentVal })}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid var(--border-2)",
-                  background: currentVal ? "var(--accent)" : "var(--bg-raised)",
-                  color: currentVal ? "#fff" : "var(--ink-2)",
-                  fontSize: 11.5,
-                  cursor: "pointer",
-                  alignSelf: "flex-start",
-                }}
-              >
-                {currentVal ? "On" : "Off"}
-              </button>
-            )}
-            {ctrl.kind === "select" && ctrl.options && (
-              <select
-                data-testid={`select-${ctrl.key}`}
-                value={
-                  typeof currentVal === "string"
-                    ? currentVal
-                    : String(ctrl.defaultValue)
-                }
-                onChange={(e) => onPatch({ [ctrl.key]: e.target.value })}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 5,
-                  border: "1px solid var(--border-2)",
-                  background: "var(--bg-raised)",
-                  color: "var(--ink-1)",
-                  fontSize: 11.5,
-                }}
-              >
-                {ctrl.options.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        );
-      })}
-    </div>
+      <figcaption
+        style={{
+          padding: "4px 0",
+          textAlign: "center",
+          fontSize: 10,
+          color: "var(--ink-4)",
+          fontFamily: "monospace",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </figcaption>
+      {src ? (
+        <img
+          src={src}
+          alt={label}
+          style={{ flex: 1, minHeight: 0, objectFit: "contain", width: "100%" }}
+        />
+      ) : (
+        <div
+          style={{
+            flex: 1,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 11,
+            color: "var(--ink-3)",
+          }}
+        >
+          {emptyText}
+        </div>
+      )}
+    </figure>
   );
 }
 
+const REFRESH_DELAY_MS = 300;
+
 /** Inline page editor — exclusive, one at a time */
 function InlineEditor({
+  projectId,
+  stageId,
   row,
   draft,
   applyTo,
   controls,
   flagDefs,
   onPatch,
+  onDraftSaved,
   onSetApplyTo,
   onAcceptAsIs,
   onRerun,
   onCancel,
 }: {
+  projectId: string;
+  stageId: string;
   row: PageRow;
   draft: Record<string, unknown>;
   applyTo: "this" | "selected" | "sameIssue";
   controls: ControlDef[];
   flagDefs: FlagKindDef[];
   onPatch: (patch: Record<string, unknown>) => void;
+  onDraftSaved: () => void;
   onSetApplyTo: (value: "this" | "selected" | "sameIssue") => void;
   onAcceptAsIs: () => void;
   onRerun: () => void;
   onCancel: () => void;
 }) {
+  const tiers = useStageTiers(projectId, stageId, row.idx0);
+  const hasEdits = Object.keys(draft).length > 0;
+  const hasPageOverride = Object.values(tiers.current.sources).includes("page");
+  const saveFailed =
+    tiers.savePage.isError ||
+    tiers.saveProject.isError ||
+    tiers.clearPage.isError;
   return (
     <div
       data-testid={`inline-editor-${row.idx}`}
@@ -495,50 +435,115 @@ function InlineEditor({
         </button>
       </div>
 
-      {/* Before/after wipe placeholder */}
+      {/* Parent stage output beside this stage's output */}
       <div
         data-testid="wipe-viewer"
         style={{
-          height: 160,
+          height: 320,
           background: "var(--bg-page)",
           display: "grid",
           gridTemplateColumns: "1fr 6px 1fr",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
-            color: "var(--ink-4)",
-            fontFamily: "monospace",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          before
-        </div>
+        <ComparisonPane
+          label="Before"
+          src={row.beforeUrl}
+          emptyText="The previous stage has no output yet."
+        />
         <div style={{ background: "var(--border-2)" }} />
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 10,
-            color: "var(--ink-4)",
-            fontFamily: "monospace",
-            textTransform: "uppercase",
-            letterSpacing: "0.06em",
-          }}
-        >
-          after
-        </div>
+        <ComparisonPane
+          label="After"
+          src={row.afterUrl}
+          emptyText="Re-run this page to see its output."
+        />
       </div>
 
       {/* Controls */}
       <div style={{ padding: 12 }}>
-        <ControlEditor controls={controls} draft={draft} onPatch={onPatch} />
+        <ControlEditor
+          controls={controls}
+          values={{ ...tiers.current.effective, ...draft }}
+          onPatch={onPatch}
+          badgeFor={(key) =>
+            key in draft ? (
+              <span
+                data-testid={`edited-${key}`}
+                style={{ fontSize: 9.5, color: "var(--accent)" }}
+              >
+                edited
+              </span>
+            ) : tiers.current.sources[key] ? (
+              <SourceTierBadge
+                tier={tiers.current.sources[key]}
+                testId={`source-${key}`}
+              />
+            ) : null
+          }
+        />
+        {tiers.resolved.isError && (
+          <div
+            role="alert"
+            style={{ marginTop: 6, fontSize: 11.5, color: "var(--mismatch)" }}
+          >
+            Could not load this page's saved settings.
+          </div>
+        )}
+        {tiers.resolved.isSuccess && controls.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                !hasEdits ||
+                tiers.resolved.isFetching ||
+                tiers.savePage.isPending
+              }
+              onClick={() =>
+                tiers.savePage.mutate(draft, { onSuccess: onDraftSaved })
+              }
+            >
+              Save for this page
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={
+                !hasEdits ||
+                tiers.resolved.isFetching ||
+                tiers.saveProject.isPending
+              }
+              onClick={() =>
+                tiers.saveProject.mutate(draft, { onSuccess: onDraftSaved })
+              }
+            >
+              Save as project default
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!hasPageOverride || tiers.clearPage.isPending}
+              onClick={() => tiers.clearPage.mutate()}
+            >
+              Clear page override
+            </Button>
+            {saveFailed && (
+              <span
+                role="alert"
+                style={{ fontSize: 11.5, color: "var(--mismatch)" }}
+              >
+                Could not save the settings.
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Apply-to selector */}
@@ -845,6 +850,56 @@ export function ImageStageReviewTool({
     ? ([actorOverride.snapshot, actorOverride.send] as const)
     : ownActor;
 
+  const scheduleRefresh = useRef<() => void>(() => undefined);
+
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let active = true;
+    let latestRequest = 0;
+    // A batch finishes one page at a time; one fetch covers a burst of events.
+    scheduleRefresh.current = () => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        latestRequest += 1;
+        const request = latestRequest;
+        services
+          .fetchStagePages(projectId, stageId)
+          .then(({ rows }) => {
+            if (active && request === latestRequest) {
+              send({ type: "ROWS_REFRESHED", rows });
+            }
+          })
+          .catch(() => {
+            // The shown rows stay valid, and the next finished page refreshes them.
+          });
+      }, REFRESH_DELAY_MS);
+    };
+    const unsubscribe =
+      typeof EventSource === "undefined"
+        ? undefined
+        : subscribeProjectPageStageChannel(projectId, (event) => {
+            if (event.type !== "stage-status" || event.stage_id !== stageId) {
+              return;
+            }
+            if (event.status === "clean" || event.status === "failed") {
+              scheduleRefresh.current();
+            }
+          });
+    return () => {
+      active = false;
+      clearTimeout(refreshTimer);
+      unsubscribe?.();
+    };
+  }, [projectId, stageId, services, send]);
+
+  const rerunInFlight = snapshot.matches({ review: "rerunning" });
+  const wasRerunning = useRef(false);
+  useEffect(() => {
+    // A fast job can finish before the rerun response, which still carries the page as stale.
+    if (wasRerunning.current && !rerunInFlight) scheduleRefresh.current();
+    wasRerunning.current = rerunInFlight;
+  }, [rerunInFlight]);
+
   const ctx = snapshot.context;
 
   // Current top-level state name
@@ -1089,12 +1144,15 @@ export function ImageStageReviewTool({
               {/* Inline editor (exclusive) */}
               {isOpen && editingRow && !isRerunning && (
                 <InlineEditor
+                  projectId={projectId}
+                  stageId={stageId}
                   row={editingRow}
                   draft={ctx.draft ?? {}}
                   applyTo={ctx.applyTo}
                   controls={controls}
                   flagDefs={flagDefs}
                   onPatch={(patch) => send({ type: "SET_PARAM", patch })}
+                  onDraftSaved={() => send({ type: "DRAFT_SAVED" })}
                   onSetApplyTo={(value) =>
                     send({ type: "SET_APPLY_TO", value })
                   }

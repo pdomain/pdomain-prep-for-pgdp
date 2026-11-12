@@ -50,7 +50,7 @@ backend modules. The frontend lives in `frontend/src/`, with XState machines, ty
 
 ## What changes between deployment shapes
 
-Settings selects storage, database, authentication, and GPU mode. The database builder can select a partial
+Settings selects storage, database, authentication, and GPU mode. The database builder can select the
 Postgres adapter, while page lifecycle remains local. Dispatcher selection follows the configured dispatch
 interval; it is not inferred from a deployment label. Managed multi-instance behavior remains deferred.
 

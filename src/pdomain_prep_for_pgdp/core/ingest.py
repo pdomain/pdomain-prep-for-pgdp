@@ -566,6 +566,15 @@ def extract_zip_image_thumbnail(raw: bytes, filename: str) -> bytes:
     return _make_thumbnail_bytes(data)
 
 
+def make_page_thumbnail(src: bytes) -> bytes:
+    """Return the ingest thumbnail JPEG for page image bytes.
+
+    Public entry to the same resize and encode that ingest uses, so split
+    children get thumbnails that match their siblings.
+    """
+    return _make_thumbnail_bytes(src)
+
+
 def _ext_lower(name: str) -> str:
     if "." not in name:
         return ""
