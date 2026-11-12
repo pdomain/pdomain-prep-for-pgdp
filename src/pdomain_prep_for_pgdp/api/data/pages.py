@@ -8,6 +8,8 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -479,12 +481,7 @@ async def reorder_pages(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -2100,12 +2097,7 @@ def _load_prep_aggregate(settings_dep: Settings, project_id: str) -> tuple[Any, 
 
         _events_db = settings_dep.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:

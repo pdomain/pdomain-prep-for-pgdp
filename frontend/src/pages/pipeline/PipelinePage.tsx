@@ -34,6 +34,7 @@ import { useEffect, useMemo } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActor } from "@xstate/react";
+import { StageCancelError } from "./StageCancelError";
 import { useActiveBatchJob } from "@/hooks/useActiveBatchJob";
 import {
   buildRealPipelineShellServices,
@@ -1265,6 +1266,8 @@ export function PipelinePage({
             hasPrev={ctx.currentIndex > 0}
             hasNext={ctx.currentIndex < STAGE_DEFS.length - 1}
           />
+
+          {currentRunnerRef && <StageCancelError runner={currentRunnerRef} />}
 
           {/* Tabs band */}
           <TabsBand

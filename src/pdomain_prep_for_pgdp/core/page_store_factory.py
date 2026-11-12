@@ -6,6 +6,8 @@ Each project gets its own events.db + blobs/ dir under
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +25,15 @@ class PageService:
     app: PagesApplication
 
 
+def event_store_env(db_path: Path | str) -> dict[str, str]:
+    """Return the application env for a SQLite event store already in WAL mode."""
+    # eventsourcing leaves its own WAL switch statement open until a frame is released,
+    # so a tracer keeping that frame alive makes the next commit fail.
+    with contextlib.closing(sqlite3.connect(db_path)) as connection:
+        _ = connection.execute("PRAGMA journal_mode=WAL").fetchall()
+    return {"PERSISTENCE_MODULE": "eventsourcing.sqlite", "SQLITE_DBNAME": str(db_path)}
+
+
 def build_page_service(data_root: Path, project_id: str) -> PageService:
     """Create a PageService backed by a per-project SQLite event store.
 
@@ -34,11 +45,6 @@ def build_page_service(data_root: Path, project_id: str) -> PageService:
     blobs = BlobStore(project_dir=pd_pages)
 
     db_path = pd_pages / "events.db"
-    app = PagesApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(db_path),
-        }
-    )
+    app = PagesApplication(env=event_store_env(db_path))
     store: PageStore = LocalPageStore(app)
     return PageService(store=store, blobs=blobs, app=app)

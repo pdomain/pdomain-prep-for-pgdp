@@ -41,6 +41,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.settings import Settings
 from tests.fixtures.seed_pages import seed_pages_in_store
 
@@ -117,12 +118,7 @@ def _load_prep_agg_events(settings: Settings, project_id: str) -> list[str]:
     events_db = settings.data_root / "projects" / project_id / "events.db"
     if not events_db.exists():
         return []
-    app = PrepApplication(
-        env={
-            "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-            "SQLITE_DBNAME": str(events_db),
-        }
-    )
+    app = PrepApplication(env=event_store_env(events_db))
     try:
         proj_uuid_str = project_id
         try:

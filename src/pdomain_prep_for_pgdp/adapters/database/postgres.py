@@ -16,6 +16,7 @@ fails, so this module is safe to import lazily.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, Self, cast
 
 from pdomain_prep_for_pgdp.core.models import Job, Project, SystemDefaults
@@ -24,6 +25,9 @@ if TYPE_CHECKING:
     from .base import SearchResult
 
     class _AsyncCursor(Protocol):
+        @property
+        def rowcount(self) -> int: ...
+
         async def execute(self, query: str, params: Sequence[object] | None = None) -> object: ...
 
         async def executemany(
@@ -242,6 +246,48 @@ class PostgresDatabase:
                 """,
                 (job.id, job.owner_id, body, ts),
             )
+
+    async def update_job_unless_cancelled(self, job: Job) -> bool:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                "UPDATE jobs SET body = %s::jsonb WHERE id = %s AND body->>'status' <> 'cancelled'",
+                (job.model_dump_json(), job.id),
+            )
+            return cur.rowcount == 1
+
+    async def cancel_active_stage_jobs(self, owner_id: str, project_id: str, stage_id: str) -> int:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                UPDATE jobs SET body = jsonb_set(body, '{status}', '"cancelled"')
+                WHERE owner_id = %s
+                  AND body->>'project_id' = %s
+                  AND body->>'status' NOT IN ('complete', 'error', 'cancelled')
+                  AND (body->'payload'->>'stage_id' = %s
+                       OR (%s::text = 'ocr' AND body->>'type' = 'run_project_ocr_batch'))
+                """,
+                (owner_id, project_id, stage_id, stage_id),
+            )
+            return cur.rowcount
+
+    async def fail_running_jobs(self, message: str) -> list[Job]:
+        conn = self._require_conn()
+        async with conn.cursor() as cur:
+            _ = await cur.execute(
+                """
+                UPDATE jobs
+                SET body = body || jsonb_build_object(
+                    'status', 'error', 'error_message', %s::text, 'completed_at', %s::text
+                )
+                WHERE body->>'status' = 'running'
+                RETURNING body::text
+                """,
+                (message, datetime.now(UTC).isoformat()),
+            )
+            rows = cast(list[_JsonTextRow], await cur.fetchall())
+        return [Job.model_validate_json(r[0]) for r in rows]
 
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]:
         conn = self._require_conn()

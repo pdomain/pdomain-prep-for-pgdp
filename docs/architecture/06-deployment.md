@@ -49,8 +49,30 @@ PGDP_SESSION_SECRET=...
 ```
 
 Keep the session secret stable if API-key sessions should survive restarts. TLS termination is a deployment
-responsibility. The session cookie currently hardcodes `secure=False`; CORS origins are wildcard without
-credentialed cross-origin enablement. See [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
+responsibility.
+
+The session cookie and CORS origins depend on `PGDP_HOST` unless you set them:
+
+| Setting | `PGDP_HOST` is 127.0.0.1, localhost or ::1 | Any other host |
+|---|---|---|
+| `PGDP_SESSION_COOKIE_SECURE` | `false` | `true`, so browsers send the cookie over HTTPS only |
+| `PGDP_CORS_ALLOW_ORIGINS` | `["*"]` | `[]`, so no cross-origin browser access |
+
+Self-host checklist:
+
+- Set `PGDP_AUTH_MODE=apikey`, `PGDP_API_KEY` and a stable `PGDP_SESSION_SECRET`.
+- Serve the app over HTTPS. To allow login over plain HTTP on a private network, set
+  `PGDP_SESSION_COOKIE_SECURE=false`. The server logs a warning at startup when the host default makes the cookie
+  HTTPS-only.
+- If a reverse proxy terminates HTTPS and the app binds to loopback, set `PGDP_SESSION_COOKIE_SECURE=true`.
+- List any other web origin that calls the API as a JSON array, for example
+  `PGDP_CORS_ALLOW_ORIGINS='["https://proof.example"]'`. The app's own pages need no entry.
+- Run one server process per data root.
+
+At startup the server marks every job still `running` as `error`, with a message saying the server stopped while
+the work was running. For each such project it also marks `running` page-stage and project-stage rows as `failed`.
+Run the work again afterwards. This assumes one server process per database, so do not start two servers on the
+same data root. A page-stage row left `running` by a synchronous request has no job, so this pass does not reach it.
 
 S3 configuration uses `PGDP_S3_DATA_BUCKET`. Modal credentials use `PGDP_MODAL_TOKEN_ID` and
 `PGDP_MODAL_TOKEN_SECRET`. These settings expose adapter wiring, not a verified managed deployment.

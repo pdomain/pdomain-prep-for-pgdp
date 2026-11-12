@@ -84,6 +84,7 @@ export interface StageRunnerContext {
   durationMs: number | null;
   artifactBytes: number | null;
   error: { message: string; code?: string } | null;
+  cancelError: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ export type StageRunnerEvent =
   | { type: "RUN" }
   | { type: "START" }
   | { type: "CANCEL" }
+  | { type: "CANCEL_FAILED"; error: unknown }
   | { type: "PAUSE" }
   | { type: "RETRY" }
   | { type: "RERUN" }
@@ -106,6 +108,11 @@ export type StageRunnerEvent =
 // ---------------------------------------------------------------------------
 // Machine definition
 // ---------------------------------------------------------------------------
+
+function cancelFailureMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message : "Unknown error";
+  return `Could not cancel this stage: ${detail}`;
+}
 
 export const stageRunnerMachine = setup({
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
@@ -282,6 +289,14 @@ export const stageRunnerMachine = setup({
       },
     ),
 
+    assignCancelError: assign(
+      (_args, params: { error: unknown }): Partial<StageRunnerContext> => ({
+        cancelError: cancelFailureMessage(params.error),
+      }),
+    ),
+
+    clearCancelError: assign({ cancelError: () => null }),
+
     /** YAML: `clearError: ctx.error = null` */
     clearError: assign({ error: () => null }),
 
@@ -354,8 +369,12 @@ export const stageRunnerMachine = setup({
     },
 
     /** YAML: `requestCancel: // POST …/cancel` */
-    requestCancel: ({ context }) => {
-      void context.services.requestCancel(context.projectId, context.stageId);
+    requestCancel: ({ context, self }) => {
+      context.services
+        .requestCancel(context.projectId, context.stageId)
+        .catch((error: unknown) => {
+          self.send({ type: "CANCEL_FAILED", error });
+        });
     },
 
     /** YAML: `requestPause: // POST …/pause` */
@@ -381,7 +400,19 @@ export const stageRunnerMachine = setup({
     durationMs: null,
     artifactBytes: null,
     error: null,
+    cancelError: null,
   }),
+
+  on: {
+    CANCEL_FAILED: {
+      actions: [
+        {
+          type: "assignCancelError",
+          params: ({ event }) => ({ error: event.error }),
+        },
+      ],
+    },
+  },
 
   initial: "notrun",
 
@@ -390,6 +421,16 @@ export const stageRunnerMachine = setup({
     notrun: {
       on: {
         RUN: { target: "queued", actions: ["requestRun"] },
+        // The optimistic move to notrun was wrong: the job is still on the server.
+        CANCEL_FAILED: {
+          target: "queued",
+          actions: [
+            {
+              type: "assignCancelError",
+              params: ({ event }) => ({ error: event.error }),
+            },
+          ],
+        },
         STAGE_PUSH: { actions: ["reconcile"] },
       },
     },
@@ -398,7 +439,10 @@ export const stageRunnerMachine = setup({
     queued: {
       on: {
         START: { target: "running", actions: ["stampStart"] },
-        CANCEL: { target: "notrun", actions: ["requestCancel"] },
+        CANCEL: {
+          target: "notrun",
+          actions: ["clearCancelError", "requestCancel"],
+        },
         STAGE_PUSH: { actions: ["reconcile"] },
       },
     },
@@ -412,6 +456,7 @@ export const stageRunnerMachine = setup({
      * PROGRESS_PUSH events from the sseActor. See DIVERGENCES.md.
      */
     running: {
+      entry: ["clearCancelError"],
       invoke: {
         id: "runStage",
         src: "runStage",

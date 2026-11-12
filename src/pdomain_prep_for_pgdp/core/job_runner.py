@@ -25,10 +25,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Protocol, cast
 
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.dispatcher.batched import BatchDispatcher
 
 from .ingest import generate_thumbnails, unzip_source
-from .models import Job, JobStatus, JobType, PageStageStatus
+from .models import Job, JobStatus, JobType, PageStageStatus, ProjectStageStatus
 from .page_service_helpers import list_page_records
 from .page_store_factory import build_page_service
 
@@ -55,6 +56,7 @@ log = logging.getLogger(__name__)
 # After this many consecutive poll-iteration failures, run_forever raises instead
 # of silently swallowing the error.  A transient blip resets the counter to 0.
 _CIRCUIT_BREAKER_MAX = 5
+_INTERRUPTED_MESSAGE = "interrupted: the server stopped while this work was running; run it again"
 
 
 class InProcessJobRunner:
@@ -160,8 +162,7 @@ class InProcessJobRunner:
                 "error_message": first_err if err else job.error_message,
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def run_forever(self) -> None:
         """Loop until `stop()` is called or the task is cancelled.
@@ -255,8 +256,8 @@ class InProcessJobRunner:
                 "started_at": datetime.now(UTC),
             }
         )
-        await self._db.put_job(job)
-        await self.emit(job)
+        if not await self._write_unless_cancelled(job):
+            return
 
         try:
             handler = _HANDLERS.get(job.type)
@@ -303,28 +304,68 @@ class InProcessJobRunner:
         latest = await self._db.get_job(job.id) or job
         await self._mark_complete(latest)
 
-    async def _mark_complete(self, job: Job) -> None:
-        # If the user cancelled this job mid-execution, don't overwrite the
-        # cancelled status with `complete`. Best-effort guard — the SQLite
-        # adapter doesn't have CAS, so a tight race could still slip through.
-        latest = await self._db.get_job(job.id)
-        if latest is not None and latest.status == JobStatus.cancelled:
-            await self.emit(latest)
+    async def _write_unless_cancelled(self, job: Job) -> bool:
+        if await self._db.update_job_unless_cancelled(job):
+            await self.emit(job)
+            return True
+        stored = await self._db.get_job(job.id)
+        if stored is not None:
+            await self.emit(stored)
+        return False
+
+    async def reclaim_interrupted_jobs(self) -> int:
+        """Fail jobs and stage rows the previous process left running; return the job count."""
+        reclaimed = await self._db.fail_running_jobs(_INTERRUPTED_MESSAGE)
+        for project_id in {job.project_id for job in reclaimed}:
+            await self._fail_running_stage_rows(project_id)
+        return len(reclaimed)
+
+    async def _fail_running_stage_rows(self, project_id: str) -> None:
+        for page_row in await self._db.list_page_stages_by_status(project_id, PageStageStatus.running):
+            await self._db.put_page_stage(
+                page_row.model_copy(
+                    update={
+                        "status": PageStageStatus.failed,
+                        "error_message": _INTERRUPTED_MESSAGE,
+                        "last_run_at": datetime.now(UTC).timestamp(),
+                    }
+                )
+            )
+        if self._data_root is None:
             return
+        db_path = self._data_root / "projects" / project_id / "project_stages.db"
+        if not db_path.exists():
+            return
+
+        from .pipeline.project_stages import ProjectStageStore
+
+        store = ProjectStageStore(db_path)
+        for project_row in store.list_for_project(project_id):
+            if project_row.status == ProjectStageStatus.running:
+                store.write(
+                    project_row.model_copy(
+                        update={
+                            "status": ProjectStageStatus.failed,
+                            "error_message": _INTERRUPTED_MESSAGE,
+                            "last_run_at": datetime.now(UTC).timestamp(),
+                        }
+                    )
+                )
+
+    async def is_cancelled(self, job_id: str) -> bool:
+        stored = await self._db.get_job(job_id)
+        return stored is not None and stored.status == JobStatus.cancelled
+
+    async def _mark_complete(self, job: Job) -> None:
         updated = job.model_copy(
             update={
                 "status": JobStatus.complete,
                 "completed_at": datetime.now(UTC),
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def _mark_failed(self, job: Job, message: str) -> None:
-        latest = await self._db.get_job(job.id)
-        if latest is not None and latest.status == JobStatus.cancelled:
-            await self.emit(latest)
-            return
         updated = job.model_copy(
             update={
                 "status": JobStatus.error,
@@ -332,17 +373,17 @@ class InProcessJobRunner:
                 "error_message": message,
             }
         )
-        await self._db.put_job(updated)
-        await self.emit(updated)
+        _ = await self._write_unless_cancelled(updated)
 
     async def update_progress(self, job: Job, *, current: int, total: int, message: str = "") -> Job:
         progress = job.progress.model_copy(
             update={"current": current, "total": total, "message": message or job.progress.message}
         )
         updated = job.model_copy(update={"progress": progress})
-        await self._db.put_job(updated)
-        await self.emit(updated)
-        return updated
+        if await self._db.update_job_unless_cancelled(updated):
+            await self.emit(updated)
+            return updated
+        return await self._db.get_job(job.id) or updated
 
 
 # ─── Handlers ───────────────────────────────────────────────────────────────
@@ -395,6 +436,10 @@ async def _handle_unzip(runner: InProcessJobRunner, job: Job) -> None:
         total=result.page_count,
         message=f"unzipped {result.page_count} pages, {len(result.errors)} errors",
     )
+
+    # unzip_source saves the project aggregate last, so a cancel only stops the follow-up work.
+    if await runner.is_cancelled(job.id):
+        return
 
     # Chain Step 2 — thumbnails. Same project, fresh queued job. The user
     # sees both jobs in the JobsPage and can watch them in sequence.
@@ -471,7 +516,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     from datetime import UTC, datetime
     from pathlib import Path
 
-    from .models import V2_PROJECT_STAGE_IDS, ProjectStageState, ProjectStageStatus
+    from .models import V2_PROJECT_STAGE_IDS, ProjectStageState
     from .pipeline.project_stages import ProjectStageStore
     from .pipeline.stage_registry import V2_STAGE_IMPL, StageNotImplemented
 
@@ -517,12 +562,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
     try:
         from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
-        _agg_app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-            }
-        )
+        _agg_app = PrepApplication(env=event_store_env(data_root / "projects" / project_id / "events.db"))
         agg_id = _uuid.UUID(project_id) if len(project_id) == 36 else None
         if agg_id is not None:
             _agg_uuid = PrepProjectAggregate.create_id(agg_id)
@@ -673,10 +713,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
             _agg_app2 = PrepApplication(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-                }
+                env=event_store_env(data_root / "projects" / project_id / "events.db")
             )
             agg_id2 = _uuid.UUID(project_id) if len(project_id) == 36 else None
             if agg_id2 is not None:
@@ -754,10 +791,7 @@ async def _handle_run_project_stage(runner: InProcessJobRunner, job: Job) -> Non
             from .pipeline.prep_aggregate import PrepApplication, PrepProjectAggregate
 
             _agg_app3 = PrepApplication(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(data_root / "projects" / project_id / "events.db"),
-                }
+                env=event_store_env(data_root / "projects" / project_id / "events.db")
             )
             agg_id3 = _uuid.UUID(project_id) if len(project_id) == 36 else None
             if agg_id3 is not None:

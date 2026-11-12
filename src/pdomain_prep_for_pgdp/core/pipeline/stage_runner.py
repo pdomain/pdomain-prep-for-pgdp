@@ -77,6 +77,7 @@ from pdomain_prep_for_pgdp.core.page_service_helpers import (
     get_page_record,
     list_page_records_by_parent_id,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.core.stage_events import (
     StageEventBroker,
     project_page_stage_events_key,
@@ -1092,12 +1093,7 @@ async def run_stage(
 
         _events_db = data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _agg_app_start = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _agg_app_start = _PrepApp(env=event_store_env(_events_db))
         # Derive UUID: standard UUID if project_id is a valid UUID-hex/hyphen,
         # else uuid5 in OID namespace (same pattern as job_runner.py W2.1).
         try:
@@ -1375,12 +1371,7 @@ async def run_stage(
             )
 
             _events_db_ni = data_root / "projects" / project_id / "events.db"
-            _app_ni = _PrepApp(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(_events_db_ni),
-                }
-            )
+            _app_ni = _PrepApp(env=event_store_env(_events_db_ni))
             try:
                 _puid_ni = _uuid_mod.UUID(project_id)
             except ValueError:
@@ -1426,12 +1417,7 @@ async def run_stage(
             )
 
             _events_db_aw = data_root / "projects" / project_id / "events.db"
-            _app_aw = _PrepApp(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(_events_db_aw),
-                }
-            )
+            _app_aw = _PrepApp(env=event_store_env(_events_db_aw))
             try:
                 _puid_aw = _uuid_mod.UUID(project_id)
             except ValueError:
@@ -1480,12 +1466,7 @@ async def run_stage(
             )
 
             _events_db_ex = data_root / "projects" / project_id / "events.db"
-            _app_ex = _PrepApp(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(_events_db_ex),
-                }
-            )
+            _app_ex = _PrepApp(env=event_store_env(_events_db_ex))
             try:
                 _puid_ex = _uuid_mod.UUID(project_id)
             except ValueError:
@@ -1520,12 +1501,7 @@ async def run_stage(
         )
 
         _events_db_ok = data_root / "projects" / project_id / "events.db"
-        _app_ok = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db_ok),
-            }
-        )
+        _app_ok = _PrepApp(env=event_store_env(_events_db_ok))
         try:
             _puid_ok = _uuid_mod.UUID(project_id)
         except ValueError:

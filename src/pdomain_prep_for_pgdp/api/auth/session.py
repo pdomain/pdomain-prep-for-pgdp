@@ -42,17 +42,21 @@ async def create_session(body: SessionRequest, request: Request, response: Respo
         value=value,
         httponly=True,
         samesite="strict",
-        secure=False,  # False in dev (HTTP); TODO: set True in prod via config
+        secure=settings.effective_session_cookie_secure,
     )
     return {"authenticated": True}
 
 
 @router.post("/session/logout", operation_id="delete_session")
-async def delete_session(response: Response) -> dict[str, bool]:
+async def delete_session(request: Request, response: Response) -> dict[str, bool]:
     """Clear the session cookie."""
+    from pdomain_prep_for_pgdp.settings import Settings
+
+    settings: Settings = request.app.state.settings  # pyright: ignore[reportAny]
     response.delete_cookie(
         key=COOKIE_NAME,
         httponly=True,
         samesite="strict",
+        secure=settings.effective_session_cookie_secure,
     )
     return {"authenticated": False}

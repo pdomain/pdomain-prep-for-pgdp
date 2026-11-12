@@ -156,13 +156,9 @@ async function requestCancel(
   projectId: string,
   stageId: string,
 ): Promise<void> {
-  try {
-    await api.post(
-      `/api/data/projects/${encodeURIComponent(projectId)}/stages/${encodeURIComponent(stageId)}/cancel`,
-    );
-  } catch {
-    // Cancel is a best-effort hint — ignore errors.
-  }
+  await api.post(
+    `/api/data/projects/${encodeURIComponent(projectId)}/stages/${encodeURIComponent(stageId)}/cancel`,
+  );
 }
 
 async function requestPause(

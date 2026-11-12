@@ -48,8 +48,8 @@ export interface RunAllStaleInput {
   haltOnError?: boolean;
   /** Callback when all stages complete. */
   onDone?: (completedCount: number) => void;
-  /** Callback when cancelled. */
-  onCancelled?: () => void;
+  /** Callback when cancelled; receives the failure text if the server refused the cancel. */
+  onCancelled?: (cancelError: string | null) => void;
   /** Whether to skip the confirmation step (default false). */
   skipConfirm?: boolean;
 }
@@ -66,7 +66,8 @@ export interface RunAllStaleContext {
   services: RunAllStaleServices;
   currentProgress: number; // current stage's reported progress (0–1)
   onDone: ((completedCount: number) => void) | undefined;
-  onCancelled: (() => void) | undefined;
+  cancelError: string | null;
+  onCancelled: ((cancelError: string | null) => void) | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +225,7 @@ export const runAllStaleMachine = setup({
     /** YAML: `reportCancelled` */
     reportCancelled: ({ context }) => {
       if (context.onCancelled) {
-        context.onCancelled();
+        context.onCancelled(context.cancelError);
       }
     },
   },
@@ -244,6 +245,7 @@ export const runAllStaleMachine = setup({
       services: input.services,
       currentProgress: 0,
       onDone: input.onDone,
+      cancelError: null,
       onCancelled: input.onCancelled,
     };
   },
@@ -365,7 +367,18 @@ export const runAllStaleMachine = setup({
           services: context.services,
         }),
         onDone: { target: "cancelled" },
-        onError: { target: "cancelled" },
+        onError: {
+          target: "cancelled",
+          actions: assign({
+            cancelError: ({ event }) => {
+              const detail =
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Unknown error";
+              return `Could not cancel this stage: ${detail}`;
+            },
+          }),
+        },
       },
     },
 

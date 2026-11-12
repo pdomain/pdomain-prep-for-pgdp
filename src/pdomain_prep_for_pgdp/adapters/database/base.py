@@ -84,6 +84,18 @@ class IDatabase(Protocol):
 
     async def put_job(self, job: Job) -> None: ...
 
+    async def update_job_unless_cancelled(self, job: Job) -> bool:
+        """Atomically replace an existing job row unless it is cancelled; True when written."""
+        ...
+
+    async def cancel_active_stage_jobs(self, owner_id: str, project_id: str, stage_id: str) -> int:
+        """Atomically cancel a project's unfinished jobs for one stage; return how many changed."""
+        ...
+
+    async def fail_running_jobs(self, message: str) -> list[Job]:
+        """Atomically mark every running job as failed with `message`; return the changed jobs."""
+        ...
+
     async def list_recent_jobs(self, owner_id: str, limit: int = 50) -> list[Job]: ...
 
     # ── Page stages (per-page DAG state, M1) ────────────────────────────────

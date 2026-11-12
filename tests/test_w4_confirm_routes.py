@@ -32,6 +32,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStageStatus,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.core.pipeline.project_stages import ProjectStageStore
 from pdomain_prep_for_pgdp.settings import Settings
 from tests.fixtures.seed_pages import seed_pages_in_store
@@ -246,12 +247,7 @@ class TestConfirmRouteRecordsEvent:
         assert events_db.exists(), "events.db not created by confirm route"
 
         agg_id = PrepProjectAggregate.create_id(uuid.uuid5(uuid.NAMESPACE_OID, "proj1"))
-        ev_app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(events_db),
-            }
-        )
+        ev_app = PrepApplication(env=event_store_env(events_db))
         try:
             try:
                 loaded = ev_app.repository.get(agg_id)

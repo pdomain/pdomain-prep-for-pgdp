@@ -80,6 +80,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectStageStatus,
     StageRunRequest,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 from pdomain_prep_for_pgdp.core.pipeline.project_stages import (
     ProjectStageStore,
     StageReviewStore,
@@ -481,6 +482,36 @@ async def run_project_stage(
     )
 
     return JSONResponse(content=job.model_dump(mode="json"), status_code=202)
+
+
+class StageCancelResponse(BaseModel):
+    cancelled: int
+
+
+@router.post(
+    "/projects/{project_id}/stages/{stage_id}/cancel",
+    response_model=StageCancelResponse,
+    operation_id="cancel_stage_jobs",
+)
+async def cancel_stage_jobs(
+    project_id: str,
+    stage_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+) -> StageCancelResponse:
+    """Cancel this project's unfinished jobs for one stage.
+
+    A page already in a worker thread finishes and may still write its artifact.
+    """
+    if stage_id not in V2_PAGE_STAGE_IDS and stage_id not in V2_PROJECT_STAGE_IDS:
+        raise HTTPException(422, f"unknown stage_id: {stage_id!r}")
+
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    cancelled = await db.cancel_active_stage_jobs(user.user_id, project_id, stage_id)
+    return StageCancelResponse(cancelled=cancelled)
 
 
 # ─── Project-scoped OCR batch run (Phase 3) ──────────────────────────────────
@@ -888,12 +919,7 @@ async def confirm_submit_check(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -1045,12 +1071,7 @@ async def _confirm_stage_impl(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -1388,12 +1409,7 @@ async def put_page_order_naming(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = _PrepApp(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = _PrepApp(env=event_store_env(_events_db))
         try:
             _proj_uuid = uuid.UUID(project_id)
         except ValueError:
@@ -3211,12 +3227,7 @@ async def put_project_stage_settings(
 
         _events_db = settings.data_root / "projects" / project_id / "events.db"
         _events_db.parent.mkdir(parents=True, exist_ok=True)
-        _app = PrepApplication(
-            env={
-                "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                "SQLITE_DBNAME": str(_events_db),
-            }
-        )
+        _app = PrepApplication(env=event_store_env(_events_db))
         try:
             _proj_uuid = _uuid.UUID(project_id)
         except ValueError:

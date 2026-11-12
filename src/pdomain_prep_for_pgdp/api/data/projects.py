@@ -26,6 +26,7 @@ from pdomain_prep_for_pgdp.core.models import (
     ProjectConfig,
     ProjectStatus,
 )
+from pdomain_prep_for_pgdp.core.page_store_factory import event_store_env
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -392,12 +393,7 @@ async def get_project_activity(
 
         events_db_path = settings.data_root / "projects" / project_id / "events.db"
         if events_db_path.exists():
-            _app = PrepApplication(
-                env={
-                    "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-                    "SQLITE_DBNAME": str(events_db_path),
-                }
-            )
+            _app = PrepApplication(env=event_store_env(events_db_path))
             try:
                 # Read the eventsourcing notification log (no aggregate load needed).
                 raw_events = list(_app.notification_log.select(start=1, limit=limit))

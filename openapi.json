@@ -1076,6 +1076,63 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/stages/{stage_id}/cancel": {
+      "post": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "Cancel Stage Jobs",
+        "description": "Cancel this project's unfinished jobs for one stage.\n\nA page already in a worker thread finishes and may still write its artifact.",
+        "operationId": "cancel_stage_jobs",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageCancelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/page-stages/ocr/run-batch": {
       "post": {
         "tags": [
@@ -9806,6 +9863,19 @@
           "children"
         ],
         "title": "SplitPageResponse"
+      },
+      "StageCancelResponse": {
+        "properties": {
+          "cancelled": {
+            "type": "integer",
+            "title": "Cancelled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cancelled"
+        ],
+        "title": "StageCancelResponse"
       },
       "StageRunRequest": {
         "properties": {

@@ -91,6 +91,55 @@ describe("stageRunner — full lifecycle", () => {
     actor.stop();
   });
 
+  it("returns to queued and records the failure when a cancel is rejected", async () => {
+    const services = makeServices({
+      requestCancel: vi.fn().mockRejectedValue(new Error("HTTP 500")),
+    });
+    const actor = startRunner({ services });
+    actor.send({ type: "RUN" });
+    actor.send({ type: "CANCEL" });
+    expect(actor.getSnapshot().value).toBe("notrun");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(actor.getSnapshot().value).toBe("queued");
+    expect(actor.getSnapshot().context.cancelError).toBe(
+      "Could not cancel this stage: HTTP 500",
+    );
+    actor.stop();
+  });
+
+  it("keeps a later run going when an earlier cancel is rejected", async () => {
+    const services = makeServices({
+      requestCancel: vi.fn().mockRejectedValue(new Error("HTTP 500")),
+    });
+    const actor = startRunner({ services });
+    actor.send({ type: "RUN" });
+    actor.send({ type: "CANCEL" });
+    actor.send({ type: "RUN" });
+    actor.send({ type: "START" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(actor.getSnapshot().value).toBe("clean");
+    expect(actor.getSnapshot().context.cancelError).toBe(
+      "Could not cancel this stage: HTTP 500",
+    );
+    actor.stop();
+  });
+
+  it("clears a recorded cancel failure on the next cancel", async () => {
+    const requestCancel = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("HTTP 500"))
+      .mockResolvedValue(undefined);
+    const actor = startRunner({ services: makeServices({ requestCancel }) });
+    actor.send({ type: "RUN" });
+    actor.send({ type: "CANCEL" });
+    await new Promise((r) => setTimeout(r, 0));
+    actor.send({ type: "CANCEL" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(actor.getSnapshot().value).toBe("notrun");
+    expect(actor.getSnapshot().context.cancelError).toBeNull();
+    actor.stop();
+  });
+
   it("transitions running → clean when runStage resolves with status=clean", async () => {
     const services = makeServices({
       runStage: vi.fn().mockResolvedValue({
