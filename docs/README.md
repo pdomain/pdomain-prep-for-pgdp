@@ -3,7 +3,7 @@ Kind: process
 Status: active
 Owner: CT
 Created: 2026-07-14
-Last verified: 2026-11-07
+Last verified: 2026-11-12
 ---
 
 # docs/
@@ -12,7 +12,7 @@ Last verified: 2026-11-07
 
 - **Kind:** process
 - **Status:** active
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** locating current architecture, intent, decisions, plans, research, or runbooks.
 - **Search terms:** documentation index, architecture, plans, process, context.
 
@@ -33,8 +33,9 @@ This index explains where each type of repository documentation belongs and link
 
 Empty folders are intentional and tracked via `.gitkeep`.
 
-The active pipeline queue lives in [local issue reports](issues/README.md) and the
-[completion plan](plans/2026-07-21-pipeline-completion-review.md).
+The forward queue is the [roadmap](plans/roadmap.md). Evidence for open defects lives in
+[local issue reports](issues/README.md). The
+[July pipeline review](plans/2026-07-21-pipeline-completion-review.md) is the record of Waves 0–3.
 Open work no longer lives in GitHub Issues. The 2026-11-09
 [cutover decision](decisions/2026-11-09-github-issues-cutover.md) maps each former issue to its new place.
 
@@ -48,12 +49,14 @@ Open work no longer lives in GitHub Issues. The 2026-11-09
   [testing](architecture/07-testing.md), and
   [statechart convergence](architecture/statechart-convergence-notes.md),
   [page numbering](architecture/08-page-numbering.md), and
-  [image preparation and settings](architecture/09-image-prep-settings.md).
-- Durable decisions: [architecture decisions](decisions/architecture-decisions.md) and
-  [API-key server-side proxy](decisions/2026-05-23-apikey-server-side-proxy.md).
+  [image preparation and settings](architecture/09-image-prep-settings.md), and
+  [repository boundary](architecture/10-repository-boundary.md).
+- Durable decisions: [architecture decisions](decisions/architecture-decisions.md),
+  [API-key server-side proxy](decisions/2026-05-23-apikey-server-side-proxy.md), and
+  [roadmap is the queue](decisions/2026-11-12-roadmap-is-the-queue.md).
 - Plans: [roadmap](plans/roadmap.md),
   [compute settings backlog](plans/2026-06-08-compute-settings-panel-backlog.md), and
-  [pipeline completion queue](plans/2026-07-21-pipeline-completion-review.md).
+  [July pipeline review](plans/2026-07-21-pipeline-completion-review.md).
 - Process and operations: [lint deviations](process/lint-deviations.md),
   [writing style](process/writing-style.md), and [local upgrade flow](runbooks/dev-local-upgrade-flow.md).
 - Research: [scanno findings](research/findings-scannos.md).

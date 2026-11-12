@@ -3,7 +3,7 @@ Kind: architecture
 Status: built
 Owner: CT
 Created: 2026-11-07
-Last verified: 2026-11-07
+Last verified: 2026-11-12
 ---
 
 # Source images, grayscale, and stage settings
@@ -12,7 +12,7 @@ Last verified: 2026-11-07
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** changing Source persistence, grayscale previews, device dispatch, or stage settings tiers.
 - **Search terms:** grayscale, GPU, CUDA, settings tiers, Source, thumbnails, page_role.
 
@@ -70,7 +70,7 @@ That work remains in the [Compute panel backlog](../plans/2026-06-08-compute-set
 
 Archived-project Save a copy still reports a coming-soon action rather than downloading an export.
 [W3.10](../issues/2026-07-21-w310-save-copy-archive.md) tracks real export and archive inventory.
-The active [completion plan](../plans/2026-07-21-pipeline-completion-review.md) owns the remaining image-prep queue.
+The remaining image-prep queue is Wave 2 on the [roadmap](../plans/roadmap.md#now).
 
 ## Evidence
 

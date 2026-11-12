@@ -107,5 +107,6 @@ Frontend pipeline tools live in `frontend/src/pages/pipeline/`; project manageme
 Tests live in `tests/` and alongside frontend source.
 
 Verified from source on 2026-11-07 against Makefile, mise.toml, pyproject.toml, local-mode scripts,
-release scripts, and the current source tree. The [roadmap](docs/plans/roadmap.md) and
-[current state](docs/context/current-state.md) are the forward queue.
+release scripts, and the current source tree. The [roadmap](docs/plans/roadmap.md) is the forward queue.
+[Repository boundary](docs/architecture/10-repository-boundary.md) says which ideas belong in another repo.
+[Current state](docs/context/current-state.md) is the operational digest.

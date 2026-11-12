@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** packaging or deploying the application.
 - **Search terms:** deployment, local install, container, cloud, release.
 
@@ -59,8 +59,9 @@ The Postgres builder exists, but its stage/database contract remains incomplete.
 ## Managed (Fargate + Modal)
 
 Remote GPU dispatch classes come from `pdomain_ops.gpu`. Local page lifecycle and project-stage execution still
-use local project paths. Container orchestration, remote persistence completeness, and multi-instance
-coordination require further work. See [the roadmap](../plans/roadmap.md#deferred--remote--cloud-mode).
+use local project paths. Container orchestration, remote persistence, and multi-instance coordination are
+candidates for another repository. See [repository boundary](10-repository-boundary.md) and
+[the roadmap](../plans/roadmap.md#deferred--remote--cloud-mode).
 
 The Dockerfile uses Node 24 to build the SPA and Python 3.13 for runtime.
 No image-size or live cloud-readiness claim is established by this source audit.

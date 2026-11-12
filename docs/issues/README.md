@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-11-07
+Last verified: 2026-11-12
 Kind: process
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** process
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** filing a bug / defect / investigation report, or looking up an
   open issue's status, evidence, or resolution.
 - **Search terms:** issues folder, bug report, defect report, issue template,
@@ -27,11 +27,11 @@ failures, regressions, and investigations that need a durable, citable record.
 Each report is a docgraph node so it is retrievable and linkable from plans and
 context docs.
 
-Pipeline completion work items decomposed from
-[pipeline completion review](../plans/2026-07-21-pipeline-completion-review.md)
-live here as one file each (Wave 0–3). Historical UX tickets and deferred cloud
-work stay on [roadmap](../plans/roadmap.md) unless they become evidence-bearing
-defects.
+Pipeline completion work items decomposed from the
+[July pipeline review](../plans/2026-07-21-pipeline-completion-review.md)
+live here as one file each (Wave 0–3). The forward queue is the
+[roadmap](../plans/roadmap.md). File an issue when a parked item becomes an
+evidence-bearing defect.
 
 ## Convention
 

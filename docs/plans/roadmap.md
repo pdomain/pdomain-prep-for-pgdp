@@ -1,237 +1,161 @@
-# 08 — Roadmap
+---
+Kind: plan
+Status: active
+Owner: CT
+Created: 2026-05-07
+Last verified: 2026-11-12
+---
+
+# Roadmap
 
 ## Agent Index
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-11-07
-- **Read when:** selecting open product or engineering work.
-- **Search terms:** roadmap, open work, deferred work, priorities, pipeline completion.
+- **Last verified:** 2026-11-12
+- **Read when:** selecting the next product or engineering task for this app.
+- **Search terms:** roadmap, open work, wave 2, wave 3, deferred work, separate repository.
 
-> Shipped lifecycle records live in [migration decisions](../context/decisions.md). Locked architecture
-> decisions live in [architecture decisions](../decisions/architecture-decisions.md). This file is the
-> **forward** view of open work.
+This is the only forward queue. Shipped behavior lives in [architecture](../architecture/01-overview.md).
 
-**Local-first priority (locked 2026-05-07 — see AD-4 in
-`architecture/architecture-decisions.md`):** all P0 / P1 / P2 work below targets
-the SQLite + filesystem + CPU shape. Cloud / remote items are parked
-under "Deferred — remote / cloud mode" at the bottom.
+The [July 2026 pipeline review](2026-07-21-pipeline-completion-review.md) is the record that created Waves 0–3. Waves 0 and 1 shipped. Their contracts are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 
-**Reference for finished work:**
+[Repository boundary](../architecture/10-repository-boundary.md) says whether a feature should live in this app or in another repository.
 
-- Statechart convergence (2026-06-11) — 24-stage v2 registry, 28 XState v5
-  machines, TOOL_REGISTRY, SSE channels wired, legacy surfaces removed. See
-  [statechart convergence notes](../architecture/statechart-convergence-notes.md) and
-  `docs/architecture/statechart-convergence-notes.md`.
-- Pipeline task-model M1–M6 — fully shipped (see
-  [migration decisions](../context/decisions.md)).
-- §13a Radix primitives — fully shipped.
-- §9a soft-delete / restore — shipped.
-- §9a-followup Word-delete Undo UI — shipped (2026-05-22, server-side
-  "Restore last delete" banner; strategy (a)).
-- §13 search across pages — shipped (#76).
-- §10 Konva rotate — shipped (#100).
-- §P2.1 Konva Transformer flip — shipped (2026-05-22, feat/konva-flip): H-flip + V-flip
-  in ModeToolbar "Flip" mode; PATCH `flip_horizontal`/`flip_vertical` + POST
-  `manual_deskew_pre/run`; compose with rotate in CSS preview and pipeline.
-- §P0.1 stale Re-process button — removed (#110, 2026-05-15).
-- §P0.2 Download Package UI — shipped (#111, 2026-05-15).
-- §P0.3 Folder upload — shipped (2026-05-16, client-side JSZip in create-project modal).
-- §P1.1 Page reorder UI — shipped (2026-05-16, drag-and-drop in Pages tab).
-- §P1.2 Crop/rotate review pass — shipped (2026-05-16, CropsGridPage canvas_map grid).
-- §P3.1 compute_prefix frontmatter numbering — shipped (f001 start; 2026-05-16).
-- Backend quality hardening (42 findings) — fully shipped (2026-05-16);
-  see [migration decisions](../context/decisions.md).
+Local-first work comes first. That choice is [AD-4](../decisions/architecture-decisions.md).
 
----
+## Now
 
-## Active pipeline work (2026-07-21)
+Start at Wave 2. Each row is an open issue with evidence.
 
-Historical P0–P3 UX tickets and the statechart/registry convergence are
-shipped (see "Reference for finished work"). That does **not** mean a
-proofer can finish a real book end-to-end on `make run` without further
-engineering.
+### Wave 2 — image-prep honesty
 
-**Authoritative forward queue:**
-[Pipeline completion review and continuation plan](2026-07-21-pipeline-completion-review.md)
+| ID | Issue | Done when |
+| --- | --- | --- |
+| W2.1 | [Real before/after thumbs](../issues/2026-07-21-w21-isr-real-thumbs.md) | Threshold through dewarp show real page thumbs. |
+| W2.2 | [stageSchemas match backend knobs](../issues/2026-07-21-w22-schema-backend-alignment.md) | A threshold change changes the output. |
+| W2.3 | [canvas map uses real data](../issues/2026-07-21-w23-canvas-map-real-data.md) | Scatter and spreads are not mock points. |
+| W2.4 | [text zone Konva UI](../issues/2026-07-21-w24-text-zones-konva.md) | A split works on a real page. |
+| W2.5 | [settings tiers beyond grayscale](../issues/2026-07-21-w25-settings-tiers-generalize.md) | Threshold, deskew, and denoise have the same tier controls grayscale has. |
 
-Summary of remaining blockers (detail and evidence in that plan +
-[docs/issues](../issues/README.md)):
+### Wave 3 — quality and operations
 
-- Wave 0 and Wave 1 shipped. Their current contracts are in
-  [pipeline architecture](../architecture/03-pipeline.md#book-path-contracts).
-- Wave 2 remains open: real shared image-review thumbnails, backend-aligned controls, canvas-map data,
-  text-zone editing, and settings tiers beyond grayscale.
-- Wave 3 remains open: browser CI, job recovery/cancellation, reindex repair, authentication hardening,
-  broader documentation verification, OCR folios, and archive export.
+| ID | Issue | Done when |
+| --- | --- | --- |
+| W3.2 | [Playwright smoke in CI](../issues/2026-07-21-w32-playwright-smoke-ci.md) | A smoke subset runs in the default gate. |
+| W3.3 | [Seeded OCR browser fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | Text-review approval has a fixture-backed browser test. |
+| W3.4 | [Reclaim stuck running jobs](../issues/2026-07-21-w34-reclaim-stuck-running.md) | Startup reclaims jobs left `running` after a crash. |
+| W3.5 | [reindex --heal](../issues/2026-07-21-w35-reindex-heal.md) | The heal path has an operator-facing surface. |
+| W3.6 | [Job and stage cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Cancel stops the stage, including its data route. |
+| W3.7 | [Cookie secure and CORS allowlist](../issues/2026-07-21-w37-cookie-cors-hardening.md) | The session cookie and CORS origins follow the deployment. |
+| W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Page order can take folios from OCR. |
+| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy downloads an export. Archive inventory is real. |
 
-## P0 — Daily-use blockers (historical)
+### Migrated defects
 
-Items that prevented a user from completing a real book end-to-end in
-`make run` during the early rollout.
+These items were checked against the code on 2026-11-09. The ledger is the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
 
-> Historical P0 UX tickets shipped. Live pipeline depth blockers moved to
-> [completion plan](2026-07-21-pipeline-completion-review.md) Wave 0.
+- [Progress updates overwrite a cancelled job](../issues/2026-11-09-progress-overwrites-cancel.md).
+- [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md).
+- [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md).
+- [Postgres adapter is selectable but incomplete](../issues/2026-11-09-postgres-adapter-incomplete.md). Close this in this repo. The hosted database product is a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service).
 
----
+## Parked in this app
 
-## P1 — UX completeness (historical)
+These stay in this repository. None of them jump ahead of Wave 2.
 
-> Historical P1 items shipped. See "Reference for finished work" above and
-> [migration decisions](../context/decisions.md). Further hi-fi work is in
-> the completion plan Waves 1–2.
-
----
-
-## P2 — Polish / nice-to-have (historical)
-
-> Historical P2 items shipped. See "Reference for finished work" above.
-
----
-
-## P3 — Pipeline depth (historical)
-
-> P3.1 (compute_prefix frontmatter) shipped — moved to "Reference for finished work".
-> Remaining pipeline depth work is tracked in the
-> [completion plan](2026-07-21-pipeline-completion-review.md).
-
----
+- Visible Compute panel before device warmup. The factory, device-state display, and tests are in the [Compute panel backlog](2026-06-08-compute-settings-panel-backlog.md).
+- Upper-case Roman and alphabetic numbering controls. Current limits are in [page numbering](../architecture/08-page-numbering.md#limits-and-remaining-work).
+- A first-class Source model for back, duplicate, and inserted pages, beyond the role labels that already exist. Folio detection itself is [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
+- Search ranking, normalization, and an optional cross-project scope. Project-scoped search already ships.
+- Source-quality scoring, richer metadata, project comments, structured settings import and export, and deeper illustration format controls.
+- Further flip operations, bulk crop re-run, and a global hyphen or scanno library UI in this app. If other tools need the shared detector, that is a library change. See [repository boundary](../architecture/10-repository-boundary.md#scanno-detector-shared-with-other-tools).
+- Crop overview and deeper crop settings (former GH #166). [W2.2](../issues/2026-07-21-w22-schema-backend-alignment.md) and [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) do not cover that screen.
+- Hyphen-join settings tab (former GH #177). W2.5 is the image-prep tier pattern, not this tab.
+- `PUT /cdn/{key}` does not check project ownership. `GET /cdn/{key}` does for `projects/` keys. See [repository boundary](../architecture/10-repository-boundary.md#hosted-prep-service).
+- Stronger API-key session CSRF, expiry, revocation, and failed-login visibility, beyond [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
+- An end-to-end install of this wheel from a release asset. [AD-10](../decisions/architecture-decisions.md) records the installer. The 2026-11-07 source audit did not run a clean-machine install.
+- English-only UI strings. An i18n (internationalization) layer is this frontend's work if it is ever chosen. The OCR pipeline already takes its language from DocTR.
 
 ## Former pd-ui design handoff (GH #152, #156–#198)
 
-GitHub spec issue #152 tracked 43 feature issues, #156–#198, from the pd-ui design handoff. The handoff plan
-assumed per-stage routes and stage-level pd-ui components. The statechart convergence built the same
-capabilities as pipeline tools in `TOOL_REGISTRY` instead, and the plan was retired in `fdd88cd`. A
-2026-11-09 audit against `14f0ba8` found 18 shipped, 9 partly shipped, 10 superseded, and 6 not built. The
-per-issue ledger is in the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md). The `#NNN`
-tags below are provenance, not live tracker links.
+GitHub spec issue #152 tracked feature issues #156–#198. The handoff assumed per-stage routes. Statechart convergence built the same capabilities as pipeline tools. The plan was retired in `fdd88cd`.
 
-Recover the original plan and spec text with:
+A 2026-11-09 audit against `14f0ba8` found 18 shipped, 9 partly shipped, 10 superseded, and 6 not built. The per-issue ledger is in the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
+
+Recover the original plan and spec with:
 
 ```bash
 git show fdd88cd^:docs/plans/pd-ui-design-handoff-implementation.md
 git show fdd88cd^:docs/specs/2026-05-24-pd-ui-design-handoff-implementation.md
 ```
 
+The JSX prototype remains at `docs/plans/design_handoff_pgdp_app/`. It is a design reference, not current architecture.
+
 ### H1. Not built and not tracked elsewhere
 
-- **Validation auto-fix (former GH #180).** Add `POST /api/projects/{id}/validate/{check}/fix` for checks
-  with a safe, whitelisted fix such as a rename. Validation today has only run, artifact, and waive routes.
-- **Stage-jump popover (former GH #183).** A searchable stage list on a shortcut. Today the StageStrip dots
-  are the only stage navigation, and mod+k opens search.
-- **Mobile upload fallback below 768px (former GH #195).** The create-project dialog has no narrow-viewport
-  layout. Low priority while the app is a desktop tool.
-- **N-gram evidence for hyphen-join decisions (part of former GH #174 and #177).** Hyphen detection is the
-  regex in `steps/hyphen_join.py`; no n-gram data or cache exists. The handoff expected an n-gram SQLite
-  store from pdomain-book-tools.
+- **Validation auto-fix (former GH #180).** Add `POST /api/projects/{id}/validate/{check}/fix` for a whitelisted fix such as a rename. Validation today has run, artifact, and waive routes.
+- **Stage-jump popover (former GH #183).** A searchable stage list on a shortcut. StageStrip dots are the stage navigation. Mod+k opens search.
+- **Mobile upload fallback below 768px (former GH #195).** The create-project dialog has no narrow layout. Low priority while the app is a desktop tool.
+- **N-gram evidence for hyphen decisions (part of former GH #174 and #177).** No n-gram cache exists in this repo. Build the store in `pdomain-book-tools` or a data package. See [repository boundary](../architecture/10-repository-boundary.md#hyphen-n-gram-store).
 
 ### H2. Remaining gaps already tracked elsewhere
 
 | Former GH | Gap | Tracked in |
 | --- | --- | --- |
-| #164 | Select flagged crops and re-run them in bulk | [intent map](../context/intent-map.md) Deferred: bulk crop-quality actions |
-| #166 | Crop overview tab and deeper crop settings | [W2.2](../issues/2026-07-21-w22-schema-backend-alignment.md), [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) |
+| #164 | Select flagged crops and re-run them in bulk | [Parked in this app](#parked-in-this-app) |
+| #166 | Crop overview and deeper crop settings | [Parked in this app](#parked-in-this-app) |
 | #168 | Page-order detection from OCR folios | [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md) |
-| #172 | Global rule library across books | [intent map](../context/intent-map.md) Deferred: global hyphen/scanno library management |
-| #177 | Hyphen-join settings tab, now a placeholder | [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) |
-| #185, #189 | Split overlay and text_zones labeling canvas | [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) |
+| #172 | Global rule library across books | [Parked in this app](#parked-in-this-app), or a shared library if other tools consume it |
+| #177 | Hyphen-join settings tab | [Parked in this app](#parked-in-this-app). The n-gram store is a [separate repository](../architecture/10-repository-boundary.md#hyphen-n-gram-store). |
+| #185, #189 | Split overlay and text-zone canvas | [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) |
 | #193 | Save a copy from the Manage tab | [W3.10](../issues/2026-07-21-w310-save-copy-archive.md) |
 
----
+## Separate repositories
 
-## P5 — Stretch (post-daily-use)
+Consider these as their own repositories. Rationale, sibling owners, and evidence are in [Repository boundary](../architecture/10-repository-boundary.md).
 
-### S1. PDF export
-
-PGDP packages don't need PDFs, but some users want them as a
-sanity-check artefact alongside the zip.
-
-### S2. Multi-user permissions
-
-Spec 00 §"stretch goal" says the architecture doesn't block
-multi-user. Today every route filters by `user.user_id`. Needs an
-"owner_id" filter on the page tagger that respects the JWT identity,
-plus per-project sharing.
-
-### S3. Internationalisation
-
-The UI is English-only. The OCR pipeline is language-agnostic via
-DocTR; the SPA strings would need an i18n layer.
-
----
+| Candidate | Home | Why it is separate |
+| --- | --- | --- |
+| Hosted prep service | New repository that depends on this package | Postgres, S3 stage writes, container publish, and multi-user sharing are a different product from the local wheel. |
+| GPU worker image | A small image repo, or `pdomain-ops` if the suite owner wants one home | This app can select `SharedContainerStageDispatcher`. Its three calls raise `NotImplementedError`. The HTTP service is the other repository. |
+| nvjpeg / DALI thumbnails | `pdomain-book-tools` | [AD-9](../decisions/architecture-decisions.md) keeps the CPU pool. Revisit only after a 500-page GPU profile. |
+| Hyphen n-gram store | `pdomain-book-tools` or a data package it reads | This app has a regex hyphen step, not a corpus. |
+| Shared scanno detector | `pdomain-book-tools` | `wordcheck` stays here. A detector for several tools is a library. |
+| PDF preview | A new small exporter | The submission artifact is a zip. `pdomain-pgdp-measure` measures scans and does not write PDFs. |
 
 ## Deferred — remote / cloud mode
 
-Revisit only after the local-mode flow above is end-to-end coherent.
-None of these are in scope for daily-use rollout.
+This heading is the old parking place for remote work. Some rows stay in this repo. The rest are [Separate repositories](#separate-repositories). Detail is in [Repository boundary](../architecture/10-repository-boundary.md).
 
-### D1. Remote GPU integration
-
-Remote classes come from `pdomain_ops.gpu`; the old local Modal backend modules are removed.
-Complete and verify remote artifact transport and local-store replacement before claiming managed readiness.
-
-### D2. Postgres adapter — live-DB integration tests
-
-The builder selects Postgres for configured URLs, but stage-related adapter methods remain incomplete.
-A live Postgres test service and full database-contract coverage are still required.
-The missing methods and the fail-fast option are recorded in
-[the Postgres adapter issue](../issues/2026-11-09-postgres-adapter-incomplete.md) (former GH #131).
-
-### D3. install.sh end-to-end exercise
-
-The installer expects a wheel from the latest GitHub release. This source audit did not exercise a clean-machine
-installation or prove the historical wheel-METADATA defect remains. Keep an actual install test as deferred work.
-
-### D4. Managed-mode container publication
-
-Local release targets invoke release scripts. GitHub workflows were removed in `e22bdd2`;
-this checkout has no automatic release/publish or container-publication workflow.
-Managed container credentials and publication remain separate deferred work.
-
-### D5. CUDA `STAGE_IMPL` entries
-
-GPU registry implementations and CUDA dispatch already ship; see
-[supported stages](../architecture/09-image-prep-settings.md#cpu-and-gpu-execution).
-Representative-book GPU memory and throughput verification remains deferred.
-
-### D6. Shared GPU container backend
-
-`SharedContainerBackend` is a placeholder. Long-running
-`pgdp-prep --mode gpu_worker_only` ECS task with per-tenant
-authentication. Spec 09 §"Backend 2".
-
-### D7. Thumbnail nvjpeg / DALI GPU path
-
-Deferred per AD-9. CPU pool is the right default. Revisit only
-after profiling on a real book (≥500 pages, GPU host) shows the
-CPU path dominates after storage I/O.
-
----
+- **Remote GPU transport.** This app selects `GPUBackend` from `pdomain_ops.gpu`. A replacement for the local store on a remote worker belongs with the worker image.
+- **Postgres live tests.** Stays in this repo: [Postgres adapter](../issues/2026-11-09-postgres-adapter-incomplete.md). The hosted product around that adapter is a separate repository.
+- **install.sh on a clean machine.** Stays in this repo. Listed under [Parked in this app](#parked-in-this-app).
+- **Managed container publication.** No GitHub workflow in this checkout publishes an image. That publication belongs to the hosted service.
+- **CUDA stage entries.** GPU registry implementations already ship. See [CPU and GPU execution](../architecture/09-image-prep-settings.md#cpu-and-gpu-execution). A representative-book measurement waits on the worker image.
+- **Shared GPU container.** `shared_container` builds `SharedContainerStageDispatcher`. Its `process_page`, `run_ocr`, and `run_batch` raise `NotImplementedError`. The service behind the URL is the worker image, not a class in this repo.
+- **Thumbnail nvjpeg / DALI.** Deferred by [AD-9](../decisions/architecture-decisions.md). Home is `pdomain-book-tools`.
 
 ## How to pick up
 
-1. Read `docs/architecture/01-overview.md` for the high-level shape.
-2. Read `docs/architecture/architecture-decisions.md` for the locked decisions.
-3. Pick the lowest-numbered open item in this file. **Skip BLOCKED
-   items unless you have a CT decision in writing.** Skip the
-   "Deferred" section unless the user explicitly revives it.
-4. TDD-first when possible; the test recipe is in `docs/architecture/07-testing.md`.
-5. When you finish an item, **move it out** of this file into
-   [migration decisions](../context/decisions.md) with a condensed summary and commit SHAs.
-
+1. Read [the overview](../architecture/01-overview.md) and [the repository boundary](../architecture/10-repository-boundary.md).
+2. Take the first open row under [Now](#now).
+3. Leave [Parked in this app](#parked-in-this-app) and [Separate repositories](#separate-repositories) alone unless the owner asks for that item.
+4. Follow [testing](../architecture/07-testing.md). Run `make ci AI=1` before a commit.
+5. When an item ships, move the durable behavior into an architecture doc and delete or retire the issue. Record the tombstone in [decisions](../context/decisions.md).
 
 ## Goal
 
-Prioritize the repository's open product and engineering work while keeping shipped history out of the active queue.
+Keep one ordered list of open work for this app. Name work that should be a different repository.
 
 ## Architecture
 
-Roadmap items extend the current local-first architecture documented in `docs/architecture/`; retired specs do not define new work.
+Items on this list extend the local-first app in `docs/architecture/`. The July review does not define new work. Retired specs do not either.
 
 ## Tech Stack
 
-The current FastAPI, Python 3.13, React 19, XState v5, SQLite/filesystem, and optional adapter stack applies.
+The stack is FastAPI, Python 3.13, React 19, XState v5, SQLite, and the filesystem. Optional adapters stay as seams until a hosted repository takes them.
 
 ## Global Constraints
 
-Local-first work stays ahead of remote deployment, generated OpenAPI remains the contract, and removed fan-out paths must not return.
+Local book completion stays ahead of remote deployment. Generated OpenAPI remains the contract. The removed backend `project_run_dirty` fan-out and the phantom `scannocheck` stage stay removed.

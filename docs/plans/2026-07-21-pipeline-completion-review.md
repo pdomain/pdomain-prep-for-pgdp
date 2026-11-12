@@ -13,21 +13,19 @@ kind: plan
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-11-07
-- **Read when:** picking the next pipeline workstream, assessing E2E readiness, or reconciling roadmap vs code.
+- **Last verified:** 2026-11-12
+- **Read when:** reading the July 2026 pipeline review, or checking why a book-path contract was written.
 - **Search terms:** pipeline gaps, stage completeness, E2E book path, continuation plan, text chain, pack chain, hi-fi backlog, wordcheck contract.
 
 ## Goal
 
-Give an evidence-based picture of where the 24-stage pipeline is solid,
-where it is only scaffolded, and what to build next so a user can finish a
-real book on `make run`.
+Keep the July 2026 evidence for what was solid, what was only scaffolded, and how Waves 0–3 were sequenced. The live queue is the [roadmap](roadmap.md).
 
 ## Summary verdict
 
-**Structural spine is shipped. End-to-end book completion is not.**
+Waves 0 and 1 shipped. Open work is [Now](roadmap.md#now) on the roadmap: Wave 2, Wave 3, and the four defects migrated on 2026-11-09. This file is the review record, not a second queue.
 
-What is real today:
+What was already real in July 2026:
 
 - 24 v2 stages registered with non-placeholder CPU callables
 - Dual-write page and project stage stores, registry v3 numbering runs
@@ -35,18 +33,11 @@ What is real today:
 - Strong pure-function packaging, naming, and gate DAG tests
 - Hi-fi Source and Grayscale surfaces
 
-Wave 0 correctness shipped on 2026-11-06. The text chain, compound load, project job kwargs, per-page attestation, multi-page shell run, text-zones split body, and golden-path CI test are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+Wave 0 shipped on 2026-11-06. Wave 1 shipped on 2026-11-07. Text chain, compound load, project job kwargs, attestation, multi-page shell run, text-zone split, regex postprocess, live text-tool queues, illustration packing, and cover/oxipng are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 
-What still fails a real book walk:
+Default CI still uses a hermetic OCR fixture for the golden path. It does not load DocTR weights.
 
-1. OCR / wordcheck / text_review UI paths lack live queue SSE (B5)
-2. Illustrations extract and package path naming are incomplete (B6)
-3. Regex stage is not full text postprocess (B8)
-4. Default CI does not load real DocTR weights. The golden-path test uses a hermetic OCR fixture.
-
-Roadmap (`docs/plans/roadmap.md`) marks historical P0–P3 UX tickets shipped.
-That overstates live pipeline readiness. Treat this plan as the forward
-queue for pipeline depth.
+The defect sections below are the 2026-07-21 snapshot. Where they disagree with architecture about Waves 0 and 1, architecture wins. See the [queue decision](../decisions/2026-11-12-roadmap-is-the-queue.md).
 
 Adversarial review (2026-07-21) corrected several gaps in the first draft
 of this plan: the wordcheck text contract, weak Wave 0 exit criteria,
@@ -170,14 +161,13 @@ Ingest → image prep → OCR (page runner) can run. Pure
 
 ### What a normal proofer cannot do today
 
-Click through a real book to a clean attested package with correct page
-text, illustrations, scanno cleanup, hyphen decisions, and live text review.
+The July 2026 text-chain gaps shipped in Waves 0 and 1. What remains is image-prep honesty and the operations list on the [roadmap](roadmap.md): real thumbs, schema-backed controls, canvas-map data, text-zone editing, settings tiers, and the Wave 3 quality items.
 
 ---
 
 ## Critical defects (blockers)
 
-These were code-backed on 2026-07-21. B0, B1, B2, B3, B4, and B7 shipped on 2026-11-06. Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). B5, B6, B8, and B9 are still open. The subsections below keep the original evidence.
+These were code-backed on 2026-07-21. B0, B1, B2, B3, B4, and B7 shipped in Wave 0. Wave 1 shipped the regex postprocess (B8), the OCR, wordcheck, and text-review queues (B5 for those three tools), illustration packing (B6), and cover plus oxipng (B9). Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). Archive inventory, which B5 also mentioned, remains [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). The subsections below keep the original evidence.
 
 ### B0 — Wordcheck / text-chain artifact contract (highest risk)
 
@@ -374,12 +364,11 @@ Those are fidelity backlog, not missing registry entries.
 
 ## Continuation plan
 
-Work in order. Each wave ends with a green `make ci AI=1` and the wave’s
-**falsifiable** exit criteria below.
+The live queue is [Now](roadmap.md#now) on the roadmap. It includes Wave 2, Wave 3, and the four defects migrated on 2026-11-09. Those four are not in the tables below. The tables are the July 2026 breakdown. Where a done-when cell disagrees with the roadmap, the roadmap wins.
 
 **Decomposed issues:** one governed node per work item under
 [`docs/issues/`](../issues/README.md). Use those files for implementation
-detail; this section is the queue order only.
+detail.
 
 ### Wave 0 — Correctness (book path; 1–2 weeks focused)
 
@@ -448,7 +437,7 @@ leaving the pipeline shell.
 | W3.3 | [w33-seeded-ocr-browser-fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | Seeded OCR browser fixtures | W6.2 text skips closed |
 | W3.4 | [w34-reclaim-stuck-running](../issues/2026-07-21-w34-reclaim-stuck-running.md) | Reclaim stuck `running` jobs | Crash recovery test |
 | W3.5 | [w35-reindex-heal](../issues/2026-07-21-w35-reindex-heal.md) | reindex --heal coverage | Heal path documented + tested |
-| W3.6 | [w36-job-stage-cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Job/stage cancel | Cancel works or explicit defer |
+| W3.6 | [w36-job-stage-cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Job/stage cancel | See [Now](roadmap.md#now). Cancel stops the stage. |
 | W3.7 | [w37-cookie-cors-hardening](../issues/2026-07-21-w37-cookie-cors-hardening.md) | Cookie secure + CORS allowlist | Self-host checklist |
 | W3.8 | shipped | Source-verified architecture and guidance | Completed 2026-11-07; current docs distinguish implementation from history |
 | W3.9 | [w39-page-order-ocr-folios](../issues/2026-07-21-w39-page-order-ocr-folios.md) | page_order P4 OCR-folios | Folio chips real |
@@ -458,18 +447,20 @@ leaving the pipeline shell.
 
 ### Explicitly later (do not start unless local path is solid)
 
-- Modal S3 bodies, SharedContainer, managed container publish
-- Postgres page_stages + FTS
-- S3 PageStageWriter
-- Multi-user sharing / JWT multi-tenant productization
-- PDF export, i18n
-- Full scanno stealth fusion from research doc
+These items are classified in [Repository boundary](../architecture/10-repository-boundary.md). The [roadmap](roadmap.md#separate-repositories) names which repository should own each one.
+
+- Modal S3 bodies, SharedContainer, managed container publish — hosted service or GPU worker image
+- Postgres page_stages + FTS — hosted service; the incomplete adapter issue stays in this repo
+- S3 PageStageWriter — hosted service
+- Multi-user sharing / JWT multi-tenant productization — hosted service
+- PDF export — a separate exporter; i18n stays in this frontend if it is ever chosen
+- Full scanno stealth fusion from the research doc — `wordcheck` stays here; a shared detector belongs in `pdomain-book-tools`
 
 ---
 
 ## Recommended next session sequence
 
-1. Start at Wave 2. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+1. Take the next open row under [Now](roadmap.md#now). That list includes the four migrated defects. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 2. Use current architecture as the implementation reference. W3.8 and the July review-fixes plan are complete.
 
 Use worktrees for implementation branches. Run `make ci AI=1` before each

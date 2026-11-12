@@ -1,7 +1,7 @@
 ---
 Kind: process
 Status: active
-Last verified: 2026-11-07
+Last verified: 2026-11-12
 ---
 
 # CLAUDE — pdomain-prep-for-pgdp
@@ -106,8 +106,10 @@ Targeted runs: `uv run pytest -k <pattern>`.
 - **Splits = sibling pages:** split produces N new sibling `Page` rows with
   `parent_page_id` / `source_crop_bbox` / `split_index` / `split_at_stage`.
   Not config on `ocr_crop`.
-- **Local-first:** active work = SQLite + filesystem + CPU. Cloud/remote
-  items parked in `docs/plans/roadmap.md §Deferred`.
+- **Local-first:** active work = SQLite + filesystem + CPU. The forward queue
+  is `docs/plans/roadmap.md`. Work that should leave this repo is in
+  `docs/architecture/10-repository-boundary.md`. Cloud and remote items remain
+  parked under `docs/plans/roadmap.md` §Deferred.
 - Current dependency minimums are `pdomain-book-tools>=0.28.0` and `pdomain-ops>=0.11.2`, from pdomain-index-pip.
   `make local-dev` installs editable siblings; `make update-pdomain-deps` refreshes registry constraints.
 - `gpu_backend="cpu"` is the test default. Local/cpu/mps startup uses `_NoOpGPUBackend` for compatibility;

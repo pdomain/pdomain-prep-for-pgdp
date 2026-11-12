@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-14
-Last verified: 2026-11-09
+Last verified: 2026-11-12
 Kind: plan
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** plan
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-09
+- **Last verified:** 2026-11-12
 - **Read when:** choosing work, checking deferred ideas, or identifying owner decisions.
 - **Search terms:** active intent, deferred work, rejected direction, owner decision, pipeline issues.
 
@@ -44,10 +44,10 @@ generated OpenAPI.
   source-local and are found by repository search rather than duplicated as a brittle line-by-line inventory.
 - Keep the roadmap aligned with shipped GPU grayscale support and registry version 3.
 - Maintain the current `wordcheck` stage; scanno research may improve its flagging but does not create a separate stage.
-- **Pipeline completion queue:** [completion plan](../plans/2026-07-21-pipeline-completion-review.md).
-  Wave 0 shipped on 2026-11-06. Current book-path behavior is in
-  [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
-  Start the remaining queue at Wave 2 under [docs/issues](../issues/README.md).
+- **Forward queue:** the [roadmap](../plans/roadmap.md). Waves 0 and 1 shipped. Book-path behavior is in
+  [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). Start at Wave 2.
+  The [July review](../plans/2026-07-21-pipeline-completion-review.md) is the record of that sequencing, not a second queue.
+  Which ideas belong in another repository is in [Repository boundary](../architecture/10-repository-boundary.md).
 - **GitHub issue migration (done 2026-11-09):** all 48 open issues on `pdomain/pdomain-prep-for-pgdp` were
   checked against `14f0ba8`, moved into repo docs, and deleted from GitHub. #131, #132, #135 and #146 are
   governed reports in [`docs/issues/`](../issues/README.md). #152 and #156–#198 are in the
@@ -58,24 +58,13 @@ generated OpenAPI.
 
 ## Deferred
 
-- Add a visible Compute panel before enabling device warmup. Preserve the factory/hook, device-state display,
-  conditional CUDA guidance, and panel/warmup tests in the [backlog](../plans/2026-06-08-compute-settings-panel-backlog.md).
-- Add faithful upper-case Roman and alphabetic numbering controls and round trips. Current frontend mappings
-  lose those distinctions; see [numbering limits](../architecture/08-page-numbering.md#limits-and-remaining-work).
-- Revisit the broader first-class Source back/duplicate/inserted-kind model separately from the existing durable
-  back/duplicate role labels. Detector integration with the existing folio loader and confirmation guard remains
-  [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
-- Generalize grayscale settings controls beyond grayscale under [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md).
-  Real archive-copy export remains [W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
+Parked work for this app is [Parked in this app](../plans/roadmap.md#parked-in-this-app).
+Wave 2 and Wave 3 are [Now](../plans/roadmap.md#now).
+Work that should be another repository is [Separate repositories](../plans/roadmap.md#separate-repositories),
+with the rationale in [Repository boundary](../architecture/10-repository-boundary.md).
 
-- Validate GPU memory and throughput on a representative multi-page book. The historical 20-page benchmark was
-  planned but not recorded as run.
-- Improve search normalization, ranking, and optional cross-project scope beyond the shipped project-scoped text index.
-- Add automated source-quality scoring, richer metadata collection, project comments, structured settings
-  import/export, and deeper illustration format controls if product priority supports them.
-- Revisit flip operations, bulk crop-quality actions, global hyphen/scanno library management, and
-  managed-adapter deployment only with current API and UX evidence.
-- Strengthen API-key session CSRF, expiry/revocation, CORS, and failed-login observability.
+The 2026-11-12 consolidation moved the item text to the roadmap so this file no longer keeps a second copy.
+The [queue decision](../decisions/2026-11-12-roadmap-is-the-queue.md) records that choice.
 
 ## Rejected or superseded
 
@@ -87,8 +76,9 @@ generated OpenAPI.
 
 ## Owner decisions
 
-No decision blocks this migration. Managed-mode priority, some remote execution choices, and optional UX
-expansions remain deferred product choices.
+No decision blocks the documentation consolidation. Whether to start a hosted service, a GPU worker image,
+or a shared language-data library is an owner choice. Until then those items stay parked. See
+[Repository boundary](../architecture/10-repository-boundary.md).
 
 ## Legacy-unverified sweep
 

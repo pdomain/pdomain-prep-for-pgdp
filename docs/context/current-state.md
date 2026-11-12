@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** active
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** starting work or checking the repository's current operational shape.
 - **Search terms:** current state, active architecture, risks, verification.
 
@@ -18,8 +18,9 @@ and [deployment architecture](../architecture/06-deployment.md).
 
 ## In-flight work
 
-Wave 0 and Wave 1 shipped. The active [completion queue](../plans/2026-07-21-pipeline-completion-review.md)
-starts at Wave 2. The [roadmap](../plans/roadmap.md) retains deferred product and deployment work.
+Wave 0 and Wave 1 shipped. The forward queue is the [roadmap](../plans/roadmap.md), starting at Wave 2.
+The July review is the record of that sequencing. Hosted, GPU-worker, and shared-library ideas are in
+[Repository boundary](../architecture/10-repository-boundary.md).
 
 Shipped numbering, Source/grayscale, shared settings, and July safeguards now live in architecture docs.
 See [numbering runs](../architecture/08-page-numbering.md),

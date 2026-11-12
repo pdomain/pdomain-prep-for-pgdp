@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-12
 - **Read when:** orienting to the system or tracing its main components.
 - **Search terms:** architecture overview, FastAPI, pipeline, adapters.
 
@@ -54,7 +54,8 @@ Settings selects storage, database, authentication, and GPU mode. The database b
 Postgres adapter, while page lifecycle remains local. Dispatcher selection follows the configured dispatch
 interval; it is not inferred from a deployment label. Managed multi-instance behavior remains deferred.
 
-See [backend wiring](02-backend.md), [deployment](06-deployment.md), and the
+See [backend wiring](02-backend.md), [deployment](06-deployment.md),
+[repository boundary](10-repository-boundary.md), and the
 [deferred roadmap](../plans/roadmap.md#deferred--remote--cloud-mode).
 
 ## Dependency surface
@@ -63,7 +64,9 @@ The backend uses Python 3.13, FastAPI, Pydantic, uvicorn, anyio, and OCR/image l
 Current dependency minimums include `pdomain-book-tools>=0.28.0`, `pdomain-ops>=0.11.2`,
 `pdomain-book-contracts>=0.2.0`, and `eventsourcing>=9.5`. See `pyproject.toml` for the full constraints and extras.
 
-The frontend uses React 19, Vite, TypeScript, XState v5, TanStack Query, react-konva, React Router, and Tailwind.
+The frontend uses React 19, Vite, TypeScript, XState v5, TanStack Query, react-konva, React Router, Tailwind,
+and `@pdomain/pdomain-ui`. What belongs in a sibling or a new repository is in
+[repository boundary](10-repository-boundary.md).
 The repo toolchain pins Node 24 and pnpm 11. OpenAPI generation writes `frontend/src/api/types.gen.ts`;
 some consumers still use the handwritten `types.ts` surface.
 
