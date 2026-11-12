@@ -76,6 +76,7 @@ These stay in this repository. None of them jump ahead of Wave 2.
 - Stronger API-key session CSRF, expiry, revocation, and failed-login visibility, beyond [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
 - An end-to-end install of this wheel from a release asset. [AD-10](../decisions/architecture-decisions.md) records the installer. The 2026-11-07 source audit did not run a clean-machine install.
 - English-only UI strings. An i18n (internationalization) layer is this frontend's work if it is ever chosen. The OCR pipeline already takes its language from DocTR.
+- Submission zip entries still take the clock time. `build_submission_zip` stores `built_at` in `pgdp.json` and writes the files with `writestr`, so two builds of the same book can differ. `fix/zip-entry-timestamps` (`ce1f557..b9a75a1`) stamps every entry from `built_at`.
 
 ## Former pd-ui design handoff (GH #152, #156–#198)
 
