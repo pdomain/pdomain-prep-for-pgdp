@@ -15,7 +15,7 @@ Level: I1
 - **Status:** active
 - **Level:** I1
 - **Last verified:** 2026-11-11
-- **Resolution:** Fixed on `feat/night-prep4`, awaiting merge
+- **Resolution:** On master in `06d9a5c`
 - **Severity:** Medium — Postgres deployments start, then fail at runtime on stage routes and job handlers
 - **Affected version:** pdomain-prep-for-pgdp master @ `14f0ba8`
 - **Read when:** working on the Postgres adapter, `build_database()`, managed persistence, or adapter contract tests.
@@ -103,7 +103,7 @@ runs the `IDatabase` contract against both adapters.
 
 ## Resolution
 
-Fixed on `feat/night-prep4`, not yet merged. Retire this report through `doc-retirer` after merge.
+On master in `06d9a5c`. Retire this report through `doc-retirer` when the issue file itself is closed.
 
 The adapter was finished rather than made to fail fast, because a real local Postgres could be tested.
 

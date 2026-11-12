@@ -18,7 +18,7 @@ Last verified: 2026-11-12
 
 This is the only forward queue. Shipped behavior lives in [architecture](../architecture/01-overview.md).
 
-The [July 2026 pipeline review](2026-07-21-pipeline-completion-review.md) is the record that created Waves 0–3. Waves 0 and 1 shipped. Their contracts are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+The [July 2026 pipeline review](2026-07-21-pipeline-completion-review.md) is the record that created Waves 0–3. Waves 0 and 1 shipped. Wave 2 and the finished Wave 3 rows are on `master` in `c16c5e1` and `06d9a5c`. Their contracts are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts) and [image-prep settings](../architecture/09-image-prep-settings.md).
 
 [Repository boundary](../architecture/10-repository-boundary.md) says whether a feature should live in this app or in another repository.
 
@@ -26,43 +26,39 @@ Local-first work comes first. That choice is [AD-4](../decisions/architecture-de
 
 ## Now
 
-Start at Wave 2. Each row is an open issue with evidence.
+Open rows are first. Landed rows are already on `master`.
 
-### Wave 2 — image-prep honesty
+### Open
 
-| ID | Issue | Done when |
+| ID | Issue | Why it is still open |
 | --- | --- | --- |
-| W2.1 | [Real before/after thumbs](../issues/2026-07-21-w21-isr-real-thumbs.md) | Threshold through dewarp show real page thumbs. |
-| W2.2 | [stageSchemas match backend knobs](../issues/2026-07-21-w22-schema-backend-alignment.md) | A threshold change changes the output. |
-| W2.3 | [canvas map uses real data](../issues/2026-07-21-w23-canvas-map-real-data.md) | Scatter and spreads are not mock points. |
-| W2.4 | [text zone Konva UI](../issues/2026-07-21-w24-text-zones-konva.md) | A split works on a real page. |
-| W2.5 | [settings tiers beyond grayscale](../issues/2026-07-21-w25-settings-tiers-generalize.md) | Threshold, deskew, and denoise have the same tier controls grayscale has. |
+| W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Reconcile-on-load is on `master` in `06d9a5c` (`88d4e14`). Page order still cannot take folios from a detector. `pdomain-book-tools` 0.28.0 has none. No branch holds the detector. |
+| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy is on `master` in `06d9a5c` (`9d1e2a4`). The archive keep list is still placeholder data. No branch holds that half. |
+| — | [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md) | No branch holds this. |
+| — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | `make audit` is on `master` in `06d9a5c` (`a45325c`) and is not part of `make ci`. The lockfile has known advisories. No branch holds the gate. |
 
-### Wave 3 — quality and operations
+### Landed on master
 
-| ID | Issue | Done when |
+| ID | Issue | On master |
 | --- | --- | --- |
-| W3.2 | [Playwright smoke in CI](../issues/2026-07-21-w32-playwright-smoke-ci.md) | A smoke subset runs in the default gate. |
-| W3.3 | [Seeded OCR browser fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | Text-review approval has a fixture-backed browser test. |
-| W3.4 | [Reclaim stuck running jobs](../issues/2026-07-21-w34-reclaim-stuck-running.md) | Startup reclaims jobs left `running` after a crash. |
-| W3.5 | [reindex --heal](../issues/2026-07-21-w35-reindex-heal.md) | The heal path has an operator-facing surface. |
-| W3.6 | [Job and stage cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Cancel stops the stage, including its data route. |
-| W3.7 | [Cookie secure and CORS allowlist](../issues/2026-07-21-w37-cookie-cors-hardening.md) | The session cookie and CORS origins follow the deployment. |
-| W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Page order can take folios from OCR. |
-| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy downloads an export. Archive inventory is real. |
-
-### Migrated defects
-
-These items were checked against the code on 2026-11-09. The ledger is the [cutover decision](../decisions/2026-11-09-github-issues-cutover.md).
-
-- [Progress updates overwrite a cancelled job](../issues/2026-11-09-progress-overwrites-cancel.md).
-- [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md).
-- [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md).
-- [Postgres adapter is selectable but incomplete](../issues/2026-11-09-postgres-adapter-incomplete.md). Close this in this repo. The hosted database product is a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service).
+| W2.1 | [Real before/after thumbs](../issues/2026-07-21-w21-isr-real-thumbs.md) | `06d9a5c` (`820e055`) |
+| W2.2 | [stageSchemas match backend knobs](../issues/2026-07-21-w22-schema-backend-alignment.md) | `06d9a5c` (`2045373`) |
+| W2.3 | [canvas map uses real data](../issues/2026-07-21-w23-canvas-map-real-data.md) | `06d9a5c` (`5f451b3`) |
+| W2.4 | [text zone Konva UI](../issues/2026-07-21-w24-text-zones-konva.md) | `06d9a5c` (`e621329`). A split works on a real page. Lasso, reading-order drag, and apply-to-all were not part of this row. |
+| W2.5 | [settings tiers beyond grayscale](../issues/2026-07-21-w25-settings-tiers-generalize.md) | `06d9a5c` (`096a6a8`) |
+| W3.2 | [Playwright smoke in CI](../issues/2026-07-21-w32-playwright-smoke-ci.md) | `06d9a5c` (`59470c4`) |
+| W3.3 | [Seeded OCR browser fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | `06d9a5c` (`532777a`) |
+| W3.4 | [Reclaim stuck running jobs](../issues/2026-07-21-w34-reclaim-stuck-running.md) | `c16c5e1` (`66c5ed2`) |
+| W3.5 | [reindex --heal](../issues/2026-07-21-w35-reindex-heal.md) | `06d9a5c` (`1c9393b`), with the [heal runbook](../runbooks/reindex-heal.md) |
+| W3.6 | [Job and stage cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | `c16c5e1` (`6b8afe5`) |
+| W3.7 | [Cookie secure and CORS allowlist](../issues/2026-07-21-w37-cookie-cors-hardening.md) | `c16c5e1` (`7a96382`) |
+| — | [Progress updates overwrite a cancelled job](../issues/2026-11-09-progress-overwrites-cancel.md) | `c16c5e1` (`c85a128`) |
+| — | [Postgres adapter](../issues/2026-11-09-postgres-adapter-incomplete.md) | `06d9a5c` (`3e2ecd4`). The hosted database product stays a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service). |
+| — | Submission zip entry times | `06d9a5c` (`ce1f557`). Every entry takes its time from `built_at`. |
 
 ## Parked in this app
 
-These stay in this repository. None of them jump ahead of Wave 2.
+These stay in this repository. None of them jump ahead of the open rows under Now.
 
 - Visible Compute panel before device warmup. The factory, device-state display, and tests are in the [Compute panel backlog](2026-06-08-compute-settings-panel-backlog.md).
 - Upper-case Roman and alphabetic numbering controls. Current limits are in [page numbering](../architecture/08-page-numbering.md#limits-and-remaining-work).
@@ -76,7 +72,6 @@ These stay in this repository. None of them jump ahead of Wave 2.
 - Stronger API-key session CSRF, expiry, revocation, and failed-login visibility, beyond [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
 - An end-to-end install of this wheel from a release asset. [AD-10](../decisions/architecture-decisions.md) records the installer. The 2026-11-07 source audit did not run a clean-machine install.
 - English-only UI strings. An i18n (internationalization) layer is this frontend's work if it is ever chosen. The OCR pipeline already takes its language from DocTR.
-- Submission zip entries still take the clock time. `build_submission_zip` stores `built_at` in `pgdp.json` and writes the files with `writestr`, so two builds of the same book can differ. `fix/zip-entry-timestamps` (`ce1f557..b9a75a1`) stamps every entry from `built_at`.
 
 ## Former pd-ui design handoff (GH #152, #156–#198)
 
@@ -109,8 +104,8 @@ The JSX prototype remains at `docs/plans/design_handoff_pgdp_app/`. It is a desi
 | #168 | Page-order detection from OCR folios | [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md) |
 | #172 | Global rule library across books | [Parked in this app](#parked-in-this-app), or a shared library if other tools consume it |
 | #177 | Hyphen-join settings tab | [Parked in this app](#parked-in-this-app). The n-gram store is a [separate repository](../architecture/10-repository-boundary.md#hyphen-n-gram-store). |
-| #185, #189 | Split overlay and text-zone canvas | [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) |
-| #193 | Save a copy from the Manage tab | [W3.10](../issues/2026-07-21-w310-save-copy-archive.md) |
+| #185, #189 | Split overlay and text-zone canvas | On master in `06d9a5c`. [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) records the extras that were not in that row. |
+| #193 | Save a copy from the Manage tab | The download is on master in `06d9a5c`. Archive inventory stays [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). |
 
 ## Separate repositories
 
@@ -130,7 +125,7 @@ Consider these as their own repositories. Rationale, sibling owners, and evidenc
 This heading is the old parking place for remote work. Some rows stay in this repo. The rest are [Separate repositories](#separate-repositories). Detail is in [Repository boundary](../architecture/10-repository-boundary.md).
 
 - **Remote GPU transport.** This app selects `GPUBackend` from `pdomain_ops.gpu`. A replacement for the local store on a remote worker belongs with the worker image.
-- **Postgres live tests.** Stays in this repo: [Postgres adapter](../issues/2026-11-09-postgres-adapter-incomplete.md). The hosted product around that adapter is a separate repository.
+- **Postgres live tests.** The adapter contract test is on master in `06d9a5c`. It runs when `PGDP_TEST_POSTGRES_URL` is set. `make ci` does not start Postgres. The hosted product around that adapter is a separate repository.
 - **install.sh on a clean machine.** Stays in this repo. Listed under [Parked in this app](#parked-in-this-app).
 - **Managed container publication.** No GitHub workflow in this checkout publishes an image. That publication belongs to the hosted service.
 - **CUDA stage entries.** GPU registry implementations already ship. See [CPU and GPU execution](../architecture/09-image-prep-settings.md#cpu-and-gpu-execution). A representative-book measurement waits on the worker image.

@@ -15,7 +15,7 @@ Level: I2
 - **Status:** active
 - **Level:** I2
 - **Last verified:** 2026-11-11
-- **Resolution:** Fixed on `fix/zip-entry-timestamps`, awaiting merge
+- **Resolution:** On master in `06d9a5c`
 - **Severity:** Low — one determinism test can fail intermittently; package contents are correct
 - **Affected version:** pdomain-prep-for-pgdp master @ `15d5f3c`
 - **Read when:** working on `build_submission_zip`, zip reproducibility, or a failing `test_build_zip_chain_determinism`.
@@ -102,8 +102,7 @@ does not prove which field it was.
 
 ## Resolution
 
-Fixed on `fix/zip-entry-timestamps`, branched from `feat/night-prep4`, not yet merged. Retire this report through
-`doc-retirer` after merge.
+On master in `06d9a5c`. Retire this report through `doc-retirer` when the issue file itself is closed.
 
 - Hypothesis 1 was confirmed. With the clock moved between two builds, the archives first differed at byte 10, the
   modification time field of the first local file header.

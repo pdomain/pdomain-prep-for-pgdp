@@ -15,7 +15,7 @@ Level: I1
 - **Status:** active
 - **Level:** I1
 - **Last verified:** 2026-11-11
-- **Resolution:** Fixed on `feat/night-prep4`, awaiting merge
+- **Resolution:** On master in `06d9a5c`
 - **Severity:** Medium — split/zone QA blocked on schematic canvas; W0.5 body contract is shipped
 - **Affected version:** pdomain-prep-for-pgdp main (2026-07-21 review)
 - **Read when:** implementing text_zones hi-fi Konva board, split overlays, or after W0.5 split contract lands
@@ -162,7 +162,7 @@ works on a real page.”
 
 ## Resolution
 
-Fixed on `feat/night-prep4`, not yet merged. Retire this report through `doc-retirer` after merge.
+On master in `06d9a5c`. Retire this report through `doc-retirer` when the issue file itself is closed.
 
 - Page cards show the page's ingest thumbnail. Split children now get a thumbnail of their own crop at split time.
 - The zone editor is a Konva board over the `post_transform_crop` image, falling back to the ingest thumbnail. It
