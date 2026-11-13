@@ -30,9 +30,13 @@ from __future__ import annotations
 import subprocess
 import tarfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_DIR = REPO_ROOT / "src" / "pdomain_prep_for_pgdp"
@@ -56,10 +60,42 @@ def _require_frontend(test_name: str) -> None:
         )
 
 
+def _assert_no_generated_members(names: Sequence[str]) -> None:
+    generated_directories = {
+        ".docgraph",
+        ".worktrees",
+        ".venv",
+        "node_modules",
+        ".superpowers",
+        ".review",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".cache",
+        ".uv-cache",
+        ".vite",
+    }
+    generated: list[str] = []
+    for name in names:
+        parts = PurePosixPath(name).parts
+        if (
+            generated_directories.intersection(parts)
+            or any(
+                part == ".ci-ai.log" or part.startswith(".coverage") or part.endswith(".tsbuildinfo")
+                for part in parts
+            )
+            or any(path in f"/{name}/" for path in ("/frontend/dist/", "/frontend/coverage/"))
+        ):
+            generated.append(name)
+    assert not generated, f"Generated state must not ship in release archives: {generated}"
+
+
 def _count_static_in_wheel(wheel_path: Path) -> tuple[int, bool]:
     """Return (static_file_count, has_index_html) for *wheel_path*."""
     with zipfile.ZipFile(wheel_path) as zf:
         names = zf.namelist()
+    _assert_no_generated_members(names)
     static = [n for n in names if "pdomain_prep_for_pgdp/static/" in n]
     has_index = any(n.endswith("pdomain_prep_for_pgdp/static/index.html") for n in names)
     return len(static), has_index
@@ -73,6 +109,7 @@ def _count_static_in_sdist(sdist_path: Path) -> tuple[int, bool]:
     """
     with tarfile.open(sdist_path) as tf:
         members = tf.getnames()
+    _assert_no_generated_members(members)
     static = [m for m in members if "src/pdomain_prep_for_pgdp/static/" in m]
     has_index = any(m.endswith("src/pdomain_prep_for_pgdp/static/index.html") for m in members)
     return len(static), has_index

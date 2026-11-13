@@ -111,6 +111,28 @@ source = "vcs"
 # sdist and applies the per-target include spec against that dir.
 artifacts = ["src/pdomain_prep_for_pgdp/static/**/*"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.docgraph",
+    "/.worktrees",
+    "/.venv",
+    "**/node_modules",
+    "/.ci-ai.log",
+    "/.coverage*",
+    "/.superpowers",
+    "/.review",
+    "/frontend/dist",
+    "/frontend/coverage",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.ruff_cache",
+    "**/.mypy_cache",
+    "**/.cache",
+    "**/.uv-cache",
+    "**/.vite",
+    "**/*.tsbuildinfo",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/pdomain_prep_for_pgdp"]
 # The global `artifacts` above also covers this target; no additional per-wheel
