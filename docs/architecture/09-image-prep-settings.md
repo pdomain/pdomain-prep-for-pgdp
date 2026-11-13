@@ -44,7 +44,8 @@ to its resolved execution config before dispatch; this is separate from the gene
 Page settings use SQLite tier `page:{page_id}`; project defaults use tier `default`.
 App-wide defaults use `pdomain-ops` `LocalFilePrefs` under `stage_settings.<stage_id>`.
 An old `stage_settings_all.json` file is a read fallback when the preference key is absent.
-App-wide preferences do not have a project event log. The earlier proposal to event-log every tier did not ship literally.
+App-wide preferences do not have a project event log.
+The earlier proposal to event-log every tier did not ship literally.
 
 The image-stage review editor uses the backend setting keys directly. `POST .../project-stages/{stage_id}/rerun` takes
 `page_ids` and optional `settings`. It merges `settings` into each page's page-tier override before queueing the jobs,
@@ -75,9 +76,10 @@ That work remains in the [Compute panel backlog](../plans/2026-06-08-compute-set
 
 Save a copy downloads `GET /api/data/projects/{id}/export`: every file under the project directory, with SQLite files
 copied through the backup API, plus `pgdp-prep-export.json` holding the project and page-stage rows. There is no import
-path yet. The archive keep list is still placeholder data, tracked by
-[W3.10](../issues/2026-07-21-w310-save-copy-archive.md).
-Open work is on the [roadmap](../plans/roadmap.md#now). The July completion plan is the record of Waves 0–3, not the queue.
+path yet. The archive keep list is the project's stage files, from
+`GET /api/data/projects/{id}/project-stages/archive/items`.
+Open work is on the [roadmap](../plans/roadmap.md#now). The July completion plan is the record of Waves 0–3,
+not the queue.
 
 ## Evidence
 

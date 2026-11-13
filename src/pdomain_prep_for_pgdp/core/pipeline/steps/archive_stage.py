@@ -33,13 +33,83 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
 from pdomain_prep_for_pgdp.core.models import V2_PROJECT_STAGE_IDS
+
+_TOGGLE_STORE_NAME = "item_toggles.json"
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveKeepItem:
+    """One stage file the archive tool can keep or drop."""
+
+    name: str
+    meta: str
+    keep: bool
+
+
+def _files_under(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    found: list[Path] = []
+    for path in root.rglob("*"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.name.startswith(".") or path.name == _TOGGLE_STORE_NAME:
+            continue
+        found.append(path)
+    return found
+
+
+def _stage_artifact_files(project_dir: Path) -> list[Path]:
+    files: list[Path] = []
+    pages = project_dir / "pages"
+    if pages.is_dir():
+        for page_dir in pages.iterdir():
+            if page_dir.is_dir():
+                files.extend(_files_under(page_dir / "stages"))
+    files.extend(_files_under(project_dir / "stages"))
+    return files
+
+
+def build_archive_keep_list(
+    project_dir: Path,
+    toggles: Mapping[str, bool] | None = None,
+) -> list[ArchiveKeepItem]:
+    """List one project's stage files as archive keep/drop rows.
+
+    ``name`` is the path relative to ``project_dir``. A missing project
+    directory, or a project with no stage files, returns an empty list.
+    ``toggles`` overrides the default keep flag for matching names. The
+    toggle store itself is not a stage artifact.
+    """
+    if not project_dir.is_dir():
+        return []
+    chosen = {} if toggles is None else toggles
+    rows: list[ArchiveKeepItem] = []
+    for path in _stage_artifact_files(project_dir):
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        name = path.relative_to(project_dir).as_posix()
+        rows.append(
+            ArchiveKeepItem(
+                name=name,
+                meta=f"{size} B",
+                keep=chosen.get(name, True),
+            )
+        )
+    rows.sort(key=lambda item: item.name)
+    return rows
+
 
 # ────────────────────────────────────────────────────────────────────────────
 # Artifact inventory (pure function, scans filesystem)

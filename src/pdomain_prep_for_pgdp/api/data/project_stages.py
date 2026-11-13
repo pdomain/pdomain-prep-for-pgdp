@@ -98,6 +98,9 @@ from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
 from pdomain_prep_for_pgdp.core.pipeline.stage_registry import (
     StageNotImplemented as StageNotImplementedError,
 )
+from pdomain_prep_for_pgdp.core.pipeline.steps.archive_stage import (
+    build_archive_keep_list,
+)
 
 if TYPE_CHECKING:
     from pdomain_prep_for_pgdp.adapters.database.base import IDatabase
@@ -2343,12 +2346,74 @@ async def waive_validation_rule(
     return JSONResponse(content={"ok": True, "rule_id": body.rule_id})
 
 
+class _ArchiveKeepItemResponse(BaseModel):
+    name: str
+    meta: str
+    keep: bool
+
+
+class _ArchiveKeepListResponse(BaseModel):
+    items: list[_ArchiveKeepItemResponse]
+
+
+def _read_archive_toggles(path: Path) -> dict[str, bool]:
+    """Read keep flags. A missing or unreadable store means no overrides."""
+    if not path.is_file():
+        return {}
+    try:
+        raw_text = path.read_text()
+    except OSError:
+        return {}
+    try:
+        parsed: object = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    toggles: dict[str, bool] = {
+        key: value for key, value in parsed.items() if isinstance(key, str) and isinstance(value, bool)
+    }
+    return toggles
+
+
+@router.get(
+    "/projects/{project_id}/project-stages/archive/items",
+    operation_id="list_archive_items",
+    response_model=_ArchiveKeepListResponse,
+    responses={
+        404: {"description": "Project not found."},
+        409: {"description": "Registry version mismatch."},
+    },
+)
+async def list_archive_items(
+    project_id: str,
+    user: UserDep,
+    db: DatabaseDep,
+    settings: SettingsDep,
+) -> _ArchiveKeepListResponse | JSONResponse:
+    """List this project's stage files as archive keep/drop rows."""
+    project = await db.get_project(project_id)
+    if project is None or project.owner_id != user.user_id:
+        raise HTTPException(404, "project not found")
+
+    registry_response, _project = await _check_registry(project, db, settings.data_root)
+    if registry_response is not None:
+        return registry_response
+
+    project_dir = settings.data_root / "projects" / project_id
+    toggles = _read_archive_toggles(project_dir / "stages" / "archive" / "item_toggles.json")
+    rows = build_archive_keep_list(project_dir, toggles)
+    return _ArchiveKeepListResponse(
+        items=[_ArchiveKeepItemResponse(name=row.name, meta=row.meta, keep=row.keep) for row in rows]
+    )
+
+
 class _ArchiveItemToggleRequest(BaseModel):
     keep: bool
 
 
 @router.patch(
-    "/projects/{project_id}/project-stages/archive/items/{item_name}",
+    "/projects/{project_id}/project-stages/archive/items/{item_name:path}",
     operation_id="toggle_archive_item",
     status_code=200,
     responses={

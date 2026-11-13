@@ -23,6 +23,44 @@ import type {
   ArchiveResult,
 } from "@/machines/tools/archiveTool";
 
+function archiveItemUrl(projectId: string, name: string): string {
+  const encodedName = name
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/archive/items/${encodedName}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isArchiveItem(value: unknown): value is ArchiveItem {
+  if (!isRecord(value)) return false;
+  const name = value["name"];
+  const meta = value["meta"];
+  const keep = value["keep"];
+  return (
+    typeof name === "string" &&
+    typeof meta === "string" &&
+    typeof keep === "boolean"
+  );
+}
+
+/**
+ * GET the project's stage files. The server list is the keep/drop manifest.
+ * A project with no stage files returns no rows.
+ */
+async function listItems(projectId: string): Promise<ArchiveItem[]> {
+  const body: unknown = await api.get<unknown>(
+    `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/archive/items`,
+  );
+  if (!isRecord(body) || !Array.isArray(body["items"])) {
+    throw new Error("Archive list response is not a list.");
+  }
+  return body["items"].filter(isArchiveItem);
+}
+
 /**
  * Trigger the archive operation via the project-stage run route.
  *
@@ -57,10 +95,7 @@ async function persistItem(
   keep: boolean,
 ): Promise<{ ok: boolean }> {
   try {
-    await api.patch(
-      `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/archive/items/${encodeURIComponent(name)}`,
-      { keep },
-    );
+    await api.patch(archiveItemUrl(projectId, name), { keep });
     return { ok: true };
   } catch {
     return { ok: false };
@@ -73,5 +108,5 @@ async function persistItem(
 
 /** Build real ArchiveToolServices for injection into the machine. */
 export function buildRealArchiveToolServices(): ArchiveToolServices {
-  return { archiveProject, persistItem };
+  return { archiveProject, persistItem, listItems };
 }

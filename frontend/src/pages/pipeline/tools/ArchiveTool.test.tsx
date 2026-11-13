@@ -21,7 +21,11 @@ import {
   act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  RouterProvider,
+} from "react-router-dom";
 import type { ProjectChannelEvent, ProjectStageState } from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
@@ -74,18 +78,29 @@ function archiveStageRow(
   };
 }
 
+const KEPT_NAME = "pages/0001/stages/threshold/output.png";
+const DROPPED_NAME = "pages/0001/stages/grayscale/output.png";
+const KEPT_ROW = "archive-item-pages-0001-stages-threshold-output-png";
+const KEPT_TOGGLE = "toggle-keep-pages-0001-stages-threshold-output-png";
+const DROPPED_TOGGLE = "toggle-keep-pages-0001-stages-grayscale-output-png";
+
 const TEST_SERVICES: ArchiveToolServices = {
   archiveProject: (_pid, _items, _dest, _ret) =>
     Promise.resolve({ kept: "3.5 GB", dropped: "18.4 GB" }),
   persistItem: (_pid, _name, _keep) => Promise.resolve({ ok: true }),
+  listItems: () =>
+    Promise.resolve([
+      { name: KEPT_NAME, meta: "9 B", keep: true },
+      { name: DROPPED_NAME, meta: "4 B", keep: false },
+    ]),
 };
 
 // ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
 
-function renderArchive() {
-  return render(
+async function renderArchive() {
+  const view = render(
     <MemoryRouter>
       <ArchiveTool
         stageId="archive"
@@ -94,6 +109,8 @@ function renderArchive() {
       />
     </MemoryRouter>,
   );
+  await screen.findByTestId(KEPT_ROW);
+  return view;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,41 +118,40 @@ function renderArchive() {
 // ---------------------------------------------------------------------------
 
 describe("ArchiveTool — reviewing state", () => {
-  it("renders archive-tool root", () => {
-    renderArchive();
+  it("renders archive-tool root", async () => {
+    await renderArchive();
     expect(screen.getByTestId("archive-tool")).toBeInTheDocument();
   });
 
-  it("renders archive-manifest", () => {
-    renderArchive();
+  it("renders archive-manifest", async () => {
+    await renderArchive();
     expect(screen.getByTestId("archive-manifest")).toBeInTheDocument();
   });
 
-  it("renders archive-now-btn in reviewing state", () => {
-    renderArchive();
+  it("renders archive-now-btn in reviewing state", async () => {
+    await renderArchive();
     expect(screen.getByTestId("archive-now-btn")).toBeInTheDocument();
   });
 
-  it("renders item rows for MOCK_ITEMS", () => {
-    renderArchive();
-    // First MOCK_ITEM is "Original scans"
+  it("renders the project stage files and not the mock catalog", async () => {
+    await renderArchive();
+    expect(await screen.findByTestId(KEPT_ROW)).toBeInTheDocument();
     expect(
-      screen.getByTestId("archive-item-original-scans"),
-    ).toBeInTheDocument();
+      screen.queryByTestId("archive-item-original-scans"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Original scans")).not.toBeInTheDocument();
+    expect(screen.queryByText("Finished package")).not.toBeInTheDocument();
+    expect(screen.queryByText("Grayscale pages")).not.toBeInTheDocument();
   });
 
-  it("renders toggle-keep-{name} for each item", () => {
-    renderArchive();
-    expect(
-      screen.getByTestId("toggle-keep-original-scans"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByTestId("toggle-keep-grayscale-pages"),
-    ).toBeInTheDocument();
+  it("renders toggle-keep-{name} for each item", async () => {
+    await renderArchive();
+    expect(await screen.findByTestId(KEPT_TOGGLE)).toBeInTheDocument();
+    expect(screen.getByTestId(DROPPED_TOGGLE)).toBeInTheDocument();
   });
 
-  it("gate-archived is NOT shown in reviewing state", () => {
-    renderArchive();
+  it("gate-archived is NOT shown in reviewing state", async () => {
+    await renderArchive();
     expect(screen.queryByTestId("gate-archived")).not.toBeInTheDocument();
   });
 });
@@ -145,21 +161,21 @@ describe("ArchiveTool — reviewing state", () => {
 // ---------------------------------------------------------------------------
 
 describe("ArchiveTool — TOGGLE_KEEP", () => {
-  it("'Original scans' starts as 'keep' — button shows 'Drop'", () => {
-    renderArchive();
-    const btn = screen.getByTestId("toggle-keep-original-scans");
+  it("a kept stage file starts with a Drop button", async () => {
+    await renderArchive();
+    const btn = await screen.findByTestId(KEPT_TOGGLE);
     expect(btn).toHaveTextContent("Drop");
   });
 
-  it("'Grayscale pages' starts as 'drop' — button shows 'Keep'", () => {
-    renderArchive();
-    const btn = screen.getByTestId("toggle-keep-grayscale-pages");
+  it("a dropped stage file starts with a Keep button", async () => {
+    await renderArchive();
+    const btn = await screen.findByTestId(DROPPED_TOGGLE);
     expect(btn).toHaveTextContent("Keep");
   });
 
-  it("clicking toggle flips the button label", () => {
-    renderArchive();
-    const btn = screen.getByTestId("toggle-keep-original-scans");
+  it("clicking toggle flips the button label", async () => {
+    await renderArchive();
+    const btn = await screen.findByTestId(KEPT_TOGGLE);
     expect(btn).toHaveTextContent("Drop");
     fireEvent.click(btn);
     expect(btn).toHaveTextContent("Keep");
@@ -172,7 +188,7 @@ describe("ArchiveTool — TOGGLE_KEEP", () => {
 
 describe("ArchiveTool — archiving and archived states", () => {
   it("clicking archive-now-btn triggers archiving-in-progress", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       // Either archiving-in-progress or gate-archived depending on mock speed
@@ -183,7 +199,7 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("renders gate-archived after archive completes", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("gate-archived")).toBeInTheDocument();
@@ -191,7 +207,7 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("renders kept-stat after archiving", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("kept-stat")).toBeInTheDocument();
@@ -199,7 +215,7 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("renders dropped-stat after archiving", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("dropped-stat")).toBeInTheDocument();
@@ -207,7 +223,7 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("kept-stat shows mock kept value (3.5 GB)", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("kept-stat")).toHaveTextContent("3.5 GB");
@@ -215,7 +231,7 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("archive-now-btn is gone; re-archive-btn appears after archived", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("gate-archived")).toBeInTheDocument();
@@ -225,12 +241,12 @@ describe("ArchiveTool — archiving and archived states", () => {
   });
 
   it("toggle buttons are disabled after archiving", async () => {
-    renderArchive();
+    await renderArchive();
     fireEvent.click(screen.getByTestId("archive-now-btn"));
     await waitFor(() => {
       expect(screen.getByTestId("gate-archived")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("toggle-keep-original-scans")).toBeDisabled();
+    expect(await screen.findByTestId(KEPT_TOGGLE)).toBeDisabled();
   });
 });
 
@@ -241,21 +257,21 @@ describe("ArchiveTool — archiving and archived states", () => {
 describe("ArchiveTool — settings tab", () => {
   it("renders archive-settings panel on Settings tab", async () => {
     const user = userEvent.setup();
-    renderArchive();
+    await renderArchive();
     await user.click(screen.getByRole("tab", { name: "Step Settings" }));
     expect(screen.getByTestId("archive-settings")).toBeInTheDocument();
   });
 
   it("shows destination: glacier in settings", async () => {
     const user = userEvent.setup();
-    renderArchive();
+    await renderArchive();
     await user.click(screen.getByRole("tab", { name: "Step Settings" }));
     expect(screen.getByText("glacier")).toBeInTheDocument();
   });
 
   it("shows retention: 10yr in settings", async () => {
     const user = userEvent.setup();
-    renderArchive();
+    await renderArchive();
     await user.click(screen.getByRole("tab", { name: "Step Settings" }));
     expect(screen.getByText("10yr")).toBeInTheDocument();
   });
@@ -275,9 +291,91 @@ describe("ArchiveTool — settings tab", () => {
 // because the machine always started at `reviewing` and nothing ever moved it.
 // ---------------------------------------------------------------------------
 
+describe("ArchiveTool — inventory load", () => {
+  it("disables archive and shows an error when the list fails", async () => {
+    render(
+      <MemoryRouter>
+        <ArchiveTool
+          stageId="archive"
+          runnerRef={fakeRunnerRef}
+          _testServices={{
+            ...TEST_SERVICES,
+            listItems: () => Promise.reject(new Error("offline")),
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("archive-list-error")).toHaveTextContent(
+      "Could not load the archive list.",
+    );
+    expect(screen.getByTestId("archive-now-btn")).toBeDisabled();
+    expect(screen.queryByText("Original scans")).not.toBeInTheDocument();
+  });
+
+  it("loads and archives the project in the current route", async () => {
+    const listItems = vi.fn(async (projectId: string) => [
+      {
+        name: `pages/${projectId}/stages/threshold/output.png`,
+        meta: "1 B",
+        keep: true,
+      },
+    ]);
+    const archiveProject = vi.fn(async () => ({
+      kept: "1 B",
+      dropped: "0 B",
+    }));
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/projects/:projectId/archive",
+          element: (
+            <ArchiveTool
+              stageId="archive"
+              runnerRef={fakeRunnerRef}
+              _testServices={{
+                ...TEST_SERVICES,
+                listItems,
+                archiveProject,
+              }}
+            />
+          ),
+        },
+      ],
+      { initialEntries: ["/projects/alpha/archive"] },
+    );
+    render(<RouterProvider router={router} />);
+
+    expect(
+      await screen.findByText("pages/alpha/stages/threshold/output.png"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate("/projects/beta/archive");
+    });
+
+    expect(
+      await screen.findByText("pages/beta/stages/threshold/output.png"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("pages/alpha/stages/threshold/output.png"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("archive-now-btn"));
+    await waitFor(() => {
+      expect(archiveProject).toHaveBeenCalledWith(
+        "beta",
+        expect.any(Array),
+        "glacier",
+        "10yr",
+      );
+    });
+  });
+});
+
 describe("ArchiveTool — rehydration from persisted status", () => {
   it("renders gate-archived when the connect snapshot reports archive clean", async () => {
-    renderArchive();
+    await renderArchive();
     expect(screen.queryByTestId("gate-archived")).not.toBeInTheDocument();
 
     act(() => {
@@ -293,7 +391,7 @@ describe("ArchiveTool — rehydration from persisted status", () => {
   });
 
   it("renders gate-archived when a stage-status frame reports archive clean", async () => {
-    renderArchive();
+    await renderArchive();
 
     act(() => {
       _projectCallback?.({
@@ -311,7 +409,7 @@ describe("ArchiveTool — rehydration from persisted status", () => {
   });
 
   it("stays in reviewing when the snapshot reports archive not clean", async () => {
-    renderArchive();
+    await renderArchive();
 
     act(() => {
       _projectCallback?.({
@@ -327,7 +425,7 @@ describe("ArchiveTool — rehydration from persisted status", () => {
   });
 
   it("ignores clean frames for other stages", async () => {
-    renderArchive();
+    await renderArchive();
 
     act(() => {
       _projectCallback?.({

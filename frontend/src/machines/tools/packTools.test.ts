@@ -201,6 +201,7 @@ function makeArchiveServices(
       .fn()
       .mockResolvedValue({ kept: "3.5 GB", dropped: "18.4 GB" }),
     persistItem: vi.fn().mockResolvedValue({ ok: true }),
+    listItems: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -946,7 +947,7 @@ describe("submitCheckTool — dry-run and SUBMIT gate", () => {
 // ---------------------------------------------------------------------------
 
 describe("archiveTool — lifecycle", () => {
-  it("starts in reviewing with default items", () => {
+  it("starts in reviewing with no invented items", () => {
     const actor = createActor(archiveToolMachine, {
       input: {
         projectId: "proj-test",
@@ -957,28 +958,68 @@ describe("archiveTool — lifecycle", () => {
     actor.start();
     const snap = actor.getSnapshot();
     expect(snap.matches("reviewing")).toBe(true);
-    expect(snap.context.items.length).toBeGreaterThan(0);
+    expect(snap.context.items).toEqual([]);
     actor.stop();
   });
 
-  it("TOGGLE_KEEP flips the keep flag for the named item", () => {
+  it("ITEMS_LOADED replaces the list with the project stage files", () => {
     const actor = createActor(archiveToolMachine, {
       input: {
         projectId: "proj-test",
         stageIndex: 23,
         services: makeArchiveServices(),
+      } satisfies ArchiveToolInput,
+    });
+    actor.start();
+    const loaded = [
+      {
+        name: "pages/0001/stages/threshold/output.png",
+        meta: "9 B",
+        keep: true,
+      },
+    ];
+    actor.send({ type: "ITEMS_LOADED", items: loaded });
+    expect(actor.getSnapshot().context.items).toEqual(loaded);
+    actor.stop();
+  });
+
+  it("TOGGLE_KEEP flips the keep flag for the named item", () => {
+    const services = makeArchiveServices();
+    const actor = createActor(archiveToolMachine, {
+      input: {
+        projectId: "proj-test",
+        stageIndex: 23,
+        services,
         initialItems: [
-          { name: "Original scans", meta: "source", keep: true },
-          { name: "Intermediates", meta: "re-derivable", keep: false },
+          {
+            name: "pages/0001/stages/threshold/output.png",
+            meta: "9 B",
+            keep: true,
+          },
+          {
+            name: "pages/0001/stages/grayscale/output.png",
+            meta: "4 B",
+            keep: false,
+          },
         ],
       } satisfies ArchiveToolInput,
     });
     actor.start();
 
-    actor.send({ type: "TOGGLE_KEEP", name: "Original scans" });
+    actor.send({
+      type: "TOGGLE_KEEP",
+      name: "pages/0001/stages/threshold/output.png",
+    });
     const snap = actor.getSnapshot();
-    const item = snap.context.items.find((it) => it.name === "Original scans");
+    const item = snap.context.items.find(
+      (it) => it.name === "pages/0001/stages/threshold/output.png",
+    );
     expect(item?.keep).toBe(false);
+    expect(services.persistItem).toHaveBeenCalledWith(
+      "proj-test",
+      "pages/0001/stages/threshold/output.png",
+      false,
+    );
     actor.stop();
   });
 

@@ -27,39 +27,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/Tabs";
 import { buildRealArchiveToolServices } from "@/services/tools/archiveTool";
 import { subscribeProject } from "@/services/sse";
 
-// ---------------------------------------------------------------------------
-// Initial items (UI state seed — not from API at I1)
-// ---------------------------------------------------------------------------
-
-const MOCK_ITEMS: ArchiveItem[] = [
-  { name: "Original scans", meta: "source TIFFs / JPEGs — 2.1 GB", keep: true },
-  {
-    name: "Finished package",
-    meta: "zip + manifest + provenance — 1.38 GB",
-    keep: true,
-  },
-  {
-    name: "Full provenance trail",
-    meta: "pipeline logs + settings hashes — 8 MB",
-    keep: true,
-  },
-  {
-    name: "Grayscale pages",
-    meta: "re-derivable from source — 5.4 GB",
-    keep: false,
-  },
-  {
-    name: "Processed pages",
-    meta: "re-derivable from source + settings — 6.1 GB",
-    keep: false,
-  },
-  { name: "OCR crops", meta: "re-derivable — 4.8 GB", keep: false },
-  {
-    name: "Text review markup",
-    meta: "embedded in package — 12 MB",
-    keep: false,
-  },
-];
+function itemSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -77,7 +50,7 @@ function ItemRow({
   const color = item.keep ? "var(--exact)" : "var(--ink-4)";
   return (
     <div
-      data-testid={`archive-item-${item.name.replace(/\s+/g, "-").toLowerCase()}`}
+      data-testid={`archive-item-${itemSlug(item.name)}`}
       style={{
         display: "flex",
         alignItems: "center",
@@ -137,7 +110,7 @@ function ItemRow({
         {item.keep ? "keep" : "drop"}
       </span>
       <Button
-        data-testid={`toggle-keep-${item.name.replace(/\s+/g, "-").toLowerCase()}`}
+        data-testid={`toggle-keep-${itemSlug(item.name)}`}
         variant="ghost"
         size="sm"
         disabled={disabled}
@@ -154,20 +127,33 @@ function ItemRow({
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ArchiveTool({
+export function ArchiveTool(
+  props: ToolSlotProps & { _testServices?: ArchiveToolServices },
+): ReactNode {
+  const { projectId = "demo" } = useParams<{ projectId: string }>();
+  return (
+    <ArchiveToolForProject key={projectId} projectId={projectId} {...props} />
+  );
+}
+
+function ArchiveToolForProject({
   stageId,
   runnerRef: _runnerRef,
   _testServices,
-}: ToolSlotProps & { _testServices?: ArchiveToolServices }): ReactNode {
-  const { projectId = "demo" } = useParams<{ projectId: string }>();
-  const services = _testServices ?? buildRealArchiveToolServices();
+  projectId,
+}: ToolSlotProps & {
+  _testServices?: ArchiveToolServices;
+  projectId: string;
+}): ReactNode {
+  const [services] = useState(
+    () => _testServices ?? buildRealArchiveToolServices(),
+  );
 
   const [snapshot, send] = useActor(archiveToolMachine, {
     input: {
       projectId,
       stageIndex: 23,
       services,
-      initialItems: MOCK_ITEMS,
       settings: { destination: "glacier", retention: "10yr" },
     },
   });
@@ -185,6 +171,21 @@ export function ArchiveTool({
   // connect (the reload case) and later `project-stage-status` frames (a run
   // completing in another tab). Handle both — same pattern as ZipTool's SSE
   // wiring, which listens for the incremental frames.
+  useEffect(() => {
+    let cancelled = false;
+    services
+      .listItems(projectId)
+      .then((items) => {
+        if (!cancelled) send({ type: "ITEMS_LOADED", items });
+      })
+      .catch(() => {
+        if (!cancelled) send({ type: "ITEMS_FAILED" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, send, services]);
+
   useEffect(() => {
     const unsubscribe = subscribeProject(projectId, (event) => {
       if (event.type === "project-snapshot") {
@@ -277,8 +278,8 @@ export function ArchiveTool({
                       color: "var(--ink-3)",
                     }}
                   >
-                    Originals, the finished package and full provenance are
-                    preserved; bulky intermediates dropped.
+                    Stage files marked keep stay in the archive. Files marked
+                    drop stay out of it.
                   </div>
                 </div>
               </div>
@@ -589,6 +590,7 @@ export function ArchiveTool({
                     data-testid="archive-now-btn"
                     variant="primary"
                     size="sm"
+                    disabled={!ctx.itemsReady}
                     onClick={() => send({ type: "ARCHIVE_NOW" })}
                   >
                     Archive now
@@ -605,6 +607,14 @@ export function ArchiveTool({
                   </Button>
                 )}
               </div>
+              {!ctx.itemsReady && ctx.error && (
+                <div
+                  data-testid="archive-list-error"
+                  style={{ fontSize: 12, color: "var(--ink-3)" }}
+                >
+                  {ctx.error.message}
+                </div>
+              )}
               <div data-testid="archive-manifest" style={{ padding: "0 16px" }}>
                 {ctx.items.map((item) => (
                   <ItemRow

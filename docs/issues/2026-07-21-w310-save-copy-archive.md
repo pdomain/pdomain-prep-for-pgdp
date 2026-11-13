@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-21
-Last verified: 2026-11-07
+Last verified: 2026-11-12
 Kind: issue
 Level: I1
 ---
@@ -14,9 +14,9 @@ Level: I1
 - **Kind:** issue
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-07
-- **Resolution:** Open
-- **Severity:** Medium — manage export and archive inventory not real product paths
+- **Last verified:** 2026-11-12
+- **Resolution:** On master. Save a copy is `06d9a5c` (`9d1e2a4`). The keep list is the project's stage files.
+- **Severity:** Medium — the export and the keep list were missing. Both paths now exist.
 - **Affected version:** pdomain-prep-for-pgdp (main @ 2026-07-21)
 - **Read when:** implementing project export, archive stage inventory, or manage actions.
 - **Search terms:** comingSoon, saveCopy, export_project_copy, MOCK_ITEMS, ArchiveTool, manage actions, W3.10
@@ -143,5 +143,10 @@ list.” W3.10 done-when: “Manage actions no longer `comingSoon`” + real inv
 
 ## Resolution
 
-*Open.* When fixed: set frontmatter + Agent Index `Status: retired`, link
-export + archive inventory commits, route retirement through `doc-retirer`.
+On master. Save a copy is `06d9a5c` (`9d1e2a4`): `GET /api/data/projects/{id}/export` returns the project zip. The keep
+list is the project's stage files. `build_archive_keep_list` reads page-stage and project-stage files and skips the
+toggle store. `GET /api/data/projects/{id}/project-stages/archive/items` returns those rows, and the archive tool loads
+that list instead of `MOCK_ITEMS`. A project with no stage files has an empty list. Retire this report through
+`doc-retirer` when the issue file itself is closed.
+
+- Tests: `tests/test_archive_keep_list.py` and `tests/test_project_export.py`.

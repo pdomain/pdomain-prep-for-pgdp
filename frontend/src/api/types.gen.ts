@@ -1016,6 +1016,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data/projects/{project_id}/project-stages/archive/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Archive Items
+         * @description List this project's stage files as archive keep/drop rows.
+         */
+        get: operations["list_archive_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data/projects/{project_id}/project-stages/archive/items/{item_name}": {
         parameters: {
             query?: never;
@@ -4147,6 +4167,20 @@ export interface components {
             /** Keep */
             keep: boolean;
         };
+        /** _ArchiveKeepItemResponse */
+        _ArchiveKeepItemResponse: {
+            /** Name */
+            name: string;
+            /** Meta */
+            meta: string;
+            /** Keep */
+            keep: boolean;
+        };
+        /** _ArchiveKeepListResponse */
+        _ArchiveKeepListResponse: {
+            /** Items */
+            items: components["schemas"]["_ArchiveKeepItemResponse"][];
+        };
         /** _AttributeRecord */
         _AttributeRecord: {
             /**
@@ -6026,6 +6060,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Project not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Registry version mismatch. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_archive_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["_ArchiveKeepListResponse"];
                 };
             };
             /** @description Project not found. */

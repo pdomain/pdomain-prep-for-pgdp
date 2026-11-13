@@ -18,7 +18,7 @@ Last verified: 2026-11-12
 
 This is the only forward queue. Shipped behavior lives in [architecture](../architecture/01-overview.md).
 
-The [July 2026 pipeline review](2026-07-21-pipeline-completion-review.md) is the record that created Waves 0–3. Waves 0 and 1 shipped. Wave 2 and the finished Wave 3 rows are on `master` in `c16c5e1` and `06d9a5c`. Their contracts are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts) and [image-prep settings](../architecture/09-image-prep-settings.md).
+The [July 2026 pipeline review](2026-07-21-pipeline-completion-review.md) is the record that created Waves 0–3. Waves 0 and 1 shipped. Wave 2 and the finished Wave 3 rows are on `master` in `c16c5e1` and `06d9a5c`. W3.10's save-a-copy download is in that set. Its keep list is the project's stage files. Their contracts are in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts) and [image-prep settings](../architecture/09-image-prep-settings.md).
 
 [Repository boundary](../architecture/10-repository-boundary.md) says whether a feature should live in this app or in another repository.
 
@@ -33,7 +33,6 @@ Open rows are first. Landed rows are already on `master`.
 | ID | Issue | Why it is still open |
 | --- | --- | --- |
 | W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Reconcile-on-load is on `master` in `06d9a5c` (`88d4e14`). Page order still cannot take folios from a detector. `pdomain-book-tools` 0.28.0 has none. No branch holds the detector. |
-| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy is on `master` in `06d9a5c` (`9d1e2a4`). The archive keep list is still placeholder data. No branch holds that half. |
 | — | [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md) | No branch holds this. |
 | — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | `make audit` is on `master` in `06d9a5c` (`a45325c`) and is not part of `make ci`. The lockfile has known advisories. No branch holds the gate. |
 
@@ -52,6 +51,7 @@ Open rows are first. Landed rows are already on `master`.
 | W3.5 | [reindex --heal](../issues/2026-07-21-w35-reindex-heal.md) | `06d9a5c` (`1c9393b`), with the [heal runbook](../runbooks/reindex-heal.md) |
 | W3.6 | [Job and stage cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | `c16c5e1` (`6b8afe5`) |
 | W3.7 | [Cookie secure and CORS allowlist](../issues/2026-07-21-w37-cookie-cors-hardening.md) | `c16c5e1` (`7a96382`) |
+| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy is `06d9a5c` (`9d1e2a4`). The keep list is the project's stage files. |
 | — | [Progress updates overwrite a cancelled job](../issues/2026-11-09-progress-overwrites-cancel.md) | `c16c5e1` (`c85a128`) |
 | — | [Postgres adapter](../issues/2026-11-09-postgres-adapter-incomplete.md) | `06d9a5c` (`3e2ecd4`). The hosted database product stays a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service). |
 | — | Submission zip entry times | `06d9a5c` (`ce1f557`). Every entry takes its time from `built_at`. |
@@ -105,7 +105,7 @@ The JSX prototype remains at `docs/plans/design_handoff_pgdp_app/`. It is a desi
 | #172 | Global rule library across books | [Parked in this app](#parked-in-this-app), or a shared library if other tools consume it |
 | #177 | Hyphen-join settings tab | [Parked in this app](#parked-in-this-app). The n-gram store is a [separate repository](../architecture/10-repository-boundary.md#hyphen-n-gram-store). |
 | #185, #189 | Split overlay and text-zone canvas | On master in `06d9a5c`. [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) records the extras that were not in that row. |
-| #193 | Save a copy from the Manage tab | The download is on master in `06d9a5c`. Archive inventory stays [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). |
+| #193 | Save a copy from the Manage tab | The download is on master in `06d9a5c`. The archive keep list is the project's stage files. See [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). |
 
 ## Separate repositories
 

@@ -2455,6 +2455,60 @@
         }
       }
     },
+    "/api/data/projects/{project_id}/project-stages/archive/items": {
+      "get": {
+        "tags": [
+          "project-stages"
+        ],
+        "summary": "List Archive Items",
+        "description": "List this project's stage files as archive keep/drop rows.",
+        "operationId": "list_archive_items",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ArchiveKeepListResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project not found."
+          },
+          "409": {
+            "description": "Registry version mismatch."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/data/projects/{project_id}/project-stages/archive/items/{item_name}": {
       "patch": {
         "tags": [
@@ -10722,6 +10776,45 @@
           "keep"
         ],
         "title": "_ArchiveItemToggleRequest"
+      },
+      "_ArchiveKeepItemResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "meta": {
+            "type": "string",
+            "title": "Meta"
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "meta",
+          "keep"
+        ],
+        "title": "_ArchiveKeepItemResponse"
+      },
+      "_ArchiveKeepListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/_ArchiveKeepItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "_ArchiveKeepListResponse"
       },
       "_AttributeRecord": {
         "properties": {

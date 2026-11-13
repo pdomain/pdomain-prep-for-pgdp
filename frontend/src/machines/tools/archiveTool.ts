@@ -78,6 +78,12 @@ export interface ArchiveToolServices {
     name: string,
     keep: boolean,
   ): Promise<{ ok: boolean }>;
+
+  /**
+   * GET /api/data/projects/:id/project-stages/archive/items
+   * The project's stage files. An empty project returns no rows.
+   */
+  listItems(projectId: string): Promise<ArchiveItem[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +103,7 @@ export interface ArchiveToolContext {
   stageIndex: number;
   services: ArchiveToolServices;
   items: ArchiveItem[];
+  itemsReady: boolean;
   destination: ArchiveDestination;
   retention: ArchiveRetention;
   result: ArchiveResult | null;
@@ -125,20 +132,9 @@ export type ArchiveToolEvent =
    * live run in this session.  A restored `archived` state renders the gate
    * without them.
    */
-  | { type: "ARCHIVE_RESTORED"; result?: ArchiveResult };
-
-// ---------------------------------------------------------------------------
-// Default item manifest
-// ---------------------------------------------------------------------------
-
-const DEFAULT_ARCHIVE_ITEMS: ArchiveItem[] = [
-  { name: "Original scans", meta: "source TIFFs / JPEGs", keep: true },
-  { name: "Finished package", meta: "zip + manifest + provenance", keep: true },
-  { name: "Grayscale pages", meta: "re-derivable from source", keep: false },
-  { name: "Processed pages", meta: "re-derivable from source", keep: false },
-  { name: "OCR crops", meta: "re-derivable", keep: false },
-  { name: "Text review output", meta: "embedded in package", keep: false },
-];
+  | { type: "ARCHIVE_RESTORED"; result?: ArchiveResult }
+  | { type: "ITEMS_LOADED"; items: ArchiveItem[] }
+  | { type: "ITEMS_FAILED" };
 
 // ---------------------------------------------------------------------------
 // Machine
@@ -196,11 +192,10 @@ export const archiveToolMachine = setup({
       if (event.type !== "TOGGLE_KEEP") return;
       const item = context.items.find((it) => it.name === event.name);
       if (item) {
-        void context.services.persistItem(
-          context.projectId,
-          event.name,
-          !item.keep,
-        );
+        // toggleItem already stored the new keep flag.
+        void context.services
+          .persistItem(context.projectId, event.name, item.keep)
+          .catch(() => undefined);
       }
     },
     /**
@@ -223,6 +218,14 @@ export const archiveToolMachine = setup({
         result: params.result ?? context.result,
       }),
     ),
+    assignLoadedItems: assign(({ event }: { event: ArchiveToolEvent }) => {
+      if (event.type !== "ITEMS_LOADED") return {};
+      return { items: event.items, itemsReady: true, error: null };
+    }),
+    assignLoadError: assign({
+      itemsReady: false,
+      error: () => new Error("Could not load the archive list."),
+    }),
     assignError: assign(
       (_args, params: { error: unknown }): Partial<ArchiveToolContext> => ({
         error:
@@ -238,13 +241,18 @@ export const archiveToolMachine = setup({
     projectId: input.projectId,
     stageIndex: input.stageIndex,
     services: input.services,
-    items: input.initialItems ?? DEFAULT_ARCHIVE_ITEMS,
+    items: input.initialItems ?? [],
+    itemsReady: input.initialItems !== undefined,
     destination: input.settings?.destination ?? "glacier",
     retention: input.settings?.retention ?? "10yr",
     result: null,
     error: null,
   }),
   initial: "reviewing",
+  on: {
+    ITEMS_LOADED: { actions: "assignLoadedItems" },
+    ITEMS_FAILED: { actions: "assignLoadError" },
+  },
   states: {
     reviewing: {
       on: {
