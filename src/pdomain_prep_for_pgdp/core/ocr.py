@@ -301,6 +301,20 @@ def ocr_page(
     )
 
 
+def _document_from_images_ocr_result(result: object) -> Any:
+    """Return the Document from either ``from_images_ocr_via_doctr`` shape.
+
+    Published book-tools returns the Document. Newer book-tools returns
+    ``(Document, degrees)``, one clockwise degree per page. The degrees
+    are unused.
+    """
+    if isinstance(result, tuple):
+        if len(result) == 0:
+            raise RuntimeError("DocTR image OCR returned an empty tuple")
+        return result[0]
+    return result
+
+
 def ocr_page_from_image(
     image: Any,  # np.ndarray (HxWxC or HxW, uint8); typed as Any to avoid mandatory import
     *,
@@ -355,11 +369,14 @@ def ocr_page_from_image(
 
     # Use the batch ndarray API (single-element list).  This is the same code
     # path that pdomain_ops.gpu.doctr_batch.run_doctr_batch uses, which is the
-    # canonical GPU-friendly interface.
-    doc = Document.from_images_ocr_via_doctr(
-        images=[image],
-        source_identifiers=[source_identifier],
-        predictor=predictor,
+    # canonical GPU-friendly interface. Published book-tools returns a
+    # Document; newer book-tools returns (Document, clockwise degrees).
+    doc = _document_from_images_ocr_result(
+        Document.from_images_ocr_via_doctr(
+            images=[image],
+            source_identifiers=[source_identifier],
+            predictor=predictor,
+        )
     )
     if not doc.pages:
         raise RuntimeError("DocTR produced no pages for ndarray input in ocr_page_from_image")
