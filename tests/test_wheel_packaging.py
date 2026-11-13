@@ -112,8 +112,8 @@ def test_pyproject_global_artifacts_includes_static() -> None:
     )
 
 
-def test_makefile_build_uses_explicit_sdist_and_wheel() -> None:
-    """The ``build`` Makefile target must build sdist and wheel separately from source.
+def test_justfile_build_uses_explicit_sdist_and_wheel() -> None:
+    """The ``build`` just recipe must build sdist and wheel separately from source.
 
     ``uv build`` (default, without explicit flags) builds the wheel *from the
     sdist* in a temporary non-git directory. If the sdist or wheel configuration
@@ -121,9 +121,16 @@ def test_makefile_build_uses_explicit_sdist_and_wheel() -> None:
     explicitly from the source tree (``uv build --sdist`` then
     ``uv build --wheel``) eliminates this failure mode.
     """
-    makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "uv build --sdist" in makefile and "uv build --wheel" in makefile, (
-        "Makefile `build` target must run `uv build --sdist` and `uv build --wheel` "
+    result = subprocess.run(
+        ["just", "--show", "build"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "uv build --sdist" in result.stdout and "uv build --wheel" in result.stdout, (
+        "just `build` recipe must run `uv build --sdist` and `uv build --wheel` "
         "as separate explicit commands (not bare `uv build`). "
         "Bare `uv build` builds the wheel from the sdist in a temp non-git dir, "
         "which can silently drop the gitignored static/ even when global `artifacts` "

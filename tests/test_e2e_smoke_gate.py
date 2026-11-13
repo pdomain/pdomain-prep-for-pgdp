@@ -1,9 +1,10 @@
-"""`make ci` runs the Playwright smoke subset and keeps heavy browser tests opt-in."""
+"""`just ci` runs the Playwright smoke subset and keeps heavy browser tests opt-in."""
 
 from __future__ import annotations
 
 import ast
-import re
+import shlex
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -17,26 +18,42 @@ SMOKE_TESTS = [
 ]
 
 
-def _make_rule(target: str) -> str:
-    text = (ROOT / "Makefile").read_text()
-    match = re.search(rf"^{re.escape(target)}:(.*(?:\n\t.*)*)", text, flags=re.MULTILINE)
-    assert match is not None, f"no make target {target}"
-    return match.group(1)
+def _show_recipe(name: str) -> str:
+    """Return the rendered command body for a just recipe."""
+    result = subprocess.run(
+        ["just", "--show", name],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def _recipe_tasks(name: str) -> list[str]:
+    """Return the ordered task names invoked by a just recipe."""
+    return [
+        task
+        for line in _show_recipe(name).splitlines()
+        if line.startswith("    just --quiet ")
+        for task in shlex.split(line)[2:]
+    ]
 
 
 def test_ci_gates_on_the_smoke_subset() -> None:
-    assert "e2e-smoke" in _make_rule("ci").split("\n")[0].split()
+    assert "e2e-smoke" in _recipe_tasks("ci")
 
 
 def test_smoke_target_builds_the_spa_and_selects_only_the_marker() -> None:
-    rule = _make_rule("e2e-smoke")
-    assert "frontend-build" in rule.split("\n")[0]
+    rule = _show_recipe("e2e-smoke")
+    assert "frontend-build" in _recipe_tasks("e2e-smoke")
     assert "--group e2e" in rule
     assert "-m e2e_smoke" in rule
 
 
 def test_full_e2e_target_stays_unfiltered() -> None:
-    assert "-m " not in _make_rule("e2e")
+    assert "-m " not in _show_recipe("e2e")
 
 
 def test_marker_is_registered() -> None:

@@ -91,8 +91,8 @@ repos:
         name: frontend eslint
         description: ESLint flat-config check for the React SPA.
         entry: bash -c 'cd frontend && if command -v mise >/dev/null 2>&1; then
-          exec mise exec -- pnpm run --silent lint; else exec pnpm run --silent
-          lint; fi'
+          exec mise exec -- pnpm run --silent lint:check; else exec pnpm run --silent
+          lint:check; fi'
         language: system
         # Match what eslint actually lints: SPA source, the flat config
         # itself, and dependency manifests (a new dep can change rules

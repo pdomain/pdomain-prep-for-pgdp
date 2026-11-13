@@ -31,6 +31,16 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+# pytest-playwright 0.10's instance fixture is deprecated by pytest 9.2.
+@pytest.fixture(scope="session")
+def base_url(pytestconfig: pytest.Config) -> str | None:
+    options: tuple[object, object] = (
+        pytestconfig.getoption("--base-url"),
+        pytestconfig.getini("base_url"),
+    )
+    return next((option for option in options if isinstance(option, str) and option), None)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Harden the e2e environment: strip stale ``DISPLAY``; add warning filters.
 

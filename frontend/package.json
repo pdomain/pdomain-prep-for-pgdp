@@ -7,15 +7,17 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint .",
+    "lint": "eslint . --fix",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "openapi:gen": "openapi-typescript ../openapi.json -o src/api/types.gen.ts",
-    "knip": "knip"
+    "knip": "knip",
+    "lint:check": "eslint . --max-warnings 0",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
-import re
+import subprocess
 from pathlib import Path
 from types import ModuleType
 
@@ -53,6 +53,12 @@ def test_overall_status_fails_when_either_audit_fails(
 
 
 def test_make_audit_target_runs_the_script() -> None:
-    match = re.search(r"^audit:.*\n\t(.*)$", (ROOT / "Makefile").read_text(), flags=re.MULTILINE)
-    assert match is not None
-    assert "scripts/dep_audit.py" in match.group(1)
+    result = subprocess.run(
+        ["just", "--show", "audit"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "scripts/dep_audit.py" in result.stdout
