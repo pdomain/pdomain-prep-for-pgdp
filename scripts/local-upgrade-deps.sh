@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/local-upgrade-deps.sh — upgrade deps then restore local-editable.
 #
-# Refuses if not in local-dev mode (use `make upgrade-deps` for registry mode).
+# Refuses if not in local-dev mode (use `just upgrade-deps` for registry mode).
 set -euo pipefail
 
 # uv installs into UV_PROJECT_ENVIRONMENT when that is set and into .venv
@@ -26,7 +26,7 @@ say() { echo "[local-upgrade-deps] $*"; }
 
 if [[ ! -f "$MARKER" ]]; then
   echo "ERROR: not in local-dev mode (no marker at $MARKER)." >&2
-  echo "       Run 'make upgrade-deps' instead." >&2
+  echo "       Run 'just upgrade-deps' instead." >&2
   exit 1
 fi
 
@@ -35,6 +35,6 @@ say "→ uv lock --upgrade"
 (cd "$CANONICAL_REPO_ROOT" && uv lock --upgrade)
 say "→ uv sync"
 (cd "$CANONICAL_REPO_ROOT" && uv sync)
-say "→ uv sync wiped editables; re-running 'make local-dev' to restore"
-make -C "$REPO_ROOT" local-dev
+say "→ uv sync wiped editables; re-running 'just local-dev' to restore"
+(cd "$REPO_ROOT" && just local-dev)
 say "✓ local mode restored after upgrade."

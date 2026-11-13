@@ -8,7 +8,7 @@ Locks in:
   - Final stored thumbnails are in BlobStore with correct blob hashes.
   - The event-store path does NOT call ProcessPoolExecutor (thumbnails
     are generated sequentially from blobs).
-  - `make test` (which ships no env override) doesn't suddenly need
+  - `just test` (which ships no env override) doesn't suddenly need
     forked subprocesses for tiny test inputs.
 """
 

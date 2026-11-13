@@ -11,7 +11,7 @@ keeps codegen output readable.
 
 Drift fix-it: add ``operation_id="..."`` to the offending route
 decorator (snake_case slug, unique across the whole app), then re-run
-``make openapi-export``.
+``just openapi-export``.
 """
 
 from __future__ import annotations

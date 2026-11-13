@@ -46,5 +46,5 @@ were not revalidated by this repository audit.
 
 ## Verification
 
-The repository gate is `make ci AI=1`. Docgraph completion requires a fresh MCP reindex, zero strict checker
+The repository gate is `AI=1 just ci`. Docgraph completion requires a fresh MCP reindex, zero strict checker
 issues, and clean index health.

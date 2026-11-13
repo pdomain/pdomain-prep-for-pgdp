@@ -1,8 +1,8 @@
 # Tool versions for contributors who use mise.
 #
-# Optional — `make setup` and the per-language tools (uv, npm) work without
+# Optional — `just setup` and the per-language tools (uv, npm) work without
 # mise as long as those tools are on PATH. If you prefer pinned versions,
-# install mise (https://mise.jdx.dev/) and run `make mise-setup`.
+# install mise (https://mise.jdx.dev/) and run `just mise-setup`.
 #
 # End users installing pgdp-prep via `install.sh` don't need mise — the
 # wheel ships with a prebuilt frontend bundle.

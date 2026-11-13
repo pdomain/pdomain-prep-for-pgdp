@@ -105,7 +105,7 @@ def _free_port() -> int:
 
 
 def _spa_built() -> bool:
-    """`make e2e` runs `frontend-build` first; this is just the safety net."""
+    """`just e2e` runs `frontend-build` first; this is just the safety net."""
     static = Path(__file__).resolve().parents[2] / "src" / "pdomain_prep_for_pgdp" / "static"
     return static.is_dir() and any(static.iterdir())
 
@@ -130,7 +130,7 @@ def _run_server(server: uvicorn.Server) -> None:
 @pytest.fixture(scope="session")
 def live_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LiveServer]:
     if not _spa_built():
-        pytest.skip("SPA not built — run `make frontend-build` (or `make e2e`) before pytest tests/e2e")
+        pytest.skip("SPA not built — run `just frontend-build` (or `just e2e`) before pytest tests/e2e")
 
     data_root = tmp_path_factory.mktemp("e2e-data")
     config_dir = tmp_path_factory.mktemp("e2e-config")
@@ -185,7 +185,7 @@ def apikey_live_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Liv
     must log in (and log out) as needed to establish or clear the session.
     """
     if not _spa_built():
-        pytest.skip("SPA not built — run `make frontend-build` (or `make e2e`) before pytest tests/e2e")
+        pytest.skip("SPA not built — run `just frontend-build` (or `just e2e`) before pytest tests/e2e")
 
     data_root = tmp_path_factory.mktemp("e2e-apikey-data")
     config_dir = tmp_path_factory.mktemp("e2e-apikey-config")

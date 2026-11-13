@@ -325,7 +325,7 @@ addopts = [
     "--cov=pdomain_prep_for_pgdp",
     "--cov-branch",              # measure branch coverage (gates except-path testing)
     "--cov-report=term-missing:skip-covered",
-    "-m", "not slow",            # exclude slow tests from default run (make ci-slow runs them)
+    "-m", "not slow",            # exclude slow tests from default run (just ci-slow runs them)
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -335,8 +335,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "fixture-scope"
 
 markers = [
-    "slow: marks tests as slow — excluded from `make test`; included in `make ci-slow`",
-    "e2e_smoke: Playwright smoke subset that `make ci` runs through `make e2e-smoke`",
+    "slow: marks tests as slow — excluded from `just test`; included in `just ci-slow`",
+    "e2e_smoke: Playwright smoke subset that `just ci` runs through `just e2e-smoke`",
 ]
 filterwarnings = [
     # Treat all warnings as errors — surfaces deprecation issues at LLM-iteration time.

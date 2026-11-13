@@ -2,7 +2,7 @@
 # scripts/local-setup.sh — clone missing pdomain-* sibling repos into the workspace.
 #
 # Idempotent: skips siblings that already exist.
-# Does NOT switch the repo into local-dev mode (use `make local-dev` for that).
+# Does NOT switch the repo into local-dev mode (use `just local-dev` for that).
 set -euo pipefail
 
 # Repo-specific: list of sibling pdomain-* GitHub repo names this repo depends on.
@@ -26,4 +26,4 @@ for sibling in "${SIBLINGS[@]}"; do
   fi
 done
 
-say "done. Run 'make local-dev' to install with editable siblings."
+say "done. Run 'just local-dev' to install with editable siblings."

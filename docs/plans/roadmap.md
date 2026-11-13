@@ -34,7 +34,7 @@ Open rows are first. Landed rows are already on `master`.
 | --- | --- | --- |
 | W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Reconcile-on-load is on `master` in `06d9a5c` (`88d4e14`). Page order still cannot take folios from a detector. `pdomain-book-tools` 0.28.0 has none. No branch holds the detector. |
 | — | [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md) | No branch holds this. |
-| — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | `make audit` is on `master` in `06d9a5c` (`a45325c`) and is not part of `make ci`. The lockfile has known advisories. No branch holds the gate. |
+| — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | `make audit` is on `master` in `06d9a5c` (`a45325c`) and is not part of `just ci`. The lockfile has known advisories. No branch holds the gate. |
 
 ### Landed on master
 
@@ -125,7 +125,7 @@ Consider these as their own repositories. Rationale, sibling owners, and evidenc
 This heading is the old parking place for remote work. Some rows stay in this repo. The rest are [Separate repositories](#separate-repositories). Detail is in [Repository boundary](../architecture/10-repository-boundary.md).
 
 - **Remote GPU transport.** This app selects `GPUBackend` from `pdomain_ops.gpu`. A replacement for the local store on a remote worker belongs with the worker image.
-- **Postgres live tests.** The adapter contract test is on master in `06d9a5c`. It runs when `PGDP_TEST_POSTGRES_URL` is set. `make ci` does not start Postgres. The hosted product around that adapter is a separate repository.
+- **Postgres live tests.** The adapter contract test is on master in `06d9a5c`. It runs when `PGDP_TEST_POSTGRES_URL` is set. `just ci` does not start Postgres. The hosted product around that adapter is a separate repository.
 - **install.sh on a clean machine.** Stays in this repo. Listed under [Parked in this app](#parked-in-this-app).
 - **Managed container publication.** No GitHub workflow in this checkout publishes an image. That publication belongs to the hosted service.
 - **CUDA stage entries.** GPU registry implementations already ship. See [CPU and GPU execution](../architecture/09-image-prep-settings.md#cpu-and-gpu-execution). A representative-book measurement waits on the worker image.
@@ -137,7 +137,7 @@ This heading is the old parking place for remote work. Some rows stay in this re
 1. Read [the overview](../architecture/01-overview.md) and [the repository boundary](../architecture/10-repository-boundary.md).
 2. Take the first open row under [Now](#now).
 3. Leave [Parked in this app](#parked-in-this-app) and [Separate repositories](#separate-repositories) alone unless the owner asks for that item.
-4. Follow [testing](../architecture/07-testing.md). Run `make ci AI=1` before a commit.
+4. Follow [testing](../architecture/07-testing.md). Run `AI=1 just ci` before a commit.
 5. When an item ships, move the durable behavior into an architecture doc and delete or retire the issue. Record the tombstone in [decisions](../context/decisions.md).
 
 ## Goal

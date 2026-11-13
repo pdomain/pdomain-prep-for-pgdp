@@ -65,7 +65,7 @@ Coordinates are fractions of the parent image. The server converts them to integ
 
 The older body with one integer `bbox` still works.
 
-`tests/test_w06_golden_path.py` runs in default `make test`.
+`tests/test_w06_golden_path.py` runs in default `just test`.
 
 The test uses a hermetic OCR fixture, not DocTR.
 

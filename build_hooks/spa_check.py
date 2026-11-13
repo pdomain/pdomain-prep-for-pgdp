@@ -3,12 +3,12 @@
 The wheel `force-include`s `src/pdomain_prep_for_pgdp/static/` so the published
 distribution can serve the React SPA without Node at install time. If a
 contributor runs ``uv build`` (or ``hatch build``, ``pip wheel .``, etc.)
-without first running ``make frontend-build``, the hatchling
+without first running ``just frontend-build``, the hatchling
 ``force-include`` silently no-ops on the missing directory and the wheel
 ends up shipping a blank app.
 
 This hook closes that gap: it runs before the wheel artifacts are gathered
-and raises a clear error pointing the user at ``make frontend-build``.
+and raises a clear error pointing the user at ``just frontend-build``.
 
 Wired in ``pyproject.toml`` as::
 
@@ -41,23 +41,23 @@ class SpaBundleCheckHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         """Abort the wheel build if the SPA bundle is absent or empty."""
         # Only enforce on the wheel target; sdists deliberately omit the
-        # built SPA (it gets rebuilt by `make build` / CI).
+        # built SPA (it gets rebuilt by `just build` / CI).
         if self.target_name != "wheel":
             return
 
-        # Editable installs (`uv pip install -e .`, `make refresh-version`,
-        # `make install-local`) are dev-only and never published. The
+        # Editable installs (`uv pip install -e .`, `just refresh-version`,
+        # `just install-local`) are dev-only and never published. The
         # editable wheel just maps the source dir, so the contributor can
-        # `make frontend-build` later and the running app picks it up
-        # without a reinstall. Skipping the SPA check here lets `make ci`
-        # → `make setup` → editable rebuild succeed before
-        # `make frontend-build` has had a chance to run.
+        # `just frontend-build` later and the running app picks it up
+        # without a reinstall. Skipping the SPA check here lets `just ci`
+        # → `just setup` → editable rebuild succeed before
+        # `just frontend-build` has had a chance to run.
         if version == "editable":
             return
 
         # Escape hatch for environments that intentionally build a wheel
         # without the SPA (e.g. publishing a "headless" wheel for tests).
-        # Undocumented on purpose — the supported path is `make build`.
+        # Undocumented on purpose — the supported path is `just build`.
         if os.environ.get("PD_PREP_SKIP_SPA_CHECK") == "1":
             return
 
@@ -66,7 +66,7 @@ class SpaBundleCheckHook(BuildHookInterface):
             raise RuntimeError(
                 "pdomain-prep-for-pgdp: SPA bundle is missing — refusing to "
                 f"build a wheel without {self.SPA_INDEX_REL}.\n"
-                "Run `make frontend-build` first (or `make build`, which "
+                "Run `just frontend-build` first (or `just build`, which "
                 "chains the frontend build before `uv build`).\n"
                 "If you really want a wheel without the SPA, set "
                 "PD_PREP_SKIP_SPA_CHECK=1."

@@ -1,7 +1,7 @@
 import { getRuntimeEnv } from "@/lib/runtimeEnv";
 /**
  * Thin fetch wrapper used by every page. The OpenAPI-generated types live in
- * ./types.ts (regenerated via `make openapi-export` whenever the FastAPI
+ * ./types.ts (regenerated via `just openapi-export` whenever the FastAPI
  * Pydantic models change).
  */
 

@@ -37,7 +37,7 @@ describe("types.gen.ts drift guard", () => {
       if (fresh !== committed) {
         throw new Error(
           "types.gen.ts is out of sync with openapi.json.\n" +
-            "Run `make openapi-export` (or `cd frontend && npm run openapi:gen`) " +
+            "Run `just openapi-export` (or `cd frontend && npm run openapi:gen`) " +
             "and commit the result.",
         );
       }

@@ -114,9 +114,9 @@ upgrade-deps:
     if [[ -n "${AI:-}" ]]; then exec just --quiet _ai upgrade-deps; fi
     if uv run --no-sync python scripts/detect_dev_local.py >/dev/null 2>&1; then \
         echo "❌ local-dev install detected (editable siblings present)."; \
-        echo "   'make upgrade-deps' would silently revert them to pinned registry versions."; \
-        echo "   Use 'make local-upgrade-deps' to upgrade and restore editable siblings."; \
-        echo "   Or remove "${UV_PROJECT_ENVIRONMENT:-.venv}"/.pdomain-local-mode and run 'make reset' to switch to canonical."; \
+        echo "   'just upgrade-deps' would silently revert them to pinned registry versions."; \
+        echo "   Use 'just local-upgrade-deps' to upgrade and restore editable siblings."; \
+        echo "   Or remove "${UV_PROJECT_ENVIRONMENT:-.venv}"/.pdomain-local-mode and run 'just reset' to switch to canonical."; \
         exit 1; \
     fi
     echo "⬆️ Upgrading dependency lockfile..."
@@ -136,7 +136,7 @@ upgrade-pdomain-book-tools:
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ -n "${AI:-}" ]]; then exec just --quiet _ai upgrade-pdomain-book-tools; fi
-    echo "warning: 'upgrade-pdomain-book-tools' is deprecated; use 'make update-pdomain-deps'"
+    echo "warning: 'upgrade-pdomain-book-tools' is deprecated; use 'just update-pdomain-deps'"
     just --quiet update-pdomain-deps
 
 mise-download:
@@ -152,7 +152,7 @@ mise-download:
         curl -fsSL -o "$MISE_TMP" "https://github.com/jdx/mise/releases/download/v2026.5.15/install.sh" && \
         sh "$MISE_TMP" && \
         rm -f "$MISE_TMP"; \
-        echo "mise downloaded. Run 'make mise-setup' next to install pinned tools."; \
+        echo "mise downloaded. Run 'just mise-setup' next to install pinned tools."; \
     fi
 
 mise-trust-worktrees:
@@ -181,7 +181,7 @@ mise-setup:
     $mise install
     echo ""
     echo "✅ mise tools installed."
-    echo "   Make targets dispatch through mise automatically — no shell hook needed."
+    echo "   Just recipes dispatch through mise automatically — no shell hook needed."
     echo "   To use mise interactively too, add this to your shell init:"
     echo "     eval \"\$($mise activate bash)\"   # or zsh / fish"
 
@@ -195,7 +195,7 @@ mise-doctor:
         echo "  found: $mise"; \
         $mise current 2>/dev/null | sed 's/^/  /' || echo "  (no mise.toml resolved)"; \
     else \
-        echo "  not installed (run 'make mise-setup')"; \
+        echo "  not installed (run 'just mise-setup')"; \
     fi
     echo "── PATH (your interactive shell) ──"
     command -v node   >/dev/null 2>&1 && echo "  node:   $(node --version)"   || echo "  node:   not on PATH"

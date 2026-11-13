@@ -39,8 +39,8 @@ The default run created by ``fetchFolios`` is the single ``body`` run
 ``run_id == "body"``; clearing it (the "Held out" marker) drops the number and
 the client renders ``[Blank Page]``.
 
-CI note: these live in ``tests/e2e/`` and run under ``make e2e`` (which builds
-the frontend first). They are intentionally NOT part of ``make ci`` — browser
+CI note: these live in ``tests/e2e/`` and run under ``just e2e`` (which builds
+the frontend first). They are intentionally NOT part of ``just ci`` — browser
 e2e is a separate, heavier verification step in this repo (see
 ``test_grayscale_browser.py`` for the same convention).
 """

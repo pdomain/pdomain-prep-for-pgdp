@@ -7,7 +7,7 @@
 # Leaves zero committed churn. Refuses to run in local-dev mode.
 #
 # Per-repo config: OWNER + PY_SIBLINGS below.
-# Override the preflight with PREFLIGHT="make test" for a faster smoke.
+# Override the preflight with PREFLIGHT="just test" for a faster smoke.
 set -euo pipefail
 
 # uv installs into UV_PROJECT_ENVIRONMENT when that is set and into .venv
@@ -24,7 +24,7 @@ venv_under() {
 
 OWNER="pdomain"
 PY_SIBLINGS=(pdomain-book-tools pdomain-ops)  # repo-specific; keep in sync with [tool.uv.sources]
-PREFLIGHT="${PREFLIGHT:-make ci-slow}"
+PREFLIGHT="${PREFLIGHT:-just ci-slow}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"

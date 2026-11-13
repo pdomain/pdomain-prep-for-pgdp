@@ -511,7 +511,7 @@ def _mount_static_frontend(app: FastAPI, settings: Settings) -> None:
         return
 
     if not os.path.isdir(path):
-        log.warning("Static dir %s missing — frontend not bundled. Run `make build-frontend`.", path)
+        log.warning("Static dir %s missing — frontend not bundled. Run `just frontend-build`.", path)
         return
 
     # SPA fallback: any non-API GET that isn't a real file in the bundle

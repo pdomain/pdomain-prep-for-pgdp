@@ -92,11 +92,11 @@ No image-size or live cloud-readiness claim is established by this source audit.
 
 ## Build and release commands
 
-`make frontend-build` copies the SPA bundle into package static resources.
+`just frontend-build` copies the SPA bundle into package static resources.
 Hatch's build artifacts include `static/**`; the custom SPA check rejects a wheel build without its bundle.
 
-`make ci AI=1` runs local lint, type checks, OpenAPI generation, frontend build, backend/frontend tests, and knip.
-`make ci-slow AI=1` adds distribution builds and slow tests.
+`AI=1 just ci` runs local lint, type checks, OpenAPI generation, frontend build, backend/frontend tests, and knip.
+`AI=1 just ci-slow` adds distribution builds and slow tests.
 The release targets invoke local release scripts. This checkout has no `.github/workflows/` release, publish,
 dependency-refresh, or CI workflow. Do not describe absent GitHub workflows as active automation.
 

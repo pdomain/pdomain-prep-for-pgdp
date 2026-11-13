@@ -18,14 +18,14 @@ Last verified: 2026-11-07
 
 ## Trigger
 
-Use this flow after activating local mode with `make local-dev`.
+Use this flow after activating local mode with `just local-dev`.
 Normal dependencies come from the registry. Local mode overlays editable pdomain-book-tools and pdomain-ops,
 plus the linked `@pdomain/pdomain-ui` frontend package.
 
 ## Preconditions
 
-Run `make setup` first and ensure the sibling checkouts exist.
-`make local-setup` clones missing siblings; it does not activate local mode.
+Run `just setup` first and ensure the sibling checkouts exist.
+`just local-setup` clones missing siblings; it does not activate local mode.
 The canonical checkout's active environment must contain `.pdomain-local-mode` for `local-upgrade-deps`.
 
 The generic upgrade guard checks editability before synchronization. It recognizes editable book-tools,
@@ -35,10 +35,10 @@ That fallback detection does not replace the canonical marker requirement of the
 
 ## Steps
 
-1. Run `make local-check` and inspect the current mode and sibling resolution.
-2. Run `make local-upgrade-deps`.
-3. Run `make local-check` again and confirm both Python siblings and the UI link.
-4. Inspect dependency/lockfile changes, then use `make local-run`.
+1. Run `just local-check` and inspect the current mode and sibling resolution.
+2. Run `just local-upgrade-deps`.
+3. Run `just local-check` again and confirm both Python siblings and the UI link.
+4. Inspect dependency/lockfile changes, then use `just local-run`.
 
 The upgrade target runs `uv lock --upgrade` and `uv sync` at the canonical root, then `local-dev` restores
 editable Python siblings and frontend links. Legacy `upgrade-deps-local` and `dev-local` are aliases.
@@ -52,10 +52,10 @@ This source audit did not perform an upgrade or change installed dependencies.
 ## Rollback
 
 Restore only dependency changes introduced by this upgrade, preserving pre-existing user edits.
-Re-synchronize and deliberately reapply `make local-dev` when retaining local mode.
+Re-synchronize and deliberately reapply `just local-dev` when retaining local mode.
 
-`make clean` removes build/cache artifacts; it does not clear local mode.
-`make reset` removes the active environment and runs setup. To return to registry mode deliberately, remove
+`just clean` removes build/cache artifacts; it does not clear local mode.
+`just reset` removes the active environment and runs setup. To return to registry mode deliberately, remove
 its `.pdomain-local-mode` marker first. `local-uninstall` removes a separately installed uv tool only.
 
 ## Evidence

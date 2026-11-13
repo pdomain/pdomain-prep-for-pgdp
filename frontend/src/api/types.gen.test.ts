@@ -4,7 +4,7 @@
 // scaffold lets future iterations diff the generated output and migrate
 // surfaces over deliberately.
 //
-// To regenerate: `make openapi-export` (writes both types.ts and types.gen.ts)
+// To regenerate: `just openapi-export` (writes both types.ts and types.gen.ts)
 // or `cd frontend && npm run openapi:gen`.
 import { describe, expect, it } from "vitest";
 import type { components } from "./types.gen";

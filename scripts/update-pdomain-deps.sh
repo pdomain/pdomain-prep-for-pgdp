@@ -8,7 +8,7 @@
 # Auto-flips around local-dev mode if the .venv/.pdomain-local-mode marker is set.
 # Idempotent: prints "✓ <name> already at <version>" if already at latest.
 #
-# Usage: make update-pdomain-deps   (or ./scripts/update-pdomain-deps.sh directly)
+# Usage: just update-pdomain-deps   (or ./scripts/update-pdomain-deps.sh directly)
 set -euo pipefail
 
 # uv installs into UV_PROJECT_ENVIRONMENT when that is set and into .venv
@@ -212,7 +212,7 @@ fi
 # ─── Step 5: Restore local-dev mode if we flipped out ────────────────────────
 if [[ "$LOCAL_DEV_ACTIVE" == "true" ]]; then
   say "→ restoring local-dev mode"
-  make -C "$REPO_ROOT" local-dev
+  (cd "$REPO_ROOT" && just local-dev)
 fi
 
 # ─── Step 6: Show staged diff summary ────────────────────────────────────────

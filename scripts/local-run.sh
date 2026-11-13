@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/local-run.sh — run pgdp-prep against the local-dev workspace.
 #
-# Deliberately does NOT delegate to `make run` — that path runs
+# Deliberately does NOT delegate to `just run` — that path runs
 # `frontend-build` → pnpm install (registry path), which discards the
 # `pnpm link` overlay for @pdomain/pdomain-ui and serves a stale registry
 # build of the shared UI library.
@@ -31,12 +31,12 @@ PROJECT_VENV="$(venv_under "$CANONICAL_REPO_ROOT")"
 MARKER="$PROJECT_VENV/.pdomain-local-mode"
 
 if [[ ! -f "$MARKER" ]]; then
-  echo "ERROR: not in local-dev mode. Run 'make local-dev' first." >&2
+  echo "ERROR: not in local-dev mode. Run 'just local-dev' first." >&2
   exit 1
 fi
 
-make -C "$REPO_ROOT" local-setup-py
-make -C "$REPO_ROOT" local-frontend-build
+(cd "$REPO_ROOT" && just local-setup-py)
+(cd "$REPO_ROOT" && just local-frontend-build)
 
 # --no-sync REQUIRED: plain `uv run` re-syncs and reverts the editable pdomain-*
 # siblings to pinned registry versions, breaking unreleased editable APIs.

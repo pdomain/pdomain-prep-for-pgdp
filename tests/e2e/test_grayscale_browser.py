@@ -30,9 +30,9 @@ testid contract (Task 5.1 verification):
     grayscale-save-page             — present in GrayscaleWorkbench.tsx (footer)
     grayscale-save-project          — present in GrayscaleWorkbench.tsx (footer)
 
-CI note (Task 5.4): these tests live in tests/e2e/ and run under `make e2e`
+CI note (Task 5.4): these tests live in tests/e2e/ and run under `just e2e`
 (which builds the frontend first). They are intentionally excluded from
-`make ci` (heavy: needs chromium + full SPA build). This follows the
+`just ci` (heavy: needs chromium + full SPA build). This follows the
 workspace convention that browser e2e is a separate verification step.
 """
 

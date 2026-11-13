@@ -36,26 +36,27 @@ architecture, generated OpenAPI, code, and tests are authoritative.
 ## Commands
 
 ```sh
-make ci AI=1        # full CI — always run before committing
-make test AI=1      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e -n auto`
-make e2e AI=1       # Playwright e2e suite (separate uv group)
-make run            # rebuilds SPA if missing or stale, then launches pgdp-prep at http://127.0.0.1:8765
-make run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
+just --list        # list available recipes
+AI=1 just ci        # full CI — always run before committing
+AI=1 just test      # canonical — `uv run pytest tests/ -v --ignore=tests/e2e -n auto`
+AI=1 just e2e       # Playwright e2e suite (separate uv group)
+just run            # rebuilds SPA if missing or stale, then launches pgdp-prep at http://127.0.0.1:8765
+just run-cpu        # same, forces PGDP_GPU_BACKEND=cpu
 
 # local-dev workflow (spec #362) — reference implementation; see ../docs/process/local-dev.md
-make local-setup        # clone any missing sibling pdomain-* repos
-make local-dev          # switch to local-dev mode (Python + npm siblings editable + marker)
-make local-check        # print local-dev mode + per-sibling resolution
-make local-upgrade-deps # upgrade deps then restore editables (local-mode only)
-make local-install          # uv tool install --editable . with editable siblings (local-mode only)
-make local-uninstall        # uv tool uninstall pgdp-prep
-make local-run              # run pgdp-prep against local-dev workspace (local-mode only)
-make local-setup-py         # re-apply editable Python siblings (idempotent; called by local-run)
-make local-frontend-install # pnpm install + restore pnpm link overlay for @pdomain/pdomain-ui
-make local-frontend-build   # Vite build using local-linked pdomain-ui (called by local-run)
+just local-setup        # clone any missing sibling pdomain-* repos
+just local-dev          # switch to local-dev mode (Python + npm siblings editable + marker)
+just local-check        # print local-dev mode + per-sibling resolution
+just local-upgrade-deps # upgrade deps then restore editables (local-mode only)
+just local-install          # uv tool install --editable . with editable siblings (local-mode only)
+just local-uninstall        # uv tool uninstall pgdp-prep
+just local-run              # run pgdp-prep against local-dev workspace (local-mode only)
+just local-setup-py         # re-apply editable Python siblings (idempotent; called by local-run)
+just local-frontend-install # pnpm install + restore pnpm link overlay for @pdomain/pdomain-ui
+just local-frontend-build   # Vite build using local-linked pdomain-ui (called by local-run)
 
 # sibling-dep refresh (spec #363) — see ../docs/process/update-pdomain-deps.md
-make update-pdomain-deps     # bump pdomain-* sibling deps to registry latest; leaves diff for review
+just update-pdomain-deps     # bump pdomain-* sibling deps to registry latest; leaves diff for review
 ```
 
 Legacy `dev-local`, `install-local`, `uninstall-local`,
@@ -63,25 +64,25 @@ Legacy `dev-local`, `install-local`, `uninstall-local`,
 deprecation aliases.
 Legacy `upgrade-pdomain-book-tools` delegates to `update-pdomain-deps`.
 
-`AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
+`AI=1` captures verbose output to `.ci-ai.log`; stdout shows one `PASS` line on success or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose
 output for debugging.
 
 Local dev with hot-reload (two-process):
 
 ```sh
-make frontend-dev    # one terminal — Vite on :5173
+just frontend-dev    # one terminal — Vite on :5173
 uv run pgdp-prep --reload --frontend-dev http://localhost:5173   # other — :8765
 ```
 
-The environment is `.venv/` by default, or `UV_PROJECT_ENVIRONMENT` when set. `make setup` syncs it through uv.
+The environment is `.venv/` by default, or `UV_PROJECT_ENVIRONMENT` when set. `just setup` syncs it through uv.
 Targeted runs: `uv run pytest -k <pattern>`.
 
 ## Rules
 
-- Always run `make ci AI=1` before committing.
-- Make targets first; fall back to `uv run …` only when no target exists.
-- Never `python -m pytest`. Always `uv run pytest` or `make test`.
+- Always run `AI=1 just ci` before committing.
+- Just recipes first; fall back to `uv run …` only when no recipe exists.
+- Never `python -m pytest`. Always `uv run pytest` or `just test`.
   Bare `python`/`python3`/`.venv/bin/python` miss the venv.
 
 ## Test conventions
@@ -112,10 +113,10 @@ Targeted runs: `uv run pytest -k <pattern>`.
   parked under `docs/plans/roadmap.md` §Deferred.
 - Current dependency minimums are `pdomain-book-tools>=0.31.0`, `pdomain-book-contracts>=0.3.1`,
   and `pdomain-ops>=0.12.2`, from pdomain-index-pip. `@pdomain/pdomain-ui` is `^0.13.0`.
-  `make local-dev` installs editable siblings; `make update-pdomain-deps` refreshes registry constraints.
+  `just local-dev` installs editable siblings; `just update-pdomain-deps` refreshes registry constraints.
 - `gpu_backend="cpu"` is the test default. Local/cpu/mps startup uses `_NoOpGPUBackend` for compatibility;
   page stages execute through the registry. Remote modes require real configuration.
-- `make build` runs `frontend-build` first so the wheel ships with the SPA bundle.
+- `just build` runs `frontend-build` first so the wheel ships with the SPA bundle.
 - Authentication selection exists, but managed multi-tenant deployment remains deferred.
   Page services use per-project local event stores.
 
@@ -206,7 +207,7 @@ change any step below.
    worktree path + branch, use the `finishing-a-development-branch` skill to
    decide how to integrate.
 9. **TDD.** Write the failing test first where the plan calls for it.
-10. **Verify before committing.** Focused verification plus `make ci`.
+10. **Verify before committing.** Focused verification plus `just ci`.
 11. **Commit locally; do not push** without explicit say-so.
 
 <!-- workspace-process:end -->

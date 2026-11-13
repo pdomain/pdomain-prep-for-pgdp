@@ -20,7 +20,7 @@
   behavior differs by `__ENV__.AUTH_MODE` — see "Auth in the SPA" below;
   it does not always attach a Bearer token.
 - `frontend/src/api/types.gen.ts` is regenerated from `/openapi.json` via
-  `make openapi-export` (`openapi-typescript`). The committed `openapi.json`
+  `just openapi-export` (`openapi-typescript`). The committed `openapi.json`
   at repo root is the contract source; `tests/test_openapi_spec_committed.py`
   guards it against drift.
 
@@ -138,12 +138,12 @@ Source persistence, real grayscale previews, and grayscale tier controls are des
 [image preparation and settings](09-image-prep-settings.md).
 The persisted page-order tool and its style limitations are described in [numbering runs](08-page-numbering.md).
 
-- **OpenAPI codegen + drift guard** — shipped. `make openapi-export`
+- **OpenAPI codegen + drift guard** — shipped. `just openapi-export`
   regenerates `frontend/src/api/types.gen.ts`; `tests/test_openapi_spec_committed.py`
   fails CI if the committed `openapi.json` diverges from the FastAPI app.
 - **shadcn/ui + Radix adoption** — §13a shipped 2026-05-15. Dialog,
   AlertDialog, Tooltip, Select, Popover, Collapsible, Badge are Radix
   wrappers (TooltipProvider mounted in `App.tsx`); sonner provides toasts.
-- **Vitest + msw harness** — shipped. Run via `make frontend-test`.
+- **Vitest + msw harness** — shipped. Run via `just frontend-test`.
   Tests cover pure-function helpers, API clients, and mount-level
   page tests.

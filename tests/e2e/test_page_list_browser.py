@@ -25,7 +25,7 @@ def _app_reachable() -> bool:
         return False
 
 
-@pytest.mark.skipif(not _app_reachable(), reason="App not running — start with make run-cpu")
+@pytest.mark.skipif(not _app_reachable(), reason="App not running — start with just run-cpu")
 def test_app_loads(page: Page) -> None:
     """SPA root loads; no console errors about missing resources."""
     errors: list[str] = []
@@ -37,7 +37,7 @@ def test_app_loads(page: Page) -> None:
     assert resource_errors == [], f"Resource load errors: {resource_errors}"
 
 
-@pytest.mark.skipif(not _app_reachable(), reason="App not running — start with make run-cpu")
+@pytest.mark.skipif(not _app_reachable(), reason="App not running — start with just run-cpu")
 def test_react_router_subpath(page: Page) -> None:
     """Navigating to a sub-path renders the SPA (React Router), not a 404."""
     page.goto(f"{BASE}/projects")

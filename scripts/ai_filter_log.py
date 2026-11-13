@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Extract failure-relevant sections from a captured make CI log."""
+"""Extract failure-relevant sections from a captured just CI log."""
 
 import re
 import sys

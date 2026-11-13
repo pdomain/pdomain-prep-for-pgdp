@@ -113,5 +113,5 @@ def test_export_openapi_script_writes_trailing_newline(tmp_path: Path) -> None:
     assert result.returncode == 0, f"export_openapi.py failed: {result.stderr}"
     assert out.read_bytes().endswith(b"\n"), (
         "export_openapi.py must write JSON with a trailing newline so the "
-        "end-of-file-fixer pre-commit hook passes during `make ci`."
+        "end-of-file-fixer pre-commit hook passes during `just ci`."
     )

@@ -31,7 +31,7 @@ MARKER="$PROJECT_VENV/.pdomain-local-mode"
 say() { echo "[local-dev] $*"; }
 
 # Pre-flight: siblings must exist
-make -C "$REPO_ROOT" local-setup
+(cd "$REPO_ROOT" && just local-setup)
 
 # Python: install editable (run from canonical repo root so project .venv is discovered).
 for s in "${PY_SIBLINGS[@]}"; do
@@ -42,10 +42,10 @@ done
 # npm: link (SPAs only)
 if [[ -d "$REPO_ROOT/frontend" ]]; then
   for s in "${NPM_SIBLINGS[@]}"; do
-    # pdomain-ui needs `make build` for its dist/ to be importable
+    # pdomain-ui needs `just build` for its dist/ to be importable
     if [[ "$s" == "pdomain-ui" ]]; then
       say "→ pre-building pdomain-ui dist/"
-      (cd "$WORKSPACE_ROOT/pdomain-ui" && make build)
+      (cd "$WORKSPACE_ROOT/pdomain-ui" && just build)
     fi
     say "→ linking @pdomain/$s from $WORKSPACE_ROOT/$s"
     (cd "$REPO_ROOT/frontend" && pnpm link "$WORKSPACE_ROOT/$s")
@@ -57,4 +57,4 @@ mkdir -p "$(dirname "$MARKER")"
 touch "$MARKER"
 say "✓ marker written: $MARKER"
 
-say "✓ local-dev mode active. Run 'make local-check' to verify."
+say "✓ local-dev mode active. Run 'just local-check' to verify."

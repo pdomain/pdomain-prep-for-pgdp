@@ -4,7 +4,7 @@ parses as strict YAML and has the expected top-level ``machine`` key.
 
 Usage:
     python scripts/check_statecharts.py
-    # or from Makefile / CI:
+    # or from just / CI:
     uv run python scripts/check_statecharts.py
 
 Exit codes:

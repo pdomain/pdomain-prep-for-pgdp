@@ -79,7 +79,7 @@ all encodings. `# noqa: RUF00x` masks the problem instead of fixing it.
 
 **The rule.** Invoke Python, pytest, ruff, mypy/pyright, and any project-local
 CLI through `uv run`. Never call bare `python`, `python3`, `pytest`, or
-`pre-commit` from a Makefile target, CI step, or hook.
+`pre-commit` from a just recipe, CI step, or hook.
 
 **Why.** Direct invocation skips the project's `.venv` and the lockfile-pinned
 toolchain; tests pass locally and fail in CI (or vice versa) because the bare
@@ -88,7 +88,7 @@ fast (<200 ms warm) and always selects the project venv.
 
 **Common high-confidence violations** (bot auto-fix candidates)
 
-- `python -m pytest` or `python3 script.py` in any `Makefile`, `*.sh`,
+- `python -m pytest` or `python3 script.py` in any `justfile`, `*.sh`,
   `.github/workflows/*.yml`, or `.pre-commit-config.yaml` hook.
 - `pre-commit run` (bare) instead of `uv run pre-commit run` in CI or scripts.
 - `ruff check` or `pyright` (bare) in scripts that don't activate a venv first.

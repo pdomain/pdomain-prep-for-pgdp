@@ -1,6 +1,6 @@
 """Export the FastAPI app's OpenAPI schema to a file.
 
-Used by `make openapi-export` so the frontend can regenerate
+Used by `just openapi-export` so the frontend can regenerate
 `src/api/types.ts` from the live spec.
 
 Why a script (not an inline `python -c`): `build_app()` calls

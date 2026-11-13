@@ -46,7 +46,7 @@ def _spa_built() -> bool:
 # below is never skipped in unbuilt checkouts/worktrees.
 _requires_built_spa = pytest.mark.skipif(
     not _spa_built(),
-    reason="SPA bundle not built — run `make frontend-build` to enable.",
+    reason="SPA bundle not built — run `just frontend-build` to enable.",
 )
 
 

@@ -28,7 +28,7 @@ MARKER="$PROJECT_VENV/.pdomain-local-mode"
 say() { echo "[local-install] $*"; }
 
 if [[ ! -f "$MARKER" ]]; then
-  echo "ERROR: not in local-dev mode. Run 'make local-dev' first." >&2
+  echo "ERROR: not in local-dev mode. Run 'just local-dev' first." >&2
   exit 1
 fi
 

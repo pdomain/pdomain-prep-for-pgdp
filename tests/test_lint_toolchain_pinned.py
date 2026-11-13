@@ -85,7 +85,7 @@ def test_hook_and_lockfile_run_the_same_ruff() -> None:
     locked = _locked_ruff_version()
     assert hook == locked, (
         f"ruff version skew: the pre-commit hook pins {hook} but uv.lock resolves {locked}. "
-        "`uv run ruff check` and `make pre-commit-check` will disagree on the same tree. "
+        "`uv run ruff check` and `just pre-commit-check` will disagree on the same tree. "
         "See this module's docstring for the fix."
     )
 

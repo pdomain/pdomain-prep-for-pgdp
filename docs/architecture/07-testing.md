@@ -8,25 +8,25 @@
 - **Read when:** running tests or choosing a regression gate.
 - **Search terms:** pytest, Vitest, Playwright, CI, lint toolchain.
 
-The default gate is local `make ci AI=1`. It combines backend and frontend checks.
-`make ci` runs a Playwright smoke subset through `make e2e-smoke`: app load, all 24 tool slots, and zip upload.
+The default gate is local `AI=1 just ci`. It combines backend and frontend checks.
+`just ci` runs a Playwright smoke subset through `just e2e-smoke`: app load, all 24 tool slots, and zip upload.
 Tests join that subset with `@pytest.mark.e2e_smoke`. It needs Chromium, which
 `uv run --group e2e playwright install chromium` installs once per machine.
-The full Playwright suite (`make e2e`) and slow packaging tests remain separate targets.
+The full Playwright suite (`just e2e`) and slow packaging tests remain separate targets.
 No GitHub Actions CI workflow exists in this checkout.
 
-`make audit` checks the locked Python and frontend dependencies against public advisory databases. It skips the
+`just audit` checks the locked Python and frontend dependencies against public advisory databases. It skips the
 private `pdomain-*` packages, needs network access, and exits 1 when either audit reports a problem. It is separate
-from `make ci`.
+from `just ci`.
 
 ## How to run
 
 ```sh
-make test AI=1
-make frontend-test
-make ci AI=1
-make ci-slow AI=1
-make e2e AI=1
+AI=1 just test
+just frontend-test
+AI=1 just ci
+AI=1 just ci-slow
+AI=1 just e2e
 ```
 
 Backend tests use `uv run pytest tests/ -v --ignore=tests/e2e -n auto`.
@@ -74,7 +74,7 @@ Some tests seed async database state before opening a client; they avoid reusing
 Real external services, heavy OCR model downloads, managed GPU dispatch, and live Postgres are not established
 by the hermetic suite. `tests/test_database_contract.py` runs the `IDatabase` contract against SQLite always, and
 against Postgres when `PGDP_TEST_POSTGRES_URL` is set and the `[postgres]` extra is installed; its docstring shows a
-throwaway container setup. `make ci` does not set that variable. A passing local gate does not prove a
+throwaway container setup. `just ci` does not set that variable. A passing local gate does not prove a
 clean-machine installation or remote deployment.
 
 ## Lint toolchain

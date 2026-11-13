@@ -4,9 +4,9 @@ Why: `frontend/src/api/types.ts` is (eventually) generated from
 `openapi.json` via `openapi-typescript`. If the FastAPI surface drifts
 without regenerating the spec, the frontend silently goes stale. This
 guard fails CI when the committed spec no longer matches the live one,
-forcing a `make openapi-export` + commit.
+forcing a `just openapi-export` + commit.
 
-Drift fix-it: run `make openapi-export` and commit the updated
+Drift fix-it: run `just openapi-export` and commit the updated
 `openapi.json` (and, once npm is wired in CI, `frontend/src/api/types.ts`).
 """
 
@@ -22,7 +22,7 @@ COMMITTED_SPEC = REPO_ROOT / "openapi.json"
 
 
 def test_committed_openapi_spec_exists() -> None:
-    assert COMMITTED_SPEC.exists(), f"{COMMITTED_SPEC} is missing. Run `make openapi-export` and commit it."
+    assert COMMITTED_SPEC.exists(), f"{COMMITTED_SPEC} is missing. Run `just openapi-export` and commit it."
 
 
 def test_committed_openapi_spec_matches_live_app() -> None:
@@ -30,5 +30,5 @@ def test_committed_openapi_spec_matches_live_app() -> None:
     committed = json.loads(COMMITTED_SPEC.read_text())
     assert live == committed, (
         "Committed openapi.json drifted from build_app().openapi(). "
-        "Run `make openapi-export` and commit the updated openapi.json."
+        "Run `just openapi-export` and commit the updated openapi.json."
     )
