@@ -144,7 +144,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         {...BASE_PROPS}
         words={[]}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
       />,
     );
     expect(container.firstChild).toBeNull();
@@ -164,7 +164,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         naturalHeight={0}
         words={words}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
       />,
     );
     expect(container.firstChild).toBeNull();
@@ -190,7 +190,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         {...BASE_PROPS}
         words={words}
         activeWordIndex={1}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
       />,
     );
 
@@ -215,7 +215,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
     expect(rect0.dataset["stroke"]).toBe("#94a3b8");
   });
 
-  it("invokes onWordClick when the DOM overlay is clicked over a word bbox", async () => {
+  it("invokes onWordClick when the DOM overlay is clicked over a word bbox", () => {
     const onWordClick = vi.fn();
     const words: OcrWord[] = [
       // Word at natural (100,100,80,30) — displayed in 500×750 (scale 2)
@@ -250,7 +250,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
     expect(onWordClick).toHaveBeenCalledWith(0);
   });
 
-  it("invokes onWordToggleSelect alongside onWordClick when clicking a word", async () => {
+  it("invokes onWordToggleSelect alongside onWordClick when clicking a word", () => {
     const onWordClick = vi.fn();
     const onWordToggleSelect = vi.fn();
     const words: OcrWord[] = [
@@ -330,7 +330,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         {...BASE_PROPS}
         words={words}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
         onMarqueeSelect={onMarqueeSelect}
       />,
     );
@@ -365,7 +365,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         {...BASE_PROPS}
         words={words}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
         onMarqueeSelect={onMarqueeSelect}
       />,
     );
@@ -395,7 +395,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         naturalHeight={1200}
         words={words}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
       />,
     );
 
@@ -422,7 +422,7 @@ describe("WordBboxOverlay (Phase 2.2)", () => {
         {...BASE_PROPS}
         words={words}
         activeWordIndex={null}
-        onWordClick={() => {}}
+        onWordClick={vi.fn()}
         onMarqueeSelect={onMarqueeSelect}
       />,
     );

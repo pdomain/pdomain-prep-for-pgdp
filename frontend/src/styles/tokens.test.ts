@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
 describe("tokens.css", () => {
-  beforeAll(async () => {
+  beforeAll(() => {
     // Inject minimal token CSS matching pdomain-ui's convention:
     //   :root = dark (default), [data-theme="light"] = light.
     // uiPrefs.ts applies data-theme at module load time, so in practice the

@@ -416,12 +416,17 @@ export const attributesPanelMachine = setup({
               invoke: {
                 id: "saveAttributes",
                 src: "saveAttributes",
-                input: ({ context }) => ({
-                  projectId: context.projectId,
-                  section: context.editingSection!,
-                  draft: context.draft!,
-                  services: context.services,
-                }),
+                input: ({ context }) => {
+                  const { editingSection, draft } = context;
+                  if (editingSection === null || draft === null)
+                    throw new Error("No attributes draft to save");
+                  return {
+                    projectId: context.projectId,
+                    section: editingSection,
+                    draft,
+                    services: context.services,
+                  };
+                },
                 onDone: {
                   target: "idle",
                   actions: [

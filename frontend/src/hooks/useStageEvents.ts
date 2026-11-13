@@ -18,6 +18,41 @@ import type { components } from "../api/types.gen";
 
 type PageStageState = components["schemas"]["PageStageState"];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStatus(value: unknown): value is PageStageState["status"] {
+  return (
+    value === "not-run" ||
+    value === "running" ||
+    value === "clean" ||
+    value === "dirty" ||
+    value === "failed" ||
+    value === "not-applicable"
+  );
+}
+
+function isPageStage(value: unknown): value is PageStageState {
+  if (!isRecord(value) || !isStatus(value["status"])) return false;
+  return (
+    typeof value["project_id"] === "string" &&
+    typeof value["page_id"] === "string" &&
+    typeof value["stage_id"] === "string" &&
+    typeof value["stage_version"] === "number" &&
+    [
+      "artifact_key",
+      "config_hash",
+      "input_hash",
+      "error_message",
+      "job_id",
+    ].every((key) => value[key] === null || typeof value[key] === "string") &&
+    ["last_run_at", "duration_ms"].every(
+      (key) => value[key] === null || typeof value[key] === "number",
+    )
+  );
+}
+
 export interface StageEventsResult {
   isConnected: boolean;
   error: string | null;
@@ -52,14 +87,17 @@ export function useStageEvents(
     const es = new EventSource(url);
     const queryKey = ["page-stages", projectId, idx0] as const;
 
-    const onSnapshot = (e: MessageEvent) => {
+    const onSnapshot = (e: MessageEvent<unknown>) => {
       try {
-        const data = JSON.parse(e.data) as {
-          type: string;
-          stages: PageStageState[];
-        };
-        if (data.type === "snapshot") {
-          queryClient.setQueryData(queryKey, data.stages);
+        if (typeof e.data !== "string") return;
+        const data: unknown = JSON.parse(e.data);
+        if (
+          isRecord(data) &&
+          data["type"] === "snapshot" &&
+          Array.isArray(data["stages"]) &&
+          data["stages"].every(isPageStage)
+        ) {
+          queryClient.setQueryData(queryKey, data["stages"]);
           setIsConnected(true);
           setError(null);
         }
@@ -68,20 +106,23 @@ export function useStageEvents(
       }
     };
 
-    const onStageEvent = (e: MessageEvent) => {
+    const onStageEvent = (e: MessageEvent<unknown>) => {
       try {
-        const data = JSON.parse(e.data) as {
-          stage_id: string;
-          status: string;
-        };
+        if (typeof e.data !== "string") return;
+        const data: unknown = JSON.parse(e.data);
+        if (
+          !isRecord(data) ||
+          typeof data["stage_id"] !== "string" ||
+          !isStatus(data["status"])
+        )
+          return;
+        const { stage_id, status } = data;
         queryClient.setQueryData(
           queryKey,
           (prev: PageStageState[] | undefined) => {
             if (!prev) return prev;
             return prev.map((row) =>
-              row.stage_id === data.stage_id
-                ? { ...row, status: data.status as PageStageState["status"] }
-                : row,
+              row.stage_id === stage_id ? { ...row, status: status } : row,
             );
           },
         );

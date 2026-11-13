@@ -72,12 +72,16 @@ export function buildWordOffsetIndex(
   text: string,
   words: readonly OcrWord[],
 ): WordOffsetIndex {
-  const ranges: (CharRange | null)[] = new Array(words.length).fill(null);
+  const ranges: (CharRange | null)[] = Array.from(
+    { length: words.length },
+    () => null,
+  );
   let cursor = 0;
 
   for (let i = 0; i < words.length; i++) {
     // noUncheckedIndexedAccess: i < words.length guarantees defined
-    const w = words[i]!;
+    const w = words[i];
+    if (!w) throw new Error("Missing OCR word");
     const wt = w.text;
     if (!wt || wt.trim() === "") {
       ranges[i] = null;
@@ -158,7 +162,8 @@ export function offsetToWord(
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
     // noUncheckedIndexedAccess: lo..hi stay within arr.length bounds
-    const r = arr[mid]!;
+    const r = arr[mid];
+    if (!r) throw new Error("Missing word range");
     if (offset < r.start) hi = mid - 1;
     else if (offset >= r.end) lo = mid + 1;
     else

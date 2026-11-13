@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 /**
  * Tests for SettingsPage — hi-fi P3-3 redesign.
  *
@@ -129,7 +130,7 @@ describe("SettingsPage", () => {
   it("shows loading text while data is pending", () => {
     // Never resolve: loading state persists
     server.use(
-      http.get("/api/data/system/defaults", () => new Promise(() => {})),
+      http.get("/api/data/system/defaults", () => new Promise(vi.fn())),
     );
     renderWithProviders(<SettingsPage />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();

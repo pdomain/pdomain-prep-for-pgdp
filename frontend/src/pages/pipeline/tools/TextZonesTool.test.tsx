@@ -90,32 +90,35 @@ const MOCK_TOTALS: ZoneTotals = {
 
 const TEST_SERVICES: TextZonesToolServices = {
   ...stubStageSettingsServices(),
-  fetchZonePages: async (_projectId) => ({
-    rows: MOCK_ZONE_ROWS,
-    totals: MOCK_TOTALS,
-  }),
-  applySplit: async (_projectId, _pageId, _draft) => ({
-    parentRow: { ...MOCK_ZONE_ROWS[0]!, state: "split" as const },
-    childRows: [
-      {
-        idx: "0001a",
-        prefix: "p001a",
-        state: "clean" as const,
-        flags: [],
-        pageNumber: 1,
-      },
-      {
-        idx: "0001b",
-        prefix: "p001b",
-        state: "clean" as const,
-        flags: [],
-        pageNumber: 1,
-      },
-    ],
-  }),
-  redetectLayout: async (_projectId, _pageId, _draft) => ({ zones: [] }),
-  persistLayout: async (_projectId, _pageId, _data) => ({ ok: true }),
-  confirmStage: async (_projectId) => ({ ok: true }),
+  fetchZonePages: (_projectId) =>
+    Promise.resolve({
+      rows: MOCK_ZONE_ROWS,
+      totals: MOCK_TOTALS,
+    }),
+  applySplit: (_projectId, _pageId, _draft) =>
+    Promise.resolve({
+      parentRow: { ...MOCK_ZONE_ROWS[0]!, state: "split" as const },
+      childRows: [
+        {
+          idx: "0001a",
+          prefix: "p001a",
+          state: "clean" as const,
+          flags: [],
+          pageNumber: 1,
+        },
+        {
+          idx: "0001b",
+          prefix: "p001b",
+          state: "clean" as const,
+          flags: [],
+          pageNumber: 1,
+        },
+      ],
+    }),
+  redetectLayout: (_projectId, _pageId, _draft) =>
+    Promise.resolve({ zones: [] }),
+  persistLayout: (_projectId, _pageId, _data) => Promise.resolve({ ok: true }),
+  confirmStage: (_projectId) => Promise.resolve({ ok: true }),
 };
 
 // ---------------------------------------------------------------------------

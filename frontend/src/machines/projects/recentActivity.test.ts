@@ -38,10 +38,11 @@ function subStateIs(snap: { value: StateValue }, ...path: string[]): boolean {
   for (const key of path) {
     if (typeof v === "string") return v === key;
     if (typeof v !== "object") return false;
-    const record = v as Record<string, StateValue>;
+    const record: Record<string, StateValue | undefined> = v;
     if (!(key in record)) return false;
-    v = record[key] as StateValue;
-    if (v === undefined) return false;
+    const next = record[key];
+    if (next === undefined) return false;
+    v = next;
   }
   return true;
 }

@@ -77,11 +77,11 @@ export function AlertDialogContent({
 // can't see through `const X = RadixAlertDialog.Y` to confirm these
 // are forwardRef components. This file only exports components, so
 // silence locally for each re-export line.
-// eslint-disable-next-line react-refresh/only-export-components
+
 export const AlertDialogTitle = RadixAlertDialog.Title;
-// eslint-disable-next-line react-refresh/only-export-components
+
 export const AlertDialogDescription = RadixAlertDialog.Description;
-// eslint-disable-next-line react-refresh/only-export-components
+
 export const AlertDialogCancel = RadixAlertDialog.Cancel;
-// eslint-disable-next-line react-refresh/only-export-components
+
 export const AlertDialogAction = RadixAlertDialog.Action;

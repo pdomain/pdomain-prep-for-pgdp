@@ -270,8 +270,6 @@ export function ProjectsPage({
       onRespawnActivity: (_projectId) => {
         // Child actor lifecycle delegated to component layer (F3-4 divergence)
       },
-      onRespawnAttributes: (_projectId) => {},
-      onRespawnManage: (_projectId, _isArchived) => {},
       onRefreshRail: () => {
         railSend({ type: "PROJECTS_CHANGED" });
       },
@@ -428,8 +426,8 @@ export function ProjectsPage({
 
           {/* Summary */}
           {(() => {
-            const all = railSnap.context.all ?? [];
-            const totalPages = all.reduce((sum, p) => sum + (p.pages ?? 0), 0);
+            const all = railSnap.context.all;
+            const totalPages = all.reduce((sum, p) => sum + p.pages, 0);
             return (
               <div className="px-4 pb-2 font-mono text-[11px] text-ink-3">
                 <div>

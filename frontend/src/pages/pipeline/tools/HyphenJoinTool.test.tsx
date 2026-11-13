@@ -75,20 +75,22 @@ const MOCK_CASES: HyphenCase[] = [
 ];
 
 const TEST_SERVICES: HyphenJoinServices = {
-  async scanHyphenation(_pid) {
-    return {
-      cases: MOCK_CASES,
-      totals: {
-        total: 3,
-        joined: 1,
-        validated: 0,
-        undecided: 1,
-        flagged: 0,
-        crosspage: 0,
-        mismatch: 1,
-        unvalidated: 1,
-      },
-    };
+  scanHyphenation(_pid) {
+    return new Promise((resolve) => {
+      return resolve({
+        cases: MOCK_CASES,
+        totals: {
+          total: 3,
+          joined: 1,
+          validated: 0,
+          undecided: 1,
+          flagged: 0,
+          crosspage: 0,
+          mismatch: 1,
+          unvalidated: 1,
+        },
+      });
+    });
   },
 };
 

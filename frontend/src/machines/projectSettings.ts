@@ -382,50 +382,42 @@ export const projectSettingsMachine = setup({
          */
         SET_GROUP: [
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "general",
+            guard: ({ event }) => event.group === "general",
             target: ".general",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "bib",
+            guard: ({ event }) => event.group === "bib",
             target: ".bib",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "pgdp",
+            guard: ({ event }) => event.group === "pgdp",
             target: ".pgdp",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "format",
+            guard: ({ event }) => event.group === "format",
             target: ".format",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "defaults",
+            guard: ({ event }) => event.group === "defaults",
             target: ".defaults",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "members",
+            guard: ({ event }) => event.group === "members",
             target: ".members",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "storage",
+            guard: ({ event }) => event.group === "storage",
             target: ".storage",
             actions: ["assignGroup"],
           },
           {
-            guard: ({ event }) =>
-              event.type === "SET_GROUP" && event.group === "danger",
+            guard: ({ event }) => event.group === "danger",
             target: ".danger",
             actions: ["assignGroup"],
           },

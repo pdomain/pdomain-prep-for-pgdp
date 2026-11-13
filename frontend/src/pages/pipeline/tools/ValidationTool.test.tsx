@@ -72,11 +72,12 @@ const MOCK_RULES: ValidationRule[] = [
 ];
 
 const TEST_SERVICES: ValidationToolServices = {
-  runChecks: async (_projectId) => ({
-    rules: MOCK_RULES,
-    counts: { pass: 6, warn: 1, error: 1 },
-  }),
-  persistWaiver: async (_projectId, _ruleId, _note) => ({ ok: true }),
+  runChecks: (_projectId) =>
+    Promise.resolve({
+      rules: MOCK_RULES,
+      counts: { pass: 6, warn: 1, error: 1 },
+    }),
+  persistWaiver: (_projectId, _ruleId, _note) => Promise.resolve({ ok: true }),
 };
 
 // ---------------------------------------------------------------------------

@@ -304,10 +304,7 @@ describe("SSE subscription", () => {
     );
     expect(statusEvents.length).toBeGreaterThanOrEqual(1);
     const cleanEvent = statusEvents.find(
-      (e) =>
-        e.type === "project-stage-status" &&
-        e.stage_id === "page_order" &&
-        e.status === "clean",
+      (e) => e.stage_id === "page_order" && e.status === "clean",
     );
     expect(cleanEvent).toBeDefined();
   });

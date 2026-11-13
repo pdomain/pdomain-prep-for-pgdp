@@ -260,7 +260,10 @@ export async function fetchRecentActivity(
     );
   } catch (err) {
     // Only swallow 404 (project not yet initialized) — propagate other errors
-    const status = (err as { status?: number })?.status;
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? err.status
+        : undefined;
     if (status === 404 || status === undefined) {
       // Route missing or project not initialized — return empty feed
       return { entries: [], totalCount: 0, commentCount: 0, stageCount: 0 };
@@ -301,7 +304,10 @@ export async function fetchAttributes(
       `/api/data/projects/${encodeURIComponent(projectId)}/attributes`,
     );
   } catch (err) {
-    const status = (err as { status?: number })?.status;
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? err.status
+        : undefined;
     if (status === 404 || status === undefined) {
       // Route not yet implemented or project not found — derive from project config
       try {
@@ -381,7 +387,7 @@ export async function runManageAction(
       );
       return { action, status: "archived" };
     case "clean": {
-      const cleanResult = await api.post<{ reclaimed_bytes: number }>(
+      const cleanResult = await api.post<{ reclaimed_bytes?: number }>(
         `/api/data/projects/${encodeURIComponent(projectId)}/clean`,
       );
       return { action, reclaimedBytes: cleanResult.reclaimed_bytes ?? 0 };

@@ -85,5 +85,5 @@ export function DialogContent({ children, className }: DialogContentProps) {
 // under the wrapper namespace. The react-refresh rule can't see through
 // the re-assignment to confirm it's a component, so silence it locally —
 // this file only exports components.
-// eslint-disable-next-line react-refresh/only-export-components
+
 export const DialogTitle = RadixDialog.Title;

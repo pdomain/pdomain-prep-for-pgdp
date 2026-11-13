@@ -40,10 +40,11 @@ const MOCK_TREE: TreeRow[] = [
 ];
 
 const TEST_SERVICES: ProofPackToolServices = {
-  assemblePack: async (_projectId, _include) => ({
-    tree: MOCK_TREE,
-    completeness: { complete: 387, total: 387 },
-  }),
+  assemblePack: (_projectId, _include) =>
+    Promise.resolve({
+      tree: MOCK_TREE,
+      completeness: { complete: 387, total: 387 },
+    }),
 };
 
 // ---------------------------------------------------------------------------

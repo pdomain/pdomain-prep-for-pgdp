@@ -264,7 +264,7 @@ describe("useSourcePages", () => {
     expect(result.current.files[2]?.state).toBe("skipped");
   });
 
-  it("returns empty array when enabled=false", async () => {
+  it("returns empty array when enabled=false", () => {
     const { result } = renderHook(() => useSourcePages(PROJECT_ID, false), {
       wrapper: makeWrapper(),
     });
@@ -316,8 +316,12 @@ describe("useSourcePages — round-trip role persistence", () => {
     pageStore.set(0, { page_type: "cover", page_role: null, ignore: false });
 
     // Refetch simulates a reload: new GET will return the updated page_type.
-    await act(async () => {
-      result.current.refetch();
+    await act(() => {
+      return new Promise((resolve) => {
+        result.current.refetch();
+
+        return resolve(undefined);
+      });
     });
 
     await waitFor(() => {

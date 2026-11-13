@@ -71,7 +71,8 @@ export function computeDownstream(startStageId: string): string[] {
   const visited = new Set<string>();
   const queue = [startStageId];
   while (queue.length > 0) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+    if (current === undefined) break;
     for (const dependent of dependents.get(current) ?? []) {
       if (!visited.has(dependent)) {
         visited.add(dependent);

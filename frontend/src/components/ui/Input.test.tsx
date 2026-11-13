@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 /**
  * Input tests — after Task 2 (s0-b) the component is pdomain-ui's Input.
  *
@@ -22,7 +23,7 @@ describe("Input", () => {
   });
 
   it("accepts value prop", () => {
-    render(<Input data-testid="inp" value="hello" onChange={() => {}} />);
+    render(<Input data-testid="inp" value="hello" onChange={vi.fn()} />);
     expect(screen.getByDisplayValue("hello")).toBeInTheDocument();
   });
 

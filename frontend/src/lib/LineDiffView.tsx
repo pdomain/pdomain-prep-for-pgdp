@@ -42,7 +42,8 @@ function buildRows(diff: readonly DiffLine[]): Row[] {
   const rows: Row[] = [];
   for (let i = 0; i < diff.length; i++) {
     // noUncheckedIndexedAccess: i < diff.length guarantees defined
-    const d = diff[i]!;
+    const d = diff[i];
+    if (!d) throw new Error("Missing diff row");
     if (d.kind === "equal") {
       rows.push({ left: d, right: d });
     } else if (d.kind === "delete") {

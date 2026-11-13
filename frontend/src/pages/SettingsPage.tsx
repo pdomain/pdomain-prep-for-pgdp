@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { components } from "../api/types.gen";
-import { Button, buttonVariants } from "../components/ui/Button";
+import { Button } from "../components/ui/Button";
+import { buttonVariants } from "../components/ui/buttonVariants";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Separator } from "../components/ui/Separator";
@@ -98,11 +99,7 @@ export function SettingsPage() {
   // falling back to the spec defaults when the query is still loading or
   // has failed.
   const grayscaleInitConfig: GrayscaleDraftConfig = grayscaleAllTier.data
-    ? settingsToDraft(
-        grayscaleAllTier.data as unknown as Parameters<
-          typeof settingsToDraft
-        >[0],
-      )
+    ? settingsToDraft(grayscaleAllTier.data)
     : GRAYSCALE_CONFIG_DEFAULTS;
 
   const saveGrayscale = useMutation({
@@ -345,7 +342,8 @@ function parseScannos(text: string): Record<string, string> {
     const m = /^(\S+)\s+(.+)$/.exec(line);
     if (!m) continue;
     // noUncheckedIndexedAccess: groups 1 and 2 are defined when regex matches
-    out[m[1]!] = m[2]!.trim();
+    const [, key, value] = m;
+    if (key !== undefined && value !== undefined) out[key] = value.trim();
   }
   return out;
 }
@@ -464,14 +462,14 @@ function ImportButton({
     setError(null);
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
+      const parsed: unknown = JSON.parse(text);
       const r = await api.post<SystemDefaults>(
         "/api/data/system/defaults/import",
         parsed,
       );
       onImported(r);
     } catch (e) {
-      setError((e as Error).message ?? "import failed");
+      setError(e instanceof Error ? e.message : "import failed");
     }
   }
 

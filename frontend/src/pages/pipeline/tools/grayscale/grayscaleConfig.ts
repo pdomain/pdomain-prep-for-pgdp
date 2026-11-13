@@ -148,7 +148,7 @@ export function draftToSettings(draft: GrayscaleDraftConfig): GrayscaleConfig {
  * so partial backend responses don't yield undefined fields.
  */
 export function settingsToDraft(
-  settings: GrayscaleConfig,
+  settings: Partial<GrayscaleConfig>,
 ): GrayscaleDraftConfig {
   return {
     flatten: settings.flatten

@@ -198,3 +198,23 @@ describe("useStageEvents stage-status", () => {
     );
   });
 });
+
+describe("malformed stage frames", () => {
+  it("ignores a snapshot with invalid stage rows", () => {
+    renderHook(() => useStageEvents("p1", 0), { wrapper });
+    const es = MockEventSource.instances.at(0);
+    if (!es) throw new Error("EventSource was not created");
+    act(() => es.emit("snapshot", { type: "snapshot", stages: [null] }));
+    expect(qc.getQueryData(["page-stages", "p1", 0])).toBeUndefined();
+  });
+
+  it("ignores an invalid status instead of corrupting the cached row", () => {
+    renderHook(() => useStageEvents("p1", 0), { wrapper });
+    const es = MockEventSource.instances.at(0);
+    if (!es) throw new Error("EventSource was not created");
+    const rows = [makeRow("grayscale", "clean")];
+    act(() => es.emit("snapshot", { type: "snapshot", stages: rows }));
+    act(() => es.emit("stage-status", { stage_id: "grayscale", status: 7 }));
+    expect(qc.getQueryData(["page-stages", "p1", 0])).toEqual(rows);
+  });
+});

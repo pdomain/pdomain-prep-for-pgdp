@@ -1,3 +1,4 @@
+import { getRuntimeEnv } from "@/lib/runtimeEnv";
 /**
  * Login page — handles both apikey mode and OIDC PKCE (jwt mode).
  *
@@ -31,8 +32,7 @@ interface EnvShape {
 }
 
 function env(): EnvShape {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
-  return ((window as any).__ENV__ ?? {}) as EnvShape;
+  return getRuntimeEnv();
 }
 
 // ─── Apikey login sub-component ─────────────────────────────────────────��──
@@ -212,10 +212,16 @@ async function exchangeCode(
     }),
   });
   if (!r.ok) throw new Error(`token exchange failed: HTTP ${r.status}`);
-  const data = await r.json();
-  if (!data.access_token)
+  const data: unknown = await r.json();
+  if (
+    typeof data !== "object" ||
+    data === null ||
+    !("access_token" in data) ||
+    typeof data.access_token !== "string" ||
+    !data.access_token
+  )
     throw new Error("token response missing access_token");
-  return data.access_token as string;
+  return data.access_token;
 }
 
 function generateVerifier(bytes = 32): string {

@@ -6,20 +6,20 @@ import { HOTKEY_MAP } from "../../lib/hotkeyMap";
 
 describe("HotkeyHelpModal", () => {
   it("renders title when open", () => {
-    render(<HotkeyHelpModal open onClose={() => {}} />);
+    render(<HotkeyHelpModal open onClose={vi.fn()} />);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Keyboard shortcuts")).toBeInTheDocument();
   });
 
   it("every registered key description appears", () => {
-    render(<HotkeyHelpModal open onClose={() => {}} />);
+    render(<HotkeyHelpModal open onClose={vi.fn()} />);
     for (const entry of HOTKEY_MAP) {
       expect(screen.getByText(entry.description)).toBeInTheDocument();
     }
   });
 
   it("every registered key cap appears", () => {
-    render(<HotkeyHelpModal open onClose={() => {}} />);
+    render(<HotkeyHelpModal open onClose={vi.fn()} />);
     const allKeys = HOTKEY_MAP.flatMap((e) => e.keys);
     for (const k of allKeys) {
       // Keys may appear multiple times if duplicated; just check presence

@@ -36,7 +36,7 @@ async function acceptDictionaryFixes(
   projectId: string,
 ): Promise<{ fixedIds: string[] }> {
   try {
-    const result = await api.post<{ fixed_ids: string[] }>(
+    const result = await api.post<{ fixed_ids?: string[] }>(
       `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/wordcheck/accept-dict`,
       {},
     );
@@ -56,7 +56,7 @@ async function acceptHighConfidence(
   projectId: string,
 ): Promise<{ acceptedIds: string[] }> {
   try {
-    const result = await api.post<{ accepted_ids: string[] }>(
+    const result = await api.post<{ accepted_ids?: string[] }>(
       `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/wordcheck/accept-high`,
       {},
     );

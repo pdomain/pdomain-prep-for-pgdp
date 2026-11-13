@@ -231,11 +231,15 @@ export const recentActivityMachine = setup({
       invoke: {
         id: "fetchRecentActivity",
         src: "fetchRecentActivity",
-        input: ({ context }) => ({
-          projectId: context.projectId!,
-          limit: context.limit,
-          services: context.services,
-        }),
+        input: ({ context }) => {
+          if (context.projectId === null)
+            throw new Error("No selected project for activity");
+          return {
+            projectId: context.projectId,
+            limit: context.limit,
+            services: context.services,
+          };
+        },
         onDone: [
           {
             target: "loaded",
@@ -360,11 +364,15 @@ export const recentActivityMachine = setup({
               invoke: {
                 id: "refreshActivity",
                 src: "fetchRecentActivity",
-                input: ({ context }) => ({
-                  projectId: context.projectId!,
-                  limit: context.limit,
-                  services: context.services,
-                }),
+                input: ({ context }) => {
+                  if (context.projectId === null)
+                    throw new Error("No selected project for activity");
+                  return {
+                    projectId: context.projectId,
+                    limit: context.limit,
+                    services: context.services,
+                  };
+                },
                 onDone: [
                   {
                     target: "empty",

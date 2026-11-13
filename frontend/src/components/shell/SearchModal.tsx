@@ -44,7 +44,7 @@ export function SearchModal({
 
   // Extract projectId from URL (works on any /projects/:projectId/* route).
   const match = useMatch("/projects/:projectId/*");
-  const projectId = match?.params?.projectId ?? null;
+  const projectId = match?.params.projectId ?? null;
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>

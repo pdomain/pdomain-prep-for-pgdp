@@ -3,7 +3,7 @@
 // `toBeInTheDocument`) and wires the msw lifecycle so handlers reset
 // between tests and unhandled requests fail loudly.
 import "@testing-library/jest-dom/vitest";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { server } from "./server";
 
 // jsdom does not implement ResizeObserver. Components using it (e.g.
@@ -14,9 +14,9 @@ import { server } from "./server";
 // initial sync `update()` (which the components run before installing
 // the observer) or invoke the observer callback manually.
 class ResizeObserverStub {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
 }
 if (typeof globalThis.ResizeObserver === "undefined") {
   (globalThis as any).ResizeObserver = ResizeObserverStub;
@@ -27,11 +27,10 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 // dispatch should override globalThis.EventSource with their own mock via
 // vi.stubGlobal (as useStageEvents.test.tsx does).
 class EventSourceStub {
-  // eslint-disable-next-line @typescript-eslint/no-useless-constructor
-  constructor(_url: string) {}
-  addEventListener(_type: string, _fn: unknown): void {}
-  removeEventListener(_type: string, _fn: unknown): void {}
-  close(): void {}
+  constructor(readonly url: string) {}
+  addEventListener = vi.fn();
+  removeEventListener = vi.fn();
+  close = vi.fn();
 }
 if (typeof globalThis.EventSource === "undefined") {
   (globalThis as any).EventSource = EventSourceStub;
@@ -52,14 +51,14 @@ if (typeof window.matchMedia === "undefined") {
         matches: false,
         media: query,
         onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
         dispatchEvent: () => false,
         // lib.dom still requires these aliases. The app uses addEventListener.
         // eslint-disable-next-line @typescript-eslint/no-deprecated
-        addListener: () => {},
+        addListener: vi.fn(),
         // eslint-disable-next-line @typescript-eslint/no-deprecated
-        removeListener: () => {},
+        removeListener: vi.fn(),
       }) as MediaQueryList,
   });
 }

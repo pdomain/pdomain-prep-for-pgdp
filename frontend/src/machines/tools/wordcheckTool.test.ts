@@ -129,7 +129,7 @@ describe("suspects region — scanning", () => {
     expect(actor2.getSnapshot().context.totals).toBeNull();
   });
 
-  it("SCAN_DONE with suspects → suspects.reviewing", async () => {
+  it("SCAN_DONE with suspects → suspects.reviewing", () => {
     const actor = startMachine();
     actor.send({
       type: "SCAN_DONE",
@@ -476,7 +476,7 @@ describe("listBuilder region — promoting", () => {
 // ---------------------------------------------------------------------------
 
 describe("parallel region independence", () => {
-  it("listBuilder transitions do not affect suspects region", async () => {
+  it("listBuilder transitions do not affect suspects region", () => {
     const actor = startMachine();
     actor.send({
       type: "SCAN_DONE",

@@ -24,7 +24,7 @@ export function decodeJwtClaims(token: string): Record<string, unknown> | null {
     // alphabet, so swap the two distinguishing characters.
     const standard = payload.replace(/-/g, "+").replace(/_/g, "/");
     const decoded = atob(standard);
-    const claims = JSON.parse(decoded);
+    const claims: unknown = JSON.parse(decoded);
     if (
       claims === null ||
       typeof claims !== "object" ||

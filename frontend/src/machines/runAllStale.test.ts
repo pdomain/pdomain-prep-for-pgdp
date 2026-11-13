@@ -76,7 +76,7 @@ function makeInput(
 // ---------------------------------------------------------------------------
 
 describe("runAllStale — empty queue", () => {
-  it("empty staleIndices → immediately enters done (final)", async () => {
+  it("empty staleIndices → immediately enters done (final)", () => {
     const onDone = vi.fn();
     const actor = createActor(runAllStaleMachine, {
       input: makeInput({ staleIndices: [], onDone }),
@@ -87,7 +87,7 @@ describe("runAllStale — empty queue", () => {
     actor.stop();
   });
 
-  it("empty queue calls onDone(0)", async () => {
+  it("empty queue calls onDone(0)", () => {
     const onDone = vi.fn();
     const actor = createActor(runAllStaleMachine, {
       input: makeInput({ staleIndices: [], onDone }),

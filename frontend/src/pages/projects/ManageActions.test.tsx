@@ -363,21 +363,21 @@ describe("ProjectsPage — create project flow", () => {
   it("submitting a valid name+zip calls the API and refreshes the rail", async () => {
     // Mock the API client calls
     const { api } = await import("@/api/client");
-    const postSpy = vi
-      .spyOn(api, "post")
-      .mockImplementation(async (path: string) => {
+    const postSpy = vi.spyOn(api, "post").mockImplementation((path: string) => {
+      return new Promise((resolve) => {
         if (path === "/api/data/projects") {
-          return {
+          return resolve({
             project: { id: "new-proj-1", name: "Test Book" },
             upload_url: "http://localhost/cdn/test-key",
             upload_key: "test-key",
-          };
+          });
         }
         if (path === "/api/gpu/ingest") {
-          return { job_id: "job-1", status: "queued" };
+          return resolve({ job_id: "job-1", status: "queued" });
         }
-        return {};
+        return resolve({});
       });
+    });
 
     // Stub XHR upload (vitest jsdom does not do XHR)
     interface XhrMockShape {

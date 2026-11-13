@@ -387,10 +387,7 @@ export function IllustrationsTool({
 }: ToolSlotProps) {
   const { projectId = "mock-project" } = useParams();
 
-  const services = useMemo(
-    () => buildRealIllustrationsToolServices(),
-    [projectId],
-  );
+  const services = useMemo(() => buildRealIllustrationsToolServices(), []);
 
   const [snapshot, send] = useActor(illustrationsToolMachine, {
     input: {

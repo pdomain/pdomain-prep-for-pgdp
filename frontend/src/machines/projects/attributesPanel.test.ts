@@ -35,12 +35,12 @@ function makeServices(
 ): AttributesPanelServices {
   return {
     fetchAttributes: vi.fn().mockResolvedValue(MOCK_FIELDS),
-    saveAttributes: vi
-      .fn()
-      .mockImplementation(async (_projectId, _section, draft) => ({
+    saveAttributes: vi.fn().mockImplementation((_projectId, _section, draft) =>
+      Promise.resolve({
         ...MOCK_FIELDS,
         bib: { ...MOCK_FIELDS.bib, ...draft },
-      })),
+      }),
+    ),
     ...overrides,
   };
 }

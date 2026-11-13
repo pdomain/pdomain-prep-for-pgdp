@@ -62,8 +62,8 @@ vi.mock("@/services/sse", () => ({
     };
   },
   // Keep subscribePageChannel available for other imports that may use it.
-  subscribePageChannel: () => () => {},
-  subscribeProject: () => () => {},
+  subscribePageChannel: () => vi.fn(),
+  subscribeProject: () => vi.fn(),
 }));
 
 // Import the bridge AFTER the mock is set up.

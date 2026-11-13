@@ -1,3 +1,4 @@
+import { getRuntimeEnv } from "@/lib/runtimeEnv";
 /**
  * UserMenu — consolidated auth + theme dropdown (hifi P1-2).
  *
@@ -37,8 +38,7 @@ export function UserMenu({ "data-testid": testId }: UserMenuProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
-  const env = (window as any).__ENV__ ?? {};
+  const env = getRuntimeEnv();
   const authMode: string = env.AUTH_MODE ?? "none";
 
   // Track JWT token changes (login / logout storage events).

@@ -188,17 +188,17 @@ export function GrayscaleTool({
   >({});
   useEffect(() => {
     if (!projectId || projectId === "demo") return;
-    let cancelled = false;
+    const lifetime = new AbortController();
     void (async () => {
       try {
         const resp = await getStageSettingsResolved(projectId, "grayscale");
-        if (!cancelled) setResolvedSources(resp.sources);
+        if (!lifetime.signal.aborted) setResolvedSources(resp.sources);
       } catch {
         // Non-fatal — source badges will show empty/registry default
       }
     })();
     return () => {
-      cancelled = true;
+      lifetime.abort();
     };
   }, [projectId]);
 
@@ -344,7 +344,7 @@ export function GrayscaleTool({
   const detectedMode = ctx.detected?.mode ?? "perceptual";
   useEffect(() => {
     if (!inConverting || !projectId || projectId === "demo") return;
-    let cancelled = false;
+    const lifetime = new AbortController();
     void (async () => {
       try {
         const pages = await services.loadPageStages(
@@ -353,7 +353,7 @@ export function GrayscaleTool({
           cursorForPrefetch,
           detectedMode,
         );
-        if (!cancelled) {
+        if (!lifetime.signal.aborted) {
           send({ type: "STAGES_LOADED", pages });
         }
       } catch {
@@ -362,11 +362,10 @@ export function GrayscaleTool({
       }
     })();
     return () => {
-      cancelled = true;
+      lifetime.abort();
     };
     // Intentionally depend on inConverting (not topState) so the prefetch
     // only fires on each entry into converting (e.g. after Apply&Run re-enters).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     inConverting,
     projectId,

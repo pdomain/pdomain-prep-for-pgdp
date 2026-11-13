@@ -366,10 +366,12 @@ export function createMockStageSettingsServer(): StageSettingsServices &
     stageId: string,
     value: Record<string, unknown>,
   ): void {
-    if (!map.has(projectId)) {
-      map.set(projectId, new Map());
+    let layer = map.get(projectId);
+    if (!layer) {
+      layer = new Map();
+      map.set(projectId, layer);
     }
-    map.get(projectId)!.set(stageId, value);
+    layer.set(stageId, value);
   }
 
   function deleteLayer(
@@ -393,21 +395,27 @@ export function createMockStageSettingsServer(): StageSettingsServices &
   }
 
   return {
-    async saveAsDefault(projectId, stageId, draft) {
-      setLayer(savedDefaults, projectId, stageId, { ...draft });
-      deleteLayer(overrides, projectId, stageId);
-      return effectiveSettings(projectId, stageId);
+    saveAsDefault(projectId, stageId, draft) {
+      return new Promise((resolve) => {
+        setLayer(savedDefaults, projectId, stageId, { ...draft });
+        deleteLayer(overrides, projectId, stageId);
+        return resolve(effectiveSettings(projectId, stageId));
+      });
     },
 
-    async revertSettings(projectId, stageId) {
-      deleteLayer(overrides, projectId, stageId);
-      return effectiveSettings(projectId, stageId);
+    revertSettings(projectId, stageId) {
+      return new Promise((resolve) => {
+        deleteLayer(overrides, projectId, stageId);
+        return resolve(effectiveSettings(projectId, stageId));
+      });
     },
 
-    async resetSettings(projectId, stageId) {
-      deleteLayer(overrides, projectId, stageId);
-      deleteLayer(savedDefaults, projectId, stageId);
-      return effectiveSettings(projectId, stageId);
+    resetSettings(projectId, stageId) {
+      return new Promise((resolve) => {
+        deleteLayer(overrides, projectId, stageId);
+        deleteLayer(savedDefaults, projectId, stageId);
+        return resolve(effectiveSettings(projectId, stageId));
+      });
     },
 
     // Extension methods for testing

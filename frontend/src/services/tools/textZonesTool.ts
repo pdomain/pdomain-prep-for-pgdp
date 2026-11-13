@@ -57,7 +57,10 @@ import { buildRealStageSettingsServices } from "@/services/stageSettings";
 async function fetchZonePages(
   projectId: string,
 ): Promise<{ rows: ZonePageRow[]; totals: ZoneTotals }> {
-  const result = await api.get<{ rows: ZonePageRow[]; totals: ZoneTotals }>(
+  const result = await api.get<{
+    rows?: ZonePageRow[];
+    totals?: Partial<ZoneTotals>;
+  }>(
     `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_zones/pages-aggregate`,
   );
   return {
@@ -101,7 +104,7 @@ async function applySplit(
   const idx0 = parseInt(pageId, 10);
   const result = await api.post<{
     children?: {
-      idx0?: number;
+      idx0?: number | null;
       prefix?: string;
       split_suffix?: string | null;
     }[];
@@ -167,7 +170,7 @@ async function redetectLayout(
   _currentDraft: Zone[] | null,
 ): Promise<{ zones: Zone[] }> {
   const idx0 = parseInt(pageId, 10);
-  const result = await api.post<{ zones: Zone[] }>(
+  const result = await api.post<{ zones?: Zone[] }>(
     `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/text_zones/redetect`,
     {},
   );
@@ -193,7 +196,7 @@ async function persistLayout(
   data: { zones?: Zone[]; dismissed?: boolean },
 ): Promise<{ ok: boolean }> {
   const idx0 = parseInt(pageId, 10);
-  const result = await api.put<{ ok: boolean }>(
+  const result = await api.put<{ ok?: boolean }>(
     `/api/data/projects/${encodeURIComponent(projectId)}/pages/${idx0}/stages/text_zones/layout`,
     data,
   );

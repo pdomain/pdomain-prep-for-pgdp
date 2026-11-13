@@ -46,8 +46,9 @@ const MOCK_CHECKS: SubmitCheck[] = [
 ];
 
 const TEST_SERVICES: SubmitCheckToolServices = {
-  dryRun: async (_projectId) => MOCK_CHECKS,
-  markAsSubmitted: async (_projectId) => ({ at: "2026-06-11T00:00:00Z" }),
+  dryRun: (_projectId) => Promise.resolve(MOCK_CHECKS),
+  markAsSubmitted: (_projectId) =>
+    Promise.resolve({ at: "2026-06-11T00:00:00Z" }),
 };
 
 // ---------------------------------------------------------------------------

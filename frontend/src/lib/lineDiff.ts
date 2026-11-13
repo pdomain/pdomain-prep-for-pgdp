@@ -79,8 +79,10 @@ export function diffLines(prior: string, next: string): DiffLine[] {
   let j = 0;
   while (i < n && j < m) {
     // noUncheckedIndexedAccess: loop bounds guarantee i < n and j < m
-    const ai = a[i]!;
-    const bj = b[j]!;
+    const ai = a[i];
+    const bj = b[j];
+    if (ai === undefined || bj === undefined)
+      throw new Error("Missing diff input line");
     if (ai === bj) {
       out.push({
         kind: "equal",
@@ -110,21 +112,25 @@ export function diffLines(prior: string, next: string): DiffLine[] {
   }
   while (i < n) {
     // noUncheckedIndexedAccess: i < n guarantees a[i] is defined
+    const text = a[i];
+    if (text === undefined) throw new Error("Missing prior line");
     out.push({
       kind: "delete",
       priorLineNo: i + 1,
       nextLineNo: null,
-      text: a[i]!,
+      text,
     });
     i++;
   }
   while (j < m) {
     // noUncheckedIndexedAccess: j < m guarantees b[j] is defined
+    const text = b[j];
+    if (text === undefined) throw new Error("Missing next line");
     out.push({
       kind: "insert",
       priorLineNo: null,
       nextLineNo: j + 1,
-      text: b[j]!,
+      text,
     });
     j++;
   }

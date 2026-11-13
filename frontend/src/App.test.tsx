@@ -361,7 +361,7 @@ describe("App: routing shell", () => {
       const mainSlot = screen.getByTestId("pdomain-ui-app-shell-main");
       expect(mainSlot).toBeInTheDocument();
       // Routes render inside main — project list placeholder or heading is present.
-      expect(mainSlot.textContent?.length).toBeGreaterThan(0);
+      expect(mainSlot.textContent.length).toBeGreaterThan(0);
     });
   });
 });

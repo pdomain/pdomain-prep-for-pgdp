@@ -27,7 +27,7 @@ function renderIt(tasks: Task[], onSelect?: (t: Task) => void) {
   return render(
     <MemoryRouter>
       <div className="bg-slate-900 p-2">
-        <OpenTasksPopover tasks={tasks} onSelectTask={onSelect ?? (() => {})} />
+        <OpenTasksPopover tasks={tasks} onSelectTask={onSelect ?? vi.fn()} />
       </div>
     </MemoryRouter>,
   );

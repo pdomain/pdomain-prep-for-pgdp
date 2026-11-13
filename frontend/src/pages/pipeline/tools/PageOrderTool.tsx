@@ -671,7 +671,7 @@ export function PageOrderTool({
   const shouldFetchManifest = isWorkspace || isSettled;
   useEffect(() => {
     if (!shouldFetchManifest) return;
-    let cancelled = false;
+    const lifetime = new AbortController();
     void (async () => {
       try {
         const raw = await api.get<{
@@ -680,7 +680,7 @@ export function PageOrderTool({
         }>(
           `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/page_order/artifact`,
         );
-        if (cancelled) return;
+        if (lifetime.signal.aborted) return;
         const prefixes: Record<number, string | null> = {};
         for (const entry of raw.pages) {
           prefixes[entry.idx0] = entry.prefix;
@@ -692,7 +692,7 @@ export function PageOrderTool({
       }
     })();
     return () => {
-      cancelled = true;
+      lifetime.abort();
     };
   }, [shouldFetchManifest, projectId, send]);
 

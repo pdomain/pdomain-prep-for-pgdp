@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 /**
  * Tests for ServerInfoFooter — the local-mode "your server is at …" affordance
  * that surfaces the bound URL once the SPA has mounted (§L1 step 3).
@@ -51,7 +52,7 @@ describe("ServerInfoFooter", () => {
     server.use(
       http.get("/api/server-info", async () => {
         // Hang — caller will be in pending state at assertion time.
-        await new Promise(() => {});
+        await new Promise(vi.fn());
         return HttpResponse.json({ host: "x", port: 0, url: "x" });
       }),
     );

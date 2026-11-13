@@ -106,7 +106,9 @@ export function JobsPage() {
   const filteredJobs = allJobs.filter((j) => matchesFilter(j, statusFilter));
 
   const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(text).catch((error: unknown) => {
+      console.warn("Clipboard write failed", error);
+    });
   };
 
   return (

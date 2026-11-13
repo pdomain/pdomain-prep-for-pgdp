@@ -222,7 +222,8 @@ function upsertPageRecency(
 ): GrayscalePage[] {
   const idx = pages.findIndex((p) => p.id === page.id);
   if (idx === -1) return [...pages, page];
-  const existing = pages[idx]!;
+  const existing = pages[idx];
+  if (!existing) throw new Error("Missing grayscale page");
   // Keep the existing page if it has a strictly newer lastRunAt.
   const existingTs = existing.lastRunAt ?? -Infinity;
   const incomingTs = page.lastRunAt ?? -Infinity;
@@ -469,7 +470,7 @@ export const grayscaleToolMachine = setup({
         return {
           ...base,
           flatten: {
-            ...(base.flatten ?? GRAYSCALE_CONFIG_DEFAULTS.flatten),
+            ...base.flatten,
             enabled: event.enabled,
           },
         };
@@ -486,7 +487,7 @@ export const grayscaleToolMachine = setup({
         return {
           ...base,
           clahe: {
-            ...(base.clahe ?? GRAYSCALE_CONFIG_DEFAULTS.clahe),
+            ...base.clahe,
             enabled: event.enabled,
           },
         };

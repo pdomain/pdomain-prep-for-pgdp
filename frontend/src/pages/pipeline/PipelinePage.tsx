@@ -56,7 +56,8 @@ import {
   type ProjectSettingsServices,
 } from "@/machines/projectSettings";
 import { Button } from "@/components/ui/Button";
-import { TOOL_REGISTRY, ToolSlotPlaceholder } from "./toolSlot";
+import { ToolSlotPlaceholder } from "./toolSlot";
+import { TOOL_REGISTRY } from "./toolRegistry";
 
 // ---------------------------------------------------------------------------
 // Status colors for StageStrip dots

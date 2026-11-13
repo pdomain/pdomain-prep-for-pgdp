@@ -34,7 +34,6 @@ import type {
   GrayscaleConverter,
   GrayscaleChannel,
 } from "./grayscaleConfig";
-import { GRAYSCALE_CONFIG_DEFAULTS } from "./grayscaleConfig";
 
 // ---------------------------------------------------------------------------
 // Source-tier badge
@@ -277,7 +276,7 @@ function FlattenSection({
   draft: GrayscaleDraftConfig;
   onSetFlatten: (enabled: boolean) => void;
 }): ReactNode {
-  const flatten = draft.flatten ?? GRAYSCALE_CONFIG_DEFAULTS.flatten;
+  const flatten = draft.flatten;
 
   return (
     <EditorSection title="Flatten (background normalisation)">
@@ -359,7 +358,7 @@ function ClaheSection({
   draft: GrayscaleDraftConfig;
   onSetClahe: (enabled: boolean) => void;
 }): ReactNode {
-  const clahe = draft.clahe ?? GRAYSCALE_CONFIG_DEFAULTS.clahe;
+  const clahe = draft.clahe;
 
   return (
     <EditorSection title="CLAHE (adaptive contrast)">

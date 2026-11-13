@@ -40,8 +40,8 @@ const MOCK_PAGES = Array.from({ length: 8 }, (_, i) => ({
 }));
 
 const DEFAULT_TEST_SERVICES: PagesGridServices = {
-  fetchPages: async (_pid, _sid) => MOCK_PAGES,
-  savePage: async (_pid, _sid, draft) => draft,
+  fetchPages: (_pid, _sid) => Promise.resolve(MOCK_PAGES),
+  savePage: (_pid, _sid, draft) => Promise.resolve(draft),
 };
 
 function renderPagesGrid(

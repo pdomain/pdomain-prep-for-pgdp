@@ -309,12 +309,16 @@ export const manageActionsMachine = setup({
       invoke: {
         id: "runManageAction",
         src: "runManageAction",
-        input: ({ context }) => ({
-          projectId: context.projectId,
-          action: context.pendingAction!,
-          step: context._step,
-          services: context.services,
-        }),
+        input: ({ context }) => {
+          if (context.pendingAction === null)
+            throw new Error("No pending project action");
+          return {
+            projectId: context.projectId,
+            action: context.pendingAction,
+            step: context._step,
+            services: context.services,
+          };
+        },
         onDone: {
           target: "done",
           actions: [

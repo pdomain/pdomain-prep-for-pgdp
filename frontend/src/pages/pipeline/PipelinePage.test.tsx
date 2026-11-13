@@ -125,7 +125,7 @@ function renderPipeline(
 describe("PipelinePage — booting", () => {
   it("shows loading spinner while fetchPipeline is in flight", () => {
     const services = makeServices({
-      fetchPipeline: vi.fn().mockReturnValue(new Promise(() => {})),
+      fetchPipeline: vi.fn().mockReturnValue(new Promise(vi.fn())),
     });
     renderPipeline(services);
     expect(screen.getByTestId("pipeline-loading")).toBeDefined();
@@ -133,7 +133,7 @@ describe("PipelinePage — booting", () => {
 
   it("hides pipeline content while booting", () => {
     const services = makeServices({
-      fetchPipeline: vi.fn().mockReturnValue(new Promise(() => {})),
+      fetchPipeline: vi.fn().mockReturnValue(new Promise(vi.fn())),
     });
     renderPipeline(services);
     expect(screen.queryByTestId("stage-strip")).toBeNull();

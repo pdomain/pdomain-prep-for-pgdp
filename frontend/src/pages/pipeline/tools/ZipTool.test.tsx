@@ -38,8 +38,8 @@ vi.mock("@/services/sse", () => ({
       _projectCallback = null;
     };
   },
-  subscribePageChannel: () => () => {},
-  subscribeProjectPageStageChannel: () => () => {},
+  subscribePageChannel: () => vi.fn(),
+  subscribeProjectPageStageChannel: () => vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

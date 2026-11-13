@@ -45,8 +45,8 @@ describe("applySplit request body (W0.5)", () => {
       normalized: true,
     });
     expect(result.parentRow.state).toBe("split");
-    expect(result.childRows[0]?.idx).toBe("0002");
-    expect(result.childRows[1]?.idx).toBe("0003");
+    expect(result.childRows[0].idx).toBe("0002");
+    expect(result.childRows[1].idx).toBe("0003");
     expect(result.childRows.map((row) => row.prefix)).toEqual(["p002", "p003"]);
   });
 });

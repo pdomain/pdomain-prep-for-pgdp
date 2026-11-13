@@ -280,7 +280,7 @@ interface WirePageRecord {
   prefix: string;
   source_stem: string;
   /** Persisted leaf role (null until a role is explicitly set on the page) */
-  leaf_role: string | null;
+  leaf_role?: string | null;
   /** Persisted run assignment (null until the leaf is assigned to a run) */
   run_id: string | null;
   /** OCR-detected folio text from the physical page (null until page_order OCR) */
@@ -292,7 +292,7 @@ interface WirePageRecord {
 }
 
 interface WireListPagesResponse {
-  pages: WirePageRecord[];
+  pages?: WirePageRecord[];
   total: number;
   next_cursor: string | null;
 }

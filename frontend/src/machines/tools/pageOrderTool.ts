@@ -482,11 +482,15 @@ export function resolveNeighbourRunId(
 
   // Search backwards for the nearest preceding leaf with a runId
   for (let i = idx - 1; i >= 0; i--) {
-    if (leaves[i]!.runId !== null) return leaves[i]!.runId;
+    const leaf = leaves[i];
+    if (!leaf) throw new Error("Missing page-order leaf");
+    if (leaf.runId !== null) return leaf.runId;
   }
   // Search forwards for the nearest following leaf with a runId
   for (let i = idx + 1; i < leaves.length; i++) {
-    if (leaves[i]!.runId !== null) return leaves[i]!.runId;
+    const leaf = leaves[i];
+    if (!leaf) throw new Error("Missing page-order leaf");
+    if (leaf.runId !== null) return leaf.runId;
   }
   // Nothing found — fall back to first run
   return runs[0]?.id ?? null;

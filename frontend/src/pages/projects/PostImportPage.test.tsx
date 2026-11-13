@@ -128,7 +128,7 @@ describe("PostImportPage — Pa (redirected)", () => {
     expect(progressEl).toHaveTextContent("ingest.start");
   });
 
-  it("Pa-done: PHASE_PUSH done shows toast in redirected pane", async () => {
+  it("Pa-done: PHASE_PUSH done shows toast in redirected pane", () => {
     const onMutated = vi.fn();
     const { container: _ } = wrap(
       <PostImportPage

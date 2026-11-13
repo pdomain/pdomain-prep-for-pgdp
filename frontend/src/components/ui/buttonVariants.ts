@@ -1,0 +1,40 @@
+import { cn } from "@/lib/utils";
+// Base classes applied to every button regardless of variant/size.
+const BASE =
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+// Variant → CSS classes.
+const VARIANT_CLASSES: Record<string, string> = {
+  primary: "bg-accent text-accent-ink hover:bg-accent/90",
+  secondary: "bg-bg-raised text-ink-1 hover:bg-bg-sunk border border-border-2",
+  outline:
+    "border border-border-2 bg-transparent text-ink-1 hover:bg-bg-raised",
+  ghost: "text-ink-1 hover:bg-bg-raised",
+  link: "text-ink-1 underline-offset-4 hover:underline",
+  amber: "bg-brand text-brand-ink hover:bg-brand/90",
+  danger: "bg-status-error text-accent-ink hover:bg-status-error/90",
+};
+
+// Size → CSS classes.
+const SIZE_CLASSES: Record<string, string> = {
+  default: "h-9 px-4 py-2",
+  sm: "h-8 rounded-md px-3",
+  xs: "h-7 rounded-md px-2 text-xs",
+  icon: "h-9 w-9",
+};
+
+export type ButtonVariant = keyof typeof VARIANT_CLASSES;
+export type ButtonSize = keyof typeof SIZE_CLASSES;
+
+/** Returns the resolved class string for a given variant + size (for use in non-button elements like Link). */
+export function buttonVariants({
+  variant = "primary",
+  size = "default",
+  className,
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  className?: string | undefined;
+} = {}): string {
+  return cn(BASE, VARIANT_CLASSES[variant], SIZE_CLASSES[size], className);
+}

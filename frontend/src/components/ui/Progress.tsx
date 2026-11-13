@@ -23,7 +23,7 @@ export function Progress({
     >
       <ProgressPrimitive.Indicator
         className="h-full w-full flex-1 bg-accent transition-all"
-        style={{ transform: `translateX(-${100 - (value ?? 0)}%)` }}
+        style={{ transform: `translateX(-${100 - value}%)` }}
       />
     </ProgressPrimitive.Root>
   );

@@ -45,8 +45,8 @@ vi.mock("@/services/sse", () => ({
       _projectCallback = null;
     };
   },
-  subscribePageChannel: () => () => {},
-  subscribeProjectPageStageChannel: () => () => {},
+  subscribePageChannel: () => vi.fn(),
+  subscribeProjectPageStageChannel: () => vi.fn(),
 }));
 
 // Import the component AFTER the mock is set up.
@@ -314,17 +314,21 @@ describe("ArchiveTool — inventory load", () => {
   });
 
   it("loads and archives the project in the current route", async () => {
-    const listItems = vi.fn(async (projectId: string) => [
-      {
-        name: `pages/${projectId}/stages/threshold/output.png`,
-        meta: "1 B",
-        keep: true,
-      },
-    ]);
-    const archiveProject = vi.fn(async () => ({
-      kept: "1 B",
-      dropped: "0 B",
-    }));
+    const listItems = vi.fn((projectId: string) =>
+      Promise.resolve([
+        {
+          name: `pages/${projectId}/stages/threshold/output.png`,
+          meta: "1 B",
+          keep: true,
+        },
+      ]),
+    );
+    const archiveProject = vi.fn(() =>
+      Promise.resolve({
+        kept: "1 B",
+        dropped: "0 B",
+      }),
+    );
     const router = createMemoryRouter(
       [
         {

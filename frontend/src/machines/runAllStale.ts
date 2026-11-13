@@ -173,7 +173,7 @@ export const runAllStaleMachine = setup({
     runNextSideEffect: ({ context }) => {
       // currentIndex was just assigned; use it directly
       const nextIdx = context.currentIndex;
-      if (nextIdx === null || nextIdx === undefined) return;
+      if (nextIdx === null) return;
       const ref = context.runners[nextIdx];
       if (ref) {
         ref.send({ type: "RUN" });

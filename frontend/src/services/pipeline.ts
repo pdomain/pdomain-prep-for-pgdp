@@ -131,7 +131,7 @@ async function runStage(
   // Backend enqueues run_page_stage jobs for each page_id (not page 0000 only).
   try {
     const listed = await api.get<{
-      pages: { idx0: number }[];
+      pages?: { idx0: number }[];
       next_cursor?: string | null;
     }>(`/api/data/projects/${encodeURIComponent(projectId)}/pages?limit=500`);
     const pageIds = (listed.pages ?? []).map((p) =>

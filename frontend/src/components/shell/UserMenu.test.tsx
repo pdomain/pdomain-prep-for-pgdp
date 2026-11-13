@@ -45,7 +45,7 @@ describe("UserMenu", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renders trigger button in apikey mode", async () => {
+  it("renders trigger button in apikey mode", () => {
     server.use(
       http.get("/api/auth/me", () =>
         HttpResponse.json({ user_id: "apikey-user" }),

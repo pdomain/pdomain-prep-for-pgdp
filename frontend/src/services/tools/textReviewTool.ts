@@ -33,7 +33,7 @@ async function approveLowRisk(
   projectId: string,
 ): Promise<{ approvedIds: string[] }> {
   try {
-    const result = await api.post<{ approved_ids: string[] }>(
+    const result = await api.post<{ approved_ids?: string[] }>(
       `/api/data/projects/${encodeURIComponent(projectId)}/project-stages/text_review/approve-low-risk`,
       {},
     );

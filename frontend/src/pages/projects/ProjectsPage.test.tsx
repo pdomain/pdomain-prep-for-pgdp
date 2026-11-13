@@ -129,7 +129,7 @@ describe("ProjectsPage — loading state", () => {
     // Never-resolving fetch keeps machine in booting
     const services = makeServices([]);
     services.detail.fetchProjects = vi.fn(
-      () => new Promise<ProjectRecord[]>(() => {}),
+      () => new Promise<ProjectRecord[]>(vi.fn()),
     );
     services.rail.fetchProjects = services.detail.fetchProjects;
     wrap(<ProjectsPage services={services} />);

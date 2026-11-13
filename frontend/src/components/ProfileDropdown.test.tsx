@@ -29,7 +29,7 @@ describe("ProfileDropdown", () => {
 
   it("renders email when the JWT carries one", () => {
     const token = makeJwt({ sub: "u-123", email: "alice@example.org" });
-    render(<ProfileDropdown token={token} onSignOut={() => {}} />);
+    render(<ProfileDropdown token={token} onSignOut={vi.fn()} />);
     expect(
       screen.getByRole("button", { name: /alice@example\.org/ }),
     ).toBeInTheDocument();
@@ -37,7 +37,7 @@ describe("ProfileDropdown", () => {
 
   it("falls back to sub when the JWT has no email claim", () => {
     const token = makeJwt({ sub: "u-456" });
-    render(<ProfileDropdown token={token} onSignOut={() => {}} />);
+    render(<ProfileDropdown token={token} onSignOut={vi.fn()} />);
     expect(screen.getByRole("button", { name: /u-456/ })).toBeInTheDocument();
   });
 
@@ -45,7 +45,7 @@ describe("ProfileDropdown", () => {
     const user = userEvent.setup();
     const exp = Math.floor(Date.UTC(2030, 0, 15, 12, 0, 0) / 1000);
     const token = makeJwt({ sub: "u-789", email: "bob@example.org", exp });
-    render(<ProfileDropdown token={token} onSignOut={() => {}} />);
+    render(<ProfileDropdown token={token} onSignOut={vi.fn()} />);
 
     // Menu hidden initially.
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("ProfileDropdown", () => {
   it("renders 'no expiry' when the JWT lacks an exp claim", async () => {
     const user = userEvent.setup();
     const token = makeJwt({ sub: "u-noexp", email: "noexp@example.org" });
-    render(<ProfileDropdown token={token} onSignOut={() => {}} />);
+    render(<ProfileDropdown token={token} onSignOut={vi.fn()} />);
     await user.click(screen.getByRole("button"));
     expect(screen.getByRole("menu")).toHaveTextContent(/no expiry/i);
   });
@@ -87,7 +87,7 @@ describe("ProfileDropdown", () => {
     const token = makeJwt({ sub: "u-1", email: "x@y.z" });
     render(
       <div>
-        <ProfileDropdown token={token} onSignOut={() => {}} />
+        <ProfileDropdown token={token} onSignOut={vi.fn()} />
         <button type="button">outside</button>
       </div>,
     );

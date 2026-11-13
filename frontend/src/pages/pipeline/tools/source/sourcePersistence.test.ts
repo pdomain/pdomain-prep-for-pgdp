@@ -163,7 +163,7 @@ describe("FILE_STATE_TO_PAGE_TYPE mapping", () => {
       "cover",
     ]);
     for (const v of values) {
-      if (v !== null && v !== undefined) {
+      if (v !== null) {
         expect(validPageTypes.has(v)).toBe(true);
       }
     }
@@ -391,7 +391,7 @@ describe("REMOVE_FILES: reversible soft-exclude", () => {
     actor.stop();
   });
 
-  it("REFRESH_FILES after reload shows 'skipped' (ignore=true) for removed pages", async () => {
+  it("REFRESH_FILES after reload shows 'skipped' (ignore=true) for removed pages", () => {
     const actor = startMachine({ initialFiles: [] });
 
     // Simulate what happens after reload: the API returns ignore=true for removed pages
@@ -849,7 +849,7 @@ describe("resolveFileState: back/duplicate distinct from plain skip", () => {
     expect(resolveFileState(true, "normal", "back")).toBe("skipped");
   });
 
-  it("page_role=back survives a MARK_AS → reload cycle", async () => {
+  it("page_role=back survives a MARK_AS → reload cycle", () => {
     // Machine dispatches: MARK_AS back → page_type=skip, page_role=back
     // On reload, server returns page_type=skip, page_role=back → resolves to "back"
     const pageType = FILE_STATE_TO_PAGE_TYPE["back"]; // "skip"
@@ -861,7 +861,7 @@ describe("resolveFileState: back/duplicate distinct from plain skip", () => {
     expect(reloaded).toBe("back");
   });
 
-  it("page_role=duplicate survives a MARK_AS → reload cycle", async () => {
+  it("page_role=duplicate survives a MARK_AS → reload cycle", () => {
     const pageType = FILE_STATE_TO_PAGE_TYPE["duplicate"]; // "skip"
     const pageRole = FILE_STATE_TO_PAGE_ROLE["duplicate"]; // "duplicate"
     expect(pageType).toBe("skip");

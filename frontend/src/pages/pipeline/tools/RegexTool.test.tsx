@@ -69,23 +69,26 @@ const MOCK_RULES: RegexRule[] = [
 
 const TEST_SERVICES: RegexPassServices = {
   ...stubStageSettingsServices(),
-  fetchRules: async (_projectId) => ({
-    rules: MOCK_RULES,
-    counts: {
-      rules: 3,
-      applied: 0,
-      review: 0,
-      pending: 3,
-      matches: 25,
-    },
-    snapshotId: null,
-  }),
-  applyRule: async (_projectId, ruleId) => {
-    const rule = MOCK_RULES.find((r) => r.id === ruleId) ?? MOCK_RULES[0]!;
-    return {
-      rule: { ...rule, status: "applied" as const },
-      counts: { rules: 3, applied: 1, review: 0, pending: 2, matches: 25 },
-    };
+  fetchRules: (_projectId) =>
+    Promise.resolve({
+      rules: MOCK_RULES,
+      counts: {
+        rules: 3,
+        applied: 0,
+        review: 0,
+        pending: 3,
+        matches: 25,
+      },
+      snapshotId: null,
+    }),
+  applyRule: (_projectId, ruleId) => {
+    return new Promise((resolve) => {
+      const rule = MOCK_RULES.find((r) => r.id === ruleId) ?? MOCK_RULES[0]!;
+      return resolve({
+        rule: { ...rule, status: "applied" as const },
+        counts: { rules: 3, applied: 1, review: 0, pending: 2, matches: 25 },
+      });
+    });
   },
 };
 

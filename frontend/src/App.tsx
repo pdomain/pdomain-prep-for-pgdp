@@ -1,3 +1,4 @@
+import { getRuntimeEnv } from "@/lib/runtimeEnv";
 // App.tsx — SPA root: router, QueryClient provider, and route table.
 //
 // Phase 2.4: replaced local AppShell wrapper with pdomain-ui AppShell (#266).
@@ -434,8 +435,7 @@ function AuthGuard() {
 
   // Eager redirect: direct nav to a protected route with no token.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
-    const env = (window as any).__ENV__ ?? {};
+    const env = getRuntimeEnv();
     if (env.AUTH_MODE !== "jwt") return;
     if (location.pathname === "/login") return;
     if (!getAuthToken()) void navigate("/login", { replace: true });
@@ -443,15 +443,17 @@ function AuthGuard() {
 
   // Reactive redirect: any cached query that 401s.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- __ENV__ is an untyped runtime injection from env.js
-    const env = (window as any).__ENV__ ?? {};
+    const env = getRuntimeEnv();
     if (env.AUTH_MODE !== "jwt") return;
     if (location.pathname === "/login") return;
 
     const cache = queryClient.getQueryCache();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- QueryCacheNotifyEvent type not exported from @tanstack/react-query
-    const unsub = cache.subscribe((event: any) => {
-      const status = event?.query?.state?.error?.status;
+    const unsub = cache.subscribe((event) => {
+      const error: unknown = event.query.state.error;
+      const status =
+        typeof error === "object" && error !== null && "status" in error
+          ? error.status
+          : undefined;
       if (status === 401) void navigate("/login", { replace: true });
     });
     return () => unsub();
