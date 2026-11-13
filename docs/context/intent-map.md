@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-07-14
-Last verified: 2026-11-12
+Last verified: 2026-11-13
 Kind: plan
 Level: I1
 ---
@@ -14,7 +14,7 @@ Level: I1
 - **Kind:** plan
 - **Status:** active
 - **Level:** I1
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** choosing work, checking deferred ideas, or identifying owner decisions.
 - **Search terms:** active intent, deferred work, rejected direction, owner decision, pipeline issues.
 
@@ -45,7 +45,8 @@ generated OpenAPI.
 - Keep the roadmap aligned with shipped GPU grayscale support and registry version 3.
 - Maintain the current `wordcheck` stage; scanno research may improve its flagging but does not create a separate stage.
 - **Forward queue:** the [roadmap](../plans/roadmap.md). Waves 0 and 1 shipped. Book-path behavior is in
-  [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). Start at Wave 2.
+  [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). Follow the remaining open rows; Wave 2
+  and the completed Wave 3 rows shipped.
   The [July review](../plans/2026-07-21-pipeline-completion-review.md) is the record of that sequencing, not a second queue.
   Which ideas belong in another repository is in [Repository boundary](../architecture/10-repository-boundary.md).
 - **GitHub issue migration (done 2026-11-09):** all 48 open issues on `pdomain/pdomain-prep-for-pgdp` were
@@ -59,7 +60,7 @@ generated OpenAPI.
 ## Deferred
 
 Parked work for this app is [Parked in this app](../plans/roadmap.md#parked-in-this-app).
-Wave 2 and Wave 3 are [Now](../plans/roadmap.md#now).
+The remaining folio, JWT-stream, and audit-gate gaps are [Now](../plans/roadmap.md#now).
 Work that should be another repository is [Separate repositories](../plans/roadmap.md#separate-repositories),
 with the rationale in [Repository boundary](../architecture/10-repository-boundary.md).
 

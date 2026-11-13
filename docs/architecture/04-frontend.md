@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-13
 - **Read when:** changing the React application or its API contract.
 - **Search terms:** frontend, React, routes, XState, OpenAPI.
 
@@ -110,10 +110,15 @@ former `AuthBadge`/`ProfileDropdown` split) in the header:
 
 The standalone PageWorkbenchPage is removed. Text-review word selection uses `WordBboxOverlay`,
 the shared pdomain-ui `PageImageCanvas`, and react-konva rectangle overlays.
-TextZonesTool and OcrTool still include schematic canvas placeholders; full interactive region editing
-must not be inferred from the old workbench design. Shared image-review thumbnails and canvas scatter
-remain [W2.1](../issues/2026-07-21-w21-isr-real-thumbs.md) and
-[W2.3](../issues/2026-07-21-w23-canvas-map-real-data.md).
+TextZonesTool renders stored zones over real images. It supports drawing, editing, and saving. Its image-backed split
+editor provides axis and gutter controls.
+
+Shared image review uses real thumbnails and separate before/after images. It has explicit missing-image states.
+
+Canvas map plots measured page dimensions. It can save the body-page median ratio before rerunning pages.
+[Image preparation](09-image-prep-settings.md) describes these features.
+
+OcrTool's remaining schematic controls do not establish full interactive parity with the old workbench design.
 
 ## Job progress UX
 

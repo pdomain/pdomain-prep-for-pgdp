@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-13
 - **Read when:** changing persistence, jobs, queues, or event delivery.
 - **Search terms:** events, jobs, queue, event store, page aggregate.
 
@@ -70,9 +70,14 @@ The poller walks each owner's most recent 200 jobs and selects queued rows.
 It marks a claimed job running before invoking its handler. A semaphore bounds concurrency.
 The configurable handler timeout defaults to 900 seconds; cancellation of the await does not stop a worker OS thread.
 
-There is no automatic startup reclaim for stranded running rows. After restart, the job-id cancellation API
-can change a durable row's status, but it does not repair incomplete artifacts.
-See [W3.4](../issues/2026-07-21-w34-reclaim-stuck-running.md).
+Startup marks stranded running jobs as failed and fails their running page/project stage rows.
+This assumes one application process owns the database. It does not repair incomplete artifacts or reclaim
+synchronous running stage rows without a durable job. The [heal runbook](../runbooks/reindex-heal.md)
+distinguishes artifact repair from rerunning those stages.
+
+Progress, completion, and failure writes update a job only while its stored status is not cancelled.
+Unzip checks cancellation before enqueueing thumbnail work. Extraction is not rolled back, and that check
+and the subsequent enqueue are not one transaction.
 
 The retained `awaiting_review` enum value does not establish a live package workflow.
 `_check_awaiting_review` is a no-op. Current project-stage gates reject before enqueue rather than parking an
@@ -84,8 +89,11 @@ The pipeline shell consumes project-stage and project page-stage streams. Tool b
 state from those messages. The zip tool uses project events and fetches the manifest.
 JobsPage polls at five-second intervals instead of opening a stream for every listed job.
 
-Stage cancellation still targets an absent route and swallows errors in the frontend service.
-Job-id cancellation exists separately; see [W3.6](../issues/2026-07-21-w36-job-stage-cancel.md).
+Stage cancellation uses `POST /api/data/projects/{id}/stages/{stage_id}/cancel`.
+It cancels matching queued/running page, project-stage, and OCR-batch jobs after checking ownership.
+Terminal and unrelated jobs remain unchanged. Frontend services propagate failures to the tool machines
+and visible cancel-error surface. Job-id cancellation remains available separately.
+Cancellation is cooperative; it does not forcibly terminate worker threads.
 
 ## Persistence limits
 
@@ -102,3 +110,8 @@ Verified from source on 2026-11-07: `core/job_runner.py`, `core/job_events.py`, 
 `src/pdomain_prep_for_pgdp/` unless explicitly frontend paths.
 Tests include `tests/test_job_runner_timeout.py`, `tests/test_concurrent_jobs.py`,
 `tests/test_ingest_progress.py`, and `tests/test_w4_confirm_routes.py`.
+
+The startup and cancellation contracts were checked against source and tests on 2026-11-13:
+`tests/test_job_reclaim.py`, `tests/test_stage_cancel_route.py`, and `tests/test_cancelled_job_protected.py`;
+frontend `pipeline.cancel.test.ts`, `stageRunner.test.ts`, `runAllStale.test.ts`, and
+`StageCancelError.test.tsx`. Implementation commits are `66c5ed2`, `6b8afe5`, and `c85a128`.

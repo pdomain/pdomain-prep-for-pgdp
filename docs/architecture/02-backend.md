@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-11
+- **Last verified:** 2026-11-13
 - **Read when:** changing bootstrap, adapters, routes, or backend concurrency.
 - **Search terms:** backend, FastAPI, bootstrap, adapters, concurrency.
 
@@ -75,6 +75,13 @@ The application database owns project configuration, page-stage rows, jobs, sear
 SQLite uses a connection protected by a lock. The Postgres adapter uses one async psycopg connection, stores
 page stages in a normalised table, and searches with a `simple` tsvector index. Managed persistence remains deferred.
 
+Postgres implements the complete `IDatabase` surface, including page-stage CRUD, initialization, search, and
+owner enumeration. Search ranking differs from SQLite; both normalize long-s input. Initialization creates
+missing tables with `CREATE TABLE IF NOT EXISTS`, but there is no general existing-schema migration path.
+The shared contract always tests SQLite; live Postgres requires `PGDP_TEST_POSTGRES_URL` and the optional extra.
+Evidence: `adapters/database/postgres.py`, `tests/test_database_contract.py`, and commit `3e2ecd4`, inspected
+on 2026-11-13. This inspection does not claim a fresh live Postgres run.
+
 ### Page lifecycle service (`core/page_store_factory.py`)
 
 `build_page_service(data_root, project_id)` creates a local pdomain-ops page service.
@@ -123,6 +130,7 @@ Current orchestration includes:
 GET  /api/data/projects/{project_id}/pipeline
 POST /api/data/projects/{project_id}/project-stages/{stage_id}/run
 POST /api/data/projects/{project_id}/project-stages/{stage_id}/rerun
+POST /api/data/projects/{project_id}/stages/{stage_id}/cancel
 POST /api/data/projects/{project_id}/page-stages/ocr/run-batch
 POST /api/data/projects/{project_id}/pages/{idx0}/stages/{stage_id}/run
 POST /api/data/projects/{project_id}/pages/{idx0}/stages/text_review/attest

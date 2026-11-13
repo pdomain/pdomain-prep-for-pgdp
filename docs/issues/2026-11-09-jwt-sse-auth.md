@@ -2,7 +2,7 @@
 Status: active
 Owner: CT
 Created: 2026-11-09
-Last verified: 2026-11-09
+Last verified: 2026-11-13
 Kind: issue
 Level: I2
 ---
@@ -14,14 +14,14 @@ Level: I2
 - **Kind:** issue
 - **Status:** active
 - **Level:** I2
-- **Last verified:** 2026-11-09
+- **Last verified:** 2026-11-13
 - **Resolution:** Open
 - **Severity:** Medium — in JWT mode, progress and stage event streams fail with 401 and reconnect
 - **Affected version:** pdomain-prep-for-pgdp master @ `14f0ba8`
 - **Read when:** working on SSE hooks, `EventSource`, JWT auth mode, or event-stream authentication.
 - **Search terms:** EventSource, SSE, Authorization header, bearer token, jwt mode, session cookie,
   useStageEvents, services/sse.ts, former GH #135
-- **Relates to:** [Cookie secure + CORS allowlist (W3.7)](2026-07-21-w37-cookie-cors-hardening.md)
+- **Relates to:** [Cookie secure + CORS allowlist (W3.7)](../architecture/06-deployment.md)
 
 ## Summary
 

@@ -58,12 +58,12 @@ local book path.
 ### Hosted prep service
 
 A hosted service needs a live Postgres contract, an S3 stage writer, container publication, multi-user sharing, and
-Fargate or Modal coordination. [Deployment](06-deployment.md) records the local wheel, the incomplete Postgres builder,
+Fargate or Modal coordination. [Deployment](06-deployment.md) records the local wheel, the optional Postgres adapter,
 and the absence of a release workflow in this checkout.
 
-The missing `IDatabase` methods are an open defect in this repo: [Postgres
-adapter](../issues/2026-11-09-postgres-adapter-incomplete.md). That issue should end with the adapter either completed
-behind a real database test or no longer selectable.
+The missing `IDatabase` methods were completed in `3e2ecd4`, integrated in `06d9a5c`.
+The [backend contract](02-backend.md#idatabase-adaptersdatabasebasepy) describes the implemented adapter and
+remaining schema-migration limit. Live contract tests are opt-in; ordinary CI does not start Postgres.
 
 The hosted product around it is a new repository that depends on this package. Multi-user sharing belongs there too.
 
@@ -143,5 +143,6 @@ and it is not architecture.
   measurement, not export.
 - Decisions: [AD-9](../decisions/architecture-decisions.md) for thumbnails.
   [AD-4](../decisions/architecture-decisions.md) for local-first priority.
-- Open seam: [Postgres adapter issue](../issues/2026-11-09-postgres-adapter-incomplete.md).
+- Adapter evidence: `adapters/database/postgres.py`, `tests/test_database_contract.py`, and `3e2ecd4`;
+  see the [backend contract](02-backend.md#idatabase-adaptersdatabasebasepy).
 - Queue: [roadmap](../plans/roadmap.md).

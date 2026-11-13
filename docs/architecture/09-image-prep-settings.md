@@ -3,7 +3,7 @@ Kind: architecture
 Status: built
 Owner: CT
 Created: 2026-11-07
-Last verified: 2026-11-12
+Last verified: 2026-11-13
 ---
 
 # Source images, grayscale, and stage settings
@@ -12,12 +12,12 @@ Last verified: 2026-11-12
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** changing Source persistence, grayscale previews, device dispatch, or stage settings tiers.
 - **Search terms:** grayscale, GPU, CUDA, settings tiers, Source, thumbnails, page_role.
 
 Source edits and grayscale settings use persisted backend state. Grayscale has real image previews and page,
-project, and app-wide settings controls. Other image-prep tools still have open integration work.
+project, and app-wide settings controls. Shared image review, canvas map, and text-zone editing also use real data.
 
 ## Source persistence and previews
 
@@ -35,6 +35,19 @@ image while that stage has no output.
 One project-channel Server-Sent Events (SSE) bridge refreshes tool state and artifact cache keys as stages finish.
 See [events and jobs](05-events-and-jobs.md) for event ownership.
 
+## Image review, canvas map, and text zones
+
+Shared image review displays real grid thumbnails and separate parent/output images. Missing output remains
+an explicit empty state; completion events and reruns refresh the images. There is no draggable comparison wipe.
+
+Canvas map fetches measured image widths and heights from its aspect-points route. It distinguishes body pages
+from outliers, derives the body-page median ratio, merges that ratio into project settings, and reruns pages.
+
+Text zones render stored regions over real page images. Users can draw, edit, delete, and save zones, or adjust
+a split gutter and axis before creating sibling crops. Split requests use normalized boxes and the existing
+[sibling-page contract](03-pipeline.md#book-path-contracts). Lasso selection, reading-order drag, apply-to-all,
+an Overview zone-type chart, and detector-supplied split suggestions remain unimplemented.
+
 ## Shared settings resolution
 
 Stage settings resolve field by field in this order: page override, project default, app-wide default, registry
@@ -51,6 +64,10 @@ The image-stage review editor uses the backend setting keys directly. `POST .../
 `page_ids` and optional `settings`. It merges `settings` into each page's page-tier override before queueing the jobs,
 and rejects a key the stage does not define with 422. `threshold_level` and `skip_denoise` default to `null`, which
 leaves the value from `PageConfigOverrides` in place. Dewarp has no adjustable settings.
+
+The controls use `threshold_level`, `skip_auto_deskew`, `min_component_area`, `median_kernel_size`,
+`skip_denoise`, `post_transform_crop_insets`, `do_morph`, and `page_h_w_ratio` as appropriate to each stage.
+Rerun merges overrides without discarding unrelated keys and rejects unknown keys before enqueue.
 
 Grayscale normalizes legacy flat settings at each tier before merging them.
 Its current nested configuration covers flattening, converter/channel choice, color2gray, CLAHE, and output range.
@@ -81,6 +98,10 @@ path yet. The archive keep list is the project's stage files, from
 Open work is on the [roadmap](../plans/roadmap.md#now). The July completion plan is the record of Waves 0–3,
 not the queue.
 
+The keep-list route returns an empty inventory for an empty project. Saved keep/drop choices are persisted
+separately from the enumerated stage files. This UI and persistence contract does not establish a destructive
+cleanup engine. The export is filesystem-only and has no corresponding import operation.
+
 ## Evidence
 
 - Code: `api/data/pages.py`, `core/device_resolution.py`, `core/pipeline/stage_settings.py`,
@@ -93,3 +114,10 @@ not the queue.
   `frontend/src/pages/pipeline/tools/grayscale/GrayscaleTiers.test.tsx`.
 - History: `0c12b37`, `a2e09d8`, `bbe6e66`, `9df1101`, `825f287`, `244cbc0`, and `7894d32`.
 - Verified: 2026-11-07 by source and test inspection. No fresh live GPU or representative-book benchmark was run.
+
+Wave 2 and export/inventory behavior was checked against source and tests on 2026-11-13:
+`tests/test_image_stage_settings.py`, `tests/test_canvas_aspect.py`, `tests/test_w05_text_zones_split_contract.py`,
+`tests/test_project_export.py`, and `tests/test_archive_keep_list.py`; frontend `ImageStageReviewTool.test.tsx`,
+`CanvasMapTool.test.tsx`, `TextZonesCanvas.test.tsx`, `StageSettingsAll.test.tsx`, and `ArchiveTool.test.tsx`.
+Browser cases are `tests/e2e/test_wave2_screens_browser.py` and `tests/e2e/test_text_zones_canvas_browser.py`.
+Implementation commits: `820e055`, `2045373`, `5f451b3`, `e621329`, `096a6a8`, `9d1e2a4`, and `2bc67c8`.

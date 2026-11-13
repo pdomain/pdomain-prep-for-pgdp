@@ -3,6 +3,8 @@ title: Pipeline completion review and continuation plan
 status: active
 created: 2026-07-21
 author: multi-agent deep review
+owner: CT
+last_verified: 2026-11-13
 repo: pdomain-prep-for-pgdp
 kind: plan
 ---
@@ -13,7 +15,7 @@ kind: plan
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** reading the July 2026 pipeline review, or checking why a book-path contract was written.
 - **Search terms:** pipeline gaps, stage completeness, E2E book path, continuation plan, text chain, pack chain, hi-fi backlog, wordcheck contract.
 
@@ -23,7 +25,9 @@ Keep the July 2026 evidence for what was solid, what was only scaffolded, and ho
 
 ## Summary verdict
 
-Waves 0 and 1 shipped. Open work is [Now](roadmap.md#now) on the roadmap: Wave 2, Wave 3, and the four defects migrated on 2026-11-09. This file is the review record, not a second queue.
+Waves 0, 1, and 2 shipped, along with the completed Wave 3 rows. Remaining work is [Now](roadmap.md#now) on the
+roadmap: folio detection, JWT streams, and automated dependency auditing. This file is the review record, not a second
+queue.
 
 What was already real in July 2026:
 
@@ -167,7 +171,11 @@ The July 2026 text-chain gaps shipped in Waves 0 and 1. What remains is image-pr
 
 ## Critical defects (blockers)
 
-These were code-backed on 2026-07-21. B0, B1, B2, B3, B4, and B7 shipped in Wave 0. Wave 1 shipped the regex postprocess (B8), the OCR, wordcheck, and text-review queues (B5 for those three tools), illustration packing (B6), and cover plus oxipng (B9). Current behavior is in [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). Archive inventory, which B5 also mentioned, remains [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). The subsections below keep the original evidence.
+These were code-backed on 2026-07-21. B0, B1, B2, B3, B4, and B7 shipped in Wave 0. Wave 1 shipped the regex
+postprocess (B8), the OCR, wordcheck, and text-review queues (B5 for those three tools), illustration packing (B6),
+and cover plus oxipng (B9). Current behavior is in [Book path
+contracts](../architecture/03-pipeline.md#book-path-contracts). Archive inventory, which B5 also mentioned, remains
+[W3.10](../architecture/09-image-prep-settings.md). The subsections below keep the original evidence.
 
 ### B0 — Wordcheck / text-chain artifact contract (highest risk)
 
@@ -364,7 +372,9 @@ Those are fidelity backlog, not missing registry entries.
 
 ## Continuation plan
 
-The live queue is [Now](roadmap.md#now) on the roadmap. It includes Wave 2, Wave 3, and the four defects migrated on 2026-11-09. Those four are not in the tables below. The tables are the July 2026 breakdown. Where a done-when cell disagrees with the roadmap, the roadmap wins.
+The live queue is [Now](roadmap.md#now) on the roadmap. It contains the remaining folio, JWT-stream, and
+dependency-audit gaps. The four migrated defects were not part of the original tables below. The tables are the July
+2026 breakdown. Where a done-when cell disagrees with the roadmap, the roadmap wins.
 
 **Decomposed issues:** one governed node per work item under
 [`docs/issues/`](../issues/README.md). Use those files for implementation
@@ -419,11 +429,11 @@ one illustration when present (cover/oxipng per W1.7).
 
 | ID | Issue | Work | Done when |
 |----|-------|------|-----------|
-| W2.1 | [w21-isr-real-thumbs](../issues/2026-07-21-w21-isr-real-thumbs.md) | Real before/after thumbs | No synthetic paper for threshold–dewarp |
-| W2.2 | [w22-schema-backend-alignment](../issues/2026-07-21-w22-schema-backend-alignment.md) | stageSchemas ↔ backend knobs | Changing threshold changes output |
-| W2.3 | [w23-canvas-map-real-data](../issues/2026-07-21-w23-canvas-map-real-data.md) | Real scatter / spreads | Mock points removed |
-| W2.4 | [w24-text-zones-konva](../issues/2026-07-21-w24-text-zones-konva.md) | Konva split / zone overlays | Split works on a real page |
-| W2.5 | [w25-settings-tiers-generalize](../issues/2026-07-21-w25-settings-tiers-generalize.md) | 3-tier settings beyond grayscale | At least threshold + deskew + denoise |
+| W2.1 | [w21-isr-real-thumbs](../architecture/09-image-prep-settings.md) | Real before/after thumbs | No synthetic paper for threshold–dewarp |
+| W2.2 | [w22-schema-backend-alignment](../architecture/09-image-prep-settings.md) | stageSchemas ↔ backend knobs | Changing threshold changes output |
+| W2.3 | [w23-canvas-map-real-data](../architecture/09-image-prep-settings.md) | Real scatter / spreads | Mock points removed |
+| W2.4 | [w24-text-zones-konva](../architecture/09-image-prep-settings.md) | Konva split / zone overlays | Split works on a real page |
+| W2.5 | [w25-settings-tiers-generalize](../architecture/09-image-prep-settings.md) | 3-tier settings beyond grayscale | At least threshold + deskew + denoise |
 
 **Exit criteria:** Proofer can visually QA image prep and crop/split without
 leaving the pipeline shell.
@@ -433,15 +443,15 @@ leaving the pipeline shell.
 | ID | Issue | Work | Done when |
 |----|-------|------|-----------|
 | W3.1 | — | ~~Golden-path in CI~~ | Shipped with Wave 0. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts). |
-| W3.2 | [w32-playwright-smoke-ci](../issues/2026-07-21-w32-playwright-smoke-ci.md) | Playwright smoke in CI | Failing UI registry breaks CI |
-| W3.3 | [w33-seeded-ocr-browser-fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | Seeded OCR browser fixtures | W6.2 text skips closed |
-| W3.4 | [w34-reclaim-stuck-running](../issues/2026-07-21-w34-reclaim-stuck-running.md) | Reclaim stuck `running` jobs | Crash recovery test |
-| W3.5 | [w35-reindex-heal](../issues/2026-07-21-w35-reindex-heal.md) | reindex --heal coverage | Heal path documented + tested |
-| W3.6 | [w36-job-stage-cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | Job/stage cancel | See [Now](roadmap.md#now). Cancel stops the stage. |
-| W3.7 | [w37-cookie-cors-hardening](../issues/2026-07-21-w37-cookie-cors-hardening.md) | Cookie secure + CORS allowlist | Self-host checklist |
+| W3.2 | [w32-playwright-smoke-ci](../architecture/07-testing.md) | Playwright smoke in CI | Failing UI registry breaks CI |
+| W3.3 | [w33-seeded-ocr-browser-fixtures](../architecture/07-testing.md) | Seeded OCR browser fixtures | W6.2 text skips closed |
+| W3.4 | [w34-reclaim-stuck-running](../architecture/05-events-and-jobs.md) | Reclaim stuck `running` jobs | Crash recovery test |
+| W3.5 | [w35-reindex-heal](../runbooks/reindex-heal.md) | reindex --heal coverage | Heal path documented + tested |
+| W3.6 | [w36-job-stage-cancel](../architecture/05-events-and-jobs.md) | Job/stage cancel | See [Now](roadmap.md#now). Cancel stops the stage. |
+| W3.7 | [w37-cookie-cors-hardening](../architecture/06-deployment.md) | Cookie secure + CORS allowlist | Self-host checklist |
 | W3.8 | shipped | Source-verified architecture and guidance | Completed 2026-11-07; current docs distinguish implementation from history |
 | W3.9 | [w39-page-order-ocr-folios](../issues/2026-07-21-w39-page-order-ocr-folios.md) | page_order P4 OCR-folios | Folio chips real |
-| W3.10 | [w310-save-copy-archive](../issues/2026-07-21-w310-save-copy-archive.md) | Save-a-copy + archive inventory | No `comingSoon` stub |
+| W3.10 | [w310-save-copy-archive](../architecture/09-image-prep-settings.md) | Save-a-copy + archive inventory | No `comingSoon` stub |
 
 **Documentation verification:** W3.8 completed; see [architecture](../architecture/01-overview.md).
 
@@ -450,7 +460,8 @@ leaving the pipeline shell.
 These items are classified in [Repository boundary](../architecture/10-repository-boundary.md). The [roadmap](roadmap.md#separate-repositories) names which repository should own each one.
 
 - Modal S3 bodies, SharedContainer, managed container publish — hosted service or GPU worker image
-- Postgres page_stages + FTS — hosted service; the incomplete adapter issue stays in this repo
+- Postgres page_stages and FTS are implemented here in `3e2ecd4`; the hosted product, live deployment, and
+  general schema migration remain separate work. See the [backend contract](../architecture/02-backend.md).
 - S3 PageStageWriter — hosted service
 - Multi-user sharing / JWT multi-tenant productization — hosted service
 - PDF export — a separate exporter; i18n stays in this frontend if it is ever chosen
@@ -460,7 +471,9 @@ These items are classified in [Repository boundary](../architecture/10-repositor
 
 ## Recommended next session sequence
 
-1. Take the next open row under [Now](roadmap.md#now). That list includes the four migrated defects. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
+1. Take the next open row under [Now](roadmap.md#now). That list now contains only the remaining gaps. Waves 0, 1, and
+2 and the completed Wave 3 rows shipped. See [Book path
+contracts](../architecture/03-pipeline.md#book-path-contracts).
 2. Use current architecture as the implementation reference. W3.8 and the July review-fixes plan are complete.
 
 Use worktrees for implementation branches. Run `AI=1 just ci` before each

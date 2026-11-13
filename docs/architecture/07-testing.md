@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-11
+- **Last verified:** 2026-11-13
 - **Read when:** running tests or choosing a regression gate.
 - **Search terms:** pytest, Vitest, Playwright, CI, lint toolchain.
 
@@ -51,9 +51,15 @@ For a targeted test use `uv run pytest <file> -k <pattern>`; use uv rather than 
 | Browser behavior | Playwright under `tests/e2e/` |
 
 Paths in the table are under `tests/` unless stated otherwise.
-Browser presence tests and passing documentation stubs do not establish full interactive coverage.
-See [W3.2](../issues/2026-07-21-w32-playwright-smoke-ci.md) and
-[W3.3](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md).
+The default browser smoke selects app load, all 24 tool slots, and ZIP upload. Full browser tests remain
+opt-in. Seeded text-chain tests exercise wordcheck keep, unattested-only review queues, individual approval,
+low-risk approval, confirmation, and persisted clean rows. They seed flags and attestations rather than
+loading DocTR. Image-backed zone/split tests cover saved layout and real sibling crops.
+
+Evidence inspected on 2026-11-13: commits `59470c4`, `532777a`, and `e621329`;
+`tests/test_e2e_smoke_gate.py`, `tests/fixtures/seed_stages.py`,
+`tests/e2e/test_seeded_text_chain_browser.py`, and `tests/e2e/test_text_zones_canvas_browser.py`.
+These tests establish the named interactions, not a full browser walkthrough or live OCR inference.
 
 ## Conventions
 

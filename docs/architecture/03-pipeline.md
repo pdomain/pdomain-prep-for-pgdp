@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-13
 - **Read when:** changing pipeline stages, dependencies, or execution.
 - **Search terms:** pipeline, stage registry, DAG, OCR, artifacts, wordcheck flags, attestation, golden path.
 
@@ -316,6 +316,17 @@ The manifest determines filename prefixes and skips; cover aliases come from per
 `proof_pack` precedes build. The later `zip` stage records integrity information, `submit_check` evaluates
 the supplied archive metadata, and `archive` writes its inventory. An old `project.build_package` job with
 range-based names and an awaiting-review gate is not the current registry contract.
+
+### Submission ZIP timestamps
+
+With an explicit `built_at`, every ZIP member takes its timestamp from that value. Aware datetimes convert
+to UTC; naive values are treated as UTC. Dates before 1980 clamp to ZIP's minimum date. Entries use deflate
+compression and mode `0600`. Omitting `built_at` uses the current time, so repeated builds are not then
+guaranteed byte-identical. Fixed timestamps do not make changing input content deterministic.
+
+Evidence: `core/pipeline/steps/build_package.py`, commit `ce1f557`, and the six cases in
+`tests/test_submission_zip_reproducible.py`: moved clock, all entry times, UTC conversion, pre-1980 clamp,
+compression/permissions, and naive UTC. Source inspection and those six tests passed on 2026-11-13.
 
 ## Configuration resolution
 

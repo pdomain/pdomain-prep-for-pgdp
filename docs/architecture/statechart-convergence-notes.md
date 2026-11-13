@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-13
 - **Read when:** changing canvas tools or the XState registry integration.
 - **Search terms:** statechart, XState, canvas, tool registry, convergence.
 
@@ -225,13 +225,13 @@ It is not a list of current blockers. Current source was checked on 2026-11-07.
 - Page-order hydration loads pages and the numbering-runs artifact; `fetchFolios` replaces the old initial
   streaming design. `sequenceClean` already guards confirmation. A real detector remains W3.9.
 - ZipTool now subscribes to project events and fetches its manifest.
-- Shared image-review totals have a backend route. Synthetic thumbnails and discarded settings drafts
-  remain W2.1/W2.2.
+- Shared image review uses real images and validated backend settings. Rerun persists page overrides;
+  source badges and page/project saves share the tier resolver. See [image settings](09-image-prep-settings.md).
 - Validation strictness controls remain placeholder UI; the helper does not establish a persisted backend
   strictness setting.
 
-See [the issue index](../issues/README.md) for active work. Stage cancellation remains W3.6;
-the absent route is a product gap, not a reason to document it as implemented.
+See [the issue index](../issues/README.md) for active work. Stage cancellation now has an owned backend
+route and visible frontend failure handling; [events and jobs](05-events-and-jobs.md) records its cooperative limits.
 
 ### Current persistence and registry
 
@@ -248,8 +248,9 @@ Frontend service factories live under `frontend/src/services/`, not `core/pipeli
 
 The prior API/browser observations remain dated convergence history.
 This audit inspects current source; it does not claim a fresh full browser walkthrough or accessibility audit.
-Browser smoke and fixture-backed text approval remain W3.2/W3.3.
-Dewarp's schema/control mismatch remains W2.2.
+Browser smoke and fixture-backed text approval shipped in `59470c4` and `532777a`.
+Dewarp exposes no adjustable settings, matching its backend. These current-contract corrections were checked
+against source and the tests linked from [testing](07-testing.md) on 2026-11-13.
 
 ## Open questions for CT
 

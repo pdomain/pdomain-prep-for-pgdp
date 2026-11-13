@@ -3,7 +3,7 @@ Kind: plan
 Status: active
 Owner: CT
 Created: 2026-05-07
-Last verified: 2026-11-12
+Last verified: 2026-11-13
 ---
 
 # Roadmap
@@ -12,7 +12,7 @@ Last verified: 2026-11-12
 
 - **Kind:** plan
 - **Status:** active
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** selecting the next product or engineering task for this app.
 - **Search terms:** roadmap, open work, wave 2, wave 3, deferred work, separate repository.
 
@@ -40,20 +40,20 @@ Open rows are first. Landed rows are already on `master`.
 
 | ID | Issue | On master |
 | --- | --- | --- |
-| W2.1 | [Real before/after thumbs](../issues/2026-07-21-w21-isr-real-thumbs.md) | `06d9a5c` (`820e055`) |
-| W2.2 | [stageSchemas match backend knobs](../issues/2026-07-21-w22-schema-backend-alignment.md) | `06d9a5c` (`2045373`) |
-| W2.3 | [canvas map uses real data](../issues/2026-07-21-w23-canvas-map-real-data.md) | `06d9a5c` (`5f451b3`) |
-| W2.4 | [text zone Konva UI](../issues/2026-07-21-w24-text-zones-konva.md) | `06d9a5c` (`e621329`). A split works on a real page. Lasso, reading-order drag, and apply-to-all were not part of this row. |
-| W2.5 | [settings tiers beyond grayscale](../issues/2026-07-21-w25-settings-tiers-generalize.md) | `06d9a5c` (`096a6a8`) |
-| W3.2 | [Playwright smoke in CI](../issues/2026-07-21-w32-playwright-smoke-ci.md) | `06d9a5c` (`59470c4`) |
-| W3.3 | [Seeded OCR browser fixtures](../issues/2026-07-21-w33-seeded-ocr-browser-fixtures.md) | `06d9a5c` (`532777a`) |
-| W3.4 | [Reclaim stuck running jobs](../issues/2026-07-21-w34-reclaim-stuck-running.md) | `c16c5e1` (`66c5ed2`) |
-| W3.5 | [reindex --heal](../issues/2026-07-21-w35-reindex-heal.md) | `06d9a5c` (`1c9393b`), with the [heal runbook](../runbooks/reindex-heal.md) |
-| W3.6 | [Job and stage cancel](../issues/2026-07-21-w36-job-stage-cancel.md) | `c16c5e1` (`6b8afe5`) |
-| W3.7 | [Cookie secure and CORS allowlist](../issues/2026-07-21-w37-cookie-cors-hardening.md) | `c16c5e1` (`7a96382`) |
-| W3.10 | [Save a copy and archive inventory](../issues/2026-07-21-w310-save-copy-archive.md) | Save a copy is `06d9a5c` (`9d1e2a4`). The keep list is the project's stage files. |
-| — | [Progress updates overwrite a cancelled job](../issues/2026-11-09-progress-overwrites-cancel.md) | `c16c5e1` (`c85a128`) |
-| — | [Postgres adapter](../issues/2026-11-09-postgres-adapter-incomplete.md) | `06d9a5c` (`3e2ecd4`). The hosted database product stays a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service). |
+| W2.1 | [Real before/after thumbs](../architecture/09-image-prep-settings.md) | `06d9a5c` (`820e055`) |
+| W2.2 | [stageSchemas match backend knobs](../architecture/09-image-prep-settings.md) | `06d9a5c` (`2045373`) |
+| W2.3 | [canvas map uses real data](../architecture/09-image-prep-settings.md) | `06d9a5c` (`5f451b3`) |
+| W2.4 | [text zone Konva UI](../architecture/09-image-prep-settings.md) | `06d9a5c` (`e621329`). A split works on a real page. Lasso, reading-order drag, and apply-to-all were not part of this row. |
+| W2.5 | [settings tiers beyond grayscale](../architecture/09-image-prep-settings.md) | `06d9a5c` (`096a6a8`) |
+| W3.2 | [Playwright smoke in CI](../architecture/07-testing.md) | `06d9a5c` (`59470c4`) |
+| W3.3 | [Seeded OCR browser fixtures](../architecture/07-testing.md) | `06d9a5c` (`532777a`) |
+| W3.4 | [Reclaim stuck running jobs](../architecture/05-events-and-jobs.md) | `c16c5e1` (`66c5ed2`) |
+| W3.5 | [reindex --heal](../runbooks/reindex-heal.md) | `06d9a5c` (`1c9393b`), with the [heal runbook](../runbooks/reindex-heal.md) |
+| W3.6 | [Job and stage cancel](../architecture/05-events-and-jobs.md) | `c16c5e1` (`6b8afe5`) |
+| W3.7 | [Cookie secure and CORS allowlist](../architecture/06-deployment.md) | `c16c5e1` (`7a96382`) |
+| W3.10 | [Save a copy and archive inventory](../architecture/09-image-prep-settings.md) | Save a copy is `06d9a5c` (`9d1e2a4`). The keep list is the project's stage files. |
+| — | [Progress updates overwrite a cancelled job](../architecture/05-events-and-jobs.md) | `c16c5e1` (`c85a128`) |
+| — | [Postgres adapter](../architecture/02-backend.md) | `06d9a5c` (`3e2ecd4`). The hosted database product stays a [separate repository](../architecture/10-repository-boundary.md#hosted-prep-service). |
 | — | Submission zip entry times | `06d9a5c` (`ce1f557`). Every entry takes its time from `built_at`. |
 
 ## Parked in this app
@@ -61,15 +61,21 @@ Open rows are first. Landed rows are already on `master`.
 These stay in this repository. None of them jump ahead of the open rows under Now.
 
 - Visible Compute panel before device warmup. The factory, device-state display, and tests are in the [Compute panel backlog](2026-06-08-compute-settings-panel-backlog.md).
+- Text-zone lasso selection, reading-order drag, apply-to-all, an Overview zone-type chart, and detector-supplied
+  split suggestions. Real-image zone editing and sibling splits already ship.
+- Importing an exported project copy. Save-a-copy download and persisted archive keep/drop choices already ship; those
+  choices do not establish destructive cleanup.
 - Upper-case Roman and alphabetic numbering controls. Current limits are in [page numbering](../architecture/08-page-numbering.md#limits-and-remaining-work).
 - A first-class Source model for back, duplicate, and inserted pages, beyond the role labels that already exist. Folio detection itself is [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
 - Search ranking, normalization, and an optional cross-project scope. Project-scoped search already ships.
 - Source-quality scoring, richer metadata, project comments, structured settings import and export, and deeper illustration format controls.
 - Further flip operations, bulk crop re-run, and a global hyphen or scanno library UI in this app. If other tools need the shared detector, that is a library change. See [repository boundary](../architecture/10-repository-boundary.md#scanno-detector-shared-with-other-tools).
-- Crop overview and deeper crop settings (former GH #166). [W2.2](../issues/2026-07-21-w22-schema-backend-alignment.md) and [W2.5](../issues/2026-07-21-w25-settings-tiers-generalize.md) do not cover that screen.
+- Crop overview and deeper crop settings (former GH #166). [W2.2](../architecture/09-image-prep-settings.md) and
+  [W2.5](../architecture/09-image-prep-settings.md) do not cover that screen.
 - Hyphen-join settings tab (former GH #177). W2.5 is the image-prep tier pattern, not this tab.
 - `PUT /cdn/{key}` does not check project ownership. `GET /cdn/{key}` does for `projects/` keys. See [repository boundary](../architecture/10-repository-boundary.md#hosted-prep-service).
-- Stronger API-key session CSRF, expiry, revocation, and failed-login visibility, beyond [W3.7](../issues/2026-07-21-w37-cookie-cors-hardening.md).
+- Stronger API-key session CSRF, expiry, revocation, and failed-login visibility, beyond
+  [W3.7](../architecture/06-deployment.md).
 - An end-to-end install of this wheel from a release asset. [AD-10](../decisions/architecture-decisions.md) records the installer. The 2026-11-07 source audit did not run a clean-machine install.
 - English-only UI strings. An i18n (internationalization) layer is this frontend's work if it is ever chosen. The OCR pipeline already takes its language from DocTR.
 
@@ -104,8 +110,8 @@ The JSX prototype remains at `docs/plans/design_handoff_pgdp_app/`. It is a desi
 | #168 | Page-order detection from OCR folios | [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md) |
 | #172 | Global rule library across books | [Parked in this app](#parked-in-this-app), or a shared library if other tools consume it |
 | #177 | Hyphen-join settings tab | [Parked in this app](#parked-in-this-app). The n-gram store is a [separate repository](../architecture/10-repository-boundary.md#hyphen-n-gram-store). |
-| #185, #189 | Split overlay and text-zone canvas | On master in `06d9a5c`. [W2.4](../issues/2026-07-21-w24-text-zones-konva.md) records the extras that were not in that row. |
-| #193 | Save a copy from the Manage tab | The download is on master in `06d9a5c`. The archive keep list is the project's stage files. See [W3.10](../issues/2026-07-21-w310-save-copy-archive.md). |
+| #185, #189 | Split overlay and text-zone canvas | On master in `06d9a5c`. [W2.4](../architecture/09-image-prep-settings.md) records the extras that were not in that row. |
+| #193 | Save a copy from the Manage tab | The download is on master in `06d9a5c`. The archive keep list is the project's stage files. See [W3.10](../architecture/09-image-prep-settings.md). |
 
 ## Separate repositories
 

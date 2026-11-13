@@ -3,7 +3,7 @@ Kind: architecture
 Status: built
 Owner: CT
 Created: 2026-11-07
-Last verified: 2026-11-07
+Last verified: 2026-11-13
 ---
 
 # Page-numbering runs
@@ -12,7 +12,7 @@ Last verified: 2026-11-07
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-07
+- **Last verified:** 2026-11-13
 - **Read when:** changing page order, folio labels, naming manifests, or ranges migration.
 - **Search terms:** numbering runs, counted blank, marker, folio, page_order, P1 P2 P3.
 
@@ -62,7 +62,10 @@ Automated OCR-folio detection remains open in
 [W3.9](../issues/2026-07-21-w39-page-order-ocr-folios.md).
 The machine already loads through `fetchFolios` and guards confirmation with `sequenceClean`.
 The nullable field and reconciliation function do not establish that a detector populates production values.
-Integrate persisted detector results with those existing paths; a new streaming design is a separate choice.
+Persisted OCR folios already reconcile on hydration: disagreement flags block confirmation. The remaining work
+is to populate those values through a detector; a new streaming design is a separate choice. Evidence:
+`88d4e14`, `frontend/src/machines/tools/pageOrderTool.test.ts`, and
+`tests/e2e/test_page_order_ocr_folios_browser.py`, inspected on 2026-11-13. Seeded folios do not prove a detector.
 
 The frontend offers only Roman, Arabic, and unnumbered styles. It maps Roman to lower-case Roman on save.
 Upper-case Roman reloads as Roman, and alphabetic reloads as unnumbered; saving can lose those distinctions.
