@@ -62,32 +62,44 @@ describe("useUiPrefs", () => {
     });
 
     it("resolves system theme via matchMedia (dark OS)", () => {
-      vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-        matches: query === "(prefers-color-scheme: dark)",
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
+      vi.spyOn(window, "matchMedia").mockImplementation(
+        (query) =>
+          ({
+            matches: query === "(prefers-color-scheme: dark)",
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+            // lib.dom still requires these aliases. The app uses addEventListener.
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            addListener: vi.fn(),
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            removeListener: vi.fn(),
+          }) as MediaQueryList,
+      );
       useUiPrefs.getState().setTheme("system");
       expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
       vi.restoreAllMocks();
     });
 
     it("resolves system theme via matchMedia (light OS)", () => {
-      vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      }));
+      vi.spyOn(window, "matchMedia").mockImplementation(
+        (query) =>
+          ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+            // lib.dom still requires these aliases. The app uses addEventListener.
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            addListener: vi.fn(),
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            removeListener: vi.fn(),
+          }) as MediaQueryList,
+      );
       useUiPrefs.getState().setTheme("system");
       expect(document.documentElement.getAttribute("data-theme")).toBe("light");
       vi.restoreAllMocks();

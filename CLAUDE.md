@@ -1,7 +1,7 @@
 ---
 Kind: process
 Status: active
-Last verified: 2026-11-12
+Last verified: 2026-11-13
 ---
 
 # CLAUDE — pdomain-prep-for-pgdp
@@ -110,7 +110,8 @@ Targeted runs: `uv run pytest -k <pattern>`.
   is `docs/plans/roadmap.md`. Work that should leave this repo is in
   `docs/architecture/10-repository-boundary.md`. Cloud and remote items remain
   parked under `docs/plans/roadmap.md` §Deferred.
-- Current dependency minimums are `pdomain-book-tools>=0.28.0` and `pdomain-ops>=0.11.2`, from pdomain-index-pip.
+- Current dependency minimums are `pdomain-book-tools>=0.31.0`, `pdomain-book-contracts>=0.3.1`,
+  and `pdomain-ops>=0.12.2`, from pdomain-index-pip. `@pdomain/pdomain-ui` is `^0.13.0`.
   `make local-dev` installs editable siblings; `make update-pdomain-deps` refreshes registry constraints.
 - `gpu_backend="cpu"` is the test default. Local/cpu/mps startup uses `_NoOpGPUBackend` for compatibility;
   page stages execute through the registry. Remote modes require real configuration.

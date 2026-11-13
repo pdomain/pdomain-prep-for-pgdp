@@ -3,7 +3,7 @@ Kind: architecture
 Status: built
 Owner: CT
 Created: 2026-11-12
-Last verified: 2026-11-12
+Last verified: 2026-11-13
 ---
 
 # Repository boundary
@@ -12,7 +12,7 @@ Last verified: 2026-11-12
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** deciding whether a feature belongs in this app, in a sibling library, or in a new repository.
 - **Search terms:** repository boundary, sibling repos, hosted prep, GPU worker, separate repository.
 
@@ -37,10 +37,10 @@ declares.
 
 | Repository | What it owns | How this app uses it |
 | --- | --- | --- |
-| `pdomain-book-tools` | OCR, geometry, and image primitives | `pdomain-book-tools>=0.28.0`. Grayscale calls its composable pipeline. |
-| `pdomain-ops` | Suite registry, shared preferences, page store, GPU backend protocol | `pdomain-ops>=0.11.2`. This app uses `PagesApplication` and `LocalPageStore`, `GPUBackend` (`ModalStageDispatcher`, `SharedContainerStageDispatcher`), suite prefs, and `mount_routes`. Pack-stage comments mention `LongJobRunner`. The app does not call it. |
-| `pdomain-book-contracts` | Shared contracts | `pdomain-book-contracts>=0.2.0`. |
-| `pdomain-ui` | Shared React UI | `@pdomain/pdomain-ui` `^0.12.1` in `frontend/package.json`. |
+| `pdomain-book-tools` | OCR, geometry, and image primitives | `pdomain-book-tools>=0.31.0`. Grayscale calls its composable pipeline. |
+| `pdomain-ops` | Suite registry, shared preferences, page store, GPU backend protocol | `pdomain-ops>=0.12.2`. This app uses `PagesApplication` and `LocalPageStore`, `GPUBackend` (`ModalStageDispatcher`, `SharedContainerStageDispatcher`), suite prefs, and `mount_routes`. Pack-stage comments mention `LongJobRunner`. The app does not call it. |
+| `pdomain-book-contracts` | Shared contracts | `pdomain-book-contracts>=0.3.1`. |
+| `pdomain-ui` | Shared React UI | `@pdomain/pdomain-ui` `^0.13.0` in `frontend/package.json`. |
 | `pdomain-ocr-cli` | OCR command line and the install pattern this repo mirrors | The OCR stage follows it. |
 | `pdomain-ocr-labeler-spa`, `pdomain-ocr-trainer-spa`, `pdomain-ocr-training`, `pdomain-ocr-synth` | Labeling, training, and synthetic pages | Out of this app. |
 | `pdomain-pgdp-measure` | Font-free measurement of scans | A measurement library. It is not a prep stage and it does not export PDFs. |

@@ -47,16 +47,20 @@ if (typeof window.matchMedia === "undefined") {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     configurable: true,
-    value: (query: string): MediaQueryList => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }),
+    value: (query: string): MediaQueryList =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+        // lib.dom still requires these aliases. The app uses addEventListener.
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        addListener: () => {},
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        removeListener: () => {},
+      }) as MediaQueryList,
   });
 }
 

@@ -13,13 +13,13 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "pdomain-book-tools>=0.28.0",
+    "pdomain-book-tools>=0.31.0",
     # Declared directly, though nothing here imports it: book-tools 0.28.0
     # depends on it, it lives only on the self-hosted index, and that index
     # is explicit, so a purely transitive reference does not resolve. Every
     # sibling that depends on book-tools lists it the same way.
-    "pdomain-book-contracts>=0.2.0",
-    "pdomain-ops>=0.11.2",
+    "pdomain-book-contracts>=0.3.1",
+    "pdomain-ops>=0.12.2",
     "eventsourcing>=9.5",
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",
@@ -71,7 +71,7 @@ dev = [
     "pytest-asyncio>=1.4",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8",
-    "ruff>=0.16.7",
+    "ruff>=0.17.5",
     "httpx>=0.28",
     "httpx2>=2.12",
 ]
@@ -330,6 +330,9 @@ addopts = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+# pytest-asyncio 1.5 warns when this is unset, and warnings are errors.
+# "fixture-scope" is the 1.4 default: the loop follows the fixture's scope.
+asyncio_default_fixture_loop_scope = "fixture-scope"
 
 markers = [
     "slow: marks tests as slow — excluded from `make test`; included in `make ci-slow`",

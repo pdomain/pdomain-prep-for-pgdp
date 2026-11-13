@@ -4,7 +4,7 @@
 
 - **Kind:** architecture
 - **Status:** built
-- **Last verified:** 2026-11-12
+- **Last verified:** 2026-11-13
 - **Read when:** orienting to the system or tracing its main components.
 - **Search terms:** architecture overview, FastAPI, pipeline, adapters.
 
@@ -61,8 +61,9 @@ See [backend wiring](02-backend.md), [deployment](06-deployment.md),
 ## Dependency surface
 
 The backend uses Python 3.13, FastAPI, Pydantic, uvicorn, anyio, and OCR/image libraries.
-Current dependency minimums include `pdomain-book-tools>=0.28.0`, `pdomain-ops>=0.11.2`,
-`pdomain-book-contracts>=0.2.0`, and `eventsourcing>=9.5`. See `pyproject.toml` for the full constraints and extras.
+Current dependency minimums include `pdomain-book-tools>=0.31.0`, `pdomain-ops>=0.12.2`,
+`pdomain-book-contracts>=0.3.1`, and `eventsourcing>=9.5`. See `pyproject.toml` for the full constraints and extras.
+`@pdomain/pdomain-ui` is `^0.13.0` in `frontend/package.json`.
 
 The frontend uses React 19, Vite, TypeScript, XState v5, TanStack Query, react-konva, React Router, Tailwind,
 and `@pdomain/pdomain-ui`. What belongs in a sibling or a new repository is in
