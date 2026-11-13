@@ -34,7 +34,7 @@ Open rows are first. Landed rows are already on `master`.
 | --- | --- | --- |
 | W3.9 | [OCR folio page order](../issues/2026-07-21-w39-page-order-ocr-folios.md) | Reconcile-on-load is on `master` in `06d9a5c` (`88d4e14`). Page order still cannot take folios from a detector. `pdomain-book-tools` 0.28.0 has none. No branch holds the detector. |
 | — | [SSE streams cannot authenticate in JWT mode](../issues/2026-11-09-jwt-sse-auth.md) | No branch holds this. |
-| — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | `make audit` is on `master` in `06d9a5c` (`a45325c`) and is not part of `just ci`. The lockfile has known advisories. No branch holds the gate. |
+| — | [CI does not audit dependencies](../issues/2026-11-09-dependency-audit-gate.md) | The recipe was added as `make audit` on `master` in `06d9a5c` (`a45325c`). Run it now with `just audit`; it is not part of `just ci`. The lockfile has known advisories. No branch holds the gate. |
 
 ### Landed on master
 

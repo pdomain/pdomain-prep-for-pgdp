@@ -22,9 +22,15 @@ Level: I2
 - **Search terms:** pip-audit, pnpm audit, osv-scanner, Dependabot, Renovate, vulnerability audit, make ci, former GH #146
 - **Relates to:** [testing architecture](../architecture/07-testing.md)
 
+## Current operation — 2026-11-13
+
+`just audit` is available as a separate networked check. `just ci` does not run it.
+See [current testing commands](../architecture/07-testing.md#how-to-run).
+The dated evidence below records the earlier Make gate; this note does not close the issue.
+
 ## Summary
 
-`make ci` runs setup, pre-commit, type checking, OpenAPI export, the frontend build, tests, frontend format,
+`just ci` runs setup, pre-commit, type checking, OpenAPI export, the frontend build, tests, frontend format,
 lint, test, and knip. None of these checks dependencies against vulnerability databases, and the repo has no
 Dependabot or Renovate config. Migrated from GitHub issue #146, which came from the 2026-05-22 deep code
 review.
@@ -55,7 +61,7 @@ ls .github/workflows .github/dependabot.yml renovate.json
 
 ### 2. CI runs locally
 
-The repo has no GitHub Actions workflows, so "CI" means `make ci` run before each commit. A scheduled audit
+The repo has no GitHub Actions workflows, so "CI" means `just ci` run before each commit. A scheduled audit
 would need a new runner, such as a GitHub Actions workflow or a local timer.
 
 ## Root-cause hypotheses
@@ -64,8 +70,8 @@ would need a new runner, such as a GitHub Actions workflow or a local timer.
 
 ## Defects to fix
 
-1. **Add Python and pnpm audit steps**, for example `uvx pip-audit` and `pnpm audit`, as a `make` target that
-   `make ci` or a scheduled job runs. (Primary)
+1. **Validate the existing Python and pnpm audit recipe** (`just audit`), then decide whether
+   `just ci` or a scheduled job should run it. (Primary)
 2. **Handle the private `pdomain-*` packages explicitly.** They come from pdomain-index-pip and are not in
    public advisory databases, so the audit must skip them without failing.
 3. **Decide on automated update PRs** through Dependabot or Renovate.
@@ -74,7 +80,7 @@ would need a new runner, such as a GitHub Actions workflow or a local timer.
 
 1. Try `uvx pip-audit` and `pnpm audit` on the current lockfiles to see the baseline and the private-package
    behavior.
-2. Add the `make` target, then decide whether it runs in `make ci` or on a schedule.
+2. Use the `just audit` recipe, then decide whether it runs in `just ci` or on a schedule.
 
 ## What is NOT broken
 

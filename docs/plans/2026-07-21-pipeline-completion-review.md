@@ -390,7 +390,7 @@ W3.8 documentation verification completed on 2026-11-07.
 
 **Wave 0 exit criteria (all required):**
 
-1. Golden-path API test is in `make test` / `make ci` and green.
+1. Golden-path API test is in `just test` / `just ci` and green.
 2. Asserted page text is UTF-8 prose, not wordcheck flags JSON.
 3. Attestation unblocks validation without hand-seeded files.
 4. Multi-page stage run cleans all pages in the fixture.
@@ -463,7 +463,7 @@ These items are classified in [Repository boundary](../architecture/10-repositor
 1. Take the next open row under [Now](roadmap.md#now). That list includes the four migrated defects. Wave 0 and Wave 1 are shipped. See [Book path contracts](../architecture/03-pipeline.md#book-path-contracts).
 2. Use current architecture as the implementation reference. W3.8 and the July review-fixes plan are complete.
 
-Use worktrees for implementation branches. Run `make ci AI=1` before each
+Use worktrees for implementation branches. Run `AI=1 just ci` before each
 commit. Prefer pure-function TDD for adapter and artifact-key logic.
 
 ---
@@ -526,5 +526,5 @@ pdomain-book-tools, pdomain-ops. Optional GPU via CuPy keys in the registry.
 - No phantom `scannocheck` stage; improve `wordcheck` (flags + text contract)
 - Generated OpenAPI remains the contract
 - Do not reintroduce backend `project_run_dirty` fan-out
-- TDD for pure artifact/adapter logic; `make ci AI=1` before commit
+- TDD for pure artifact/adapter logic; `AI=1 just ci` before commit
 - Wave 0 golden-path asserts **content correctness**, not only “stages ran”

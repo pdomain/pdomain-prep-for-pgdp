@@ -22,6 +22,16 @@ Level: I1
 - **Search terms:** make ci, make e2e, Playwright, tests/e2e, smoke subset, TOOL_REGISTRY, W3.2
 - **Relates to:** [pipeline completion review](../plans/2026-07-21-pipeline-completion-review.md)
 
+## Current operation — 2026-11-13
+
+`just ci` now runs `just e2e-smoke`: app load, all 24 tool slots, and zip upload.
+The default Python test recipe still excludes `tests/e2e`; the smoke recipe runs that browser subset separately.
+The full browser suite remains opt-in through `AI=1 just e2e`.
+See [current testing commands](../architecture/07-testing.md#how-to-run).
+
+The finding and dated evidence below describe the earlier Make gate. This note records current operation;
+it does not close the issue or change its resolution.
+
 ## Summary
 
 Default `make ci` never runs the Playwright suite under `tests/e2e/`. The

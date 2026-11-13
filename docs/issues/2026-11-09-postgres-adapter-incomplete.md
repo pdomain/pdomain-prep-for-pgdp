@@ -117,7 +117,7 @@ The adapter was finished rather than made to fail fast, because a real local Pos
   against Postgres. It also checks without a database that the adapter defines every protocol method.
 
 Verified against `postgres:17-alpine` in a throwaway Docker container on 127.0.0.1: 23 contract cases and the
-existing adapter tests passed. `make ci` does not start Postgres, so CI runs only the SQLite half.
+existing adapter tests passed. `just ci` does not start Postgres, so CI runs only the SQLite half.
 
 Not done: no migration path for an existing Postgres database created by the old schema, which lacked the new
 tables. `CREATE TABLE IF NOT EXISTS` adds them on the next start. Ranking differs from SQLite's BM25 in detail;
