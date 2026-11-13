@@ -253,7 +253,7 @@ def test_wheel_from_sdist_contains_static(tmp_path: Path) -> None:
     unpack_dir = tmp_path / "sdist-unpacked"
     unpack_dir.mkdir()
     with tarfile.open(sdists[-1]) as tf:
-        tf.extractall(unpack_dir)  # noqa: S202
+        tf.extractall(unpack_dir, filter="data")
 
     unpacked = sorted(unpack_dir.iterdir())
     assert unpacked, f"sdist extracted nothing into {unpack_dir}"
