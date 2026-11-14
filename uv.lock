@@ -1448,25 +1448,6 @@ wheels = [
 ]
 
 [[package]]
-name = "opencv-contrib-python"
-version = "5.0.0.93"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/89/e8/7882cbecf8c81129b0b808690cac9ba3015b0ced02ab329bf4a781c7f8ca/opencv_contrib_python-5.0.0.93.tar.gz", hash = "sha256:da0ba61096b08c63cb4440d8fd6f323835cbb78b714c5ba22a39e1db68c83166", size = 154110105, upload-time = "2026-07-02T06:57:59.097Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f7/5c/ca1c31afec1a1dc3ff6e1cc94091ac288d0fa8663567398809372fec73b9/opencv_contrib_python-5.0.0.93-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:3ebb8e0506573f36f54038116321a086c97aeda8ef154198931f3ea18b435cc7", size = 55653098, upload-time = "2026-07-02T05:50:29.816Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/5f/1ec2b7bc3a2ef169f9acd643c7279bc3208a83240f03ba7fe4e12683272c/opencv_contrib_python-5.0.0.93-cp37-abi3-macosx_14_0_x86_64.whl", hash = "sha256:45a1ce7c68828907348e649edd471a7dc5244d3d0ac21989e67c63d2f4fa629a", size = 42828002, upload-time = "2026-07-02T05:51:35.32Z" },
-    { url = "https://files.pythonhosted.org/packages/73/76/011d759d3c8f2a43e8a435d1e39be4a24ed9fb8c14d6c610d72b9ac2124e/opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cac609c9a4fce67feb287837c671a2c4da9467df8e47fa0cce7bdc453d12a529", size = 57890569, upload-time = "2026-07-02T06:49:13.356Z" },
-    { url = "https://files.pythonhosted.org/packages/60/82/e82b0e3b02617af8bcaff0ff29c75992e916dc7b34daaaef3e0f805967de/opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:29b916da864002a921c79b6df4cfb2dcf79870f166ddf3ce1179b558bc7313d7", size = 79172364, upload-time = "2026-07-02T06:49:44.204Z" },
-    { url = "https://files.pythonhosted.org/packages/71/dc/85ed9767f52425dc811a3a8288d2c643cc0c1341a3b4bdd3166410c77669/opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:b84f0b0fcdbd2421b5819e517542463e71eed7f41e0a0c4ec280ed88b7269a66", size = 57856049, upload-time = "2026-07-02T06:50:07.911Z" },
-    { url = "https://files.pythonhosted.org/packages/8b/39/f87d154d2dca8e9815ca9e4f925aee41e5931162da730d17f3200e7786f3/opencv_contrib_python-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:8427dcb0561dc3ba32f3771c627f52b87c29932c265bea28ffcb54804c3c3fec", size = 82057630, upload-time = "2026-07-02T06:50:54.022Z" },
-    { url = "https://files.pythonhosted.org/packages/25/6d/31fee2843aef301252f6fa54bafe6bc2500fab80b152c5850ed3cbc2b7ef/opencv_contrib_python-5.0.0.93-cp37-abi3-win32.whl", hash = "sha256:dd8a80a04a8610c033757135b7846ad2027ba2d3bf9faf2f83f3dc6ed9e3814a", size = 44362046, upload-time = "2026-07-02T05:50:05.275Z" },
-    { url = "https://files.pythonhosted.org/packages/09/29/6985260569ee3c7f6fcae252bc06e2a843e5b90eed665a2936bdd26fa283/opencv_contrib_python-5.0.0.93-cp37-abi3-win_amd64.whl", hash = "sha256:461622db95c964652d4d8fda171034961c3de270f78a6095aaad31050771774a", size = 53822579, upload-time = "2026-07-02T05:50:02.092Z" },
-]
-
-[[package]]
 name = "opencv-python"
 version = "5.0.0.93"
 source = { registry = "https://pypi.org/simple" }
@@ -1538,7 +1519,7 @@ wheels = [
 
 [[package]]
 name = "pdomain-book-contracts"
-version = "0.3.1"
+version = "0.3.3"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "pydantic" },
@@ -1547,14 +1528,14 @@ dependencies = [
     { name = "shapely" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-book-contracts/releases/download/v0.3.1/pdomain_book_contracts-0.3.1.tar.gz", hash = "sha256:932fa4f54ae1b8b7dc798d5377ba8fc58ca46683eeaef8d4307148ad0dbb8e1e" }
+sdist = { url = "https://github.com/pdomain/pdomain-book-contracts/releases/download/v0.3.3/pdomain_book_contracts-0.3.3.tar.gz", hash = "sha256:241697b497fd8ad71ae76cff664c006cc2c4d6c507eb011177cc6e2b5a882a69" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-book-contracts/releases/download/v0.3.1/pdomain_book_contracts-0.3.1-py3-none-any.whl", hash = "sha256:11c3bef0dc3bca9f66f297491c0ab43968132fdf394591aad610a6f21c0ecf14" },
+    { url = "https://github.com/pdomain/pdomain-book-contracts/releases/download/v0.3.3/pdomain_book_contracts-0.3.3-py3-none-any.whl", hash = "sha256:e06911fcda19850ae596f743c3d9a149170a9b15ebec9987c494b1b668d27079" },
 ]
 
 [[package]]
 name = "pdomain-book-tools"
-version = "0.31.0"
+version = "0.31.3"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "deskew" },
@@ -1563,7 +1544,7 @@ dependencies = [
     { name = "ipywidgets" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "opencv-contrib-python" },
+    { name = "opencv-python" },
     { name = "pandas" },
     { name = "pdomain-book-contracts" },
     { name = "pillow" },
@@ -1580,14 +1561,14 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.31.0/pdomain_book_tools-0.31.0.tar.gz", hash = "sha256:d2f5f28571f32245df6253aae735eb1d9f3448dd750938fd30d200d77870b25c" }
+sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.31.3/pdomain_book_tools-0.31.3.tar.gz", hash = "sha256:421f4dd4c2c3f60097c24a0ee6f02a1abff677bb7e58492bd42b24d0295331b2" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.31.0/pdomain_book_tools-0.31.0-py3-none-any.whl", hash = "sha256:c614b2c32cd7a3a0508fe0088795a9249b83c2e4866132a4dddff4d47e92ae9b" },
+    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.31.3/pdomain_book_tools-0.31.3-py3-none-any.whl", hash = "sha256:4fae75ed000abe54e82345ccdbaf5e62dfd317feb72589f58c7e55e1917dc2af" },
 ]
 
 [[package]]
 name = "pdomain-ops"
-version = "0.12.2"
+version = "0.12.6"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "eventsourcing" },
@@ -1605,9 +1586,9 @@ dependencies = [
     { name = "tomli-w" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.12.2/pdomain_ops-0.12.2.tar.gz", hash = "sha256:68c7173077d63b3f739a1ab425ba1f0d0de6eb0c9574b584ce17f4bd09b07065" }
+sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.12.6/pdomain_ops-0.12.6.tar.gz", hash = "sha256:720186a16858db741de6341b75da12fc36e1a9177da5e425a3eae8903b6a8c3b" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.12.2/pdomain_ops-0.12.2-py3-none-any.whl", hash = "sha256:00a5cdf4d25df91093e2aac3a335efca032906ad751b7aa90ef5eb970fa646b2" },
+    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.12.6/pdomain_ops-0.12.6-py3-none-any.whl", hash = "sha256:ecf69726d83d60e0b3ccd44acfac3428345f06e69b760bd6132d802070259512" },
 ]
 
 [[package]]
@@ -1680,9 +1661,9 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=1.16" },
     { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
     { name = "nvidia-nvimgcodec-cu13", marker = "extra == 'cuda'", specifier = ">=0.3" },
-    { name = "pdomain-book-contracts", specifier = ">=0.3.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-book-tools", specifier = ">=0.31.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-ops", specifier = ">=0.12.2", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-book-contracts", specifier = ">=0.3.3", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-book-tools", specifier = ">=0.31.3", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-ops", specifier = ">=0.12.6", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "pydantic-settings", specifier = ">=2.15" },

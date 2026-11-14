@@ -13,13 +13,13 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "pdomain-book-tools>=0.31.0",
+    "pdomain-book-tools>=0.31.3",
     # Declared directly, though nothing here imports it: book-tools 0.28.0
     # depends on it, it lives only on the self-hosted index, and that index
     # is explicit, so a purely transitive reference does not resolve. Every
     # sibling that depends on book-tools lists it the same way.
-    "pdomain-book-contracts>=0.3.1",
-    "pdomain-ops>=0.12.2",
+    "pdomain-book-contracts>=0.3.3",
+    "pdomain-ops>=0.12.6",
     "eventsourcing>=9.5",
     "fastapi>=0.141",
     "uvicorn[standard]>=0.52",

@@ -111,8 +111,8 @@ Targeted runs: `uv run pytest -k <pattern>`.
   is `docs/plans/roadmap.md`. Work that should leave this repo is in
   `docs/architecture/10-repository-boundary.md`. Cloud and remote items remain
   parked under `docs/plans/roadmap.md` §Deferred.
-- Current dependency minimums are `pdomain-book-tools>=0.31.0`, `pdomain-book-contracts>=0.3.1`,
-  and `pdomain-ops>=0.12.2`, from pdomain-index-pip. `@pdomain/pdomain-ui` is `^0.13.0`.
+- Current dependency minimums are `pdomain-book-tools>=0.31.3`, `pdomain-book-contracts>=0.3.3`,
+  and `pdomain-ops>=0.12.6`, from pdomain-index-pip. `@pdomain/pdomain-ui` is `^0.13.0`.
   `just local-dev` installs editable siblings; `just update-pdomain-deps` refreshes registry constraints.
 - `gpu_backend="cpu"` is the test default. Local/cpu/mps startup uses `_NoOpGPUBackend` for compatibility;
   page stages execute through the registry. Remote modes require real configuration.

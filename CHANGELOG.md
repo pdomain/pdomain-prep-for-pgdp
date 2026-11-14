@@ -15,12 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 These entries record the historical event-store migration, not current dependency minimums.
-Current constraints are in `pyproject.toml`: book-tools `>=0.31.0`, contracts `>=0.3.1`,
-ops `>=0.12.2`, and eventsourcing `>=9.5`. `@pdomain/pdomain-ui` is `^0.13.0`.
+Current constraints are in `pyproject.toml`: book-tools `>=0.31.3`, contracts `>=0.3.3`,
+ops `>=0.12.6`, and eventsourcing `>=9.5`. `@pdomain/pdomain-ui` is `^0.13.0`.
 Repository integration was reviewed on 2026-11-07; this is not a new release declaration.
 
 ### Changed
 
+- Require `pdomain-book-tools>=0.31.3`, `pdomain-ops>=0.12.6` and `pdomain-book-contracts>=0.3.3`.
+  The environment now holds only `opencv-python`, not also `opencv-contrib-python`.
 - Page persistence migrated to ops event store (pdomain-ops 0.7.0 PageAggregate +
   PagesApplication + BlobStore). The SQLite `pages` table is retained for legacy
   projects; all new page lifecycle events are stored in
